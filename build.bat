@@ -2,8 +2,7 @@
 echo [SKALD] Building skald_codegen...
 
 :: Assumes odin.exe is in your PATH or in C:\Odin\
-:: You can change "C:\Odin\odin.exe" to just "odin" if it's in your PATH
-C:\Odin\odin.exe build main.odin -file
+odin build main.odin -file
 
 :: Check if the build was successful before running
 if errorlevel 1 (
