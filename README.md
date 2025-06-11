@@ -25,9 +25,8 @@ A simple build script is provided. It compiles the Odin code and immediately run
 
 ```bash
 # On Windows
-.\build_and_run.bat
+.\build.bat
 
-# On Linux/macOS (you would create a build_and_run.sh)
-# ./build_and_run.sh
-
-    
+# untested but technically should work. 
+# On Linux/macOS (you would create a build.sh)
+# ./build.sh
