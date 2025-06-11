@@ -1,0 +1,28 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Oscillator",
+      "position": { "x": 150, "y": 100 },
+      "parameters": {
+        "waveform": "Sine",
+        "frequency": 440.0,
+        "amplitude": 0.5
+      }
+    },
+    {
+      "id": 2,
+      "type": "GraphOutput",
+      "position": { "x": 400, "y": 100 },
+      "parameters": {}
+    }
+  ],
+  "connections": [
+    {
+      "from_node": 1,
+      "from_port": "output",
+      "to_node": 2,
+      "to_port": "input"
+    }
+  ]
+}

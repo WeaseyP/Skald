@@ -1,0 +1,14 @@
+# Compiled Executables
+*.exe
+*.out
+main
+
+# Build artifacts
+*.o
+*.obj
+*.dll
+*.so
+
+# Editor/IDE specific
+.vscode/
+.idea/
