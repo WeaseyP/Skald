@@ -16,7 +16,7 @@
       "position": { "x": 350, "y": 150 },
       "parameters": {
         "type": "Lowpass",
-        "cutoff": 400.0          
+        "cutoff": 200.0          
       }
     },
     {

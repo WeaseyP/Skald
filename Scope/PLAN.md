@@ -247,8 +247,7 @@ The project will be executed in a series of focused phases.
 
 6. Storyboard
 Epic	User Story	Task
-SKALD-E1: Odin CodeGen CLI	As a developer, I want a CLI that transforms a JSON graph into Odin code so I can automate code generation.	SKALD-1: Define JSON schema.<br>SKALD-2: Implement stdin reader.<br>SKALD-3: Implement codegen for 'Oscillator'.<br>SKALD-4: Implement codegen for 'Filter'.<br>SKALD-5: Print result to stdout.
-SKALD-E2: React/Electron UI Foundation	As a user, I want a desktop app with a node canvas so I can start building my audio graph.	SKALD-6: Set up Electron/TS/React project.<br>SKALD-7: Install & configure React Flow.<br>SKALD-8: Create main window layout.
+SSKALD-1: Define JSON schema.<br>SKALD-2: Implement stdin reader.<br>SKALD-3: Implement codegen for 'Oscillator'.<br>SKALD-4: Implement codegen for 'Filter'.<br>SKALD-5: Print result to stdout.<br>SKALD-22: Implement topological sort of the node graph to ensure correct processing order.<br>SKALD-23: Refactor codegen to use specific to_port names when resolving connections.	SKALD-6: Set up Electron/TS/React project.<br>SKALD-7: Install & configure React Flow.<br>SKALD-8: Create main window layout.
 SKALD-E3: Interactive Node Editor	As a user, I want to add, connect, and configure nodes so I can design my signal chain.	SKALD-9: Implement "Add Node" from a list.<br>SKALD-10: Implement node/edge deletion.<br>SKALD-11: Create parameter editing panel.
 SKALD-E4: Frontend-Backend Integration	As a user, I want to click a button and see the generated Odin code so I can use it in my project.	SKALD-12: Implement state-to-JSON serialization.<br>SKALD-13: Create Node.js child process invoker.<br>SKALD-14: Create code preview panel.
 SKALD-E5: Audio Preview & Project I/O	As a user, I want to hear my graph and save my work so I can iterate on my designs.	SKALD-15: Build Web Audio graph interpreter.<br>SKALD-16: Add play/stop UI controls.<br>SKALD-17: Implement Save/Load file dialogs.
