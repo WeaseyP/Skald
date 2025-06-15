@@ -1,19 +1,13 @@
 Skald: A CodeGen Audio Tool for Odin
 Technical Report and Implementation Plan v2.0
 
-    Document Version: 2.0
-
-    Date: June 12, 2024
-
-    Status: DRAFT
-
-    Author: Senior Technical Architect
 
 1. Introduction
 
-Skald is a visual, node-based development tool designed to accelerate the creation of complex audio processing graphs for the Odin programming language. The project's core vision is to provide audio engineers, game developers, and creative coders with an intuitive graphical interface to design, prototype, and generate high-performance, boilerplate-free Odin audio code. Users can visually construct signal chains, manipulate parameters, and instantly generate the underlying source code, drastically reducing manual effort and the potential for errors.
+Skald is a visual, node-based development tool designed to accelerate the creation of complex audio processing graphs for the Odin programming language. The project's core vision is to provide audio engineers, game developers, and creative coders with an intuitive graphical interface to design, prototype, and generate high-performance, boilerplate-free Odin audio code.
 
-This document outlines the revised technical architecture for Skald. The project is now architected as a decoupled system, comprising a modern desktop frontend and a focused, headless backend. The frontend is a desktop application built with Electron, TypeScript, and React, providing a rich, interactive user experience. The backend is a lightweight, command-line Odin application (skald_codegen) that functions as a pure code generation engine. Audio previewing is handled directly within the frontend using the browser-native Web Audio API, enabling rapid, iterative sound design. This decoupled approach maximizes development velocity, ensures a superior user experience, and provides a clear path for future expansion into a web-based platform.
+This document outlines the technical architecture for Skald. The project is architected as a decoupled system within a single monorepo, comprising a modern desktop frontend and a focused, headless backend.
+
 2. Rationale for Technology Selection
 
 The choice of technologies for Skald is driven by a strategy that plays to the strengths of each component, optimizing for user experience, development speed, and code generation robustness.
@@ -119,35 +113,37 @@ The primary data structure is the audio graph, which will be defined as a set of
       
 // Example TypeScript interfaces defining the JSON contract
 
-interface NodeParameter {
-  id: string;
-  name: string;
-  value: number | string;
-  type: 'float' | 'int' | 'string';
-}
-
-interface AudioNode {
-  id: string; // Unique ID (e.g., from React Flow)
-  type: string; // Type of node (e.g., 'oscillator', 'lowpass_filter')
+// This interface is a good representation of the data within React Flow,
+// but it will be transformed before being sent to the Odin CLI.
+interface ReactFlowNode {
+  id: string; // React Flow typically uses strings
+  type: string;
   position: { x: number; y: number };
-  parameters: NodeParameter[];
+  data: {
+    parameters: { [key: string]: string | number | boolean };
+  };
 }
 
-interface Edge {
-  id: string;
-  sourceNodeId: string;
-  sourceHandleId: string; // e.g., 'output_audio'
-  targetNodeId: string;
-  targetHandleId: string; // e.g., 'input_frequency'
+// --- Official Skald JSON Contract Interfaces ---
+// This is the structure that will be generated and sent to stdin.
+
+interface SkaldNode {
+  id: number; // The Odin backend expects an Integer
+  type: string;
+  position: { x: number; y: number };
+  parameters: { [key: string]: string | number | boolean }; // A simple key-value object
+}
+
+interface SkaldConnection {
+  from_node: number; // The Odin backend expects an Integer
+  from_port: string;
+  to_node: number;   // The Odin backend expects an Integer
+  to_port: string;
 }
 
 interface AudioGraph {
-  nodes: AudioNode[];
-  edges: Edge[];
-  // Global settings like sample rate can be included here
-  metadata: {
-    sampleRate: number;
-  };
+  nodes: SkaldNode[];
+  connections: SkaldConnection[];
 }
 
     
@@ -161,6 +157,7 @@ The visual graph is the centerpiece of the UI. Implemented with React Flow, it w
 3.6. Code Generation Engine
 
 The code generation engine is the Odin application. It's a focused tool that performs a single task perfectly. It will contain parsers for the JSON structure, logic for topologically sorting the graph to ensure correct processing order, and a set of templates or builders for generating the Odin code for each supported node type. It does not contain any UI, audio, or state management logic.
+
 4. Key Features
 
 The core feature set remains unchanged, but their implementation is now mapped to the new architecture.
@@ -179,9 +176,9 @@ The core feature set remains unchanged, but their implementation is now mapped t
 
 5. Implementation Plan
 
-The project will be executed in a series of focused phases.
+The project is executed in a series of focused phases.
 
-    Phase 1: Odin CodeGen CLI Foundation
+    Phase 1: Odin CodeGen CLI Foundation (COMPLETED)
 
         Define the canonical graph.json format.
 
@@ -195,17 +192,17 @@ The project will be executed in a series of focused phases.
 
         Write unit tests to validate output for sample JSON inputs.
 
-    Phase 2: Electron & React UI Foundation
+    Phase 2: Electron & React UI Foundation (COMPLETED)
 
-        Set up a new project with Electron Forge, TypeScript, and React templates.
+        Set up a new project with Electron Forge, using the Vite and TypeScript template.
 
-        Install and configure react-flow-renderer.
+        Install and configure React and the reactflow library.
 
-        Create the main application layout (e.g., sidebar for nodes, main canvas, parameter panel).
+        Create the main application layout consisting of a full-screen canvas.
 
-        Render a basic, empty React Flow canvas.
+        Render a basic, empty React Flow canvas on application start.
 
-    Phase 3: Interactive Node Editor
+    Phase 3: Interactive Node Editor (COMPLETED)
 
         Implement UI logic for adding new nodes to the canvas from a library panel.
 
@@ -215,7 +212,7 @@ The project will be executed in a series of focused phases.
 
         Ensure all graph state changes are captured correctly in the React Flow state object.
 
-    Phase 4: Frontend-Backend Integration
+    Phase 4: Frontend-Backend Integration (COMPLETED)
 
         Implement the "Generate Code" button logic.
 
@@ -223,9 +220,11 @@ The project will be executed in a series of focused phases.
 
         Write the Node.js logic to invoke skald_codegen, pipe the JSON to its stdin, and capture its stdout and stderr.
 
-        Create a code preview component (e.g., using react-syntax-highlighter) to display the captured output.
+        Create a code preview component to display the captured output.
 
-    Phase 5: Audio Preview & Project I/O
+        Implement a "Copy to Clipboard" button for the generated code.
+
+    Phase 5: Audio Preview & Project I/O (Current Phase)
 
         Develop a "Graph Interpreter" service that maps the React Flow state to a Web Audio API node graph.
 
@@ -245,13 +244,130 @@ The project will be executed in a series of focused phases.
 
         Task 5: Deployment Strategy: Define a Dockerfile that bundles the Node.js server, the static React build artifacts, and the compiled Odin CLI binary. Outline the process for deploying this container to a cloud provider (e.g., AWS Fargate, Google Cloud Run).
 
+| Epic | User Story | Task |
+| :--- | :--- | :--- |
+| **SKALD-E1: Backend CLI** | As a developer, I want a CLI that transforms a JSON graph into valid Odin code. | ~~SKALD-1: Define JSON schema.~~ <br> ~~SKALD-2: Implement `stdin` reader.~~ <br> ~~SKALD-3: Implement codegen for 'Oscillator'.~~ <br> ~~SKALD-4: Implement codegen for 'Filter'.~~ <br> ~~SKALD-5: Print result to `stdout`.~~ <br> ~~SKALD-22: Implement topological sort of the node graph.~~ <br> ~~SKALD-23: Refactor codegen to use port names.~~ |
+| **SKALD-E2: UI Foundation**| As a developer, I want a basic Electron/React application to host the visual editor. | ~~SKALD-6: Set up Electron/TS/React project.~~ <br> ~~SKALD-7: Install & configure React Flow.~~ <br> ~~SKALD-8: Create main window layout.~~ |
+| **SKALD-E3: Node Editor**| As a user, I want to add, connect, and configure nodes to design my signal chain. | ~~SKALD-9: Implement "Add Node" from a list.~~ <br> ~~SKALD-10: Implement node/edge deletion.~~ <br> ~~SKALD-11: Create parameter editing panel.~~ |
+| **SKALD-E4: Integration**| As a user, I want to click a button and see the generated Odin code. | ~~SKALD-12: Implement state-to-JSON serialization.~~ <br> ~~SKALD-13: Create Node.js child process invoker.~~ <br> ~~SKALD-14: Create code preview panel.~~ |
+| **SKALD-E5: Audio & I/O** | As a user, I want to hear my graph and save my work. | SKALD-15: Build Web Audio graph interpreter.<br>SKALD-16: Add play/stop UI controls.<br>SKALD-17: Implement Save/Load file dialogs. |
+| **SKALD-E6: Web App** | As an admin, I want to deploy Skald as a web service. | SKALD-18: Build Express.js server.<br>SKALD-19: Create `/api/generate` endpoint.<br>SKALD-20: Implement user authentication.<br>SKALD-21: Create Dockerfile for deployment. |
+
+
+Gemini can make mistakes, so double-check it
+Technical Plan v2.1
+
+Skald: A CodeGen Audio Tool for Odin
+Technical Report and Implementation Plan v2.1
+
+Document Version: 2.1
+Date: June 15, 2025
+Status: DRAFT
+Author: Senior Technical Architect
+
+1. Introduction
+
+Skald is a visual, node-based development tool designed to accelerate the creation of complex audio processing graphs for the Odin programming language. The project's core vision is to provide audio engineers, game developers, and creative coders with an intuitive graphical interface to design, prototype, and generate high-performance, boilerplate-free Odin audio code.
+
+This document outlines the technical architecture for Skald. The project is architected as a decoupled system within a single monorepo, comprising a modern desktop frontend and a focused, headless backend.
+2. Rationale for Technology Selection
+
+... (No changes in this section) ...
+3. Core Concepts and Architecture
+
+... (No changes in this section) ...
+5. Implementation Plan
+
+The project is executed in a series of focused phases.
+
+    Phase 1: Odin CodeGen CLI Foundation (COMPLETED)
+
+        Define the canonical graph.json format.
+
+        Create the skald_codegen Odin project.
+
+        Implement logic to read a hardcoded graph.json file from disk.
+
+        Implement the core codegen logic for a few basic nodes (e.g., Sine Oscillator, Gain, Output).
+
+        Refactor to read from stdin and write to stdout.
+
+        Write unit tests to validate output for sample JSON inputs.
+
+    Phase 2: Electron & React UI Foundation (COMPLETED)
+
+        Set up a new project with Electron Forge, using the Vite and TypeScript template.
+
+        Install and configure React and the reactflow library.
+
+        Create the main application layout consisting of a full-screen canvas.
+
+        Render a basic, empty React Flow canvas on application start.
+
+    Phase 3: Interactive Node Editor (COMPLETED)
+
+        Implement UI logic for adding new nodes to the canvas from a library panel.
+
+        Enable connecting, moving, and deleting nodes and edges.
+
+        Create the parameter editing panel, which dynamically displays controls for the selected node.
+
+        Ensure all graph state changes are captured correctly in the React Flow state object.
+
+    Phase 4: Frontend-Backend Integration (COMPLETED)
+
+        Implement the "Generate Code" button logic.
+
+        Add the function to serialize the React Flow state into the agreed-upon JSON format.
+
+        Write the Node.js logic to invoke skald_codegen, pipe the JSON to its stdin, and capture its stdout and stderr.
+
+        Create a code preview component to display the captured output.
+
+        Implement a "Copy to Clipboard" button for the generated code.
+
+    Phase 5: Audio Preview & Project I/O (Current Phase)
+
+        Develop a "Graph Interpreter" service that maps the React Flow state to a Web Audio API node graph.
+
+        Implement play/stop controls that connect/disconnect the generated Web Audio graph from the destination.
+
+        Implement "Save" and "Load" menu items that use Electron's dialogs to read/write the graph's JSON state to a file.
+
+    Phase 6: Web Application Deployment (Future Goal)
+
+        Task 1: Server Scaffolding: Create a Node.js/Express.js server.
+
+        ... (and so on)
+
 6. Storyboard
-Epic	User Story	Task
-SSKALD-1: Define JSON schema.<br>SKALD-2: Implement stdin reader.<br>SKALD-3: Implement codegen for 'Oscillator'.<br>SKALD-4: Implement codegen for 'Filter'.<br>SKALD-5: Print result to stdout.<br>SKALD-22: Implement topological sort of the node graph to ensure correct processing order.<br>SKALD-23: Refactor codegen to use specific to_port names when resolving connections.	SKALD-6: Set up Electron/TS/React project.<br>SKALD-7: Install & configure React Flow.<br>SKALD-8: Create main window layout.
-SKALD-E3: Interactive Node Editor	As a user, I want to add, connect, and configure nodes so I can design my signal chain.	SKALD-9: Implement "Add Node" from a list.<br>SKALD-10: Implement node/edge deletion.<br>SKALD-11: Create parameter editing panel.
-SKALD-E4: Frontend-Backend Integration	As a user, I want to click a button and see the generated Odin code so I can use it in my project.	SKALD-12: Implement state-to-JSON serialization.<br>SKALD-13: Create Node.js child process invoker.<br>SKALD-14: Create code preview panel.
-SKALD-E5: Audio Preview & Project I/O	As a user, I want to hear my graph and save my work so I can iterate on my designs.	SKALD-15: Build Web Audio graph interpreter.<br>SKALD-16: Add play/stop UI controls.<br>SKALD-17: Implement Save/Load file dialogs.
-SKALD-E6: Web App Deployment	As an admin, I want to deploy Skald as a web service so users can access it from anywhere.	SKALD-18: Build Express.js server.<br>SKALD-19: Create /api/generate endpoint.<br>SKALD-20: Implement user authentication.<br>SKALD-21: Create Dockerfile for deployment.
+| Epic | User Story | Task |
+| :--- | :--- | :--- |
+| **SKALD-E1: Backend CLI** | As a developer, I want a CLI that transforms a JSON graph into valid Odin code. | ~~SKALD-1: Define JSON schema.~~ |
+| | | ~~SKALD-2: Implement `stdin` reader.~~ |
+| | | ~~SKALD-3: Implement codegen for 'Oscillator'.~~ |
+| | | ~~SKALD-4: Implement codegen for 'Filter'.~~ |
+| | | ~~SKALD-5: Print result to `stdout`.~~ |
+| | | ~~SKALD-22: Implement topological sort of the node graph.~~ |
+| | | ~~SKALD-23: Refactor codegen to use port names.~~ |
+| **SKALD-E2: UI Foundation**| As a developer, I want a basic Electron/React application to host the visual editor. | ~~SKALD-6: Set up Electron/TS/React project.~~ |
+| | | ~~SKALD-7: Install & configure React Flow.~~ |
+| | | ~~SKALD-8: Create main window layout.~~ |
+| **SKALD-E3: Node Editor**| As a user, I want to add, connect, and configure nodes to design my signal chain. | ~~SKALD-9: Implement "Add Node" from a list.~~ |
+| | | ~~SKALD-10: Implement node/edge deletion.~~ |
+| | | ~~SKALD-11: Create parameter editing panel.~~ |
+| **SKALD-E4: Integration**| As a user, I want to click a button and see the generated Odin code. | ~~SKALD-12: Implement state-to-JSON serialization.~~ |
+| | | ~~SKALD-13: Create Node.js child process invoker.~~ |
+| | | ~~SKALD-14: Create code preview panel.~~ |
+| **SKALD-E5: Audio & I/O** | As a user, I want to hear my graph and save my work. | SKALD-15: Build Web Audio graph interpreter. |
+| | | SKALD-16: Add play/stop UI controls. |
+| | | SKALD-17: Implement Save/Load file dialogs. |
+| **SKALD-E6: Web App** | As an admin, I want to deploy Skald as a web service. | SKALD-18: Build Express.js server. |
+| | | SKALD-19: Create `/api/generate` endpoint. |
+| | | SKALD-20: Implement user authentication. |
+| | | SKALD-21: Create Dockerfile for deployment. |
+
+
 7. Build and Deployment Strategy
 
 The decoupled architecture necessitates two distinct build and deployment pipelines.
