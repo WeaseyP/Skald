@@ -34,20 +34,22 @@ interface ParameterPanelProps {
 const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode }) => {
   const [frequency, setFrequency] = useState('');
   const [cutoff, setCutoff] = useState('');
+  const [nodeData, setNodeData] = useState<any>({});
 
   useEffect(() => {
     if (selectedNode?.data) {
-        // When a new node is selected, format its initial value for display
+        setNodeData(selectedNode.data);
         const freqValue = selectedNode.data.frequency ?? 0;
         setFrequency(freqValue % 1 === 0 ? freqValue.toFixed(1) : String(freqValue));
 
         const cutoffValue = selectedNode.data.cutoff ?? 0;
         setCutoff(cutoffValue % 1 === 0 ? cutoffValue.toFixed(1) : String(cutoffValue));
+    } else {
+        setNodeData({});
     }
   }, [selectedNode]);
 
-  // When the user leaves an input field, validate, round, and format the value
-  const handleBlur = (field: 'frequency' | 'cutoff', value: string) => {
+  const handleBlur = (field: string, value: string) => {
     if (!selectedNode) return;
     
     let num = parseFloat(value);
@@ -55,16 +57,22 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         num = 0.0;
     }
     
-    // Round to 5 decimal places
     const rounded = Math.round(num * 1e2) / 1e2;
-    
-    // Update the global state with the pure number
     onUpdateNode(selectedNode.id, { [field]: rounded });
 
-    // Update the local display state with a nicely formatted string
-    // This ensures "400" becomes "400.0" in the input field
-    setFrequency(rounded % 1 === 0 ? rounded.toFixed(1) : String(rounded));
+    // This updates the local state for display, ensuring a consistent format
+    if (field === 'frequency') {
+        setFrequency(rounded % 1 === 0 ? rounded.toFixed(1) : String(rounded));
+    } else if (field === 'cutoff') {
+        setCutoff(rounded % 1 === 0 ? rounded.toFixed(1) : String(rounded));
+    }
   };
+
+  const handleDataChange = (field: string, value: string | number) => {
+      if (!selectedNode) return;
+      onUpdateNode(selectedNode.id, { [field]: value });
+  };
+
 
   if (!selectedNode) {
     return (
@@ -83,21 +91,21 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             <div style={inputGroupStyles}>
               <label style={labelStyles} htmlFor="frequency">Frequency</label>
               <input
-                style={inputStyles}
-                type="number"
-                id="frequency"
+                style={inputStyles} type="number" id="frequency"
                 value={frequency}
-                onChange={(e) => setFrequency(e.target.value)} // Just update the string as user types
-                onBlur={(e) => handleBlur('frequency', e.target.value)} // Format and update state on blur
+                onChange={(e) => setFrequency(e.target.value)}
+                onBlur={(e) => handleBlur('frequency', e.target.value)}
                 step="0.01"
               />
             </div>
             <div style={inputGroupStyles}>
-              <label style={labelStyles} htmlFor="wavetype">Waveform Type</label>
-              <select id="wavetype" style={inputStyles} value={selectedNode.data.waveform}
-                onChange={(e) => onUpdateNode(selectedNode.id, { waveform: e.target.value })}>
+              <label style={labelStyles} htmlFor="waveform">Waveform</label>
+              <select id="waveform" style={inputStyles} value={nodeData.waveform}
+                onChange={(e) => handleDataChange('waveform', e.target.value)}>
                 <option value="Sine">Sine</option>
                 <option value="Sawtooth">Sawtooth</option>
+                <option value="Triangle">Triangle</option>
+                <option value="Square">Square</option>
               </select>
             </div>
           </>
@@ -108,9 +116,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             <div style={inputGroupStyles}>
               <label style={labelStyles} htmlFor="cutoff">Cutoff Frequency</label>
               <input
-                style={inputStyles}
-                type="number"
-                id="cutoff"
+                style={inputStyles} type="number" id="cutoff"
                 value={cutoff}
                 onChange={(e) => setCutoff(e.target.value)}
                 onBlur={(e) => handleBlur('cutoff', e.target.value)}
@@ -118,6 +124,42 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
               />
             </div>
           </>
+        );
+      case 'noise':
+        return (
+            <div style={inputGroupStyles}>
+              <label style={labelStyles} htmlFor="noiseType">Noise Type</label>
+              <select id="noiseType" style={inputStyles} value={nodeData.noiseType}
+                onChange={(e) => handleDataChange('noiseType', e.target.value)}>
+                <option value="White">White</option>
+                <option value="Pink">Pink</option>
+              </select>
+            </div>
+        );
+       case 'adsr':
+        return (
+            <>
+                <div style={inputGroupStyles}>
+                    <label style={labelStyles}>Attack: {nodeData.attack}s</label>
+                    <input type="range" min="0" max="2" step="0.01" value={nodeData.attack}
+                           onChange={e => handleDataChange('attack', parseFloat(e.target.value))} style={inputStyles} />
+                </div>
+                <div style={inputGroupStyles}>
+                    <label style={labelStyles}>Decay: {nodeData.decay}s</label>
+                    <input type="range" min="0" max="2" step="0.01" value={nodeData.decay}
+                           onChange={e => handleDataChange('decay', parseFloat(e.target.value))} style={inputStyles} />
+                </div>
+                <div style={inputGroupStyles}>
+                    <label style={labelStyles}>Sustain: {nodeData.sustain}</label>
+                    <input type="range" min="0" max="1" step="0.01" value={nodeData.sustain}
+                           onChange={e => handleDataChange('sustain', parseFloat(e.target.value))} style={inputStyles} />
+                </div>
+                <div style={inputGroupStyles}>
+                    <label style={labelStyles}>Release: {nodeData.release}s</label>
+                    <input type="range" min="0" max="5" step="0.01" value={nodeData.release}
+                           onChange={e => handleDataChange('release', parseFloat(e.target.value))} style={inputStyles} />
+                </div>
+            </>
         );
       case 'output':
         return <p>This is the final audio output.</p>;

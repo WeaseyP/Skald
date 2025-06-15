@@ -22,31 +22,30 @@ App_State :: struct {
     ring_buffer:    Ring_Buffer,
     mutex:          sync.Mutex,
     is_running:     bool,
+    time_in_samples: u64, // NEW: Counter for samples
 }
 
-// THE PRODUCER THREAD (Corrected)
+// THE PRODUCER THREAD
 sample_generator_thread_proc :: proc(data: rawptr) {
     app_state := (^App_State)(data)
     
     for app_state.is_running {
-        // We will check if the buffer is full *after* we acquire the lock.
-        // This prevents the data race.
         buffer_was_full := false
 
         sync.lock(&app_state.mutex)
         
-        // Calculate the number of samples currently in the buffer.
         samples_in_buffer := app_state.ring_buffer.write_pos - app_state.ring_buffer.read_pos
         if samples_in_buffer < 0 {
             samples_in_buffer += len(app_state.ring_buffer.data)
         }
         
-        // Check if there is enough free space for at least 2 more samples (left & right).
-        // We leave 1 slot empty to distinguish between a full and empty buffer.
         if samples_in_buffer < len(app_state.ring_buffer.data) - 2 {
             
-            // It's safe to generate and write a new sample pair.
-            left, right := ga.process_sample(&app_state.processor, f32(app_state.device.sampleRate))
+            // Generate sample and pass the current time
+            left, right := ga.process_sample(&app_state.processor, f32(app_state.device.sampleRate), app_state.time_in_samples)
+
+            // Increment time *after* processing the sample
+            app_state.time_in_samples += 1
 
             app_state.ring_buffer.data[app_state.ring_buffer.write_pos] = left
             app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
@@ -55,14 +54,11 @@ sample_generator_thread_proc :: proc(data: rawptr) {
             app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
 
         } else {
-            // The buffer is full, so we tell our outer logic to wait.
             buffer_was_full = true
         }
 
         sync.unlock(&app_state.mutex)
 
-        // If the buffer was full, we sleep for a tiny duration to prevent
-        // this thread from consuming 100% of a CPU core.
         if buffer_was_full {
             time.sleep(1 * time.Millisecond)
         }
@@ -70,7 +66,7 @@ sample_generator_thread_proc :: proc(data: rawptr) {
 }
 
 
-// THE CONSUMER (No changes needed, it was already safe)
+// THE CONSUMER
 audio_callback :: proc "c" (p_device: ^ma.device, p_output: rawptr, p_input: rawptr, frame_count: u32) {
     app_state := (^App_State)(p_device.pUserData)
     output_buffer := mem.slice_ptr((^f32)(p_output), int(frame_count * p_device.playback.channels))
@@ -91,6 +87,9 @@ audio_callback :: proc "c" (p_device: ^ma.device, p_output: rawptr, p_input: raw
 main :: proc() {
     app_state: App_State
     app_state.is_running = true
+
+    // Initialize the processor using the new generated function
+    ga.init_processor(&app_state.processor)
 
     app_state.ring_buffer.data = make([]f32, 4096)
 
@@ -116,7 +115,7 @@ main :: proc() {
         return
     }
 
-    fmt.println("Playing 440Hz tone. Press Ctrl+C to quit.")
+    fmt.println("Playing audio... Press Ctrl+C to quit.")
 
     for {
         time.sleep(1 * time.Second)

@@ -41,13 +41,6 @@ const stopButtonStyles: React.CSSProperties = {
     marginTop: '10px',
 };
 
-interface SidebarProps {
-    onGenerate: () => void;
-    onPlay: () => void;
-    onStop: () => void;
-    isPlaying: boolean;
-}
-
 const ioButtonStyles: React.CSSProperties = {
     ...generateButtonStyles,
     backgroundColor: '#868e96',
@@ -60,8 +53,8 @@ interface SidebarProps {
     onPlay: () => void;
     onStop: () => void;
     isPlaying: boolean;
-    onSave: () => void; // NEW
-    onLoad: () => void; // NEW
+    onSave: () => void;
+    onLoad: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onGenerate, onPlay, onStop, isPlaying, onSave, onLoad }) => {
@@ -81,6 +74,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onGenerate, onPlay, onStop, isPlaying
         <div style={nodeButtonStyles} onDragStart={(event) => onDragStart(event, 'filter')} draggable>
           Filter
         </div>
+        <div style={{...nodeButtonStyles, borderColor: '#40c057'}} onDragStart={(event) => onDragStart(event, 'noise')} draggable>
+          Noise
+        </div>
+        <div style={{...nodeButtonStyles, borderColor: '#fab005'}} onDragStart={(event) => onDragStart(event, 'adsr')} draggable>
+          ADSR Envelope
+        </div>
         <div style={{...nodeButtonStyles, borderColor: '#e8590c'}} onDragStart={(event) => onDragStart(event, 'output')} draggable>
           Graph Output
         </div>
@@ -98,7 +97,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onGenerate, onPlay, onStop, isPlaying
                 Stop
             </button>
         )}
-        {/* NEW I/O Buttons */}
         <button style={ioButtonStyles} onClick={onSave}>
             Save Graph
         </button>

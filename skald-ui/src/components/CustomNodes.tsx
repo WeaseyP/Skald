@@ -14,6 +14,9 @@ const baseNodeStyles: React.CSSProperties = {
 const oscNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#d3f9d8' };
 const filterNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#d0ebff' };
 const outputNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#ffe8cc', borderColor: '#e8590c' };
+const noiseNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#e9ecef', borderColor: '#495057' };
+const adsrNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#fff3bf', borderColor: '#fcc419' };
+
 
 const OscillatorNodeComponent = ({ data }: NodeProps) => {
   return (
@@ -45,6 +48,27 @@ const GraphOutputNodeComponent = ({ data }: NodeProps) => {
     );
 };
 
+const NoiseNodeComponent = ({ data }: NodeProps) => {
+    return (
+        <div style={noiseNodeStyles}>
+            <div><strong>{data.label}</strong></div>
+            <Handle type="source" position={Position.Right} id="output" />
+        </div>
+    );
+};
+
+const ADSRNodeComponent = ({ data }: NodeProps) => {
+    return (
+        <div style={adsrNodeStyles}>
+            <Handle type="target" position={Position.Left} id="input" />
+            <div><strong>{data.label}</strong></div>
+            <Handle type="source" position={Position.Right} id="output" />
+        </div>
+    );
+};
+
 export const OscillatorNode = memo(OscillatorNodeComponent);
 export const FilterNode = memo(FilterNodeComponent);
 export const GraphOutputNode = memo(GraphOutputNodeComponent);
+export const NoiseNode = memo(NoiseNodeComponent);
+export const ADSRNode = memo(ADSRNodeComponent);
