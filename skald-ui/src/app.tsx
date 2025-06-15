@@ -12,6 +12,7 @@ import ReactFlow, {
     OnConnect,
     useReactFlow,
     OnSelectionChangeParams,
+    ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -19,6 +20,7 @@ import Sidebar from './components/Sidebar';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
 import { OscillatorNode, FilterNode, GraphOutputNode } from './components/CustomNodes';
+
 
 const appContainerStyles: React.CSSProperties = {
     display: 'flex',
@@ -42,7 +44,6 @@ const parameterPanelStyles: React.CSSProperties = {
     width: '350px',
     backgroundColor: '#fff',
 };
-
 let id = 0;
 const getId = () => ++id;
 
@@ -52,8 +53,15 @@ const EditorLayout = () => {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const { screenToFlowPosition } = useReactFlow();
   
+  // Audio state
+  const audioContext = useRef<AudioContext | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioNodes = useRef<Map<string, AudioNode>>(new Map());
+
+
   const nodeTypes = useMemo(() => ({ 
     oscillator: OscillatorNode,
     filter: FilterNode,
@@ -77,6 +85,25 @@ const EditorLayout = () => {
     },
     [setEdges]
   );
+  
+  const handleSave = useCallback(() => {
+        if (reactFlowInstance) {
+            const flow = reactFlowInstance.toObject();
+            const graphJson = JSON.stringify(flow, null, 2);
+            window.electron.saveGraph(graphJson);
+        }
+    }, [reactFlowInstance]);
+
+    const handleLoad = useCallback(async () => {
+        const graphJson = await window.electron.loadGraph();
+        if (graphJson) {
+            const flow = JSON.parse(graphJson);
+            if (flow) {
+                setNodes(flow.nodes || []);
+                setEdges(flow.edges || []);
+            }
+        }
+    }, [setNodes, setEdges]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -186,22 +213,94 @@ const EditorLayout = () => {
         alert(`Code generation failed:\n${error.message}`);
     }
   };
+  
+  // NEW: Add the audio playback logic
+  const handlePlay = () => {
+    if (isPlaying) return;
 
-  return (
-    <div style={appContainerStyles}>
+    const context = new AudioContext();
+    audioContext.current = context;
+
+    const localAudioNodes = new Map<string, AudioNode>();
+
+    // Create all audio nodes
+    nodes.forEach(node => {
+        let audioNode: AudioNode | null = null;
+        switch (node.type) {
+            case 'oscillator':
+                const osc = context.createOscillator();
+                osc.type = node.data.waveform.toLowerCase();
+                osc.frequency.setValueAtTime(node.data.frequency, context.currentTime);
+                osc.start();
+                audioNode = osc;
+                break;
+            case 'filter':
+                const filter = context.createBiquadFilter();
+                filter.type = node.data.type.toLowerCase();
+                filter.frequency.setValueAtTime(node.data.cutoff, context.currentTime);
+                audioNode = filter;
+                break;
+            case 'output':
+                audioNode = context.destination;
+                break;
+        }
+        if (audioNode) {
+            localAudioNodes.set(node.id, audioNode);
+        }
+    });
+
+    // Connect nodes
+    edges.forEach(edge => {
+        const sourceNode = localAudioNodes.get(edge.source);
+        const targetNode = localAudioNodes.get(edge.target);
+        if (sourceNode && targetNode) {
+            sourceNode.connect(targetNode);
+        }
+    });
+
+    audioNodes.current = localAudioNodes;
+    setIsPlaying(true);
+  };
+
+  const handleStop = () => {
+    if (!isPlaying || !audioContext.current) return;
+
+    audioContext.current.close().then(() => {
+        audioContext.current = null;
+        audioNodes.current.clear();
+        setIsPlaying(false);
+    });
+  };
+
+return (
+  <div style={appContainerStyles}>
       <div style={sidebarPanelStyles}>
-        <Sidebar onGenerate={handleGenerate} />
+          <Sidebar 
+              onGenerate={handleGenerate} 
+              onPlay={handlePlay} 
+              onStop={handleStop} 
+              isPlaying={isPlaying}
+              onSave={handleSave}
+              onLoad={handleLoad}
+          />
       </div>
       <div style={mainCanvasStyles} ref={reactFlowWrapper}>
-        <ReactFlow
-          nodes={nodes} edges={edges} nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-          onConnect={onConnect} onDragOver={onDragOver} onDrop={onDrop}
-          onSelectionChange={onSelectionChange} fitView
-        >
-          <Background />
-          <Controls />
-        </ReactFlow>
+          <ReactFlow
+              nodes={nodes} 
+              edges={edges} 
+              nodeTypes={nodeTypes}
+              onNodesChange={onNodesChange} 
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect} 
+              onDragOver={onDragOver} 
+              onDrop={onDrop}
+              onSelectionChange={onSelectionChange}
+              onInit={setReactFlowInstance} // NEW: Get instance for saving
+              fitView
+          >
+              <Background />
+              <Controls />
+          </ReactFlow>
       </div>
       <div style={parameterPanelStyles}>
         {generatedCode ? (

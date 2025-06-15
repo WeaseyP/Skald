@@ -29,15 +29,47 @@ const generateButtonStyles: React.CSSProperties = {
     cursor: 'pointer'
 }
 
+const playButtonStyles: React.CSSProperties = {
+    ...generateButtonStyles,
+    backgroundColor: '#37b24d',
+    marginTop: '10px',
+};
+
+const stopButtonStyles: React.CSSProperties = {
+    ...generateButtonStyles,
+    backgroundColor: '#f03e3e',
+    marginTop: '10px',
+};
+
 interface SidebarProps {
     onGenerate: () => void;
+    onPlay: () => void;
+    onStop: () => void;
+    isPlaying: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onGenerate }) => {
+const ioButtonStyles: React.CSSProperties = {
+    ...generateButtonStyles,
+    backgroundColor: '#868e96',
+    marginTop: '10px',
+};
+
+
+interface SidebarProps {
+    onGenerate: () => void;
+    onPlay: () => void;
+    onStop: () => void;
+    isPlaying: boolean;
+    onSave: () => void; // NEW
+    onLoad: () => void; // NEW
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ onGenerate, onPlay, onStop, isPlaying, onSave, onLoad }) => {
   const onDragStart = (event: React.DragEvent<HTMLDivElement>, nodeType: string) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.effectAllowed = 'move';
   };
+
 
   return (
     <div style={sidebarStyles}>
@@ -53,9 +85,27 @@ const Sidebar: React.FC<SidebarProps> = ({ onGenerate }) => {
           Graph Output
         </div>
       </div>
-      <button style={generateButtonStyles} onClick={onGenerate}>
-        Generate Code
-      </button>
+      <div style={{ marginTop: 'auto' }}>
+        <button style={generateButtonStyles} onClick={onGenerate}>
+            Generate Code
+        </button>
+        {!isPlaying ? (
+            <button style={playButtonStyles} onClick={onPlay}>
+                Play
+            </button>
+        ) : (
+            <button style={stopButtonStyles} onClick={onStop}>
+                Stop
+            </button>
+        )}
+        {/* NEW I/O Buttons */}
+        <button style={ioButtonStyles} onClick={onSave}>
+            Save Graph
+        </button>
+        <button style={ioButtonStyles} onClick={onLoad}>
+            Load Graph
+        </button>
+      </div>
     </div>
   );
 };

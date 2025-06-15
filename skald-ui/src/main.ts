@@ -1,5 +1,7 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+// main.ts
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { spawn } from 'child_process';
 import started from 'electron-squirrel-startup';
 
@@ -11,11 +13,10 @@ if (started) {
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 1200, // Increased width to better fit layout
+    width: 1200,
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // These are important for security and allowing the preload script to work
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -90,4 +91,35 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string) => {
         child.stdin.write(graphJson);
         child.stdin.end();
     });
+});
+
+
+// Handler for saving the graph
+ipcMain.handle('save-graph', async (_, graphJson: string) => {
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'Save Skald Graph',
+    buttonLabel: 'Save',
+    defaultPath: `skald-graph-${Date.now()}.json`,
+    filters: [{ name: 'Skald Files', extensions: ['json'] }],
+  });
+
+  if (filePath) {
+    fs.writeFileSync(filePath, graphJson);
+  }
+});
+
+// Handler for loading the graph
+ipcMain.handle('load-graph', async () => {
+  const { filePaths } = await dialog.showOpenDialog({
+    title: 'Load Skald Graph',
+    buttonLabel: 'Load',
+    properties: ['openFile'],
+    filters: [{ name: 'Skald Files', extensions: ['json'] }],
+  });
+
+  if (filePaths && filePaths.length > 0) {
+    const content = fs.readFileSync(filePaths[0], 'utf-8');
+    return content;
+  }
+  return null;
 });
