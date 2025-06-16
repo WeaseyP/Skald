@@ -32,7 +32,7 @@ The development workflow is managed through the UI project's `package.json`. The
 
 ```bash
 # 1. Clone the repository
-git clone <your-repository-url>
+git clone https://github.com/WeaseyP/Skald.git
 cd skald
 
 # 2. Navigate into the UI directory
