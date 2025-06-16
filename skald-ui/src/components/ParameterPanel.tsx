@@ -26,6 +26,7 @@ const inputStyles: React.CSSProperties = {
   border: '1px solid #ccc',
 };
 
+
 interface ParameterPanelProps {
   selectedNode: Node | null;
   onUpdateNode: (nodeId: string, data: object) => void;

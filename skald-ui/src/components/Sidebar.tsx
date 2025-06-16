@@ -60,6 +60,11 @@ const ioButtonStyles: React.CSSProperties = {
     marginTop: '10px',
 };
 
+const saveInstrumentButtonStyles: React.CSSProperties = {
+    ...ioButtonStyles,
+    backgroundColor: '#1098ad',
+}
+
 
 // 1. Update props to accept instrument creation logic
 interface SidebarProps {
