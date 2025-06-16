@@ -19,35 +19,49 @@ const nodeButtonStyles: React.CSSProperties = {
     marginBottom: '10px'
 }
 
-const generateButtonStyles: React.CSSProperties = {
+const actionButtonStyles: React.CSSProperties = {
     marginTop: 'auto',
     padding: '12px',
-    backgroundColor: '#228be6',
     color: 'white',
     border: 'none',
     borderRadius: '5px',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    width: '100%',
+    boxSizing: 'border-box'
 }
 
+const generateButtonStyles: React.CSSProperties = {
+    ...actionButtonStyles,
+    backgroundColor: '#228be6',
+}
+
+// New style for the Create Instrument button
+const createInstrumentButtonStyles: React.CSSProperties = {
+    ...actionButtonStyles,
+    backgroundColor: '#15aabf',
+    marginTop: '10px',
+};
+
 const playButtonStyles: React.CSSProperties = {
-    ...generateButtonStyles,
+    ...actionButtonStyles,
     backgroundColor: '#37b24d',
     marginTop: '10px',
 };
 
 const stopButtonStyles: React.CSSProperties = {
-    ...generateButtonStyles,
+    ...actionButtonStyles,
     backgroundColor: '#f03e3e',
     marginTop: '10px',
 };
 
 const ioButtonStyles: React.CSSProperties = {
-    ...generateButtonStyles,
+    ...actionButtonStyles,
     backgroundColor: '#868e96',
     marginTop: '10px',
 };
 
 
+// 1. Update props to accept instrument creation logic
 interface SidebarProps {
     onGenerate: () => void;
     onPlay: () => void;
@@ -55,9 +69,20 @@ interface SidebarProps {
     isPlaying: boolean;
     onSave: () => void;
     onLoad: () => void;
+    onCreateInstrument: () => void;
+    canCreateInstrument: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onGenerate, onPlay, onStop, isPlaying, onSave, onLoad }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+    onGenerate, 
+    onPlay, 
+    onStop, 
+    isPlaying, 
+    onSave, 
+    onLoad,
+    onCreateInstrument,
+    canCreateInstrument
+}) => {
   const onDragStart = (event: React.DragEvent<HTMLDivElement>, nodeType: string) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.effectAllowed = 'move';
@@ -88,6 +113,21 @@ const Sidebar: React.FC<SidebarProps> = ({ onGenerate, onPlay, onStop, isPlaying
         <button style={generateButtonStyles} onClick={onGenerate}>
             Generate Code
         </button>
+
+        {/* 2. Add the "Create Instrument" button */}
+        <button 
+            style={{
+                ...createInstrumentButtonStyles, 
+                cursor: canCreateInstrument ? 'pointer' : 'not-allowed',
+                opacity: canCreateInstrument ? 1 : 0.5
+            }} 
+            onClick={onCreateInstrument}
+            disabled={!canCreateInstrument}
+            title={canCreateInstrument ? "Group selected nodes into an instrument" : "Select 2 or more nodes to create an instrument"}
+        >
+            Create Instrument
+        </button>
+
         {!isPlaying ? (
             <button style={playButtonStyles} onClick={onPlay}>
                 Play

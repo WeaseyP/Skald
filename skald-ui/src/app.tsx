@@ -1,3 +1,5 @@
+// src/app.tsx
+
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import ReactFlow, {
     Background,
@@ -13,6 +15,7 @@ import ReactFlow, {
     useReactFlow,
     OnSelectionChangeParams,
     ReactFlowInstance,
+    ReactFlowProvider,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -20,7 +23,8 @@ import Sidebar from './components/Sidebar';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
 import { OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode } from './components/CustomNodes';
-
+import InstrumentNode from './components/InstrumentNode';
+import NamePromptModal from './components/NamePromptModal'; // 1. Import your modal
 
 const appContainerStyles: React.CSSProperties = {
     display: 'flex',
@@ -44,6 +48,7 @@ const parameterPanelStyles: React.CSSProperties = {
     width: '350px',
     backgroundColor: '#fff',
 };
+
 let id = 0;
 const getId = () => ++id;
 
@@ -52,10 +57,14 @@ const EditorLayout = () => {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedNodesForGrouping, setSelectedNodesForGrouping] = useState<Node[]>([]);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const { screenToFlowPosition } = useReactFlow();
   
+  // 2. Add state for modal visibility
+  const [isNamePromptVisible, setIsNamePromptVisible] = useState(false);
+
   const audioContext = useRef<AudioContext | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const audioNodes = useRef<Map<string, AudioNode>>(new Map());
@@ -66,7 +75,8 @@ const EditorLayout = () => {
     filter: FilterNode,
     output: GraphOutputNode,
     noise: NoiseNode,
-    adsr: ADSRNode
+    adsr: ADSRNode,
+    instrument: InstrumentNode,
   }), []);
 
   const onNodesChange: OnNodesChange = useCallback(
@@ -100,10 +110,10 @@ const EditorLayout = () => {
         if (graphJson) {
             const flow = JSON.parse(graphJson);
             if (flow) {
-                setNodes(flow.nodes || []);
+                const loadedNodes = flow.nodes || [];
+                setNodes(loadedNodes);
                 setEdges(flow.edges || []);
-                // Reset and re-calculate the max ID from loaded nodes
-                const maxId = Math.max(0, ...flow.nodes.map((n: Node) => parseInt(n.id)));
+                const maxId = Math.max(0, ...loadedNodes.map((n: Node) => parseInt(n.id)));
                 id = maxId;
             }
         }
@@ -152,6 +162,7 @@ const EditorLayout = () => {
 
   const onSelectionChange = useCallback((params: OnSelectionChangeParams) => {
     setSelectedNode(params.nodes.length === 1 ? params.nodes[0] : null);
+    setSelectedNodesForGrouping(params.nodes);
     setGeneratedCode(null);
   }, []);
 
@@ -174,85 +185,114 @@ const EditorLayout = () => {
 
   const handleGenerate = async () => {
     if (nodes.length === 0) {
-      alert("Graph is empty. Add some nodes first.");
+      console.warn("Graph is empty. Add some nodes first.");
       return;
     }
-
-    const graphNodes = nodes.map(node => {
+  
+    // Helper to recursively format nodes
+    const formatNodesForCodegen = (nodeList: Node[]) => {
+      return nodeList.map(node => {
         let typeName = 'Unknown';
         let parameters: any = {};
-
+        let subgraph: any = null;
+  
         switch (node.type) {
-            case 'oscillator':
-                typeName = 'Oscillator';
-                parameters = { waveform: node.data.waveform, frequency: node.data.frequency, amplitude: 0.5 };
-                break;
-            case 'filter':
-                typeName = 'Filter';
-                parameters = { type: node.data.type, cutoff: node.data.cutoff };
-                break;
-            case 'noise':
-                typeName = 'Noise';
-                parameters = { type: node.data.noiseType };
-                break;
-            case 'adsr':
-                typeName = 'ADSR';
-                parameters = { attack: node.data.attack, decay: node.data.decay, sustain: node.data.sustain, release: node.data.release };
-                break;
-            case 'output':
-                typeName = 'GraphOutput';
-                break;
+          case 'oscillator':
+            typeName = 'Oscillator';
+            parameters = { waveform: node.data.waveform, frequency: node.data.frequency, amplitude: 0.5 };
+            break;
+          case 'filter':
+            typeName = 'Filter';
+            parameters = { type: node.data.type, cutoff: node.data.cutoff };
+            break;
+          case 'noise':
+            typeName = 'Noise';
+            parameters = { type: node.data.noiseType };
+            break;
+          case 'adsr':
+            typeName = 'ADSR';
+            parameters = { attack: node.data.attack, decay: node.data.decay, sustain: node.data.sustain, release: node.data.release };
+            break;
+          case 'instrument':
+            typeName = 'Instrument';
+            parameters = { name: node.data.name };
+            if (node.data.subgraph && node.data.subgraph.nodes) {
+              subgraph = {
+                nodes: formatNodesForCodegen(node.data.subgraph.nodes),
+                connections: node.data.subgraph.connections.map((edge: any) => ({
+                    from_node: parseInt(edge.from_node, 10), from_port: edge.from_port || 'output',
+                    to_node: parseInt(edge.to_node, 10), to_port: edge.to_port || 'input'
+                }))
+              };
+            }
+            break;
+          case 'output':
+            typeName = 'GraphOutput';
+            break;
         }
-
-        return {
-            id: parseInt(node.id, 10), type: typeName, position: node.position, parameters
+  
+        const result: any = {
+          id: parseInt(node.id, 10),
+          type: typeName,
+          position: node.position,
+          parameters
         };
-    });
-
+  
+        if (subgraph) {
+          result.subgraph = subgraph;
+        }
+        return result;
+      });
+    };
+  
+    const graphNodes = formatNodesForCodegen(nodes);
+  
     const graphConnections = edges.map(edge => ({
-        from_node: parseInt(edge.source, 10), from_port: edge.sourceHandle || 'output',
-        to_node: parseInt(edge.target, 10), to_port: edge.targetHandle || 'input'
+      from_node: parseInt(edge.source, 10),
+      from_port: edge.sourceHandle || 'output',
+      to_node: parseInt(edge.target, 10),
+      to_port: edge.targetHandle || 'input'
     }));
-
+  
     const audioGraph = { nodes: graphNodes, connections: graphConnections };
-    
+  
     console.log("Renderer sending to main process:", JSON.stringify(audioGraph, null, 2));
-
+  
     try {
-        const code = await window.electron.invokeCodegen(JSON.stringify(audioGraph, null, 2));
-        setGeneratedCode(code);
+      const code = await window.electron.invokeCodegen(JSON.stringify(audioGraph, null, 2));
+      setGeneratedCode(code);
     } catch (error) {
-        console.error("Error during code generation:", error);
-        alert(`Code generation failed:\n${error.message}`);
+      console.error("Error during code generation:", error);
     }
   };
   
   const handlePlay = () => {
+    // This will need to be updated to handle instrument nodes
     if (isPlaying) return;
 
     const context = new AudioContext();
     audioContext.current = context;
     const localAudioNodes = new Map<string, AudioNode>();
     const sampleRate = context.sampleRate;
-    const bufferSize = sampleRate * 2; // 2 seconds of noise
+    const bufferSize = sampleRate * 2; 
 
     nodes.forEach(node => {
         let audioNode: AudioNode | null = null;
         switch (node.type) {
             case 'oscillator':
                 const osc = context.createOscillator();
-                const waveform = node.data.waveform.toLowerCase() as OscillatorType;
+                const waveform = (node.data.waveform || 'sawtooth').toLowerCase() as OscillatorType;
                 if (['sine', 'sawtooth', 'triangle', 'square'].includes(waveform)) {
                   osc.type = waveform;
                 }
-                osc.frequency.setValueAtTime(node.data.frequency, context.currentTime);
+                osc.frequency.setValueAtTime(node.data.frequency || 440, context.currentTime);
                 osc.start();
                 audioNode = osc;
                 break;
             case 'filter':
                 const filter = context.createBiquadFilter();
-                filter.type = node.data.type.toLowerCase();
-                filter.frequency.setValueAtTime(node.data.cutoff, context.currentTime);
+                filter.type = (node.data.type || 'lowpass').toLowerCase() as BiquadFilterType;
+                filter.frequency.setValueAtTime(node.data.cutoff || 800, context.currentTime);
                 audioNode = filter;
                 break;
             case 'noise':
@@ -285,13 +325,12 @@ const EditorLayout = () => {
                 break;
             case 'adsr':
                 const gainNode = context.createGain();
-                const { attack, decay, sustain, release } = node.data;
+                const { attack = 0.1, decay = 0.2, sustain = 0.5, release = 1.0 } = node.data;
                 const now = context.currentTime;
                 gainNode.gain.setValueAtTime(0, now);
                 gainNode.gain.linearRampToValueAtTime(1, now + attack);
                 gainNode.gain.linearRampToValueAtTime(sustain, now + attack + decay);
-                // The note would be "held" here. For auto-play, we trigger release.
-                gainNode.gain.setValueAtTime(sustain, now + attack + decay + 1.0); // Hold sustain for 1s
+                gainNode.gain.setValueAtTime(sustain, now + attack + decay + 1.0);
                 gainNode.gain.linearRampToValueAtTime(0, now + attack + decay + 1.0 + release);
                 audioNode = gainNode;
                 break;
@@ -308,7 +347,12 @@ const EditorLayout = () => {
         const sourceNode = localAudioNodes.get(edge.source);
         const targetNode = localAudioNodes.get(edge.target);
         if (sourceNode && targetNode) {
-            sourceNode.connect(targetNode);
+            // This needs to be smarter to connect to specific AudioParams
+            if (targetNode instanceof AudioParam) {
+                sourceNode.connect(targetNode);
+            } else {
+                sourceNode.connect(targetNode);
+            }
         }
     });
 
@@ -326,8 +370,70 @@ const EditorLayout = () => {
     });
   };
 
+  // 3. Logic moved into a submit handler
+  const handleInstrumentNameSubmit = (instrumentName: string) => {
+    const newId = getId();
+    const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
+
+    const avgPosition = selectedNodesForGrouping.reduce(
+        (acc, node) => ({ x: acc.x + node.position.x, y: acc.y + node.position.y }),
+        { x: 0, y: 0 }
+    );
+    avgPosition.x /= selectedNodesForGrouping.length;
+    avgPosition.y /= selectedNodesForGrouping.length;
+
+    const subgraphNodes = selectedNodesForGrouping.map(node => ({
+        ...node,
+        data: JSON.parse(JSON.stringify(node.data)),
+    }));
+    
+    const subgraphConnections = edges
+        .filter(edge => selectedIds.has(edge.source) && selectedIds.has(edge.target))
+        .map(edge => ({
+            from_node: edge.source,
+            from_port: edge.sourceHandle || 'output',
+            to_node: edge.target,
+            to_port: edge.targetHandle || 'input',
+        }));
+
+    const newInstrumentNode: Node = {
+        id: `${newId}`,
+        type: 'instrument',
+        position: avgPosition,
+        data: {
+            name: instrumentName,
+            label: instrumentName,
+            subgraph: {
+                nodes: subgraphNodes,
+                connections: subgraphConnections,
+            },
+        },
+    };
+
+    setNodes(nds => [...nds.filter(n => !selectedIds.has(n.id)), newInstrumentNode]);
+    setEdges(eds => eds.filter(e => !selectedIds.has(e.source) && !selectedIds.has(e.target)));
+    setIsNamePromptVisible(false); // Hide modal on submit
+  };
+  
+  // 4. This function now just opens the modal
+  const handleCreateInstrument = useCallback(() => {
+    if (selectedNodesForGrouping.length <= 1) {
+      return;
+    }
+    setIsNamePromptVisible(true);
+  }, [selectedNodesForGrouping]);
+
 return (
   <div style={appContainerStyles}>
+      {/* 5. Render the modal conditionally */}
+      {isNamePromptVisible && (
+        <NamePromptModal
+            title="Create New Instrument"
+            defaultValue="MyInstrument"
+            onConfirm={handleInstrumentNameSubmit}
+            onCancel={() => setIsNamePromptVisible(false)}
+        />
+      )}
       <div style={sidebarPanelStyles}>
           <Sidebar 
               onGenerate={handleGenerate} 
@@ -336,6 +442,8 @@ return (
               isPlaying={isPlaying}
               onSave={handleSave}
               onLoad={handleLoad}
+              onCreateInstrument={handleCreateInstrument}
+              canCreateInstrument={selectedNodesForGrouping.length > 1}
           />
       </div>
       <div style={mainCanvasStyles} ref={reactFlowWrapper}>
@@ -368,7 +476,11 @@ return (
 }
 
 const App = () => {
-  return <EditorLayout />;
+  return (
+    <ReactFlowProvider>
+      <EditorLayout />
+    </ReactFlowProvider>
+  );
 };
-
+  
 export default App;
