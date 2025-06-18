@@ -106,6 +106,23 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             </div>
           </>
         );
+      case 'noise':
+        return (
+          <>
+             <div style={inputGroupStyles}>
+              <label style={labelStyles}>Noise Type</label>
+              <select
+                name="type"
+                value={selectedNode.data.type || 'White'}
+                onChange={handleInputChange}
+                style={inputStyles}
+              >
+                <option value="White">White</option>
+                <option value="Pink">Pink</option>
+              </select>
+            </div>
+          </>
+        );
       case 'adsr':
         return (
             <>

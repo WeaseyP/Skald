@@ -267,96 +267,154 @@ const EditorLayout = () => {
   };
   
   const handlePlay = () => {
-    // This will need to be updated to handle instrument nodes
     if (isPlaying) return;
 
     const context = new AudioContext();
     audioContext.current = context;
-    const localAudioNodes = new Map<string, AudioNode>();
+    const allAudioNodes = new Map<string, AudioNode>();
     const sampleRate = context.sampleRate;
-    const bufferSize = sampleRate * 2; 
+    const bufferSize = sampleRate * 2; // 2 seconds buffer for noise
 
-    nodes.forEach(node => {
+    // Recursively creates Web Audio Nodes for a given list of graph nodes
+    const createNodesRecursive = (graphNodes: Node[], parentIdPrefix: string = '') => {
+      graphNodes.forEach(node => {
+        const globalId = parentIdPrefix + node.id;
         let audioNode: AudioNode | null = null;
+
         switch (node.type) {
-            case 'oscillator':
-                const osc = context.createOscillator();
-                const waveform = (node.data.waveform || 'sawtooth').toLowerCase() as OscillatorType;
-                if (['sine', 'sawtooth', 'triangle', 'square'].includes(waveform)) {
-                  osc.type = waveform;
-                }
-                osc.frequency.setValueAtTime(node.data.frequency || 440, context.currentTime);
-                osc.start();
-                audioNode = osc;
-                break;
-            case 'filter':
-                const filter = context.createBiquadFilter();
-                filter.type = (node.data.type || 'lowpass').toLowerCase() as BiquadFilterType;
-                filter.frequency.setValueAtTime(node.data.cutoff || 800, context.currentTime);
-                audioNode = filter;
-                break;
-            case 'noise':
-                const buffer = context.createBuffer(1, bufferSize, sampleRate);
-                const data = buffer.getChannelData(0);
-                if (node.data.noiseType === 'White') {
-                    for (let i = 0; i < bufferSize; i++) {
-                        data[i] = Math.random() * 2 - 1;
-                    }
-                } else { // Pink noise
-                    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-                    for (let i = 0; i < bufferSize; i++) {
-                        const white = Math.random() * 2 - 1;
-                        b0 = 0.99886 * b0 + white * 0.0555179;
-                        b1 = 0.99332 * b1 + white * 0.0750759;
-                        b2 = 0.96900 * b2 + white * 0.1538520;
-                        b3 = 0.86650 * b3 + white * 0.3104856;
-                        b4 = 0.55000 * b4 + white * 0.5329522;
-                        b5 = -0.7616 * b5 - white * 0.0168980;
-                        data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-                        data[i] *= 0.11;
-                        b6 = white * 0.115926;
-                    }
-                }
-                const noiseSource = context.createBufferSource();
-                noiseSource.buffer = buffer;
-                noiseSource.loop = true;
-                noiseSource.start();
-                audioNode = noiseSource;
-                break;
-            case 'adsr':
-                const gainNode = context.createGain();
-                const { attack = 0.1, decay = 0.2, sustain = 0.5, release = 1.0 } = node.data;
-                const now = context.currentTime;
-                gainNode.gain.setValueAtTime(0, now);
-                gainNode.gain.linearRampToValueAtTime(1, now + attack);
-                gainNode.gain.linearRampToValueAtTime(sustain, now + attack + decay);
-                gainNode.gain.setValueAtTime(sustain, now + attack + decay + 1.0);
-                gainNode.gain.linearRampToValueAtTime(0, now + attack + decay + 1.0 + release);
-                audioNode = gainNode;
-                break;
-            case 'output':
-                audioNode = context.destination;
-                break;
-        }
-        if (audioNode) {
-            localAudioNodes.set(node.id, audioNode);
-        }
-    });
-
-    edges.forEach(edge => {
-        const sourceNode = localAudioNodes.get(edge.source);
-        const targetNode = localAudioNodes.get(edge.target);
-        if (sourceNode && targetNode) {
-            // This needs to be smarter to connect to specific AudioParams
-            if (targetNode instanceof AudioParam) {
-                sourceNode.connect(targetNode);
-            } else {
-                sourceNode.connect(targetNode);
+          case 'oscillator':
+            const osc = context.createOscillator();
+            const waveform = (node.data.waveform || 'sawtooth').toLowerCase() as OscillatorType;
+            if (['sine', 'sawtooth', 'triangle', 'square'].includes(waveform)) {
+                osc.type = waveform;
             }
+            osc.frequency.setValueAtTime(node.data.frequency || 440, context.currentTime);
+            osc.start();
+            audioNode = osc;
+            break;
+
+          case 'filter':
+            const filter = context.createBiquadFilter();
+            filter.type = (node.data.type || 'lowpass').toLowerCase() as BiquadFilterType;
+            filter.frequency.setValueAtTime(node.data.cutoff || 800, context.currentTime);
+            audioNode = filter;
+            break;
+
+          case 'noise':
+            const buffer = context.createBuffer(1, bufferSize, sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1; // White noise
+            }
+            const noiseSource = context.createBufferSource();
+            noiseSource.buffer = buffer;
+            noiseSource.loop = true;
+            noiseSource.start();
+            audioNode = noiseSource;
+            break;
+
+          case 'adsr':
+            const gainNode = context.createGain();
+            const { attack = 0.1, decay = 0.2, sustain = 0.5, release = 1.0 } = node.data;
+            const now = context.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(1, now + attack);
+            gainNode.gain.linearRampToValueAtTime(sustain, now + attack + decay);
+            // Example of holding sustain then releasing; a real implementation would be triggered
+            gainNode.gain.setValueAtTime(sustain, now + attack + decay + 1.0);
+            gainNode.gain.linearRampToValueAtTime(0, now + attack + decay + 1.0 + release);
+            audioNode = gainNode;
+            break;
+
+          case 'output': // The final output of the main graph
+            audioNode = context.destination;
+            break;
+
+          case 'InstrumentInput':
+          case 'InstrumentOutput':
+            // For routing, a simple GainNode is a perfect pass-through junction
+            audioNode = context.createGain();
+            break;
+
+          case 'instrument':
+            // An instrument is a container; recurse into its subgraph
+            if (node.data.subgraph && node.data.subgraph.nodes) {
+              createNodesRecursive(node.data.subgraph.nodes, `${globalId}-`);
+            }
+            break;
+        }
+
+        if (audioNode) {
+          allAudioNodes.set(globalId, audioNode);
+        }
+      });
+    };
+
+    // Recursively connects the newly created AudioNodes
+    const connectNodesRecursive = (graphNodes: Node[], graphEdges: any[], parentIdPrefix: string = '') => {
+        // Connect edges at the current graph level
+        graphEdges.forEach(edge => {
+            const sourceId = parentIdPrefix + (edge.source || edge.from_node);
+            const targetId = parentIdPrefix + (edge.target || edge.to_node);
+
+            const sourceAudioNode = allAudioNodes.get(sourceId);
+            const targetAudioNode = allAudioNodes.get(targetId);
+
+            if (sourceAudioNode && targetAudioNode) {
+                // This is a simplified connection. To connect to a specific AudioParam (like frequency),
+                // this logic would need to be expanded to check edge.targetHandle.
+                sourceAudioNode.connect(targetAudioNode);
+            }
+        });
+
+        // Recurse into any instrument subgraphs
+        graphNodes.forEach(node => {
+            if (node.type === 'instrument' && node.data.subgraph) {
+                const globalId = parentIdPrefix + node.id;
+                connectNodesRecursive(node.data.subgraph.nodes, node.data.subgraph.connections, `${globalId}-`);
+            }
+        });
+    }
+
+    // --- Main Execution ---
+    // 1. Create all nodes in the graph and all subgraphs
+    createNodesRecursive(nodes);
+    
+    // 2. Connect all nodes within subgraphs
+    connectNodesRecursive(nodes, []); // Initial call for subgraphs
+
+    // 3. Connect the top-level nodes
+    edges.forEach(edge => {
+        const sourceNode = nodes.find(n => n.id === edge.source)!;
+        const targetNode = nodes.find(n => n.id === edge.target)!;
+
+        let finalSource: AudioNode | undefined;
+        let finalTarget: AudioNode | AudioParam | undefined;
+
+        // Resolve the source AudioNode
+        if (sourceNode.type === 'instrument') {
+            const portName = edge.sourceHandle || 'output';
+            const outputNode = sourceNode.data.subgraph.nodes.find(n => n.type === 'InstrumentOutput' && n.data.name === portName);
+            finalSource = allAudioNodes.get(`${sourceNode.id}-${outputNode.id}`);
+        } else {
+            finalSource = allAudioNodes.get(sourceNode.id);
+        }
+
+        // Resolve the target AudioNode or AudioParam
+        if (targetNode.type === 'instrument') {
+            const portName = edge.targetHandle || 'input';
+            const inputNode = targetNode.data.subgraph.nodes.find(n => n.type === 'InstrumentInput' && n.data.name === portName);
+            finalTarget = allAudioNodes.get(`${targetNode.id}-${inputNode.id}`);
+        } else {
+            finalTarget = allAudioNodes.get(targetNode.id);
+        }
+
+        if (finalSource && finalTarget) {
+            finalSource.connect(finalTarget as any);
         }
     });
 
-    audioNodes.current = localAudioNodes;
+    audioNodes.current = allAudioNodes;
     setIsPlaying(true);
   };
 
@@ -371,50 +429,110 @@ const EditorLayout = () => {
   };
 
   // 3. Logic moved into a submit handler
-  const handleInstrumentNameSubmit = (instrumentName: string) => {
-    const newId = getId();
+ const handleInstrumentNameSubmit = (instrumentName: string) => {
+    const newInstrumentId = `${getId()}`;
     const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
 
-    const avgPosition = selectedNodesForGrouping.reduce(
-        (acc, node) => ({ x: acc.x + node.position.x, y: acc.y + node.position.y }),
-        { x: 0, y: 0 }
-    );
-    avgPosition.x /= selectedNodesForGrouping.length;
-    avgPosition.y /= selectedNodesForGrouping.length;
+    // --- Subgraph Creation ---
+    const oldIdToNewIdMap = new Map<string, string>();
+    let subGraphNodeIdCounter = 1;
+    const subgraphNodes: Node[] = selectedNodesForGrouping.map(node => {
+      const newId = `${subGraphNodeIdCounter++}`;
+      oldIdToNewIdMap.set(node.id, newId);
+      // Deep copy node data to prevent reference issues
+      return { ...node, id: newId, data: JSON.parse(JSON.stringify(node.data)), position: { ...node.position } };
+    });
 
-    const subgraphNodes = selectedNodesForGrouping.map(node => ({
-        ...node,
-        data: JSON.parse(JSON.stringify(node.data)),
+    const internalConnections = edges.filter(edge => selectedIds.has(edge.source) && selectedIds.has(edge.target));
+    const subgraphConnections = internalConnections.map(edge => ({
+        from_node: oldIdToNewIdMap.get(edge.source)!,
+        from_port: edge.sourceHandle || 'output',
+        to_node: oldIdToNewIdMap.get(edge.target)!,
+        to_port: edge.targetHandle || 'input',
     }));
+
+    // --- Create Instrument Inputs and Outputs from External Connections ---
+    const externalEdges = edges.filter(edge => selectedIds.has(edge.source) !== selectedIds.has(edge.target));
+    const newMainGraphEdges: Edge[] = edges.filter(e => !selectedIds.has(e.source) && !selectedIds.has(e.target));
     
-    const subgraphConnections = edges
-        .filter(edge => selectedIds.has(edge.source) && selectedIds.has(edge.target))
-        .map(edge => ({
-            from_node: edge.source,
-            from_port: edge.sourceHandle || 'output',
-            to_node: edge.target,
-            to_port: edge.targetHandle || 'input',
-        }));
+    const inputPorts = new Map<string, { id: string }>();
+    const outputPorts = new Map<string, { id: string }>();
+
+    externalEdges.forEach(edge => {
+      // An edge going INTO the selection becomes an InstrumentInput
+      if (selectedIds.has(edge.target)) {
+        const portName = edge.targetHandle || 'input';
+        if (!inputPorts.has(portName)) {
+            const newInputNodeId = `${subGraphNodeIdCounter++}`;
+            inputPorts.set(portName, { id: newInputNodeId });
+            subgraphNodes.push({
+                id: newInputNodeId,
+                type: 'InstrumentInput',
+                position: { x: 50, y: (inputPorts.size + 1) * 70 },
+                data: { label: `In: ${portName}`, name: portName },
+            });
+        }
+        subgraphConnections.push({
+            from_node: inputPorts.get(portName)!.id,
+            from_port: 'output',
+            to_node: oldIdToNewIdMap.get(edge.target)!,
+            to_port: portName,
+        });
+        newMainGraphEdges.push({ ...edge, target: newInstrumentId, targetHandle: portName });
+
+      } else { // An edge going OUT of the selection becomes an InstrumentOutput
+        const portName = edge.sourceHandle || 'output';
+        if (!outputPorts.has(portName)) {
+            const newOutputNodeId = `${subGraphNodeIdCounter++}`;
+            outputPorts.set(portName, { id: newOutputNodeId });
+            subgraphNodes.push({
+                id: newOutputNodeId,
+                type: 'InstrumentOutput',
+                position: { x: 400, y: (outputPorts.size + 1) * 70 },
+                data: { label: `Out: ${portName}`, name: portName },
+            });
+        }
+        subgraphConnections.push({
+            from_node: oldIdToNewIdMap.get(edge.source)!,
+            from_port: portName,
+            to_node: outputPorts.get(portName)!.id,
+            to_port: 'input',
+        });
+        newMainGraphEdges.push({ ...edge, source: newInstrumentId, sourceHandle: portName });
+      }
+    });
+
+    // --- Create the final Instrument Node for the main graph ---
+    const avgPosition = selectedNodesForGrouping.reduce(
+        (acc, node) => ({ x: acc.x + node.position.x, y: acc.y + node.position.y }), { x: 0, y: 0 }
+    );
+    if (selectedNodesForGrouping.length > 0) {
+        avgPosition.x /= selectedNodesForGrouping.length;
+        avgPosition.y /= selectedNodesForGrouping.length;
+    }
 
     const newInstrumentNode: Node = {
-        id: `${newId}`,
-        type: 'instrument',
-        position: avgPosition,
-        data: {
-            name: instrumentName,
-            label: instrumentName,
-            subgraph: {
-                nodes: subgraphNodes,
-                connections: subgraphConnections,
-            },
+      id: newInstrumentId,
+      type: 'instrument',
+      position: avgPosition,
+      data: {
+        name: instrumentName,
+        label: instrumentName,
+        inputs: Array.from(inputPorts.keys()),
+        outputs: Array.from(outputPorts.keys()),
+        subgraph: {
+          nodes: subgraphNodes,
+          connections: subgraphConnections,
         },
+      },
     };
 
-    setNodes(nds => [...nds.filter(n => !selectedIds.has(n.id)), newInstrumentNode]);
-    setEdges(eds => eds.filter(e => !selectedIds.has(e.source) && !selectedIds.has(e.target)));
-    setIsNamePromptVisible(false); // Hide modal on submit
+    // --- Update React Flow State ---
+    const remainingNodes = nodes.filter(n => !selectedIds.has(n.id));
+    setNodes([...remainingNodes, newInstrumentNode]);
+    setEdges(newMainGraphEdges);
+    setIsNamePromptVisible(false);
   };
-  
   // 4. This function now just opens the modal
   const handleCreateInstrument = useCallback(() => {
     if (selectedNodesForGrouping.length <= 1) {
@@ -430,7 +548,7 @@ return (
         <NamePromptModal
             title="Create New Instrument"
             defaultValue="MyInstrument"
-            onConfirm={handleInstrumentNameSubmit}
+            onNameConfirm={handleInstrumentNameSubmit}
             onCancel={() => setIsNamePromptVisible(false)}
         />
       )}
