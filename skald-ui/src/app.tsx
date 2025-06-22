@@ -1,6 +1,6 @@
 // src/app.tsx
 
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import ReactFlow, {
     Background,
     Controls,
@@ -12,6 +12,8 @@ import ReactFlow, {
     OnNodesChange,
     OnEdgesChange,
     OnConnect,
+    NodeChange,
+    EdgeChange,
     useReactFlow,
     OnSelectionChangeParams,
     ReactFlowInstance,
@@ -56,6 +58,7 @@ let id = 0;
 const getId = () => ++id;
 
 const EditorLayout = () => {
+  // --- Core State ---
   const reactFlowWrapper = useRef(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -65,6 +68,12 @@ const EditorLayout = () => {
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const { screenToFlowPosition } = useReactFlow();
   
+  // --- Undo/Redo State ---
+  type HistoryState = { nodes: Node[]; edges: Edge[]; };
+  const [history, setHistory] = useState<HistoryState[]>([]);
+  const [future, setFuture] = useState<HistoryState[]>([]);
+  const isRestoring = useRef(false); // Prevents feedback loops during undo/redo
+
   const [isNamePromptVisible, setIsNamePromptVisible] = useState(false);
 
   const audioContext = useRef<AudioContext | null>(null);
@@ -81,22 +90,51 @@ const EditorLayout = () => {
     instrument: InstrumentNode,
   }), []);
 
+  // --- State Change Handlers with Undo/Redo ---
+
+  const saveStateForUndo = useCallback(() => {
+    if (isRestoring.current) return;
+
+    // Capture the current state before the change is applied
+    const currentState = { nodes, edges };
+
+    setHistory(prevHistory => [...prevHistory, currentState]);
+    setFuture([]); // Clear redo stack on new action
+  }, [nodes, edges]);
+
   const onNodesChange: OnNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    [setNodes]
+    (changes: NodeChange[]) => {
+        const isUndoableChange = changes.some(change => 
+            change.type === 'add' || change.type === 'remove' || (change.type === 'position' && !change.dragging)
+        );
+
+        if (isUndoableChange) {
+            saveStateForUndo();
+        }
+        setNodes((nds) => applyNodeChanges(changes, nds));
+    },
+    [setNodes, saveStateForUndo]
   );
 
   const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    [setEdges]
+      (changes: EdgeChange[]) => {
+        const isUndoableChange = changes.some(change => change.type === 'add' || change.type === 'remove');
+
+        if (isUndoableChange) {
+          saveStateForUndo();
+        }
+        setEdges((eds) => applyEdgeChanges(changes, eds));
+    },
+    [setEdges, saveStateForUndo]
   );
 
   const onConnect: OnConnect = useCallback(
     (connection) => {
+        saveStateForUndo();
         const edge = { ...connection, sourceHandle: connection.sourceHandle, targetHandle: connection.targetHandle };
         setEdges((eds) => addEdge(edge, eds))
     },
-    [setEdges]
+    [setEdges, saveStateForUndo]
   );
   
   const handleSave = useCallback(() => {
@@ -117,6 +155,9 @@ const EditorLayout = () => {
                 setEdges(flow.edges || []);
                 const maxId = Math.max(0, ...loadedNodes.map((n: Node) => parseInt(n.id)));
                 id = maxId;
+                // Clear history when loading a new graph
+                setHistory([]);
+                setFuture([]);
             }
         }
     }, [setNodes, setEdges]);
@@ -193,6 +234,8 @@ const EditorLayout = () => {
   }, []);
 
   const updateNodeData = (nodeId: string, data: object) => {
+    // Save state before updating node data for undo
+    saveStateForUndo();
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
@@ -534,7 +577,8 @@ const EditorLayout = () => {
         },
       },
     };
-
+    
+    saveStateForUndo();
     const remainingNodes = nodes.filter(n => !selectedIds.has(n.id));
     setNodes([...remainingNodes, newInstrumentNode]);
     setEdges(newMainGraphEdges);
@@ -546,6 +590,63 @@ const EditorLayout = () => {
     }
     setIsNamePromptVisible(true);
   }, [selectedNodesForGrouping]);
+
+  // --- Keyboard Shortcuts (Delete, Undo, Redo) ---
+  const { deleteElements } = useReactFlow();
+
+  const handleUndo = useCallback(() => {
+    if (history.length === 0) return;
+
+    isRestoring.current = true;
+
+    const lastState = history[history.length - 1];
+    setHistory(history.slice(0, -1));
+    
+    const currentState = { nodes, edges };
+    setFuture(prevFuture => [currentState, ...prevFuture]);
+
+    setNodes(lastState.nodes);
+    setEdges(lastState.edges);
+
+    isRestoring.current = false;
+  }, [history, nodes, edges, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    if (future.length === 0) return;
+
+    isRestoring.current = true;
+
+    const nextState = future[0];
+    setFuture(future.slice(1));
+
+    const currentState = { nodes, edges };
+    setHistory(prevHistory => [...prevHistory, currentState]);
+
+    setNodes(nextState.nodes);
+    setEdges(nextState.edges);
+
+    isRestoring.current = false;
+  }, [future, nodes, edges, setNodes, setEdges]);
+
+  useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+          if (event.key === 'Delete' || event.key === 'Backspace') {
+              const selectedNodes = reactFlowInstance?.getNodes().filter(n => n.selected) || [];
+              const selectedEdges = reactFlowInstance?.getEdges().filter(e => e.selected) || [];
+              if (selectedNodes.length > 0 || selectedEdges.length > 0) {
+                  saveStateForUndo();
+                  deleteElements({ nodes: selectedNodes, edges: selectedEdges });
+              }
+          } else if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+              handleUndo();
+          } else if ((event.ctrlKey || event.metaKey) && event.key === 'y') {
+              handleRedo();
+          }
+      };
+
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [reactFlowInstance, deleteElements, saveStateForUndo, handleUndo, handleRedo]);
 
 return (
   <div style={appContainerStyles}>
@@ -581,6 +682,7 @@ return (
               onDrop={onDrop}
               onSelectionChange={onSelectionChange}
               onInit={setReactFlowInstance}
+              multiSelectionKeyCode={['Shift', 'Control']}
               fitView
           >
               <Background />
