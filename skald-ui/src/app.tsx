@@ -24,7 +24,7 @@ import 'reactflow/dist/style.css';
 import Sidebar from './components/Sidebar';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
-import { OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode, LFONode } from './components/CustomNodes';
+import { OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode, LFONode, SampleHoldNode  } from './components/CustomNodes';
 import InstrumentNode from './components/InstrumentNode';
 import NamePromptModal from './components/NamePromptModal'; 
 
@@ -56,6 +56,42 @@ const parameterPanelStyles: React.CSSProperties = {
 
 let id = 0;
 const getId = () => ++id;
+
+const sampleHoldProcessorString = `
+class SampleHoldProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'rate', defaultValue: 10.0, minValue: 0 }];
+  }
+
+  constructor() {
+    super();
+    this.updateInterval = 1 / 10.0 * sampleRate;
+    this.value = Math.random() * 2 - 1;
+    this.counter = 0;
+  }
+
+  process(inputs, outputs, parameters) {
+    const output = outputs[0];
+    const rate = parameters.rate[0];
+    this.updateInterval = 1 / rate * sampleRate;
+
+    for (let channel = 0; channel < output.length; ++channel) {
+      const outputChannel = output[channel];
+      for (let i = 0; i < outputChannel.length; ++i) {
+        if (this.counter >= this.updateInterval) {
+            this.value = Math.random() * 2 - 1;
+            this.counter = 0;
+        }
+        outputChannel[i] = this.value;
+        this.counter++;
+      }
+    }
+    return true;
+  }
+}
+
+registerProcessor('sample-hold-processor', SampleHoldProcessor);
+`;
 
 const EditorLayout = () => {
   // --- Core State ---
@@ -89,6 +125,7 @@ const EditorLayout = () => {
     adsr: ADSRNode,
     lfo: LFONode, 
     instrument: InstrumentNode,
+    sampleHold: SampleHoldNode,
   }), []);
 
   // --- State Change Handlers with Undo/Redo ---
@@ -181,6 +218,14 @@ const EditorLayout = () => {
 
       // NEW: Default exposed parameters are defined here on node creation
       switch (type) {
+        case 'sampleHold':
+          newNode = { id: `${newId}`, type, position, data: { 
+              label: `S & H`,
+              rate: 10.0,
+              amplitude: 100.0,
+              exposedParameters: ['rate']
+          }};
+          break;
         case 'lfo':
           newNode = { id: `${newId}`, type, position, data: { 
               label: `LFO`, 
@@ -285,6 +330,7 @@ const EditorLayout = () => {
 
             switch (node.type) {
                 case 'lfo': typeName = 'LFO'; break;
+                case 'sampleHold': typeName = 'SampleHold'; break;
                 case 'oscillator': typeName = 'Oscillator'; break;
                 case 'filter': typeName = 'Filter'; break;
                 case 'noise': typeName = 'Noise'; break;
@@ -348,11 +394,23 @@ const EditorLayout = () => {
     }
   };
   
-  const handlePlay = () => {
+  const handlePlay = async() => {
     if (isPlaying) return;
 
     const context = new AudioContext();
     audioContext.current = context;
+
+    try {
+        const workletBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
+        const workletURL = URL.createObjectURL(workletBlob);
+        await context.audioWorklet.addModule(workletURL);
+    } catch (e) {
+        console.error('Error loading AudioWorklet:', e);
+        // Clean up context if worklet loading fails
+        audioContext.current = null;
+        return;
+    }
+
     const allAudioNodes = new Map<string, AudioNode>();
     const sampleRate = context.sampleRate;
     const bufferSize = sampleRate * 2; 
@@ -363,6 +421,14 @@ const EditorLayout = () => {
         let audioNode: AudioNode | null = null;
 
         switch (node.type) {
+          case 'sampleHold':
+            const shWorkletNode = new AudioWorkletNode(context, 'sample-hold-processor');
+            shWorkletNode.parameters.get('rate')?.setValueAtTime(node.data.rate || 10.0, context.currentTime);
+            const shGain = context.createGain();
+            shGain.gain.setValueAtTime(node.data.amplitude || 100.0, context.currentTime);
+            shWorkletNode.connect(shGain);
+            audioNode = shGain;
+            break;
           case 'lfo':
             const lfo = context.createOscillator();
             const lfoWaveform = (node.data.waveform || 'sine').toLowerCase() as OscillatorType;
@@ -493,21 +559,15 @@ const EditorLayout = () => {
         } else {
             const targetAudioNode = allAudioNodes.get(targetNode.id);
 
-            // If the source is an LFO, we connect to a parameter, not the node itself
-            if (sourceNode.type === 'lfo' && edge.targetHandle && targetAudioNode) {
-                // e.g., 'input_freq' -> 'frequency'
+            // If the source is a modulator, connect to a parameter
+            if (['lfo', 'sampleHold'].includes(sourceNode.type) && edge.targetHandle && targetAudioNode) {
                 const paramName = edge.targetHandle.replace('input_', ''); 
                 
-                // For 'input_amp', we target the 'gain' AudioParam of a GainNode.
-                // This assumes the target node (like Oscillator) has an associated gain node for amplitude.
-                // The current Oscillator preview logic doesn't, so this would only work if we refactored it.
-                // For now, we'll target the main known AudioParams directly.
                 if (paramName === 'freq' && 'frequency' in targetAudioNode) {
                     finalTarget = (targetAudioNode as any)['frequency'];
                 } else if (paramName === 'amp' && 'gain' in targetAudioNode) {
                     finalTarget = (targetAudioNode as any)['gain'];
                 } else {
-                    // Fallback for direct param matching
                     if (targetAudioNode && paramName in targetAudioNode) {
                          finalTarget = (targetAudioNode as any)[paramName];
                     }

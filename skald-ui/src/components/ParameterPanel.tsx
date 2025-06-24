@@ -192,6 +192,20 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
           </>
         );
 
+      case 'sampleHold':
+        return (
+          <>
+            {renderParameterControl('rate', 'Rate (Hz)',
+              <input type="number" name="rate" value={data.rate || 10.0} onChange={handleParameterChange} style={inputStyles} step="0.1" min="0" />
+            )}
+            {/* --- ADDED AMPLITUDE CONTROL --- */}
+            {renderParameterControl('amplitude', 'Amplitude (Depth)',
+              <input type="number" name="amplitude" value={data.amplitude || 100.0} onChange={handleParameterChange} style={inputStyles} step="1" min="0" />
+            )}
+          </>
+        );
+
+
       case 'oscillator':
         return (
           <>

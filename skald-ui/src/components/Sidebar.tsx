@@ -101,9 +101,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div style={nodeButtonStyles} onDragStart={(event) => onDragStart(event, 'oscillator')} draggable>
           Oscillator
         </div>
-        {/* --- ADDED LFO NODE --- */}
         <div style={{...nodeButtonStyles, borderColor: '#be4bdb'}} onDragStart={(event) => onDragStart(event, 'lfo')} draggable>
           LFO
+        </div>
+        <div style={{...nodeButtonStyles, borderColor: '#be4bdb'}} onDragStart={(event) => onDragStart(event, 'sampleHold')} draggable>
+          Sample & Hold
         </div>
         <div style={nodeButtonStyles} onDragStart={(event) => onDragStart(event, 'filter')} draggable>
           Filter
