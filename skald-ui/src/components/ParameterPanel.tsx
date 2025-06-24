@@ -171,6 +171,27 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
     const { type, data } = selectedNode;
 
     switch (type) {
+      case 'lfo':
+        return (
+          <>
+            {renderParameterControl('waveform', 'Waveform', 
+              <select name="waveform" value={data.waveform || 'Sine'} onChange={handleParameterChange} style={inputStyles}>
+                <option value="Sine">Sine</option>
+                <option value="Sawtooth">Sawtooth</option>
+                <option value="Triangle">Triangle</option>
+                <option value="Square">Square</option>
+              </select>,
+              false 
+            )}
+            {renderParameterControl('frequency', 'Frequency (Hz)',
+              <input type="number" name="frequency" value={data.frequency || 5.0} onChange={handleParameterChange} style={inputStyles} step="0.1" />
+            )}
+            {renderParameterControl('amplitude', 'Amplitude (Depth)',
+              <input type="number" name="amplitude" value={data.amplitude || 1.0} onChange={handleParameterChange} style={inputStyles} step="0.01" min="0" />
+            )}
+          </>
+        );
+
       case 'oscillator':
         return (
           <>

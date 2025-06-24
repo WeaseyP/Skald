@@ -24,7 +24,7 @@ import 'reactflow/dist/style.css';
 import Sidebar from './components/Sidebar';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
-import { OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode } from './components/CustomNodes';
+import { OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode, LFONode } from './components/CustomNodes';
 import InstrumentNode from './components/InstrumentNode';
 import NamePromptModal from './components/NamePromptModal'; 
 
@@ -87,6 +87,7 @@ const EditorLayout = () => {
     output: GraphOutputNode,
     noise: NoiseNode,
     adsr: ADSRNode,
+    lfo: LFONode, 
     instrument: InstrumentNode,
   }), []);
 
@@ -180,6 +181,15 @@ const EditorLayout = () => {
 
       // NEW: Default exposed parameters are defined here on node creation
       switch (type) {
+        case 'lfo':
+          newNode = { id: `${newId}`, type, position, data: { 
+              label: `LFO`, 
+              waveform: "Sine",
+              frequency: 5.0,
+              amplitude: 1.0,
+              exposedParameters: ['frequency', 'amplitude'] // Exposed by default
+          }};
+          break;
         case 'oscillator':
           newNode = { id: `${newId}`, type, position, data: { 
               label: `Oscillator`, 
@@ -274,6 +284,7 @@ const EditorLayout = () => {
             // So we don't need to delete it here.
 
             switch (node.type) {
+                case 'lfo': typeName = 'LFO'; break;
                 case 'oscillator': typeName = 'Oscillator'; break;
                 case 'filter': typeName = 'Filter'; break;
                 case 'noise': typeName = 'Noise'; break;
@@ -304,7 +315,6 @@ const EditorLayout = () => {
                 type: typeName,
                 position: node.position,
                 parameters: parameters,
-                // NEW: Pass the exposedParameters array directly to codegen
                 exposed_parameters: node.data.exposedParameters || []
             };
 
@@ -353,6 +363,24 @@ const EditorLayout = () => {
         let audioNode: AudioNode | null = null;
 
         switch (node.type) {
+          case 'lfo':
+            const lfo = context.createOscillator();
+            const lfoWaveform = (node.data.waveform || 'sine').toLowerCase() as OscillatorType;
+            if (['sine', 'sawtooth', 'triangle', 'square'].includes(lfoWaveform)) {
+                lfo.type = lfoWaveform;
+            }
+            lfo.frequency.setValueAtTime(node.data.frequency || 5.0, context.currentTime);
+            lfo.start();
+
+            // Use a Gain node to control the LFO's depth (amplitude)
+            const lfoGain = context.createGain();
+            lfoGain.gain.setValueAtTime(node.data.amplitude || 1.0, context.currentTime);
+            lfo.connect(lfoGain);
+
+            // The output of the LFO "unit" is the gain node
+            audioNode = lfoGain;
+            break;
+
           case 'oscillator':
             const osc = context.createOscillator();
             const waveform = (node.data.waveform || 'sawtooth').toLowerCase() as OscillatorType;
@@ -463,7 +491,30 @@ const EditorLayout = () => {
             const inputNode = targetNode.data.subgraph.nodes.find(n => n.type === 'InstrumentInput' && n.data.name === portName);
             finalTarget = allAudioNodes.get(`${targetNode.id}-${inputNode.id}`);
         } else {
-            finalTarget = allAudioNodes.get(targetNode.id);
+            const targetAudioNode = allAudioNodes.get(targetNode.id);
+
+            // If the source is an LFO, we connect to a parameter, not the node itself
+            if (sourceNode.type === 'lfo' && edge.targetHandle && targetAudioNode) {
+                // e.g., 'input_freq' -> 'frequency'
+                const paramName = edge.targetHandle.replace('input_', ''); 
+                
+                // For 'input_amp', we target the 'gain' AudioParam of a GainNode.
+                // This assumes the target node (like Oscillator) has an associated gain node for amplitude.
+                // The current Oscillator preview logic doesn't, so this would only work if we refactored it.
+                // For now, we'll target the main known AudioParams directly.
+                if (paramName === 'freq' && 'frequency' in targetAudioNode) {
+                    finalTarget = (targetAudioNode as any)['frequency'];
+                } else if (paramName === 'amp' && 'gain' in targetAudioNode) {
+                    finalTarget = (targetAudioNode as any)['gain'];
+                } else {
+                    // Fallback for direct param matching
+                    if (targetAudioNode && paramName in targetAudioNode) {
+                         finalTarget = (targetAudioNode as any)[paramName];
+                    }
+                }
+            } else {
+                finalTarget = targetAudioNode;
+            }
         }
 
         if (finalSource && finalTarget) {
