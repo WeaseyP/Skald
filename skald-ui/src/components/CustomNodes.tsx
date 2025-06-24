@@ -16,6 +16,7 @@ const filterNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '
 const outputNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#ffe8cc', borderColor: '#e8590c' };
 const noiseNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#e9ecef', borderColor: '#495057' };
 const adsrNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#fff3bf', borderColor: '#fcc419' };
+const lfoNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#f3d9fa', borderColor: '#be4bdb' };
 
 
 const OscillatorNodeComponent = ({ data }: NodeProps) => {
@@ -67,8 +68,18 @@ const ADSRNodeComponent = ({ data }: NodeProps) => {
     );
 };
 
+const LFONodeComponent = ({ data }: NodeProps) => {
+    return (
+        <div style={lfoNodeStyles}>
+            <div><strong>{data.label}</strong></div>
+            <Handle type="source" position={Position.Right} id="output" />
+        </div>
+    );
+};
+
 export const OscillatorNode = memo(OscillatorNodeComponent);
 export const FilterNode = memo(FilterNodeComponent);
 export const GraphOutputNode = memo(GraphOutputNodeComponent);
 export const NoiseNode = memo(NoiseNodeComponent);
 export const ADSRNode = memo(ADSRNodeComponent);
+export const LFONode = memo(LFONodeComponent);
