@@ -18,8 +18,6 @@ const noiseNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#
 const adsrNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#fff3bf', borderColor: '#fcc419' };
 const lfoNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#f3d9fa', borderColor: '#be4bdb' };
 const sampleHoldNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#f3d9fa', borderColor: '#be4bdb' };
-// --- ADDED UTILITY NODE STYLES ---
-const utilityNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#dbe4ff', borderColor: '#228be6' };
 
 
 const OscillatorNodeComponent = ({ data }: NodeProps) => {
@@ -89,26 +87,6 @@ const SampleHoldNodeComponent = ({ data }: NodeProps) => {
     );
 };
 
-// --- ADDED UTILITY NODE COMPONENTS ---
-const MixerNodeComponent = ({ data }: NodeProps) => {
-    return (
-        <div style={utilityNodeStyles}>
-            <Handle type="target" position={Position.Left} id="input" />
-            <div><strong>{data.label}</strong></div>
-            <Handle type="source" position={Position.Right} id="output" />
-        </div>
-    );
-};
-
-const PannerNodeComponent = ({ data }: NodeProps) => {
-    return (
-        <div style={utilityNodeStyles}>
-            <Handle type="target" position={Position.Left} id="input" />
-            <div><strong>{data.label}</strong></div>
-            <Handle type="source" position={Position.Right} id="output" />
-        </div>
-    );
-};
 
 export const OscillatorNode = memo(OscillatorNodeComponent);
 export const FilterNode = memo(FilterNodeComponent);
@@ -117,6 +95,4 @@ export const NoiseNode = memo(NoiseNodeComponent);
 export const ADSRNode = memo(ADSRNodeComponent);
 export const LFONode = memo(LFONodeComponent);
 export const SampleHoldNode = memo(SampleHoldNodeComponent);
-// --- EXPORTED UTILITY NODES ---
-export const MixerNode = memo(MixerNodeComponent);
-export const PannerNode = memo(PannerNodeComponent);
+
