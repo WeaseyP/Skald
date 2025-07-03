@@ -9,12 +9,23 @@ const panelStyles: React.CSSProperties = {
   color: '#E0E0E0',
   background: '#2D2D2D',
   height: '100%',
+  boxSizing: 'border-box',
+  overflowY: 'auto',
 };
 
 const headerStyles: React.CSSProperties = {
     borderBottom: '1px solid #444',
     paddingBottom: '10px',
     marginBottom: '15px',
+}
+
+const subHeaderStyles: React.CSSProperties = {
+    borderBottom: '1px solid #444',
+    paddingBottom: '5px',
+    marginBottom: '10px',
+    marginTop: '20px',
+    fontSize: '0.9em',
+    color: '#a0aec0'
 }
 
 const inputGroupStyles: React.CSSProperties = {
@@ -76,7 +87,7 @@ const LinkIcon: React.FC<{ isExposed: boolean }> = ({ isExposed }) => (
 
 interface ParameterPanelProps {
   selectedNode: Node | null;
-  onUpdateNode: (nodeId: string, data: object) => void;
+  onUpdateNode: (nodeId: string, data: object, subNodeId?: string) => void;
 }
 
 
@@ -90,15 +101,21 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
   // --- EVENT HANDLERS ---
 
-  /**
-   * Handles changes for standard input controls (text, number, select).
-   * It updates the corresponding key in the node's data object.
-   */
-  const handleParameterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleParameterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, subNodeId?: string) => {
     const { name, value, type } = e.target;
-    const parsedValue = type === 'number' ? parseFloat(value) : value;
+    let parsedValue: string | number = value;
+
+    if (type === 'number' || type === 'range') {
+        parsedValue = parseFloat(value);
+    }
     
-    // Create a new data object with the updated parameter
+    if (subNodeId) {
+        const subNode = selectedNode.data.subgraph.nodes.find(n => n.id === subNodeId);
+        const newData = { ...subNode.data, [name]: parsedValue };
+        onUpdateNode(selectedNode.id, newData, subNodeId);
+        return;
+    }
+
     const newData = {
       ...selectedNode.data,
       [name]: parsedValue,
@@ -106,11 +123,18 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
     onUpdateNode(selectedNode.id, newData);
   };
 
-  /**
-   * Toggles whether a parameter is "exposed" to the public API.
-   * It adds or removes the parameter key from the 'exposedParameters' array.
-   */
-  const toggleParameterExposure = (paramKey: string) => {
+  const toggleParameterExposure = (paramKey: string, subNodeId?: string) => {
+    if (subNodeId) {
+        const subNode = selectedNode.data.subgraph.nodes.find(n => n.id === subNodeId);
+        const currentExposed = subNode.data.exposedParameters || [];
+        const newExposed = currentExposed.includes(paramKey)
+            ? currentExposed.filter(p => p !== paramKey)
+            : [...currentExposed, paramKey];
+        const newData = { ...subNode.data, exposedParameters: newExposed };
+        onUpdateNode(selectedNode.id, newData, subNodeId);
+        return;
+    }
+
     const currentExposed: string[] = selectedNode.data.exposedParameters || [];
     const isExposed = currentExposed.includes(paramKey);
     
@@ -121,7 +145,6 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
       newExposed = [...currentExposed, paramKey];
     }
 
-    // Create a new data object with the updated exposure list
     const newData = {
       ...selectedNode.data,
       exposedParameters: newExposed,
@@ -132,18 +155,14 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
   // --- RENDER HELPERS ---
 
-  /**
-   * A generic renderer for a single parameter control.
-   * It includes the label, input, and the new "expose" icon button.
-   */
   const renderParameterControl = (
     paramKey: string, 
     label: string, 
     children: React.ReactNode, 
-    isExposable: boolean = true
+    isExposable: boolean = true,
+    isExposed: boolean = false,
+    onToggle: () => void
   ) => {
-    const isExposed = selectedNode.data.exposedParameters?.includes(paramKey) || false;
-
     return (
       <div style={inputGroupStyles} key={paramKey}>
         <div style={labelContainerStyles}>
@@ -151,7 +170,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             {isExposable && (
                  <button 
                     style={iconButtonStyles} 
-                    onClick={() => toggleParameterExposure(paramKey)}
+                    onClick={onToggle}
                     title={isExposed ? `Un-expose "${label}"` : `Expose "${label}" to public API`}
                  >
                     <LinkIcon isExposed={isExposed} />
@@ -163,112 +182,136 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
     );
   };
 
+  const renderNodeParameters = (node: Node, subNodeId?: string) => {
+    const { type, data } = node;
+    
+    const createControl = (paramKey: string, label: string, children: React.ReactNode, isExposable: boolean = true) => {
+        const isExposed = data.exposedParameters?.includes(paramKey) || false;
+        return renderParameterControl(paramKey, label, children, isExposable, isExposed, () => toggleParameterExposure(paramKey, subNodeId));
+    };
 
-  /**
-   * Determines which set of parameter controls to render based on the selected node type.
-   */
-  const renderParameters = () => {
-    const { type, data } = selectedNode;
+    const createInput = (paramKey: string, inputType: string, step?: number, min?: number, max?: number) => (
+        <input 
+            type={inputType} 
+            name={paramKey} 
+            value={data[paramKey] || ''} 
+            onChange={(e) => handleParameterChange(e, subNodeId)} 
+            style={inputStyles} 
+            step={step} 
+            min={min} 
+            max={max} 
+        />
+    );
 
     switch (type) {
-      case 'lfo':
-        return (
-          <>
-            {renderParameterControl('waveform', 'Waveform', 
-              <select name="waveform" value={data.waveform || 'Sine'} onChange={handleParameterChange} style={inputStyles}>
-                <option value="Sine">Sine</option>
-                <option value="Sawtooth">Sawtooth</option>
-                <option value="Triangle">Triangle</option>
-                <option value="Square">Square</option>
-              </select>,
-              false 
-            )}
-            {renderParameterControl('frequency', 'Frequency (Hz)',
-              <input type="number" name="frequency" value={data.frequency || 5.0} onChange={handleParameterChange} style={inputStyles} step="0.1" />
-            )}
-            {renderParameterControl('amplitude', 'Amplitude (Depth)',
-              <input type="number" name="amplitude" value={data.amplitude || 1.0} onChange={handleParameterChange} style={inputStyles} step="0.01" min="0" />
-            )}
-          </>
-        );
-
-      case 'oscillator':
-        return (
-          <>
-            {renderParameterControl('waveform', 'Waveform', 
-              <select name="waveform" value={data.waveform || 'Sawtooth'} onChange={handleParameterChange} style={inputStyles}>
-                <option value="Sawtooth">Sawtooth</option>
-                <option value="Sine">Sine</option>
-                <option value="Triangle">Triangle</option>
-                <option value="Square">Square</option>
-              </select>,
-              false // Waveform type is not dynamically controllable as a float
-            )}
-            {renderParameterControl('frequency', 'Frequency (Hz)',
-              <input type="number" name="frequency" value={data.frequency || 440} onChange={handleParameterChange} style={inputStyles} step="0.1" />
-            )}
-            {renderParameterControl('amplitude', 'Amplitude',
-              <input type="number" name="amplitude" value={data.amplitude || 0.5} onChange={handleParameterChange} style={inputStyles} step="0.01" min="0" max="1" />
-            )}
-          </>
-        );
-
-      case 'filter':
-        return (
-          <>
-            {renderParameterControl('type', 'Filter Type',
-              <select name="type" value={data.type || 'Lowpass'} onChange={handleParameterChange} style={inputStyles}>
-                <option value="Lowpass">Lowpass</option>
-                <option value="Highpass">Highpass</option>
-                <option value="Bandpass">Bandpass</option>
-              </select>,
-              false
-            )}
-            {renderParameterControl('cutoff', 'Cutoff (Hz)',
-              <input type="number" name="cutoff" value={data.cutoff || 800} onChange={handleParameterChange} style={inputStyles} step="1" />
-            )}
-          </>
-        );
-
-      case 'noise':
-        return (
-          <>
-            {renderParameterControl('type', 'Noise Type',
-              <select name="type" value={data.type || 'White'} onChange={handleParameterChange} style={inputStyles}>
-                <option value="White">White</option>
-                <option value="Pink">Pink</option>
-              </select>,
-              false
-            )}
-             {renderParameterControl('amplitude', 'Amplitude',
-              <input type="number" name="amplitude" value={data.amplitude || 1.0} onChange={handleParameterChange} style={inputStyles} step="0.01" min="0" max="1" />
-            )}
-          </>
-        );
-
-      case 'adsr':
-        return (
-          <>
-            {['attack', 'decay', 'sustain', 'release'].map(param => 
-              renderParameterControl(param, `${param.charAt(0).toUpperCase() + param.slice(1)} (s)`,
-                <input type="number" name={param} value={data[param] || 0.1} onChange={handleParameterChange} style={inputStyles} step="0.01" min="0"/>
-              )
-            )}
-          </>
-        );
-      
-      case 'instrument':
-          return (
-              <>
-                {renderParameterControl('name', 'Instrument Name', 
-                    <input type="text" name="name" value={data.name || ''} onChange={handleParameterChange} style={inputStyles}/>,
-                    false
+        case 'lfo':
+            return ( <>
+                {createControl('waveform', 'Waveform', 
+                  <select name="waveform" value={data.waveform || 'Sine'} onChange={(e) => handleParameterChange(e, subNodeId)} style={inputStyles}>
+                    <option value="Sine">Sine</option>
+                    <option value="Sawtooth">Sawtooth</option>
+                    <option value="Triangle">Triangle</option>
+                    <option value="Square">Square</option>
+                  </select>, false )}
+                {createControl('frequency', 'Frequency (Hz)', createInput('frequency', 'number', 0.1))}
+                {createControl('amplitude', 'Amplitude (Depth)', createInput('amplitude', 'number', 0.01, 0))}
+            </> );
+        case 'sampleHold':
+            return ( <>
+                {createControl('rate', 'Rate (Hz)', createInput('rate', 'number', 0.1, 0))}
+                {createControl('amplitude', 'Amplitude (Depth)', createInput('amplitude', 'number', 0.01, 0))}
+            </> );
+        case 'oscillator':
+            return ( <>
+                {createControl('waveform', 'Waveform', 
+                  <select name="waveform" value={data.waveform || 'Sawtooth'} onChange={(e) => handleParameterChange(e, subNodeId)} style={inputStyles}>
+                    <option value="Sawtooth">Sawtooth</option>
+                    <option value="Sine">Sine</option>
+                    <option value="Triangle">Triangle</option>
+                    <option value="Square">Square</option>
+                  </select>, false )}
+                {createControl('frequency', 'Frequency (Hz)', createInput('frequency', 'number', 0.1))}
+                {createControl('amplitude', 'Amplitude', createInput('amplitude', 'number', 0.01, 0, 1))}
+            </> );
+        case 'filter':
+            return ( <>
+                {createControl('type', 'Filter Type',
+                  <select name="type" value={data.type || 'Lowpass'} onChange={(e) => handleParameterChange(e, subNodeId)} style={inputStyles}>
+                    <option value="Lowpass">Lowpass</option>
+                    <option value="Highpass">Highpass</option>
+                    <option value="Bandpass">Bandpass</option>
+                  </select>, false )}
+                {createControl('cutoff', 'Cutoff (Hz)', createInput('cutoff', 'number', 1))}
+            </> );
+        case 'noise':
+            return ( <>
+                {createControl('type', 'Noise Type',
+                  <select name="type" value={data.type || 'White'} onChange={(e) => handleParameterChange(e, subNodeId)} style={inputStyles}>
+                    <option value="White">White</option>
+                    <option value="Pink">Pink</option>
+                  </select>, false )}
+                 {createControl('amplitude', 'Amplitude', createInput('amplitude', 'number', 0.01, 0, 1))}
+            </> );
+        case 'adsr':
+            return ( <>
+                {['attack', 'decay', 'sustain', 'release'].map(param => 
+                  createControl(param, `${param.charAt(0).toUpperCase() + param.slice(1)} (s)`,
+                    createInput(param, 'number', 0.01, 0)
+                  )
                 )}
-              </>
-          );
-
-      default:
-        return <p>This node has no configurable parameters.</p>;
+            </> );
+        case 'delay':
+            return ( <>
+                {createControl('delayTime', 'Delay Time (s)', createInput('delayTime', 'number', 0.01, 0))}
+                {createControl('feedback', 'Feedback', createInput('feedback', 'number', 0.05, 0, 1))}
+                {createControl('mix', 'Mix', createInput('mix', 'number', 0.05, 0, 1))}
+            </> );
+        case 'reverb':
+            return ( <>
+                {createControl('decay', 'Decay (s)', createInput('decay', 'number', 0.1, 0))}
+                {createControl('preDelay', 'Pre-Delay (s)', createInput('preDelay', 'number', 0.01, 0))}
+                {createControl('mix', 'Mix', createInput('mix', 'number', 0.05, 0, 1))}
+            </> );
+        case 'distortion':
+            return ( <>
+                {createControl('drive', 'Drive', createInput('drive', 'number', 1, 1))}
+                {createControl('tone', 'Tone (Hz)', createInput('tone', 'number', 100, 100))}
+                {createControl('mix', 'Mix', createInput('mix', 'number', 0.05, 0, 1))}
+            </> );
+        case 'mixer':
+            const inputCount = data.inputCount || 4;
+            const mixerControls = [];
+            for (let i = 1; i <= inputCount; i++) {
+                const paramKey = `level${i}`;
+                mixerControls.push(
+                    createControl(paramKey, `Input ${i} Level`,
+                        createInput(paramKey, 'range', 0.01, 0, 1)
+                    )
+                );
+            }
+            return <>{mixerControls}</>;
+        case 'panner':
+            return ( <>
+                {createControl('pan', 'Pan', createInput('pan', 'range', 0.01, -1, 1))}
+            </> );
+        case 'instrument':
+            return ( <>
+                {createControl('name', 'Instrument Name', createInput('name', 'text'), false)}
+            </> );
+        case 'group':
+             return (
+                <>
+                    {createControl('label', 'Group Name', createInput('label', 'text'), false)}
+                    {data.subgraph?.nodes.map((subNode: Node) => (
+                        <div key={subNode.id}>
+                            <h4 style={subHeaderStyles}>{subNode.data.label || subNode.type}</h4>
+                            {renderNodeParameters(subNode, subNode.id)}
+                        </div>
+                    ))}
+                </>
+            );
+        default:
+            return <p>This node has no configurable parameters.</p>;
     }
   };
 
@@ -277,7 +320,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
       <div style={headerStyles}>
         <h3>{selectedNode.data.label || selectedNode.type}</h3>
       </div>
-      {renderParameters()}
+      {renderNodeParameters(selectedNode)}
     </div>
   );
 };
