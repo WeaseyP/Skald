@@ -35,10 +35,15 @@ const generateButtonStyles: React.CSSProperties = {
     backgroundColor: '#228be6',
 }
 
-// New style for the Create Instrument button
 const createInstrumentButtonStyles: React.CSSProperties = {
     ...actionButtonStyles,
     backgroundColor: '#15aabf',
+    marginTop: '10px',
+};
+
+const createGroupButtonStyles: React.CSSProperties = {
+    ...actionButtonStyles,
+    backgroundColor: '#868e96',
     marginTop: '10px',
 };
 
@@ -60,13 +65,6 @@ const ioButtonStyles: React.CSSProperties = {
     marginTop: '10px',
 };
 
-const saveInstrumentButtonStyles: React.CSSProperties = {
-    ...ioButtonStyles,
-    backgroundColor: '#1098ad',
-}
-
-
-// 1. Update props to accept instrument creation logic
 interface SidebarProps {
     onGenerate: () => void;
     onPlay: () => void;
@@ -75,7 +73,8 @@ interface SidebarProps {
     onSave: () => void;
     onLoad: () => void;
     onCreateInstrument: () => void;
-    canCreateInstrument: boolean;
+    onCreateGroup: () => void;
+    canCreateInstrument: boolean; // This can be reused for groups
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -86,6 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     onSave, 
     onLoad,
     onCreateInstrument,
+    onCreateGroup,
     canCreateInstrument
 }) => {
   const onDragStart = (event: React.DragEvent<HTMLDivElement>, nodeType: string) => {
@@ -116,6 +116,21 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div style={{...nodeButtonStyles, borderColor: '#fab005'}} onDragStart={(event) => onDragStart(event, 'adsr')} draggable>
           ADSR Envelope
         </div>
+        <div style={{...nodeButtonStyles, borderColor: '#f08c00'}} onDragStart={(event) => onDragStart(event, 'delay')} draggable>
+          Delay/Echo
+        </div>
+        <div style={{...nodeButtonStyles, borderColor: '#e03131'}} onDragStart={(event) => onDragStart(event, 'distortion')} draggable>
+          Distortion
+        </div>
+        <div style={{...nodeButtonStyles, borderColor: '#4c6ef5'}} onDragStart={(event) => onDragStart(event, 'reverb')} draggable>
+          Reverb
+        </div>
+        <div style={{...nodeButtonStyles, borderColor: '#868e96'}} onDragStart={(event) => onDragStart(event, 'mixer')} draggable>
+          Mixer
+        </div>
+        <div style={{...nodeButtonStyles, borderColor: '#74c0fc'}} onDragStart={(event) => onDragStart(event, 'panner')} draggable>
+          Panner
+        </div>
         <div style={{...nodeButtonStyles, borderColor: '#e8590c'}} onDragStart={(event) => onDragStart(event, 'output')} draggable>
           Graph Output
         </div>
@@ -124,8 +139,18 @@ const Sidebar: React.FC<SidebarProps> = ({
         <button style={generateButtonStyles} onClick={onGenerate}>
             Generate Code
         </button>
-
-        {/* 2. Add the "Create Instrument" button */}
+        <button 
+            style={{
+                ...createGroupButtonStyles, 
+                cursor: canCreateInstrument ? 'pointer' : 'not-allowed',
+                opacity: canCreateInstrument ? 1 : 0.5
+            }} 
+            onClick={onCreateGroup}
+            disabled={!canCreateInstrument}
+            title={canCreateInstrument ? "Group selected nodes for organization" : "Select 2 or more nodes to create a group"}
+        >
+            Create Group
+        </button>
         <button 
             style={{
                 ...createInstrumentButtonStyles, 
@@ -134,11 +159,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             }} 
             onClick={onCreateInstrument}
             disabled={!canCreateInstrument}
-            title={canCreateInstrument ? "Group selected nodes into an instrument" : "Select 2 or more nodes to create an instrument"}
+            title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select 2 or more nodes to create an instrument"}
         >
             Create Instrument
         </button>
-
         {!isPlaying ? (
             <button style={playButtonStyles} onClick={onPlay}>
                 Play
