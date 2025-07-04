@@ -1,5 +1,3 @@
-// src/app.tsx
-
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import ReactFlow, {
     Background,
@@ -37,7 +35,9 @@ import {
     DistortionNode,
     MixerNode,
     PannerNode,
-    GroupNode
+    GroupNode,
+    FmOperatorNode,
+    WavetableNode
 } from './components/Nodes';
 import InstrumentNode from './components/InstrumentNode';
 import NamePromptModal from './components/NamePromptModal';
@@ -150,6 +150,8 @@ const EditorLayout = () => {
         mixer: MixerNode,
         panner: PannerNode,
         group: GroupNode,
+        fmOperator: FmOperatorNode,
+        wavetable: WavetableNode,
     }), []);
 
     const saveStateForUndo = useCallback(() => {
@@ -193,7 +195,7 @@ const EditorLayout = () => {
         },
         [setEdges, saveStateForUndo]
     );
-  
+ 
     const handleSave = useCallback(() => {
         if (reactFlowInstance) {
             const flow = reactFlowInstance.toObject();
@@ -235,6 +237,22 @@ const EditorLayout = () => {
             const newId = getId();
 
             switch (type) {
+                case 'fmOperator':
+                    newNode = { id: `${newId}`, type, position, data: { 
+                        label: `FM Operator`,
+                        frequency: 440,
+                        modIndex: 100,
+                        exposedParameters: ['frequency', 'modIndex']
+                    }};
+                    break;
+                case 'wavetable':
+                    newNode = { id: `${newId}`, type, position, data: { 
+                        label: `Wavetable`,
+                        table: 'Sine',
+                        position: 0,
+                        exposedParameters: ['position']
+                    }};
+                    break;
                 case 'sampleHold':
                     newNode = { id: `${newId}`, type, position, data: { 
                         label: `S & H`,
@@ -249,6 +267,7 @@ const EditorLayout = () => {
                         waveform: "Sine",
                         frequency: 5.0,
                         amplitude: 1.0,
+                        bpmSync: false,
                         exposedParameters: ['frequency', 'amplitude']
                     }};
                     break;
@@ -258,7 +277,9 @@ const EditorLayout = () => {
                         frequency: 440.0, 
                         waveform: "Sawtooth",
                         amplitude: 0.5,
-                        exposedParameters: ['frequency', 'amplitude']
+                        pulseWidth: 0.5,
+                        phase: 0,
+                        exposedParameters: ['frequency', 'amplitude', 'pulseWidth', 'phase']
                     }};
                     break;
                 case 'filter':
@@ -266,7 +287,8 @@ const EditorLayout = () => {
                         label: `Filter`, 
                         type: 'Lowpass', 
                         cutoff: 800.0,
-                        exposedParameters: ['cutoff']
+                        resonance: 1.0,
+                        exposedParameters: ['cutoff', 'resonance']
                     }};
                     break;
                 case 'noise':
@@ -284,7 +306,12 @@ const EditorLayout = () => {
                         decay: 0.2, 
                         sustain: 0.5, 
                         release: 1.0,
-                        exposedParameters: ['attack', 'decay', 'sustain', 'release']
+                        amount: 1.0,
+                        velocitySensitivity: 0.5,
+                        attackCurve: 'linear',
+                        decayCurve: 'linear',
+                        releaseCurve: 'linear',
+                        exposedParameters: ['attack', 'decay', 'sustain', 'release', 'amount']
                     }};
                     break;
                 case 'delay':
@@ -292,7 +319,8 @@ const EditorLayout = () => {
                         label: 'Delay',
                         delayTime: 0.5,
                         feedback: 0.5,
-                        mix: 0.5,
+                        mix: 0.5, // Universal Wet/Dry
+                        bpmSync: false,
                         exposedParameters: ['delayTime', 'feedback', 'mix']
                     }};
                     break;
@@ -301,7 +329,7 @@ const EditorLayout = () => {
                         label: 'Reverb',
                         decay: 3.0,
                         preDelay: 0.01,
-                        mix: 0.5,
+                        mix: 0.5, // Universal Wet/Dry
                         exposedParameters: ['decay', 'mix']
                     }};
                     break;
@@ -310,7 +338,7 @@ const EditorLayout = () => {
                         label: 'Distortion',
                         drive: 20,
                         tone: 4000,
-                        mix: 0.5,
+                        mix: 0.5, // Universal Wet/Dry
                         exposedParameters: ['drive', 'tone', 'mix']
                     }};
                     break;
@@ -351,6 +379,10 @@ const EditorLayout = () => {
         saveStateForUndo();
         setNodes((nds) =>
             nds.map((node) => {
+                if (subNodeId && node.id === subNodeId) {
+                    return { ...node, data: { ...node.data, ...data } };
+                }
+    
                 if (node.id === nodeId) {
                     if (subNodeId && node.data.subgraph?.nodes) {
                         const newSubgraphNodes = node.data.subgraph.nodes.map(subNode => {
@@ -361,23 +393,17 @@ const EditorLayout = () => {
                         });
                         return { ...node, data: { ...node.data, subgraph: { ...node.data.subgraph, nodes: newSubgraphNodes } } };
                     }
-                    return { ...node, data: data };
+                    return { ...node, data: { ...node.data, ...data } };
                 }
+    
                 return node;
             })
         );
+    
         setSelectedNode((prev) => {
             if (prev && prev.id === nodeId) {
-                if (subNodeId && prev.data.subgraph?.nodes) {
-                     const newSubgraphNodes = prev.data.subgraph.nodes.map(subNode => {
-                        if (subNode.id === subNodeId) {
-                            return { ...subNode, data: data };
-                        }
-                        return subNode;
-                    });
-                    return { ...prev, data: { ...prev.data, subgraph: { ...prev.data.subgraph, nodes: newSubgraphNodes } } };
-                }
-                return { ...prev, data: data };
+                const updatedNode = nodes.find(n => n.id === nodeId);
+                return { ...(updatedNode || prev) }; 
             }
             return prev;
         });
@@ -409,6 +435,8 @@ const EditorLayout = () => {
                     case 'distortion': typeName = 'Distortion'; break;
                     case 'mixer': typeName = 'Mixer'; break;
                     case 'panner': typeName = 'Panner'; break;
+                    case 'fmOperator': typeName = 'FmOperator'; break;
+                    case 'wavetable': typeName = 'Wavetable'; break;
                     case 'output': typeName = 'GraphOutput'; parameters = {}; break;
                     case 'instrument':
                     case 'group':
@@ -466,7 +494,7 @@ const EditorLayout = () => {
             setGeneratedCode(`// ERROR: Failed to generate code.\n// Check console for details.\n\n/*\n${error}\n*/`);
         }
     };
-  
+ 
     const handlePlay = async() => {
         if (isPlaying) return;
 
@@ -495,6 +523,33 @@ const EditorLayout = () => {
                 let audioNode: AudioNode | null = null;
 
                 switch (node.type) {
+                    case 'fmOperator':
+                        const carrier = context.createOscillator();
+                        carrier.frequency.setValueAtTime(node.data.frequency || 440, context.currentTime);
+                        carrier.start();
+
+                        const modulationGain = context.createGain();
+                        modulationGain.gain.setValueAtTime(node.data.modIndex || 100, context.currentTime);
+                        modulationGain.connect(carrier.frequency); // This is the FM connection
+
+                        const fmInput = context.createGain(); // Acts as the modulator input
+                        fmInput.connect(modulationGain);
+
+                        complexAudioNodes.current.set(globalId, { input: fmInput, output: carrier });
+                        audioNode = carrier; // The output is the carrier
+                        break;
+                    case 'wavetable':
+                        const wtOsc = context.createOscillator();
+                        const table = node.data.table || 'sine';
+                        const periodicWave = context.createPeriodicWave(
+                            new Float32Array([0, 1]), // real
+                            new Float32Array([0, 0])  // imag
+                        );
+                        wtOsc.setPeriodicWave(periodicWave);
+                        wtOsc.frequency.setValueAtTime(440, context.currentTime); // Base frequency
+                        wtOsc.start();
+                        audioNode = wtOsc;
+                        break;
                     case 'sampleHold':
                         const shWorkletNode = new AudioWorkletNode(context, 'sample-hold-processor');
                         shWorkletNode.parameters.get('rate')?.setValueAtTime(node.data.rate || 10.0, context.currentTime);
@@ -752,7 +807,11 @@ const EditorLayout = () => {
             }
 
             if (complexAudioNodes.current.has(targetNode.id)) {
-                finalTarget = complexAudioNodes.current.get(targetNode.id)!.input;
+                 if (edge.targetHandle === 'input_mod') {
+                    finalTarget = complexAudioNodes.current.get(targetNode.id)!.input;
+                } else {
+                    finalTarget = complexAudioNodes.current.get(targetNode.id)!.output;
+                }
             } else if (mixerInputNodes.current.has(targetNode.id) && edge.targetHandle) {
                 const inputIndex = parseInt(edge.targetHandle.replace('input_', ''), 10) - 1;
                 const mixerInputs = mixerInputNodes.current.get(targetNode.id);
@@ -890,6 +949,13 @@ const EditorLayout = () => {
             data: {
                 name: instrumentName,
                 label: instrumentName,
+                // Polyphony Parameters
+                voiceCount: 8,
+                voiceStealing: 'oldest',
+                glide: 0.05,
+                unison: 1,
+                detune: 5,
+                // ---
                 inputs: Array.from(inputPorts.keys()),
                 outputs: Array.from(outputPorts.keys()),
                 subgraph: {
@@ -926,22 +992,31 @@ const EditorLayout = () => {
         const maxX = Math.max(...selectedNodesForGrouping.map(n => n.position.x + (n.width || 150)));
         const maxY = Math.max(...selectedNodesForGrouping.map(n => n.position.y + (n.height || 50)));
 
+        const padding = 40;
+        const groupNodePosition = { x: minX - padding, y: minY - padding };
+
         const newGroupNode: Node = {
             id: newGroupId,
             type: 'group',
-            position: { x: minX - 20, y: minY - 40 },
+            position: groupNodePosition,
             data: { label: 'New Group' },
             style: { 
-                width: maxX - minX + 40, 
-                height: maxY - minY + 60,
-                backgroundColor: 'rgba(45, 55, 72, 0.5)',
-                borderColor: '#718096',
+                width: maxX - minX + (padding * 2), 
+                height: maxY - minY + (padding * 2),
             }
         };
 
         const updatedNodes = nodes.map(n => {
             if (selectedIds.has(n.id)) {
-                return { ...n, parentNode: newGroupId, extent: 'parent' };
+                return { 
+                    ...n, 
+                    parentNode: newGroupId, 
+                    extent: 'parent',
+                    position: {
+                        x: n.position.x - groupNodePosition.x,
+                        y: n.position.y - groupNodePosition.y,
+                    },
+                };
             }
             return n;
         });
@@ -1043,7 +1118,12 @@ const EditorLayout = () => {
                 {generatedCode ? (
                     <CodePreviewPanel code={generatedCode} onClose={() => setGeneratedCode(null)} />
                 ) : (
-                    <ParameterPanel selectedNode={selectedNode} onUpdateNode={updateNodeData} />
+                    <ParameterPanel 
+                        selectedNode={selectedNode} 
+                        onUpdateNode={updateNodeData}
+                        allNodes={nodes}
+                        allEdges={edges}
+                    />
                 )}
             </div>
         </div>
@@ -1057,5 +1137,5 @@ const App = () => {
         </ReactFlowProvider>
     );
 };
-  
+ 
 export default App;

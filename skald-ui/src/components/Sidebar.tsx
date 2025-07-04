@@ -1,69 +1,87 @@
-// src/components/Sidebar.tsx
-
 import React from 'react';
 
+// --- STYLES ---
+
 const sidebarStyles: React.CSSProperties = {
-  padding: '15px',
-  borderRight: '1px solid #ddd',
-  display: 'flex',
-  flexDirection: 'column'
+    padding: '15px',
+    fontFamily: 'sans-serif',
+    color: '#E0E0E0',
+    height: '100%',
+    boxSizing: 'border-box',
+    overflowY: 'auto',
 };
 
-const nodeButtonStyles: React.CSSProperties = {
-    border: '2px solid #777',
+const titleStyles: React.CSSProperties = {
+    fontSize: '1.5em',
+    fontWeight: 'bold',
+    marginBottom: '20px',
+    textAlign: 'center',
+    color: '#FFFFFF',
+};
+
+const sectionTitleStyles: React.CSSProperties = {
+    fontSize: '1.1em',
+    fontWeight: '600',
+    marginTop: '20px',
+    marginBottom: '10px',
+    color: '#a0aec0',
+    borderBottom: '1px solid #4A5568',
+    paddingBottom: '5px',
+};
+
+const nodeStyles: React.CSSProperties = {
     padding: '10px',
+    marginBottom: '10px',
     borderRadius: '5px',
-    backgroundColor: '#fff',
+    background: '#384252',
+    border: '1px solid #4A5568',
     cursor: 'grab',
     textAlign: 'center',
-    marginBottom: '10px'
-}
+};
 
-const actionButtonStyles: React.CSSProperties = {
-    marginTop: 'auto',
-    padding: '12px',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    cursor: 'pointer',
+const buttonStyles: React.CSSProperties = {
     width: '100%',
-    boxSizing: 'border-box'
-}
-
-const generateButtonStyles: React.CSSProperties = {
-    ...actionButtonStyles,
-    backgroundColor: '#228be6',
-}
-
-const createInstrumentButtonStyles: React.CSSProperties = {
-    ...actionButtonStyles,
-    backgroundColor: '#15aabf',
-    marginTop: '10px',
+    padding: '10px',
+    borderRadius: '5px',
+    border: 'none',
+    color: 'white',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    marginTop: '5px',
+    transition: 'background-color 0.2s',
 };
 
-const createGroupButtonStyles: React.CSSProperties = {
-    ...actionButtonStyles,
-    backgroundColor: '#868e96',
-    marginTop: '10px',
+const primaryButtonStyles: React.CSSProperties = {
+    ...buttonStyles,
+    background: '#3182CE',
 };
 
-const playButtonStyles: React.CSSProperties = {
-    ...actionButtonStyles,
-    backgroundColor: '#37b24d',
-    marginTop: '10px',
+const secondaryButtonStyles: React.CSSProperties = {
+    ...buttonStyles,
+    background: '#4A5568',
 };
 
-const stopButtonStyles: React.CSSProperties = {
-    ...actionButtonStyles,
-    backgroundColor: '#f03e3e',
-    marginTop: '10px',
+const disabledButtonStyles: React.CSSProperties = {
+    ...buttonStyles,
+    background: '#4A5568',
+    opacity: 0.5,
+    cursor: 'not-allowed',
 };
 
-const ioButtonStyles: React.CSSProperties = {
-    ...actionButtonStyles,
-    backgroundColor: '#868e96',
-    marginTop: '10px',
+const bpmInputStyles: React.CSSProperties = {
+    width: '100%',
+    padding: '8px',
+    boxSizing: 'border-box',
+    borderRadius: '4px',
+    border: '1px solid #555',
+    background: '#333',
+    color: '#E0E0E0',
+    outline: 'none',
+    textAlign: 'center',
+    fontSize: '1.2em',
 };
+
+// --- PROPS INTERFACE ---
 
 interface SidebarProps {
     onGenerate: () => void;
@@ -74,113 +92,101 @@ interface SidebarProps {
     onLoad: () => void;
     onCreateInstrument: () => void;
     onCreateGroup: () => void;
-    canCreateInstrument: boolean; // This can be reused for groups
+    canCreateInstrument: boolean;
+    bpm: number;
+    onBpmChange: (newBpm: number) => void;
 }
+
+
+// --- MAIN COMPONENT ---
 
 const Sidebar: React.FC<SidebarProps> = ({ 
     onGenerate, 
     onPlay, 
     onStop, 
-    isPlaying, 
-    onSave, 
+    isPlaying,
+    onSave,
     onLoad,
     onCreateInstrument,
     onCreateGroup,
-    canCreateInstrument
+    canCreateInstrument,
+    bpm,
+    onBpmChange,
 }) => {
-  const onDragStart = (event: React.DragEvent<HTMLDivElement>, nodeType: string) => {
-    event.dataTransfer.setData('application/reactflow', nodeType);
-    event.dataTransfer.effectAllowed = 'move';
-  };
 
+    const onDragStart = (event: React.DragEvent, nodeType: string) => {
+        event.dataTransfer.setData('application/reactflow', nodeType);
+        event.dataTransfer.effectAllowed = 'move';
+    };
 
-  return (
-    <div style={sidebarStyles}>
-      <div>
-        <h2>Node Library</h2>
-        <div style={nodeButtonStyles} onDragStart={(event) => onDragStart(event, 'oscillator')} draggable>
-          Oscillator
+    return (
+        <div style={sidebarStyles}>
+            <h1 style={titleStyles}>Skald</h1>
+
+            <div>
+                <h2 style={sectionTitleStyles}>Global</h2>
+                <label style={{display: 'block', textAlign: 'center', marginBottom: '5px'}}>BPM</label>
+                <input 
+                    type="number" 
+                    value={bpm} 
+                    onChange={(e) => onBpmChange(parseInt(e.target.value, 10))}
+                    style={bpmInputStyles}
+                    min="20"
+                    max="300"
+                />
+            </div>
+
+            <div>
+                <h2 style={sectionTitleStyles}>Graph Actions</h2>
+                <button style={primaryButtonStyles} onClick={onGenerate}>Generate</button>
+                {!isPlaying ? (
+                    <button style={secondaryButtonStyles} onClick={onPlay}>Play</button>
+                ) : (
+                    <button style={{...secondaryButtonStyles, background: '#C53030'}} onClick={onStop}>Stop</button>
+                )}
+                <button style={secondaryButtonStyles} onClick={onSave}>Save</button>
+                <button style={secondaryButtonStyles} onClick={onLoad}>Load</button>
+            </div>
+
+            <div>
+                <h2 style={sectionTitleStyles}>Grouping</h2>
+                <button 
+                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles} 
+                    onClick={onCreateInstrument}
+                    disabled={!canCreateInstrument}
+                    title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select 2 or more nodes to create an instrument"}
+                >
+                    Create Instrument
+                </button>
+                <button 
+                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles} 
+                    onClick={onCreateGroup}
+                    disabled={!canCreateInstrument}
+                    title={canCreateInstrument ? "Group selected nodes visually" : "Select 2 or more nodes to create a group"}
+                >
+                    Create Group
+                </button>
+            </div>
+
+            <div>
+                <h2 style={sectionTitleStyles}>Nodes</h2>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'oscillator')} draggable>Oscillator</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'noise')} draggable>Noise</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'lfo')} draggable>LFO</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'sampleHold')} draggable>S & H</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'fmOperator')} draggable>FM Operator</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'wavetable')} draggable>Wavetable</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'adsr')} draggable>ADSR</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'filter')} draggable>Filter</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'delay')} draggable>Delay</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'reverb')} draggable>Reverb</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'distortion')} draggable>Distortion</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'mixer')} draggable>Mixer</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'panner')} draggable>Panner</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'output')} draggable>Output</div>
+            </div>
         </div>
-        <div style={{...nodeButtonStyles, borderColor: '#be4bdb'}} onDragStart={(event) => onDragStart(event, 'lfo')} draggable>
-          LFO
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#be4bdb'}} onDragStart={(event) => onDragStart(event, 'sampleHold')} draggable>
-          Sample & Hold
-        </div>
-        <div style={nodeButtonStyles} onDragStart={(event) => onDragStart(event, 'filter')} draggable>
-          Filter
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#40c057'}} onDragStart={(event) => onDragStart(event, 'noise')} draggable>
-          Noise
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#fab005'}} onDragStart={(event) => onDragStart(event, 'adsr')} draggable>
-          ADSR Envelope
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#f08c00'}} onDragStart={(event) => onDragStart(event, 'delay')} draggable>
-          Delay/Echo
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#e03131'}} onDragStart={(event) => onDragStart(event, 'distortion')} draggable>
-          Distortion
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#4c6ef5'}} onDragStart={(event) => onDragStart(event, 'reverb')} draggable>
-          Reverb
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#868e96'}} onDragStart={(event) => onDragStart(event, 'mixer')} draggable>
-          Mixer
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#74c0fc'}} onDragStart={(event) => onDragStart(event, 'panner')} draggable>
-          Panner
-        </div>
-        <div style={{...nodeButtonStyles, borderColor: '#e8590c'}} onDragStart={(event) => onDragStart(event, 'output')} draggable>
-          Graph Output
-        </div>
-      </div>
-      <div style={{ marginTop: 'auto' }}>
-        <button style={generateButtonStyles} onClick={onGenerate}>
-            Generate Code
-        </button>
-        <button 
-            style={{
-                ...createGroupButtonStyles, 
-                cursor: canCreateInstrument ? 'pointer' : 'not-allowed',
-                opacity: canCreateInstrument ? 1 : 0.5
-            }} 
-            onClick={onCreateGroup}
-            disabled={!canCreateInstrument}
-            title={canCreateInstrument ? "Group selected nodes for organization" : "Select 2 or more nodes to create a group"}
-        >
-            Create Group
-        </button>
-        <button 
-            style={{
-                ...createInstrumentButtonStyles, 
-                cursor: canCreateInstrument ? 'pointer' : 'not-allowed',
-                opacity: canCreateInstrument ? 1 : 0.5
-            }} 
-            onClick={onCreateInstrument}
-            disabled={!canCreateInstrument}
-            title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select 2 or more nodes to create an instrument"}
-        >
-            Create Instrument
-        </button>
-        {!isPlaying ? (
-            <button style={playButtonStyles} onClick={onPlay}>
-                Play
-            </button>
-        ) : (
-            <button style={stopButtonStyles} onClick={onStop}>
-                Stop
-            </button>
-        )}
-        <button style={ioButtonStyles} onClick={onSave}>
-            Save Graph
-        </button>
-        <button style={ioButtonStyles} onClick={onLoad}>
-            Load Graph
-        </button>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default Sidebar;
