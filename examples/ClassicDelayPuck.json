@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Oscillator", "waveform": "Triangle" } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 350, "y": 200 }, "data": { "label": "ADSR", "attack": 0.01, "decay": 0.2, "sustain": 0.1, "release": 0.2 } },
+    { "id": "delay_1", "type": "delay", "position": { "x": 600, "y": 200 }, "data": { "label": "Delay", "time": 400, "feedback": 0.6, "wetDryMix": 0.5, "bpmSync": false } },
+    { "id": "output_1", "type": "output", "position": { "x": 850, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "osc_1", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_1" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "delay_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "delay_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_3" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

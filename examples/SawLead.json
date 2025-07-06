@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Oscillator", "frequency": 220, "waveform": "Sawtooth" } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 350, "y": 200 }, "data": { "label": "ADSR", "attack": 0.05, "decay": 0.3, "sustain": 0.7, "release": 0.4 } },
+    { "id": "filter_1", "type": "filter", "position": { "x": 600, "y": 200 }, "data": { "label": "Filter", "filterType": "Lowpass", "cutoff": 800, "resonance": 0.4 } },
+    { "id": "output_1", "type": "output", "position": { "x": 850, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "osc_1", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_1" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "filter_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_3" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

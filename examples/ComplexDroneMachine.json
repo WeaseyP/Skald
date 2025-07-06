@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    { "id": "lfo_1", "type": "lfo", "position": { "x": 350, "y": 50 }, "data": { "label": "LFO 1 (Filter)", "frequency": 0.1, "waveform": "Sine" } },
+    { "id": "lfo_2", "type": "lfo", "position": { "x": 100, "y": 150 }, "data": { "label": "LFO 2 (Pitch)", "frequency": 0.2, "waveform": "Sine" } },
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 300 }, "data": { "label": "Osc 1", "frequency": 110, "waveform": "Sawtooth" } },
+    { "id": "osc_2", "type": "oscillator", "position": { "x": 100, "y": 450 }, "data": { "label": "Osc 2", "frequency": 110.5, "waveform": "Square" } },
+    { "id": "filter_1", "type": "filter", "position": { "x": 350, "y": 300 }, "data": { "label": "Filter", "filterType": "Lowpass", "cutoff": 600, "resonance": 0.7 } },
+    { "id": "reverb_1", "type": "reverb", "position": { "x": 600, "y": 300 }, "data": { "label": "Reverb", "size": 0.9, "decay": 5.0, "wetDryMix": 0.5 } },
+    { "id": "output_1", "type": "output", "position": { "x": 850, "y": 300 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "lfo_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "cutoff", "id": "edge_1" },
+    { "source": "lfo_2", "sourceHandle": "output", "target": "osc_1", "targetHandle": "frequency", "id": "edge_2" },
+    { "source": "osc_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "input", "id": "edge_3" },
+    { "source": "osc_2", "sourceHandle": "output", "target": "filter_1", "targetHandle": "input", "id": "edge_4" },
+    { "source": "filter_1", "sourceHandle": "output", "target": "reverb_1", "targetHandle": "input", "id": "edge_5" },
+    { "source": "reverb_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_6" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

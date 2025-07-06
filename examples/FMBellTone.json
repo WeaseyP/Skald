@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    { "id": "osc_mod", "type": "oscillator", "position": { "x": 100, "y": 100 }, "data": { "label": "Modulator", "frequency": 650, "waveform": "Sine" } },
+    { "id": "osc_carrier", "type": "oscillator", "position": { "x": 100, "y": 300 }, "data": { "label": "Carrier", "frequency": 440, "waveform": "Sine" } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 350, "y": 300 }, "data": { "label": "ADSR", "attack": 0.01, "decay": 1.5, "sustain": 0.0, "release": 1.0 } },
+    { "id": "output_1", "type": "output", "position": { "x": 600, "y": 300 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "osc_mod", "sourceHandle": "output", "target": "osc_carrier", "targetHandle": "frequency", "id": "edge_1" },
+    { "source": "osc_carrier", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_3" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

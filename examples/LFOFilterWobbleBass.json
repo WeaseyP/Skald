@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    { "id": "lfo_1", "type": "lfo", "position": { "x": 350, "y": 100 }, "data": { "label": "LFO", "frequency": 8, "waveform": "Sine", "bpmSync": true } },
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 300 }, "data": { "label": "Oscillator", "frequency": 73.42, "waveform": "Sawtooth" } },
+    { "id": "filter_1", "type": "filter", "position": { "x": 350, "y": 300 }, "data": { "label": "Filter", "filterType": "Lowpass", "cutoff": 150, "resonance": 0.8 } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 600, "y": 300 }, "data": { "label": "ADSR", "attack": 0.02, "decay": 0.2, "sustain": 0.9, "release": 0.3 } },
+    { "id": "output_1", "type": "output", "position": { "x": 850, "y": 300 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "lfo_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "cutoff", "id": "edge_1" },
+    { "source": "osc_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "filter_1", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_3" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_4" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

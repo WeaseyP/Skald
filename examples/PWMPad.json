@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    { "id": "lfo_1", "type": "lfo", "position": { "x": 100, "y": 100 }, "data": { "label": "LFO", "frequency": 0.5, "waveform": "Sine" } },
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 300 }, "data": { "label": "Oscillator", "waveform": "Square", "pulseWidth": 0.5 } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 350, "y": 300 }, "data": { "label": "ADSR", "attack": 1.5, "decay": 2.0, "sustain": 0.8, "release": 1.8 } },
+    { "id": "reverb_1", "type": "reverb", "position": { "x": 600, "y": 300 }, "data": { "label": "Reverb", "size": 0.8, "decay": 3.0, "wetDryMix": 0.4 } },
+    { "id": "output_1", "type": "output", "position": { "x": 850, "y": 300 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "lfo_1", "sourceHandle": "output", "target": "osc_1", "targetHandle": "pulseWidth", "id": "edge_1" },
+    { "source": "osc_1", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "reverb_1", "targetHandle": "input", "id": "edge_3" },
+    { "source": "reverb_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_4" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

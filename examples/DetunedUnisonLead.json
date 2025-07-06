@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    { "id": "poly_1", "type": "polyphonicWrapper", "position": { "x": 100, "y": 200 }, "data": { "label": "Polyphony", "voiceCount": 8, "unison": 4, "detune": 0.15 } },
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 350, "y": 200 }, "data": { "label": "Oscillator", "waveform": "Sawtooth" } },
+    { "id": "filter_1", "type": "filter", "position": { "x": 600, "y": 200 }, "data": { "label": "Filter", "filterType": "Lowpass", "cutoff": 5000, "resonance": 0.2 } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 850, "y": 200 }, "data": { "label": "ADSR", "attack": 0.1, "decay": 0.4, "sustain": 0.8, "release": 0.5 } },
+    { "id": "output_1", "type": "output", "position": { "x": 1100, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "poly_1", "sourceHandle": "output", "target": "osc_1", "targetHandle": "input", "id": "edge_1" },
+    { "source": "osc_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "filter_1", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_3" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_4" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

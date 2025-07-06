@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 // --- PROPS INTERFACE ---
 
@@ -22,23 +22,24 @@ const containerStyle: React.CSSProperties = {
     touchAction: 'none',
     WebkitUserSelect: 'none',
     userSelect: 'none',
+    cursor: 'default',
 };
 
 const pointStyle: React.CSSProperties = {
     cursor: 'move',
-    fill: '#3182CE',
-    stroke: '#E0E0E0',
+    fill: '#3182CE', // blue-500
+    stroke: '#E2E8F0', // gray-200
     strokeWidth: 2,
 };
 
 const lineStyle: React.CSSProperties = {
     fill: 'none',
-    stroke: '#4A5568',
+    stroke: '#4A5568', // gray-600
     strokeWidth: 2,
 };
 
 const fillStyle: React.CSSProperties = {
-    fill: 'rgba(49, 130, 206, 0.3)',
+    fill: 'rgba(66, 153, 225, 0.3)', // blue-400 with alpha
 };
 
 
@@ -53,26 +54,33 @@ export const AdsrEnvelopeEditor: React.FC<AdsrEnvelopeEditorProps> = ({
     const svgRef = useRef<SVGSVGElement>(null);
     const [draggedPoint, setDraggedPoint] = useState<string | null>(null);
 
-    const { attack, decay, sustain, release } = value;
+    // Use a stable reference for the value during a drag operation to avoid stale closures
+    const valueRef = useRef(value);
+    valueRef.current = value;
 
     // --- Calculations for SVG Path ---
     // These convert the ADSR time/level values into X/Y coordinates for the SVG.
-    const totalTime = attack + decay + 1 + release; // Add 1 unit for sustain visualization
+    const { attack, decay, sustain, release } = value;
+
+    // We add a fixed "sustain time" for visualization purposes. This makes the total time calculation more stable.
+    const sustainTimeVisual = 1.0;
+    const totalTime = attack + decay + sustainTimeVisual + release;
+
     const scaleX = (time: number) => (time / totalTime) * width;
 
     const attackX = scaleX(attack);
     const decayX = scaleX(decay);
-    const sustainX = scaleX(1); // Fixed width for sustain portion
+    const sustainX = scaleX(sustainTimeVisual);
     const releaseX = scaleX(release);
 
     const sustainY = height * (1 - sustain);
 
     const points = {
-        p1: { x: 0, y: height },
-        p2: { x: attackX, y: 0 },
-        p3: { x: attackX + decayX, y: sustainY },
-        p4: { x: attackX + decayX + sustainX, y: sustainY },
-        p5: { x: attackX + decayX + sustainX + releaseX, y: height },
+        p1: { x: 0, y: height },                                     // Start
+        p2: { x: attackX, y: 0 },                                    // Attack Peak
+        p3: { x: attackX + decayX, y: sustainY },                    // Decay End / Sustain Start
+        p4: { x: attackX + decayX + sustainX, y: sustainY },         // Sustain End / Release Start
+        p5: { x: attackX + decayX + sustainX + releaseX, y: height }, // Release End
     };
 
     const pathData = `M ${points.p1.x},${points.p1.y} L ${points.p2.x},${points.p2.y} L ${points.p3.x},${points.p3.y} L ${points.p4.x},${points.p4.y} L ${points.p5.x},${points.p5.y}`;
@@ -80,16 +88,8 @@ export const AdsrEnvelopeEditor: React.FC<AdsrEnvelopeEditorProps> = ({
 
     // --- Drag Handlers ---
 
-    const getCoords = (e: MouseEvent | React.MouseEvent): { x: number; y: number } => {
-        if (!svgRef.current) return { x: 0, y: 0 };
-        const rect = svgRef.current.getBoundingClientRect();
-        return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-        };
-    };
-    
-    const handleMouseDown = (pointName: string) => {
+    const handleMouseDown = (e: React.MouseEvent, pointName: string) => {
+        e.preventDefault();
         setDraggedPoint(pointName);
     };
 
@@ -99,39 +99,49 @@ export const AdsrEnvelopeEditor: React.FC<AdsrEnvelopeEditorProps> = ({
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (!draggedPoint || !svgRef.current) return;
+        e.preventDefault();
 
-        let { x, y } = getCoords(e);
+        const rect = svgRef.current.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+
+        // Clamp coordinates to SVG bounds
         x = Math.max(0, Math.min(width, x));
         y = Math.max(0, Math.min(height, y));
 
-        const newValues = { ...value };
-        
-        // This is a simplified model. A real implementation would have more robust logic
-        // to prevent points from crossing over each other and to scale time values correctly.
+        const currentValue = valueRef.current;
+        const newValues = { ...currentValue };
+
+        // Inverse function to convert X coordinate back to a time value
+        const timeAtX = (posX: number) => (posX / width) * (currentValue.attack + currentValue.decay + sustainTimeVisual + currentValue.release);
+
         switch (draggedPoint) {
-            case 'attack':
-                newValues.attack = (x / width) * 5; // Max attack 5s
+            case 'attack': { // Controls p2
+                const newAttackTime = timeAtX(x);
+                newValues.attack = Math.max(0.001, newAttackTime);
                 break;
-            case 'decay':
-                const currentAttackX = scaleX(newValues.attack);
-                newValues.decay = ((x - currentAttackX) / width) * 5; // Max decay 5s
-                newValues.sustain = 1 - y / height;
+            }
+            case 'decay': { // Controls p3
+                const newSustainLevel = 1 - y / height;
+                const timeAtDecayPoint = timeAtX(x);
+                const newDecayTime = timeAtDecayPoint - newValues.attack;
+
+                newValues.decay = Math.max(0.001, newDecayTime);
+                newValues.sustain = Math.max(0, Math.min(1, newSustainLevel));
                 break;
-            case 'release':
-                const preReleaseX = points.p4.x;
-                newValues.release = ((x - preReleaseX) / width) * 10; // Max release 10s
+            }
+            case 'release': { // Controls p5, relative to p4
+                 const timeAtReleasePoint = timeAtX(x);
+                 const sustainEndTime = newValues.attack + newValues.decay + sustainTimeVisual;
+                 const newReleaseTime = timeAtReleasePoint - sustainEndTime;
+
+                 newValues.release = Math.max(0.001, newReleaseTime);
                 break;
+            }
         }
-
-        // Clamp values to be non-negative
-        newValues.attack = Math.max(0.001, newValues.attack);
-        newValues.decay = Math.max(0.001, newValues.decay);
-        newValues.sustain = Math.max(0, Math.min(1, newValues.sustain));
-        newValues.release = Math.max(0.001, newValues.release);
-
         onChange(newValues);
 
-    }, [draggedPoint, value, onChange, width, height]);
+    }, [draggedPoint, width, height, onChange]);
 
     // Add and remove global event listeners for dragging outside the SVG
     useEffect(() => {
@@ -153,9 +163,10 @@ export const AdsrEnvelopeEditor: React.FC<AdsrEnvelopeEditorProps> = ({
                 <path d={pathData} style={lineStyle} />
 
                 {/* Draggable points */}
-                <circle cx={points.p2.x} cy={points.p2.y} r="8" style={pointStyle} onMouseDown={() => handleMouseDown('attack')} />
-                <circle cx={points.p3.x} cy={points.p3.y} r="8" style={pointStyle} onMouseDown={() => handleMouseDown('decay')} />
-                <circle cx={points.p5.x} cy={points.p5.y} r="8" style={pointStyle} onMouseDown={() => handleMouseDown('release')} />
+                <circle cx={points.p2.x} cy={points.p2.y} r="8" style={pointStyle} onMouseDown={(e) => handleMouseDown(e, 'attack')} />
+                <circle cx={points.p3.x} cy={points.p3.y} r="8" style={pointStyle} onMouseDown={(e) => handleMouseDown(e, 'decay')} />
+                {/* The handle for release time is actually the final point, p5 */}
+                <circle cx={points.p5.x} cy={points.p5.y} r="8" style={pointStyle} onMouseDown={(e) => handleMouseDown(e, 'release')} />
             </svg>
         </div>
     );

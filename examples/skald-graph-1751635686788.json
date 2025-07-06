@@ -1,0 +1,202 @@
+{
+  "nodes": [
+    {
+      "id": "5",
+      "type": "output",
+      "position": {
+        "x": 1471.5181424931573,
+        "y": 478.9306910851172
+      },
+      "data": {
+        "label": "Output"
+      },
+      "width": 150,
+      "height": 60,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1471.5181424931573,
+        "y": 478.9306910851172
+      },
+      "dragging": false
+    },
+    {
+      "id": "9",
+      "type": "lfo",
+      "position": {
+        "x": 452.1034328733956,
+        "y": 461.5196798191947
+      },
+      "data": {
+        "label": "LFO",
+        "waveform": "Sawtooth",
+        "frequency": 0.7305844114432472,
+        "amplitude": 1,
+        "bpmSync": true,
+        "exposedParameters": [
+          "frequency",
+          "amplitude"
+        ],
+        "syncRate": "1/1"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 452.1034328733956,
+        "y": 461.5196798191947
+      },
+      "dragging": false
+    },
+    {
+      "id": "11",
+      "type": "reverb",
+      "position": {
+        "x": 573.9805117348532,
+        "y": 715.7204443016631
+      },
+      "data": {
+        "label": "Reverb",
+        "decay": 3,
+        "preDelay": 0.01,
+        "mix": 0.5,
+        "exposedParameters": [
+          "decay",
+          "mix"
+        ]
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 573.9805117348532,
+        "y": 715.7204443016631
+      },
+      "dragging": false
+    },
+    {
+      "id": "12",
+      "type": "distortion",
+      "position": {
+        "x": 1024.9257035222454,
+        "y": 654.7819048709343
+      },
+      "data": {
+        "label": "Distortion",
+        "drive": 20,
+        "tone": 4000,
+        "mix": 0.5,
+        "exposedParameters": [
+          "drive",
+          "tone",
+          "mix"
+        ]
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 1024.9257035222454,
+        "y": 654.7819048709343
+      }
+    },
+    {
+      "id": "13",
+      "type": "noise",
+      "position": {
+        "x": 1193.8125128016936,
+        "y": 337.9014998311451
+      },
+      "data": {
+        "label": "Noise",
+        "type": "White",
+        "amplitude": 1,
+        "exposedParameters": [
+          "amplitude"
+        ]
+      },
+      "width": 182,
+      "height": 43,
+      "positionAbsolute": {
+        "x": 1193.8125128016936,
+        "y": 337.9014998311451
+      }
+    },
+    {
+      "id": "14",
+      "type": "sampleHold",
+      "position": {
+        "x": 836.8867818502827,
+        "y": 297.85617391952337
+      },
+      "data": {
+        "label": "S & H",
+        "rate": 10,
+        "amplitude": 1,
+        "exposedParameters": [
+          "rate"
+        ]
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 836.8867818502827,
+        "y": 297.85617391952337
+      }
+    },
+    {
+      "id": "15",
+      "type": "wavetable",
+      "position": {
+        "x": 962.2460629649247,
+        "y": 491.118398971263
+      },
+      "data": {
+        "label": "Wavetable",
+        "table": "Sawtooth",
+        "position": 0,
+        "exposedParameters": [
+          "position"
+        ]
+      },
+      "width": 192,
+      "height": 55,
+      "selected": true,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 962.2460629649247,
+        "y": 491.118398971263
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "9",
+      "sourceHandle": "output",
+      "target": "15",
+      "targetHandle": "input_freq",
+      "id": "e9-15"
+    },
+    {
+      "source": "15",
+      "sourceHandle": "output",
+      "target": "5",
+      "targetHandle": "input",
+      "id": "e15-5"
+    },
+    {
+      "source": "13",
+      "sourceHandle": "output",
+      "target": "15",
+      "targetHandle": "input_pos",
+      "id": "e13-15"
+    }
+  ],
+  "viewport": {
+    "x": -268.33046963018205,
+    "y": 63.853102992932804,
+    "zoom": 1.1486983549970349
+  }
+}

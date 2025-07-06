@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Oscillator", "waveform": "Sawtooth" } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 350, "y": 200 }, "data": { "label": "ADSR", "attack": 3.0, "decay": 2.5, "sustain": 1.0, "release": 4.0 } },
+    { "id": "filter_1", "type": "filter", "position": { "x": 600, "y": 200 }, "data": { "label": "Filter", "filterType": "Lowpass", "cutoff": 2000, "resonance": 0.3 } },
+    { "id": "reverb_1", "type": "reverb", "position": { "x": 850, "y": 200 }, "data": { "label": "Reverb", "size": 0.9, "decay": 6.0, "wetDryMix": 0.6 } },
+    { "id": "output_1", "type": "output", "position": { "x": 1100, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "osc_1", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_1" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "filter_1", "sourceHandle": "output", "target": "reverb_1", "targetHandle": "input", "id": "edge_3" },
+    { "source": "reverb_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_4" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

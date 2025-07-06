@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    { "id": "poly_1", "type": "polyphonicWrapper", "position": { "x": 50, "y": 300 }, "data": { "label": "Polyphony", "voiceCount": 8, "unison": 2, "detune": 0.05, "glide": 0.05 } },
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 300, "y": 300 }, "data": { "label": "Oscillator", "waveform": "Sawtooth" } },
+    { "id": "adsr_1", "type": "adsr", "position": { "x": 550, "y": 300 }, "data": { "label": "Amp Env", "attack": 0.4, "decay": 1.2, "sustain": 0.6, "release": 0.8 } },
+    { "id": "filter_1", "type": "filter", "position": { "x": 800, "y": 300 }, "data": { "label": "Filter", "filterType": "Lowpass", "cutoff": 1500, "resonance": 0.4 } },
+    { "id": "reverb_1", "type": "reverb", "position": { "x": 1050, "y": 300 }, "data": { "label": "Reverb", "size": 0.7, "decay": 2.5, "wetDryMix": 0.35 } },
+    { "id": "output_1", "type": "output", "position": { "x": 1300, "y": 300 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "poly_1", "sourceHandle": "output", "target": "osc_1", "targetHandle": "input", "id": "edge_1" },
+    { "source": "osc_1", "sourceHandle": "output", "target": "adsr_1", "targetHandle": "input", "id": "edge_2" },
+    { "source": "adsr_1", "sourceHandle": "output", "target": "filter_1", "targetHandle": "input", "id": "edge_3" },
+    { "source": "filter_1", "sourceHandle": "output", "target": "reverb_1", "targetHandle": "input", "id": "edge_4" },
+    { "source": "reverb_1", "sourceHandle": "output", "target": "output_1", "targetHandle": "input", "id": "edge_5" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}
