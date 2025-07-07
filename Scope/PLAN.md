@@ -232,7 +232,7 @@ The project is executed in a series of focused phases.
 
         Implement "Save" and "Load" menu items that use Electron's dialogs to read/write the graph's JSON state to a file.
 
-Phase 6: Advanced Sound Design & Dynamic Control (Current Phase)
+Phase 6: Advanced Sound Design & Dynamic Control (COMPLETED)
 
     Goal: Expand the node library to create more expressive sounds and allow them to be controlled dynamically by an external application or game engine.
 
@@ -246,109 +246,107 @@ Phase 6: Advanced Sound Design & Dynamic Control (Current Phase)
 
     Task 5: Implement Parameter Exposure API: Create the functionality to expose node parameters to the generated Odin code's top-level API for real-time control.
 
-        Update the UI to allow users to mark specific parameters (e.g., frequency, filter cutoff) for exposure.
+Phase 7: Node Editor Polish (COMPLETED)
 
-        Update the JSON contract to include an array of exposed parameter keys.
+    Goal: Improve the core user experience of the node graph editor with essential workflow enhancements.
 
-        Update the Odin codegen to create public fields in the AudioProcessor struct and generate set_...(value) functions for each exposed parameter.
+    Task 1: Implement Multi-Select: Add and verify support for marquee (click-and-drag) selection and shift-click selection of multiple nodes and edges.
 
-    Phase 6: Advanced Sound Design & Dynamic Control (Current Phase)
+    Task 2: Implement Multi-Delete: Implement the logic to delete all selected items when the user presses the Delete or Backspace key.
 
-    Goal: Expand the node library to create more expressive sounds and allow them to be controlled dynamically by an external application or game engine.
+Phase 8: Advanced Node Implementation (Frontend) (COMPLETED)
 
-    Task 1: Implement ADSR Envelope Node: Create an Attack, Decay, Sustain, Release (ADSR) envelope generator to control the volume of a sound over time.
+    Goal: Substantially expand Skald's creative potential by introducing advanced modulation, effects, and synthesis methods (Frontend Only).
 
-    Task 2: Implement Noise Generator Node: Add a white/pink noise generator as a fundamental building block for synthesizing percussive sounds and effects.
+    Task 1: Add Advanced Modulation Sources (Frontend): Implement frontend components for LFO and Random / Sample & Hold nodes.
 
-    Task 3: Implement Additional Oscillator Types: Add Triangle and Square waves to the Oscillator node.
+    Task 2: Add Core Audio Effects (Frontend): Implement frontend components for Delay, Reverb, and Distortion/Overdrive nodes.
 
-    Task 4: Implement a Polyphonic Instrument Wrapper: Design a meta-node or concept where a user can save a node graph as a playable "Instrument" capable of polyphony.
+    Task 3: Add Utility & Logic Nodes (Frontend): Implement frontend components for Mixer and Panner nodes.
 
-    Task 5: Implement Parameter Exposure API: Create the functionality to expose node parameters to the generated Odin code's top-level API for real-time control.
+    Task 4: Add Workflow Enhancements (Frontend): Implement frontend components for Groups/Containers to collapse complex patches.
 
-        Update the UI to allow users to mark specific parameters (e.g., frequency, filter cutoff) for exposure.
+    Task 5: Add Advanced Synthesis Methods (Frontend): Implement frontend components for FM Operator and Wavetable Oscillator nodes.
 
-        Update the JSON contract to include an array of exposed parameter keys.
+Phase 9: UI/UX & Parameter Overhaul (Frontend) (COMPLETED)
 
-        Update the Odin codegen to create public fields in the AudioProcessor struct and generate set_...(value) functions for each exposed parameter.
+    Goal: Evolve the user interface from merely functional to truly intuitive and professional by implementing context-aware controls and expanding the parameter set for deep, expressive sound design.
 
-    Phase 7: Node Editor Polish
+    Task 1: Advanced Parameter Implementation (Frontend): Integrate the full suite of proposed parameters into the frontend state (ADSR Amount, Velocity Sensitivity, Oscillator Pulse Width, Wet/Dry Mixes, etc.).
 
-        Goal: Improve the core user experience of the node graph editor with essential workflow enhancements.
+    Task 2: Context-Aware UI Controls: Replace generic sliders with specialized controls like Logarithmic/Exponential Sliders, a Graphical ADSR Envelope Editor, and an X/Y Pad for filters.
 
-        Task 1: Implement Multi-Select: Add and verify support for marquee (click-and-drag) selection and shift-click selection of multiple nodes and edges.
+    Task 3: Core Interaction Polish: Implement modifier keys for fine-grained control (Shift+Drag), shortcuts to reset parameters (Double-Click), and smart text input parsing.
 
-        Task 2: Implement Multi-Delete: Implement the logic to delete all selected items when the user presses the Delete or Backspace key.
+    Task 4: Visual Feedback & Aesthetics: Enhance the UI with visual indicators for modulation, a redesigned node appearance, and animated feedback for audio output.
 
-    Phase 8 (NEW): Future Capabilities
+Phase 10: Bug Squashing (Current Phase)
 
-        Goal: Substantially expand Skald's creative potential by introducing advanced modulation, effects, and synthesis methods. (These are post-MVP goals).
+    Goal: Identify and resolve critical bugs to improve stability and user experience.
 
-        Task 1: Add Advanced Modulation Sources:
+    Task 1: Fix Non-Functional Sliders: Investigate and resolve the issue preventing sliders from being adjusted. The UI should update correctly when a slider is moved.
 
-            Implement an LFO (Low-Frequency Oscillator) node for vibrato, tremolo, and other cyclical modulations.
+    Task 2: Restore Oscillator Node: The Oscillator node's UI and functionality have diverged from their intended design. Revert the component to its correct state.
 
-            Implement a Random / Sample & Hold node for generating non-repeating variations and "computery" effects.
+    Task 3: Comprehensive Testing: Perform a full regression test of all completed features to identify, document, and prioritize any further issues.
 
-        Task 2: Add Core Audio Effects:
+Phase 11: Advanced Node Implementation (Backend)
 
-            Implement a Delay/Echo node.
+    Goal: Implement the Odin codegen logic for the advanced nodes introduced in Phase 8.
 
-            Implement a Reverb node for spatial simulation.
+    Task 1: Codegen for Modulation Sources: Implement backend logic for LFO and Sample & Hold nodes.
 
-            Implement a Distortion/Overdrive node for adding harmonic warmth and grit.
+    Task 2: Codegen for Audio Effects: Implement backend logic for Delay, Reverb, and Distortion nodes.
 
-        Task 3: Add Utility & Logic Nodes:
+    Task 3: Codegen for Utility Nodes: Implement backend logic for Mixer and Panner nodes.
 
-            Implement a Mixer node to combine multiple audio signals.
+    Task 4: Codegen for Advanced Synthesis: Implement backend logic for FM Operator and Wavetable Oscillator nodes.
 
-            Implement a Panner node for stereo field positioning.
+Phase 12: Advanced Parameter & Control Implementation (Backend)
 
-        Task 4: Add Workflow Enhancements:
+    Goal: Implement the Odin codegen logic for the new parameters and UI controls from Phase 9.
 
-            Implement Groups/Containers to allow users to collapse complex patches into reusable sub-graphs.
+    Task 1: Implement New Parameter Logic: Update Odin codegen to handle ADSR Amount/Depth, Velocity Sensitivity, Pulse Width, Phase, Wet/Dry Mix, BPM Sync, and Polyphony parameters (Voice Count, Glide, Unison).
 
-        Task 5: Add Advanced Synthesis Methods:
+    Task 2: Implement Control Data Mapping: Ensure the backend correctly interprets data from new frontend controls (e.g., X/Y Pad outputting cutoff and resonance).
 
-            Implement an FM Operator node to enable Frequency Modulation synthesis.
+    Task 3: Update JSON Contract: Formally update `CONTRACT.md` to reflect all new parameters and data structures.
 
-            Implement a Wavetable Oscillator node for complex, evolving tones.
+Phase 13: Beat Sequencer
 
-    Phase 9: Beat Sequencer
+    Goal: Allow users to arrange their created instruments into a looping musical pattern.
 
-        Goal: Allow users to arrange their created instruments into a looping musical pattern.
+    Task 1: Design Sequencer UI Panel: Create a new UI view featuring a step-sequencer grid.
 
-        Task 1: Design Sequencer UI Panel: Create a new UI view featuring a step-sequencer grid.
+    Task 2: Implement Transport and BPM Controls: Add UI for setting Beats Per Minute (BPM) and global play/stop controls.
 
-        Task 2: Implement Transport and BPM Controls: Add UI for setting Beats Per Minute (BPM) and global play/stop controls.
+    Task 3: Create a "Sound Library" Panel: Implement a panel where users can manage their saved Instruments.
 
-        Task 3: Create a "Sound Library" Panel: Implement a panel where users can manage their saved Instruments.
+    Task 4: Implement Grid Logic: The grid will allow users to place notes for their selected sound at different time intervals.
 
-        Task 4: Implement Grid Logic: The grid will allow users to place notes for their selected sound at different time intervals.
+Phase 14: Integration Kit & Offline Export
 
-    Phase 10: Integration Kit & Offline Export
+    Goal: Refine the existing test harness into a polished "Integration Kit" to make using the generated code seamless and add a direct-to-file export option for creating static assets.
 
-        Goal: Refine the existing test harness into a polished "Integration Kit" to make using the generated code seamless and add a direct-to-file export option for creating static assets.
+    Task 1: Refactor Test Harness: Clean up and rename the existing tester directory and its contents to serve as a clear, minimal starter kit.
 
-        Task 1: Refactor Test Harness: Clean up and rename the existing tester directory and its contents to serve as a clear, minimal starter kit.
+    Task 2: Create Integration Guide: Write a simple README.md in the integration kit's directory explaining how to use the generated audio.odin file in a new project.
 
-        Task 2: Create Integration Guide: Write a simple README.md in the integration kit's directory explaining how to use the generated audio.odin file in a new project.
+    Task 3: Implement WAV Export: Enhance the Odin backend with command-line flags (e.g., --output sound.wav) to run in an offline mode.
 
-        Task 3: Implement WAV Export: Enhance the Odin backend with command-line flags (e.g., --output sound.wav) to run in an offline mode.
+    Task 4: Add Export Button to UI: Create an "Export to .wav" button in the frontend that invokes the backend with the new flags.
 
-        Task 4: Add Export Button to UI: Create an "Export to .wav" button in the frontend that invokes the backend with the new flags.
+Phase 15: Web Application Deployment (Future Goal)
 
-    Phase 11: Web Application Deployment (Future Goal)
+    Task 1: Server Scaffolding: Create a Node.js/Express.js server.
 
-        Task 1: Server Scaffolding: Create a Node.js/Express.js server.
+    Task 2: API Endpoint: Create a /api/generate endpoint.
 
-        Task 2: API Endpoint: Create a /api/generate endpoint.
+    Task 3: CLI Wrapper: The endpoint handler will invoke the pre-compiled Linux binary of skald_codegen.
 
-        Task 3: CLI Wrapper: The endpoint handler will invoke the pre-compiled Linux binary of skald_codegen.
+    Task 4: Authentication: Implement a user authentication layer.
 
-        Task 4: Authentication: Implement a user authentication layer.
-
-        Task 5: Deployment Strategy: Define a Dockerfile for deployment.
+    Task 5: Deployment Strategy: Define a Dockerfile for deployment.
 
 6. Storyboard
 
@@ -414,89 +412,99 @@ As a user, I want to hear my graph and save my work.
 ~~SKALD-16: Add play/stop UI controls.~~
 ~~SKALD-17: Implement Save/Load file dialogs.~~
 
-SKALD-E6: Advanced Sound Design & Dynamic Control
+SKALD-E6: Advanced Sound Design & Dynamic Control (COMPLETED)
 
     As a sound designer, I want more building blocks and control to create expressive instruments and effects.
 
-    SKALD-24: Implement ADSR Envelope node.
+    ~~SKALD-24: Implement ADSR Envelope node.~~
+    ~~SKALD-25: Add Noise Generator node (White/Pink).~~
+    ~~SKALD-26: Add Triangle and Square waves to Oscillator.~~
+    ~~SKALD-27: Design and implement "Instrument" wrapper for polyphony.~~
+    ~~SKALD-32: Add UI controls to "expose" a node parameter.~~
+    ~~SKALD-33: Update JSON contract to include exposed_parameters.~~
+    ~~SKALD-34: Update codegen to create public struct fields and set_ functions for exposed parameters.~~
 
-    SKALD-25: Add Noise Generator node (White/Pink).
-
-    SKALD-26: Add Triangle and Square waves to Oscillator.
-
-    SKALD-27: Design and implement "Instrument" wrapper for polyphony.
-
-    SKALD-32: Add UI controls to "expose" a node parameter.
-
-    SKALD-33: Update JSON contract to include exposed_parameters.
-
-    SKALD-34: Update codegen to create public struct fields and set_ functions for exposed parameters.
-
-SKALD-E7: Node Editor Polish
+SKALD-E7: Node Editor Polish (COMPLETED)
 
     As a user, I want to manage multiple nodes at once to speed up my workflow.
 
-    SKALD-35: Implement marquee (drag-to-select) functionality.
+    ~~SKALD-35: Implement marquee (drag-to-select) functionality.~~
+    ~~SKALD-36: Implement deletion of all selected items via keyboard.~~
 
-    SKALD-36: Implement deletion of all selected items via keyboard.
-
-SKALD-E8 (NEW): Future Capabilities
+SKALD-E8: Advanced Node Implementation (Frontend) (COMPLETED)
 
     As a power user, I want a complete suite of tools to create any sound I can imagine.
 
-    SKALD-41: Implement LFO Node.
+    ~~SKALD-41: Implement LFO Node (Frontend).~~
+    ~~SKALD-42: Implement Random/Sample & Hold Node (Frontend).~~
+    ~~SKALD-43: Implement Delay FX Node (Frontend).~~
+    ~~SKALD-44: Implement Reverb FX Node (Frontend).~~
+    ~~SKALD-45: Implement Distortion FX Node (Frontend).~~
+    ~~SKALD-46: Implement Mixer Utility Node (Frontend).~~
+    ~~SKALD-47: Implement Panner Utility Node (Frontend).~~
+    ~~SKALD-48: Implement Node Grouping/Container feature (Frontend).~~
+    ~~SKALD-49: Implement FM Operator Node (Frontend).~~
+    ~~SKALD-50: Implement Wavetable Oscillator Node (Frontend).~~
 
-    SKALD-42: Implement Random/Sample & Hold Node.
+SKALD-E9: UI/UX & Parameter Overhaul (Frontend) (COMPLETED)
 
-    SKALD-43: Implement Delay FX Node.
+    As a sound designer, I want intuitive, context-aware controls to shape my sound with precision.
 
-    SKALD-44: Implement Reverb FX Node.
+    ~~SKALD-62: Implement advanced parameter set in frontend state.~~
+    ~~SKALD-63: Implement context-aware controls (Log/Expo sliders, ADSR editor, XY Pad).~~
+    ~~SKALD-64: Implement core interaction polish (fine-tune, reset).~~
+    ~~SKALD-65: Implement enhanced visual feedback and aesthetics.~~
 
-    SKALD-45: Implement Distortion FX Node.
+SKALD-E10: Bug Squashing (Current Epic)
 
-    SKALD-46: Implement Mixer Utility Node.
+    As a user, I want the application to be stable and for controls to work as expected.
 
-    SKALD-47: Implement Panner Utility Node.
+    SKALD-66: Fix non-functional sliders.
+    SKALD-67: Restore Oscillator node to correct state.
+    SKALD-68: Conduct full regression testing.
 
-    SKALD-48: Implement Node Grouping/Container feature.
+SKALD-E11: Advanced Node Implementation (Backend)
 
-    SKALD-49: Implement FM Operator Node.
+    As a developer, I want the backend to generate code for all advanced nodes.
 
-    SKALD-50: Implement Wavetable Oscillator Node.
+    SKALD-69: Implement Odin codegen for LFO and S&H.
+    SKALD-70: Implement Odin codegen for Delay, Reverb, and Distortion.
+    SKALD-71: Implement Odin codegen for Mixer and Panner.
+    SKALD-72: Implement Odin codegen for FM and Wavetable synthesis.
 
-SKALD-E9 (Formerly E8): Beat Sequencer
+SKALD-E12: Advanced Parameter Implementation (Backend)
+
+    As a developer, I want the backend to support all new advanced parameters.
+
+    SKALD-73: Implement Odin codegen for new ADSR, Oscillator, and effects parameters.
+    SKALD-74: Implement Odin codegen for polyphony, glide, and unison.
+    SKALD-75: Update JSON contract in `CONTRACT.md`.
+
+SKALD-E13: Beat Sequencer
 
     As a musician, I want to arrange my custom sounds into a loop.
 
-    SKALD-51 (from 37): Design and build the Sequencer UI panel.
+    SKALD-76: Design and build the Sequencer UI panel.
+    SKALD-77: Implement BPM and transport controls.
+    SKALD-78: Create a "Sound Library" panel to manage instruments.
+    SKALD-79: Implement the note placement grid and playback logic.
 
-    SKALD-52 (from 38): Implement BPM and transport controls.
-
-    SKALD-53 (from 39): Create a "Sound Library" panel to manage instruments.
-
-    SKALD-54 (from 40): Implement the note placement grid and playback logic.
-
-SKALD-E10 (Formerly E9): Integration Kit & Exporting
+SKALD-E14: Integration Kit & Exporting
 
     As a game developer, I want a simple way to integrate Skald's code and export audio files.
 
-    SKALD-55 (from 41): Refactor the tester directory into a documented integration_kit.
+    SKALD-80: Refactor the tester directory into a documented integration_kit.
+    SKALD-81: Add CLI flags to skald_codegen for offline WAV export.
+    SKALD-82: Add an "Export to .wav" button and logic to the UI.
 
-    SKALD-56 (from 42): Add CLI flags to skald_codegen for offline WAV export.
-
-    SKALD-57 (from 43): Add an "Export to .wav" button and logic to the UI.
-
-SKALD-E11 (Formerly E10): Web App
+SKALD-E15: Web App
 
     As an admin, I want to deploy Skald as a web service.
 
-    SKALD-58 (from 44): Build Express.js server.
-
-    SKALD-59 (from 45): Create /api/generate endpoint.
-
-    SKALD-60 (from 46): Implement user authentication.
-
-    SKALD-61 (from 47): Create Dockerfile for deployment.
+    SKALD-83: Build Express.js server.
+    SKALD-84: Create /api/generate endpoint.
+    SKALD-85: Implement user authentication.
+    SKALD-86: Create Dockerfile for deployment.
 
 7. Build and Deployment Strategy
 

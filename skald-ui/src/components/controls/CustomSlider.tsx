@@ -32,12 +32,13 @@ interface CustomSliderProps {
     min: number;
     max: number;
     value: number;
-    defaultValue: number;
     onChange: (newValue: number) => void;
-    onReset: () => void;
-    scale?: 'log' | 'exp' | 'linear';
-    exponent?: number;
+    scale?: 'log' | 'linear';
     step?: number;
+    defaultValue?: number;
+    onReset?: () => void;
+    exponent?: number;
+    className?: string; // Allow className to be passed
 }
 
 // --- HELPER FUNCTIONS for scaling ---
@@ -50,20 +51,12 @@ const toLogValue = (position: number, min: number, max: number) => {
 };
 
 const fromLogValue = (value: number, min: number, max: number) => {
+    if (value <= 0) return 0; // Avoid log(0)
     const minLog = Math.log(min);
     const maxLog = Math.log(max);
     const scale = (maxLog - minLog) / 100;
     return (Math.log(value) - minLog) / scale;
 };
-
-const toExpValue = (position: number, min: number, max: number, exponent: number) => {
-    return min + (max - min) * Math.pow(position / 100, exponent);
-};
-
-const fromExpValue = (value: number, min: number, max: number, exponent: number) => {
-    return 100 * Math.pow((value - min) / (max - min), 1 / exponent);
-};
-
 
 // --- MAIN COMPONENT ---
 
@@ -71,54 +64,63 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
     min,
     max,
     value,
-    defaultValue,
     onChange,
-    onReset,
     scale = 'linear',
-    exponent = 2,
     step = 0.01,
+    defaultValue = 0,
+    onReset = () => {},
 }) => {
-    const [internalValue, setInternalValue] = useState(value.toString());
+    // Internal state for immediate UI feedback
+    const [localValue, setLocalValue] = useState(value);
+    // Separate state for the text input to allow temporary invalid strings
+    const [textValue, setTextValue] = useState(value.toString());
 
+    // Sync local state if the incoming prop changes
     useEffect(() => {
-        setInternalValue(value.toString());
+        setLocalValue(value);
+        setTextValue(value.toString());
     }, [value]);
 
     const getSliderPosition = useCallback(() => {
-        if (scale === 'log') return fromLogValue(value, min, max);
-        if (scale === 'exp') return fromExpValue(value, min, max, exponent);
-        return ((value - min) / (max - min)) * 100;
-    }, [value, min, max, scale, exponent]);
+        if (scale === 'log') return fromLogValue(localValue, min, max);
+        return ((localValue - min) / (max - min)) * 100;
+    }, [localValue, min, max, scale]);
 
     const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newPosition = parseFloat(e.target.value);
         let newValue: number;
         if (scale === 'log') {
             newValue = toLogValue(newPosition, min, max);
-        } else if (scale === 'exp') {
-            newValue = toExpValue(newPosition, min, max, exponent);
         } else {
             newValue = min + (max - min) * (newPosition / 100);
         }
-        onChange(newValue);
+        // Clamp and format the value to avoid floating point inaccuracies
+        const clampedValue = Math.max(min, Math.min(max, newValue));
+        const finalValue = parseFloat(clampedValue.toPrecision(5));
+        
+        setLocalValue(finalValue);
+        setTextValue(finalValue.toString());
+        onChange(finalValue);
     };
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setInternalValue(e.target.value);
+        setTextValue(e.target.value);
     };
 
     const handleInputBlur = () => {
-        let parsed = parseFloat(internalValue);
-        // Smart parsing for 'k' for thousands
-        if (internalValue.toLowerCase().includes('k')) {
-            parsed = parseFloat(internalValue.replace(/k/i, '')) * 1000;
+        let parsed = parseFloat(textValue);
+        if (textValue.toLowerCase().includes('k')) {
+            parsed = parseFloat(textValue.replace(/k/i, '')) * 1000;
         }
 
         if (isNaN(parsed)) {
-            onChange(defaultValue); // Reset if invalid input
+            setLocalValue(defaultValue);
+            setTextValue(defaultValue.toString());
+            onChange(defaultValue);
         } else {
-            // Clamp the value within min/max bounds
             const clampedValue = Math.max(min, Math.min(max, parsed));
+            setLocalValue(clampedValue);
+            setTextValue(clampedValue.toString());
             onChange(clampedValue);
         }
     };
@@ -128,18 +130,23 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
             handleInputBlur();
             (e.target as HTMLInputElement).blur();
         }
-        // Fine-grained control with Shift + Arrow Keys
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
             const smallStep = step * (e.shiftKey ? 0.1 : 1);
             const direction = e.key === 'ArrowUp' ? 1 : -1;
-            const newValue = Math.max(min, Math.min(max, value + smallStep * direction));
-            onChange(newValue);
+            const newValue = Math.max(min, Math.min(max, localValue + smallStep * direction));
+            const finalValue = parseFloat(newValue.toPrecision(5));
+
+            setLocalValue(finalValue);
+            setTextValue(finalValue.toString());
+            onChange(finalValue);
         }
     };
 
     const handleDoubleClick = (e: React.MouseEvent) => {
         if (e.ctrlKey || e.metaKey) {
+            setLocalValue(defaultValue);
+            setTextValue(defaultValue.toString());
             onReset();
         }
     };
@@ -153,10 +160,11 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
                 value={getSliderPosition()}
                 onChange={handleSliderChange}
                 style={sliderStyles}
+                step="0.1" // Finer control on the range input itself
             />
             <input
-                type="text" // Use text to allow for 'k' input
-                value={internalValue}
+                type="text"
+                value={textValue}
                 onChange={handleInputChange}
                 onBlur={handleInputBlur}
                 onKeyDown={handleInputKeyDown}
@@ -165,3 +173,4 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         </div>
     );
 };
+

@@ -1,0 +1,36 @@
+Phase 9 (NEW): UI/UX & Parameter Overhaul
+
+
+Goal: Evolve the user interface from merely functional to truly intuitive and professional by implementing context-aware controls and expanding the parameter set for deep, expressive sound design.
+
+Task 1: Advanced Parameter Implementation: Integrate the full suite of proposed parameters into both the frontend state and the backend Odin codegen.
+
+ADSR Node: Add Amount/Depth, Velocity Sensitivity, and Curve controls.
+
+Oscillator Node: Add Pulse Width for Square waves and Phase control.
+
+Effect Nodes (Delay, Reverb, etc.): Ensure universal Wet/Dry Mix controls.
+
+LFO/Delay Nodes: Add BPM Sync toggles.
+
+Polyphonic Wrapper: Add Voice Count, Voice Stealing, Glide, and Unison/Detune parameters.
+
+Task 2: Context-Aware UI Controls: Replace generic sliders with controls appropriate for each parameter's function.
+
+Implement Logarithmic Sliders for all frequency (Hz) parameters.
+
+Implement Exponential Sliders for all envelope time (ms) parameters.
+
+Create a BPM-Synced Dropdown/Stepper control that replaces the time/rate slider when sync is enabled.
+
+Design and implement a Graphical ADSR Envelope Editor to replace the four individual sliders for the ADSR node.
+
+Implement an X/Y Pad Control for the Filter node, mapping cutoff frequency to the X-axis and resonance to the Y-axis.
+
+Task 3: Core Interaction Polish: Improve the micro-interactions that define the core user workflow.
+
+Implement Shift + Drag modifier on all sliders and knobs for fine-grained control.
+
+Implement a Double-Click or Ctrl + Click shortcut on all controls to reset them to their default value.
+
+Implement smart text input parsing for frequency fields (e.g., "2k" -> 2000). 

@@ -39,6 +39,7 @@ const handleStyle: React.CSSProperties = {
     border: '2px solid #E0E0E0',
     borderRadius: '50%',
     transform: 'translate(-50%, -50%)',
+    pointerEvents: 'none', // Prevent handle from capturing mouse events
 };
 
 const gridLineStyle: React.CSSProperties = {
@@ -47,7 +48,6 @@ const gridLineStyle: React.CSSProperties = {
 };
 
 // --- HELPER FUNCTIONS ---
-// Reusing the log scale functions from CustomSlider
 const toLogValue = (position: number, min: number, max: number) => {
     const minLog = Math.log(min);
     const maxLog = Math.log(max);
@@ -56,6 +56,7 @@ const toLogValue = (position: number, min: number, max: number) => {
 };
 
 const fromLogValue = (value: number, min: number, max: number) => {
+    if (value <= 0) return 0;
     const minLog = Math.log(min);
     const maxLog = Math.log(max);
     const scale = maxLog - minLog;
@@ -81,59 +82,59 @@ export const XYPad: React.FC<XYPadProps> = ({
 }) => {
     const padRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [localPosition, setLocalPosition] = useState({ x: xValue, y: yValue });
 
-    const getPositionFromValue = () => {
+    useEffect(() => {
+        setLocalPosition({ x: xValue, y: yValue });
+    }, [xValue, yValue]);
+
+    const getPositionFromValue = (valX: number, valY: number) => {
         const xPos = xScale === 'log' 
-            ? fromLogValue(xValue, minX, maxX)
-            : (xValue - minX) / (maxX - minX);
+            ? fromLogValue(valX, minX, maxX)
+            : (valX - minX) / (maxX - minX);
 
         const yPos = yScale === 'log'
-            ? fromLogValue(yValue, minY, maxY)
-            : (yValue - minY) / (maxY - minY);
+            ? fromLogValue(valY, minY, maxY)
+            : (valY - minY) / (maxY - minY);
 
         return {
             x: xPos * width,
-            y: (1 - yPos) * height, // Y is inverted in screen coordinates
+            y: (1 - yPos) * height,
         };
     };
 
-    const handleInteraction = useCallback((e: React.MouseEvent | React.TouchEvent | MouseEvent) => {
+    const handleInteraction = useCallback((clientX: number, clientY: number) => {
         if (!padRef.current) return;
 
         const rect = padRef.current.getBoundingClientRect();
-        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-
         let x = (clientX - rect.left) / width;
-        let y = 1 - ((clientY - rect.top) / height); // Invert Y
+        let y = 1 - ((clientY - rect.top) / height);
         
         x = Math.max(0, Math.min(1, x));
         y = Math.max(0, Math.min(1, y));
 
-        const newXValue = xScale === 'log'
-            ? toLogValue(x, minX, maxX)
-            : minX + x * (maxX - minX);
-        
-        const newYValue = yScale === 'log'
-            ? toLogValue(y, minY, maxY)
-            : minY + y * (maxY - minY);
+        const newXValue = xScale === 'log' ? toLogValue(x, minX, maxX) : minX + x * (maxX - minX);
+        const newYValue = yScale === 'log' ? toLogValue(y, minY, maxY) : minY + y * (maxY - minY);
 
-        onChange({ x: newXValue, y: newYValue });
+        setLocalPosition({ x: newXValue, y: newYValue });
 
-    }, [width, height, minX, maxX, minY, maxY, xScale, yScale, onChange]);
+    }, [width, height, minX, maxX, minY, maxY, xScale, yScale]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
-        handleInteraction(e);
+        handleInteraction(e.clientX, e.clientY);
     };
 
     const handleMouseUp = useCallback(() => {
-        setIsDragging(false);
-    }, []);
+        if (isDragging) {
+            onChange(localPosition);
+            setIsDragging(false);
+        }
+    }, [isDragging, localPosition, onChange]);
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (isDragging) {
-            handleInteraction(e);
+            handleInteraction(e.clientX, e.clientY);
         }
     }, [isDragging, handleInteraction]);
 
@@ -146,7 +147,7 @@ export const XYPad: React.FC<XYPadProps> = ({
         };
     }, [handleMouseMove, handleMouseUp]);
 
-    const pos = getPositionFromValue();
+    const pos = getPositionFromValue(localPosition.x, localPosition.y);
 
     return (
         <div

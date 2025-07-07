@@ -1,4 +1,4 @@
-# **Skald JSON Contract v2.1**
+# **Skald JSON Contract v3.0**
 
 This document defines the official JSON data structure that is passed from a client (like the Skald UI) to the `skald_codegen` Odin backend. The backend consumes this structure from its standard input (stdin).
 
@@ -15,12 +15,12 @@ The top-level object representing the entire audio processing chain.
 
 ## **Object: Node**
 
-Represents a single audio processing unit, like an oscillator, or a complex, encapsulated instrument.
+Represents a single audio processing unit.
 
 | Field        | Type                 | Description                                                                                                                              | Required                         |
 | :----------- | :------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
 | `id`         | Integer              | A unique integer identifier for the node within its current graph scope.                                                                 | Yes                              |
-| `type`       | String               | The type of the node. This determines the code generation logic. See **Node Reference** below for supported types.                     | Yes                              |
+| `type`       | String               | The type of the node. See **Node Reference** below for supported types.                                                                  | Yes                              |
 | `position`   | Object (`Vec2`)      | The `{x, y}` coordinates of the node on the UI canvas. Used by the frontend only.                                                        | Yes                              |
 | `parameters` | Object               | A key-value map of the node's specific parameters. Keys are strings, values can be `string`, `number`, or `boolean`.                      | Yes                              |
 | `subgraph`   | Object (`AudioGraph`) | **If `type` is "Instrument"**, this field contains the complete definition of the instrument's internal graph.                            | Only if `type` is "Instrument"   |
@@ -36,129 +36,169 @@ Represents a directed edge from one node's output port to another node's input p
 | `from_node` | Integer| The `id` of the source node.                                       | Yes      |
 | `from_port` | String | The name of the output port on the source node (e.g., "output").   | Yes      |
 | `to_node`   | Integer| The `id` of the target node.                                       | Yes      |
-| `to_port`   | String | The name of the input port on the target node (e.g., "input").     | Yes      |
+| `to_port`   | String | The name of the input port on the target node (e.g., "input_freq").| Yes      |
 
 ---
 
 ## **Node Reference**
 
-This section details the supported node types and their specific parameters and ports.
+### **Generators**
 
-### **`Oscillator`**
+#### **`Oscillator`**
 Generates a periodic waveform.
 * **Parameters**:
+    * `waveform` (string): `"Sine"`, `"Sawtooth"`, `"Square"`, `"Triangle"`.
     * `frequency` (number): The base frequency in Hz (e.g., `440.0`).
-    * `amplitude` (number): The output amplitude, typically from `0.0` to `1.0`.
-    * `waveform` (string): The shape of the wave. Supported values: `"Sine"`, `"Sawtooth"`, `"Square"`, `"Triangle"`.
+    * `amplitude` (number): The output amplitude, `0.0` to `1.0`.
+    * `pulseWidth` (number): For `"Square"` wave, the duty cycle from `0.01` to `0.99`. (Default: `0.5`).
+    * `phase` (number): The starting phase in degrees, `0` to `360`. (Default: `0`).
 * **Ports**:
-    * Inputs: `input_freq`, `input_amp`
+    * Inputs: `input_freq`, `input_amp`, `input_pulseWidth`
     * Outputs: `output`
 
-### **`ADSR`**
-Shapes the volume of an incoming signal with an Attack-Decay-Sustain envelope. The release is implicit and happens when the note duration ends.
+#### **`Noise`**
+Generates a noise signal.
 * **Parameters**:
-    * `attack` (number): The attack time in seconds (e.g., `0.01`).
-    * `decay` (number): The decay time in seconds (e.g., `0.2`).
-    * `sustain` (number): The sustain level, from `0.0` to `1.0`.
-* **Ports**:
-    * Inputs: `input` (for the audio signal to be shaped)
-    * Outputs: `output`
-
-### **`Noise`**
-Generates a white noise signal.
-* **Parameters**:
-    * `amplitude` (number): The output amplitude, from `0.0` to `1.0`.
+    * `type` (string): `"White"`, `"Pink"`.
+    * `amplitude` (number): The output amplitude, `0.0` to `1.0`.
 * **Ports**:
     * Inputs: `input_amp`
     * Outputs: `output`
 
-### **`Filter`**
-A simple low-pass filter.
+#### **`FMOperator`**
+A sine wave oscillator configured for Frequency Modulation synthesis.
 * **Parameters**:
-    * `cutoff` (number): The cutoff frequency in Hz.
+    * `frequencyRatio` (number): A multiplier for the incoming carrier frequency. (e.g., `2.0`).
+    * `amplitude` (number): The amplitude of the modulating signal.
+* **Ports**:
+    * Inputs: `input_carrier`, `input_mod`
+    * Outputs: `output`
+
+#### **`Wavetable`**
+Plays back a waveform from a lookup table.
+* **Parameters**:
+    * `tableName` (string): The identifier for the wavetable to use.
+    * `frequency` (number): The playback frequency in Hz.
+* **Ports**:
+    * Inputs: `input_freq`, `input_pos` (for wavetable position)
+    * Outputs: `output`
+
+### **Modulators**
+
+#### **`ADSR`**
+Shapes a signal with an Attack-Decay-Sustain-Release envelope.
+* **Parameters**:
+    * `attack` (number): Attack time in seconds (e.g., `0.01`).
+    * `decay` (number): Decay time in seconds (e.g., `0.2`).
+    * `sustain` (number): Sustain level, `0.0` to `1.0`.
+    * `release` (number): Release time in seconds (e.g., `0.5`).
+    * `depth` (number): The overall impact of the envelope, `0.0` to `1.0`. (Default: `1.0`).
+* **Ports**:
+    * Inputs: `input` (signal to shape), `input_gate` (to trigger the envelope)
+    * Outputs: `output`
+
+#### **`LFO`**
+A Low-Frequency Oscillator for creating cyclical modulation.
+* **Parameters**:
+    * `waveform` (string): `"Sine"`, `"Sawtooth"`, `"Square"`, `"Triangle"`.
+    * `frequency` (number): The oscillation rate in Hz.
+    * `amplitude` (number): The output depth, `0.0` to `1.0`.
+    * `bpmSync` (boolean): If true, `frequency` is interpreted as a beat division.
+* **Ports**:
+    * Outputs: `output`
+
+#### **`SampleHold`**
+Generates random values at a specified rate.
+* **Parameters**:
+    * `rate` (number): The rate at which to generate new values in Hz.
+    * `amplitude` (number): The output depth, `0.0` to `1.0`.
+    * `bpmSync` (boolean): If true, `rate` is interpreted as a beat division.
+* **Ports**:
+    * Outputs: `output`
+
+### **Effects**
+
+#### **`Filter`**
+Attenuates specific frequencies of a signal.
+* **Parameters**:
+    * `type` (string): `"LowPass"`, `"HighPass"`, `"BandPass"`, `"Notch"`.
+    * `cutoff` (number): The center/cutoff frequency in Hz.
+    * `resonance` (number): The emphasis (Q factor) at the cutoff frequency.
+* **Ports**:
+    * Inputs: `input`, `input_cutoff`, `input_resonance`
+    * Outputs: `output`
+
+#### **`Delay`**
+Creates echoes of an input signal.
+* **Parameters**:
+    * `delayTime` (number): The delay time in seconds.
+    * `feedback` (number): The amount of output fed back into the input, `0.0` to `1.0`.
+    * `wetDryMix` (number): The balance between the original and delayed signal, `0.0` to `1.0`.
+    * `bpmSync` (boolean): If true, `delayTime` is interpreted as a beat division.
 * **Ports**:
     * Inputs: `input`
     * Outputs: `output`
 
-### **`Instrument`**
-A special composite node that encapsulates a subgraph.
+#### **`Reverb`**
+Simulates the acoustic reflections of a space.
 * **Parameters**:
-    * `name` (string): A user-defined name for the instrument.
+    * `roomSize` (number): The perceived size of the space, `0.0` to `1.0`.
+    * `damping` (number): How quickly high frequencies fade, `0.0` to `1.0`.
+    * `wetDryMix` (number): The balance between the original and reverberated signal, `0.0` to `1.0`.
 * **Ports**:
-    * Inputs/Outputs: Defined dynamically by the `InstrumentInput` and `InstrumentOutput` nodes within its `subgraph`.
-
-### **`GraphInput`** (For use inside Instrument subgraphs)
-Defines an input port for a parent `Instrument` node.
-* **Parameters**:
-    * `name` (string): The name of the port to expose on the parent Instrument (e.g., `"input_amp"`).
-* **Ports**:
+    * Inputs: `input`
     * Outputs: `output`
 
-### **`GraphOutput`**
+#### **`Distortion`**
+Adds harmonic content to a signal.
+* **Parameters**:
+    * `drive` (number): The amount of distortion, `0.0` to `1.0`.
+    * `shape` (string): The type of distortion curve (e.g., `"SoftClip"`, `"HardClip"`).
+* **Ports**:
+    * Inputs: `input`
+    * Outputs: `output`
+
+### **Utilities**
+
+#### **`Mixer`**
+Combines multiple signals.
+* **Parameters**:
+    * `input_1_gain` (number): Gain for input 1, `0.0` to `1.0`.
+    * `input_2_gain` (number): Gain for input 2, `0.0` to `1.0`.
+    * `...`
+    * `input_N_gain` (number): Gain for input N.
+* **Ports**:
+    * Inputs: `input_1`, `input_2`, `...`, `input_N`
+    * Outputs: `output`
+
+#### **`Panner`**
+Positions a signal in the stereo field.
+* **Parameters**:
+    * `pan` (number): Stereo position, `-1.0` (left) to `1.0` (right).
+* **Ports**:
+    * Inputs: `input`, `input_pan`
+    * Outputs: `output`
+
+#### **`GraphOutput`**
 Represents the final output of a graph or subgraph.
 * **Parameters**: None.
 * **Ports**:
     * Inputs: `input`
 
----
+### **Composition**
 
-## **Example: Working Instrument**
-This example shows a top-level graph with a single `Instrument` node connected to the final output. The instrument itself contains an Oscillator connected to an ADSR envelope. This structure is correctly parsed by the current `main.odin` code generator.
+#### **`Instrument`**
+A special composite node that encapsulates a subgraph.
+* **Parameters**:
+    * `name` (string): A user-defined name for the instrument.
+    * `polyphony` (integer): Number of voices that can play simultaneously. (Default: `1`).
+    * `glideTime` (number): Time in seconds to slide between notes. (Default: `0`).
+* **Ports**:
+    * Inputs/Outputs: Defined dynamically by `GraphInput` and `GraphOutput` nodes within its `subgraph`.
 
-```json
-{
-  "nodes": [
-    {
-      "id": 4,
-      "type": "Instrument",
-      "position": { "x": 300, "y": 150 },
-      "parameters": {
-        "name": "SimpleADSRSynth"
-      },
-      "subgraph": {
-        "nodes": [
-          {
-            "id": 1,
-            "type": "Oscillator",
-            "position": { "x": 100, "y": 100 },
-            "parameters": {
-              "frequency": 440.0,
-              "amplitude": 0.5,
-              "waveform": "Sawtooth"
-            }
-          },
-          {
-            "id": 2,
-            "type": "ADSR",
-            "position": { "x": 300, "y": 100 },
-            "parameters": {
-              "attack": 0.05,
-              "decay": 0.15,
-              "sustain": 0.44
-            }
-          },
-          {
-            "id": 3,
-            "type": "GraphOutput",
-            "position": { "x": 500, "y": 100 },
-            "parameters": {}
-          }
-        ],
-        "connections": [
-          { "from_node": 1, "from_port": "output", "to_node": 2, "to_port": "input" },
-          { "from_node": 2, "from_port": "output", "to_node": 3, "to_port": "input" }
-        ]
-      }
-    },
-    {
-        "id": 5,
-        "type": "GraphOutput",
-        "position": { "x": 500, "y": 150 },
-        "parameters": {}
-    }
-  ],
-  "connections": [
-      { "from_node": 4, "from_port": "output", "to_node": 5, "to_port": "input" }
-  ]
-}
-
+#### **`GraphInput`** (For use inside Instrument subgraphs)
+Defines an input port for a parent `Instrument` node.
+* **Parameters**:
+    * `name` (string): The name of the port to expose on the parent Instrument (e.g., `"input_amp"`).
+* **Ports**:
+    * Outputs: `output`
