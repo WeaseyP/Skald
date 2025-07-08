@@ -44,6 +44,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "reactflow": "^11.11.4"
+    "reactflow": "^11.11.4",
+    "use-deep-compare-effect": "^1.8.1"
   }
 }

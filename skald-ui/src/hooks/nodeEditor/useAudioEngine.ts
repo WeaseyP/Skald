@@ -7,7 +7,9 @@
 ================================================================================
 */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge, Connection } from 'reactflow';
+import useDeepCompareEffect from 'use-deep-compare-effect';
+
 
 // --- AUDIO WORKLET PROCESSORS (Strings remain unchanged) ---
 
@@ -113,75 +115,61 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     const audioNodes = useRef<Map<string, AudioNode>>(new Map());
     const adsrNodes = useRef<Map<string, { gainNode: GainNode, data: any }>>(new Map());
     const loopIntervalId = useRef<NodeJS.Timeout | null>(null);
+    const prevGraphState = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
 
-    // --- ADSR Triggering Logic ---
+    // --- HELPER FUNCTIONS ---
     const triggerAdsr = (gainNode: GainNode, data: any, startTime: number) => {
-        const { attack = 0.1, decay = 0.2, sustain = 0.5, release = 1.0 } = data;
+        const { attack = 0.1, decay = 0.2, sustain = 0.5 } = data;
         gainNode.gain.cancelScheduledValues(startTime);
         gainNode.gain.setValueAtTime(0, startTime);
         gainNode.gain.linearRampToValueAtTime(1, startTime + attack);
         gainNode.gain.linearRampToValueAtTime(sustain, startTime + attack + decay);
     };
-    
+
     const releaseAdsr = (gainNode: GainNode, data: any, startTime: number) => {
         const { release = 1.0 } = data;
         gainNode.gain.cancelScheduledValues(startTime);
-        // Start the release from the current value
         gainNode.gain.setTargetAtTime(0, startTime, release / 5 + 0.001);
     };
 
-    // --- Sequencer Logic ---
-    const sequencerTick = useCallback(() => {
-        if (!audioContext.current || !isLooping) return;
-        
-        adsrNodes.current.forEach(({ gainNode, data }) => {
-            triggerAdsr(gainNode, data, audioContext.current!.currentTime);
-        });
-    }, [isLooping]);
-
-    const startSequencer = useCallback(() => {
-        if (loopIntervalId.current) clearInterval(loopIntervalId.current);
-        const loopDuration = (60 / bpm) * 4 * 1000; // 4 beats
-        sequencerTick(); // Trigger immediately on start
-        loopIntervalId.current = setInterval(sequencerTick, loopDuration);
-    }, [bpm, sequencerTick]);
-
-    const stopSequencer = () => {
-        if (loopIntervalId.current) {
-            clearInterval(loopIntervalId.current);
-            loopIntervalId.current = null;
+    const connectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge | Connection) => {
+        try {
+            if (targetNode instanceof AudioWorkletNode && edge.targetHandle?.startsWith('input_')) {
+                const paramName = edge.targetHandle.substring(6);
+                const param = targetNode.parameters.get(paramName);
+                if(param) sourceNode.connect(param);
+            } else if (targetNode[edge.targetHandle as keyof AudioNode] instanceof AudioParam) {
+                sourceNode.connect(targetNode[edge.targetHandle as keyof AudioNode]);
+            } else {
+                sourceNode.connect(targetNode);
+            }
+        } catch (e) {
+            console.error(`Failed to connect ${edge.source} to ${edge.target}`, e);
+        }
+    };
+    
+    const disconnectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge | Connection) => {
+        try {
+             if (targetNode instanceof AudioWorkletNode && edge.targetHandle?.startsWith('input_')) {
+                const paramName = edge.targetHandle.substring(6);
+                 const param = targetNode.parameters.get(paramName);
+                if(param) sourceNode.disconnect(param);
+            } else if (targetNode[edge.targetHandle as keyof AudioNode] instanceof AudioParam) {
+                sourceNode.disconnect(targetNode[edge.targetHandle as keyof AudioNode]);
+            } else {
+                sourceNode.disconnect(targetNode);
+            }
+        } catch (e) {
+            // Errors are expected here if a node was deleted, so we can ignore them.
         }
     };
 
-    // --- Main Play/Stop Controls ---
-    const handlePlay = useCallback(async () => {
-        if (isPlaying) return;
-
-        const context = new AudioContext();
-        audioContext.current = context;
-        audioNodes.current.clear();
-        adsrNodes.current.clear();
-
-        try {
-            const sampleHoldBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
-            const wavetableBlob = new Blob([wavetableProcessorString], { type: 'application/javascript' });
-            await Promise.all([
-                context.audioWorklet.addModule(URL.createObjectURL(sampleHoldBlob)),
-                context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob))
-            ]);
-        } catch (e) {
-            console.error('Error loading AudioWorklet:', e);
-            audioContext.current = null;
-            return;
-        }
-
-        // Create all nodes
-        nodes.forEach(node => {
-            let audioNode: AudioNode | null = null;
+    const createAudioNode = (context: AudioContext, node: Node): AudioNode | null => {
+         let audioNode: AudioNode | null = null;
             switch (node.type) {
                 case 'adsr':
                     const gainNode = context.createGain();
-                    gainNode.gain.setValueAtTime(0, context.currentTime); // Start silent
+                    gainNode.gain.setValueAtTime(0, context.currentTime);
                     adsrNodes.current.set(node.id, { gainNode, data: node.data });
                     audioNode = gainNode;
                     break;
@@ -208,57 +196,82 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     wtNode.parameters.get('position')?.setValueAtTime(node.data.position || 0, context.currentTime);
                     audioNode = wtNode;
                     break;
+                case 'filter':
+                    const filter = context.createBiquadFilter();
+                    filter.type = (node.data.type || 'lowpass').toLowerCase() as BiquadFilterType;
+                    filter.frequency.setValueAtTime(node.data.cutoff || 800, context.currentTime);
+                    filter.Q.setValueAtTime(node.data.resonance || 1.0, context.currentTime);
+                    audioNode = filter;
+                    break;
+                case 'lfo':
+                     const lfo = context.createOscillator();
+                     lfo.type = (node.data.waveform || 'sine').toLowerCase() as OscillatorType;
+                     lfo.frequency.setValueAtTime(node.data.frequency || 5.0, context.currentTime);
+                     lfo.start();
+                     const lfoGain = context.createGain();
+                     lfoGain.gain.setValueAtTime(node.data.amplitude || 1.0, context.currentTime);
+                     lfo.connect(lfoGain);
+                     audioNode = lfoGain;
+                     break;
+                 case 'output':
+                    audioNode = context.destination;
+                    break;
                 default:
-                    const placeholder = context.createGain();
-                    audioNode = placeholder;
+                    audioNode = context.createGain();
                     break;
             }
-            if (audioNode) {
-                audioNodes.current.set(node.id, audioNode);
-            }
+        return audioNode;
+    }
+
+    // --- Sequencer Logic ---
+    const sequencerTick = useCallback(() => {
+        if (!audioContext.current || !isLooping) return;
+        adsrNodes.current.forEach(({ gainNode, data }) => {
+            triggerAdsr(gainNode, data, audioContext.current!.currentTime);
+        });
+    }, [isLooping]);
+
+    const startSequencer = useCallback(() => {
+        if (loopIntervalId.current) clearInterval(loopIntervalId.current);
+        const loopDuration = (60 / bpm) * 4 * 1000; // 4 beats
+        sequencerTick(); 
+        loopIntervalId.current = setInterval(sequencerTick, loopDuration);
+    }, [bpm, sequencerTick]);
+
+    const stopSequencer = () => {
+        if (loopIntervalId.current) {
+            clearInterval(loopIntervalId.current);
+            loopIntervalId.current = null;
+        }
+    };
+
+    // --- Main Play/Stop Controls ---
+    const handlePlay = useCallback(async () => {
+        if (isPlaying) return;
+        const context = new AudioContext();
+        audioContext.current = context;
+        try {
+            const sampleHoldBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
+            const wavetableBlob = new Blob([wavetableProcessorString], { type: 'application/javascript' });
+            await Promise.all([
+                context.audioWorklet.addModule(URL.createObjectURL(sampleHoldBlob)),
+                context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob))
+            ]);
+        } catch (e) { console.error('Error loading AudioWorklet:', e); return; }
+
+        nodes.forEach(node => {
+            const audioNode = createAudioNode(context, node);
+            if(audioNode) audioNodes.current.set(node.id, audioNode);
         });
         
-        // Connect all nodes
         edges.forEach(edge => {
             const sourceNode = audioNodes.current.get(edge.source);
-            const targetNode: any = audioNodes.current.get(edge.target);
-            if (sourceNode && targetNode) {
-                try {
-                    if (targetNode instanceof AudioWorkletNode && edge.targetHandle?.startsWith('input_')) {
-                        const paramName = edge.targetHandle.substring(6);
-                        const param = targetNode.parameters.get(paramName);
-                        if(param) sourceNode.connect(param);
-                    } else if (targetNode[edge.targetHandle as keyof AudioNode] instanceof AudioParam) {
-                        sourceNode.connect(targetNode[edge.targetHandle as keyof AudioNode]);
-                    } else {
-                        sourceNode.connect(targetNode);
-                    }
-                } catch (e) {
-                    console.error(`Failed to connect ${edge.source} to ${edge.target}`, e);
-                }
-            }
+            const targetNode = audioNodes.current.get(edge.target);
+            if(sourceNode && targetNode) connectNodes(sourceNode, targetNode, edge);
         });
-
-        // Connect the final node to the destination
-        const outputNode = audioNodes.current.get(nodes.find(n => n.type === 'output')?.id || '');
-        if (outputNode) {
-            const finalNode = audioNodes.current.get(edges.find(e => e.target === nodes.find(n => n.type === 'output')?.id)?.source || '');
-            if (finalNode) {
-                finalNode.connect(context.destination);
-            }
-        }
         
         setIsPlaying(true);
-        if (isLooping) {
-            startSequencer();
-        } else {
-            // Trigger one-shot sounds if not looping
-            adsrNodes.current.forEach(({ gainNode, data }) => {
-                triggerAdsr(gainNode, data, context.currentTime);
-            });
-        }
-
-    }, [nodes, edges, isLooping, bpm, startSequencer]);
+    }, [nodes, edges]);
 
     const handleStop = useCallback(() => {
         stopSequencer();
@@ -267,10 +280,98 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         audioContext.current.close().then(() => {
             setIsPlaying(false);
             audioContext.current = null;
+            audioNodes.current.clear();
+            adsrNodes.current.clear();
         });
     }, [isPlaying]);
 
-    // Effect to start/stop the sequencer when the loop toggle changes
+    // --- LIVE UPDATE ENGINE ---
+    useDeepCompareEffect(() => {
+        if (!isPlaying || !audioContext.current) {
+            prevGraphState.current = { nodes, edges };
+            return;
+        }
+        
+        const { nodes: prevNodes, edges: prevEdges } = prevGraphState.current;
+        const context = audioContext.current;
+
+        // --- Node Diffing ---
+        const prevNodeIds = new Set(prevNodes.map(n => n.id));
+        const currentNodeIds = new Set(nodes.map(n => n.id));
+
+        // Added nodes
+        nodes.forEach(node => {
+            if (!prevNodeIds.has(node.id)) {
+                const newAudioNode = createAudioNode(context, node);
+                if (newAudioNode) audioNodes.current.set(node.id, newAudioNode);
+            }
+        });
+
+        // Removed nodes
+        prevNodes.forEach(node => {
+            if (!currentNodeIds.has(node.id)) {
+                const audioNode = audioNodes.current.get(node.id);
+                if (audioNode) {
+                    audioNode.disconnect();
+                    audioNodes.current.delete(node.id);
+                    if (node.type === 'adsr') adsrNodes.current.delete(node.id);
+                }
+            }
+        });
+
+        // --- Edge Diffing ---
+        const prevEdgeIds = new Set(prevEdges.map(e => e.id));
+        const currentEdgeIds = new Set(edges.map(e => e.id));
+
+        // Added edges
+        edges.forEach(edge => {
+            if (!prevEdgeIds.has(edge.id)) {
+                const sourceNode = audioNodes.current.get(edge.source);
+                const targetNode = audioNodes.current.get(edge.target);
+                if (sourceNode && targetNode) connectNodes(sourceNode, targetNode, edge);
+            }
+        });
+
+        // Removed edges
+        prevEdges.forEach(edge => {
+            if (!currentEdgeIds.has(edge.id)) {
+                const sourceNode = audioNodes.current.get(edge.source);
+                const targetNode = audioNodes.current.get(edge.target);
+                if (sourceNode && targetNode) disconnectNodes(sourceNode, targetNode, edge);
+            }
+        });
+
+
+        // --- Parameter Updates ---
+        nodes.forEach(node => {
+            const liveNode = audioNodes.current.get(node.id);
+            if (!liveNode) return;
+
+            const now = context.currentTime;
+            const rampTime = 0.02;
+
+            if (liveNode instanceof OscillatorNode) {
+                liveNode.frequency.setTargetAtTime(node.data.frequency, now, rampTime);
+            } else if (liveNode instanceof BiquadFilterNode) {
+                liveNode.frequency.setTargetAtTime(node.data.cutoff, now, rampTime);
+                liveNode.Q.setTargetAtTime(node.data.resonance, now, rampTime);
+            } else if (liveNode instanceof GainNode && node.type === 'adsr') {
+                const adsr = adsrNodes.current.get(node.id);
+                if (adsr) adsr.data = node.data;
+            } else if (liveNode instanceof AudioWorkletNode) {
+                if (node.type === 'wavetable') {
+                    liveNode.parameters.get('frequency')?.setTargetAtTime(node.data.frequency, now, rampTime);
+                    liveNode.parameters.get('position')?.setTargetAtTime(node.data.position, now, rampTime);
+                }
+            }
+        });
+
+        // Update the previous state for the next render
+        prevGraphState.current = { nodes, edges };
+
+    }, [nodes, edges, isPlaying]);
+
+
     useEffect(() => {
         if (isPlaying && isLooping) {
             startSequencer();
@@ -279,11 +380,8 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         }
     }, [isPlaying, isLooping, startSequencer]);
 
-    // Cleanup on unmount
     useEffect(() => {
-        return () => {
-            if (isPlaying) handleStop();
-        };
+        return () => { if (isPlaying) handleStop(); };
     }, [isPlaying, handleStop]);
 
     return { isPlaying, handlePlay, handleStop };
