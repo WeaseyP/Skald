@@ -61,6 +61,11 @@ const secondaryButtonStyles: React.CSSProperties = {
     background: '#4A5568',
 };
 
+const activeLoopButtonStyles: React.CSSProperties = {
+    ...buttonStyles,
+    background: '#2F855A', // A green color to indicate it's active
+};
+
 const disabledButtonStyles: React.CSSProperties = {
     ...buttonStyles,
     background: '#4A5568',
@@ -95,6 +100,8 @@ interface SidebarProps {
     canCreateInstrument: boolean;
     bpm: number;
     onBpmChange: (newBpm: number) => void;
+    isLooping: boolean;
+    onLoopToggle: () => void;
 }
 
 
@@ -112,6 +119,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     canCreateInstrument,
     bpm,
     onBpmChange,
+    isLooping,
+    onLoopToggle,
 }) => {
 
     const onDragStart = (event: React.DragEvent, nodeType: string) => {
@@ -144,6 +153,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 ) : (
                     <button style={{...secondaryButtonStyles, background: '#C53030'}} onClick={onStop}>Stop</button>
                 )}
+                <button 
+                    style={isLooping ? activeLoopButtonStyles : secondaryButtonStyles} 
+                    onClick={onLoopToggle}
+                >
+                    {isLooping ? 'Looping' : 'Loop'}
+                </button>
                 <button style={secondaryButtonStyles} onClick={onSave}>Save</button>
                 <button style={secondaryButtonStyles} onClick={onLoad}>Load</button>
             </div>

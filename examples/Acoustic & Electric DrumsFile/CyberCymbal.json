@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    { "id": "1", "type": "noise", "position": { "x": 100, "y": 200 }, "data": { "label": "Metallic Noise", "type": "White" } },
+    { "id": "2", "type": "filter", "position": { "x": 350, "y": 200 }, "data": { "label": "High Pass", "type": "Highpass", "cutoff": 5000, "resonance": 0.8 } },
+    { "id": "3", "type": "adsr", "position": { "x": 600, "y": 200 }, "data": { "label": "Cymbal Env", "attack": 0.01, "decay": 1.5, "sustain": 0.2, "release": 0.8 } },
+    { "id": "4", "type": "reverb", "position": { "x": 850, "y": 200 }, "data": { "label": "Space", "mix": 0.3 } },
+    { "id": "5", "type": "output", "position": { "x": 1100, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "1", "sourceHandle": "output", "target": "2", "targetHandle": "input", "id": "edge_1" },
+    { "source": "2", "sourceHandle": "output", "target": "3", "targetHandle": "input", "id": "edge_2" },
+    { "source": "3", "sourceHandle": "output", "target": "4", "targetHandle": "input", "id": "edge_3" },
+    { "source": "4", "sourceHandle": "output", "target": "5", "targetHandle": "input", "id": "edge_4" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    { "id": "1", "type": "oscillator", "position": { "x": 250, "y": 250 }, "data": { "label": "Body", "waveform": "Sine", "frequency": 120 } },
+    { "id": "2", "type": "adsr", "position": { "x": 50, "y": 100 }, "data": { "label": "Pitch Env", "attack": 0.001, "decay": 0.05, "sustain": 0, "release": 0, "amount": 80 } },
+    { "id": "3", "type": "adsr", "position": { "x": 500, "y": 250 }, "data": { "label": "Volume Env", "attack": 0.001, "decay": 0.2, "sustain": 0, "release": 0.1 } },
+    { "id": "4", "type": "distortion", "position": { "x": 750, "y": 250 }, "data": { "label": "Punch", "drive": 5 } },
+    { "id": "5", "type": "output", "position": { "x": 1000, "y": 250 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "2", "sourceHandle": "output", "target": "1", "targetHandle": "input_freq", "id": "edge_1" },
+    { "source": "1", "sourceHandle": "output", "target": "3", "targetHandle": "input", "id": "edge_2" },
+    { "source": "3", "sourceHandle": "output", "target": "4", "targetHandle": "input", "id": "edge_3" },
+    { "source": "4", "sourceHandle": "output", "target": "5", "targetHandle": "input", "id": "edge_4" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

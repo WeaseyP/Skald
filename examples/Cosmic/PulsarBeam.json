@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    { "id": "1", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Beam", "waveform": "Square", "frequency": 1000 } },
+    { "id": "2", "type": "lfo", "position": { "x": 350, "y": 50 }, "data": { "label": "Doppler Shift", "waveform": "Sine", "frequency": 2 } },
+    { "id": "3", "type": "delay", "position": { "x": 350, "y": 200 }, "data": { "label": "Echoes", "delayTime": 0.1, "feedback": 0.8, "mix": 1.0 } },
+    { "id": "4", "type": "output", "position": { "x": 600, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "1", "sourceHandle": "output", "target": "3", "targetHandle": "input", "id": "edge_1" },
+    { "source": "2", "sourceHandle": "output", "target": "3", "targetHandle": "input_delayTime", "id": "edge_2" },
+    { "source": "3", "sourceHandle": "output", "target": "4", "targetHandle": "input", "id": "edge_3" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}
+

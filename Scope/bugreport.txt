@@ -1,3 +1,0 @@
-Front End:
-Sliders currently don't slide, no errors or warnings to report. 
-Oscillator node was accidently changed into something completely different. 

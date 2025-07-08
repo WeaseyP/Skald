@@ -8,7 +8,7 @@
 ================================================================================
 */
 import React, { useMemo, useRef, useState } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowInstance, ReactFlowProvider } from 'reactflow';
+import ReactFlow, { Background, Controls, ReactFlowInstance, ReactFlowProvider, Node } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 // Import your components
@@ -54,11 +54,32 @@ const parameterPanelStyles: React.CSSProperties = {
     borderLeft: '1px solid #333',
 };
 
+// Define nodeTypes outside the component to prevent re-creation on every render.
+const nodeTypes = { 
+    oscillator: OscillatorNode,
+    filter: FilterNode,
+    output: GraphOutputNode,
+    noise: NoiseNode,
+    adsr: ADSRNode,
+    lfo: LFONode, 
+    instrument: InstrumentNode,
+    sampleHold: SampleHoldNode,
+    delay: DelayNode,
+    reverb: ReverbNode,
+    distortion: DistortionNode,
+    mixer: MixerNode,
+    panner: PannerNode,
+    group: GroupNode,
+    fmOperator: FmOperatorNode,
+    wavetable: WavetableNode,
+};
 
 const EditorLayout = () => {
     const reactFlowWrapper = useRef(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+    const [bpm, setBpm] = useState(120);
+    const [isLooping, setIsLooping] = useState(false); // State for the loop toggle
     
     const {
         nodes,
@@ -82,31 +103,10 @@ const EditorLayout = () => {
         handleCreateGroup,
     } = useGraphState();
 
-    const { isPlaying, handlePlay, handleStop } = useAudioEngine(nodes, edges);
-    const { handleSave, handleLoad } = useFileIO(reactFlowInstance, setNodes, setEdges, () => {}, () => {}); // Pass dummy history setters for now
-
-    const nodeTypes = useMemo(() => ({ 
-        oscillator: OscillatorNode,
-        filter: FilterNode,
-        output: GraphOutputNode,
-        noise: NoiseNode,
-        adsr: ADSRNode,
-        lfo: LFONode, 
-        instrument: InstrumentNode,
-        sampleHold: SampleHoldNode,
-        delay: DelayNode,
-        reverb: ReverbNode,
-        distortion: DistortionNode,
-        mixer: MixerNode,
-        panner: PannerNode,
-        group: GroupNode,
-        fmOperator: FmOperatorNode,
-        wavetable: WavetableNode,
-    }), []);
+    const { isPlaying, handlePlay, handleStop } = useAudioEngine(nodes, edges, isLooping, bpm);
+    const { handleSave, handleLoad } = useFileIO(reactFlowInstance, setNodes, setEdges, () => {}, () => {}); 
 
     const handleGenerate = async () => {
-        // This function can remain here or be moved to its own hook if it grows.
-        // For now, keeping it here is fine.
         if (nodes.length === 0) {
             console.warn("Graph is empty. Add some nodes first.");
             return;
@@ -212,6 +212,10 @@ const EditorLayout = () => {
                     onCreateInstrument={handleCreateInstrument}
                     onCreateGroup={handleCreateGroup}
                     canCreateInstrument={selectedNodesForGrouping.length > 1}
+                    bpm={bpm}
+                    onBpmChange={setBpm}
+                    isLooping={isLooping}
+                    onLoopToggle={() => setIsLooping(!isLooping)}
                 />
             </div>
             <div style={mainCanvasStyles} ref={reactFlowWrapper}>
@@ -242,6 +246,7 @@ const EditorLayout = () => {
                         onUpdateNode={updateNodeData}
                         allNodes={nodes}
                         allEdges={edges}
+                        bpm={bpm}
                     />
                 )}
             </div>

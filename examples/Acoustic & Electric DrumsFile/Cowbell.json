@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    { "id": "1", "type": "oscillator", "position": { "x": 100, "y": 150 }, "data": { "label": "Tone 1", "waveform": "Square", "frequency": 554.37 } },
+    { "id": "2", "type": "oscillator", "position": { "x": 100, "y": 350 }, "data": { "label": "Tone 2", "waveform": "Square", "frequency": 830.61 } },
+    { "id": "3", "type": "mixer", "position": { "x": 350, "y": 250 }, "data": { "label": "Mixer" } },
+    { "id": "4", "type": "filter", "position": { "x": 600, "y": 250 }, "data": { "label": "Band Pass", "type": "Bandpass", "cutoff": 1500, "resonance": 0.1 } },
+    { "id": "5", "type": "adsr", "position": { "x": 850, "y": 250 }, "data": { "label": "Decay Env", "attack": 0.001, "decay": 0.1, "sustain": 0, "release": 0.05 } },
+    { "id": "6", "type": "output", "position": { "x": 1100, "y": 250 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "1", "sourceHandle": "output", "target": "3", "targetHandle": "input_1", "id": "edge_1" },
+    { "source": "2", "sourceHandle": "output", "target": "3", "targetHandle": "input_2", "id": "edge_2" },
+    { "source": "3", "sourceHandle": "output", "target": "4", "targetHandle": "input", "id": "edge_3" },
+    { "source": "4", "sourceHandle": "output", "target": "5", "targetHandle": "input", "id": "edge_4" },
+    { "source": "5", "sourceHandle": "output", "target": "6", "targetHandle": "input", "id": "edge_5" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

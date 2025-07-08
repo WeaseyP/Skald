@@ -6,7 +6,7 @@
 | React Flow graph itself, including nodes, edges, undo/redo, and grouping.    |
 ================================================================================
 */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
     Node,
     Edge,
@@ -42,6 +42,15 @@ export const useGraphState = () => {
     const isRestoring = useRef(false);
 
     const [isNamePromptVisible, setIsNamePromptVisible] = useState(false);
+
+    useEffect(() => {
+        if (selectedNode) {
+            const updatedSelectedNode = nodes.find(node => node.id === selectedNode.id);
+            if (updatedSelectedNode) {
+                setSelectedNode(updatedSelectedNode);
+            }
+        }
+    }, [nodes, selectedNode?.id]);
 
     const saveStateForUndo = useCallback(() => {
         if (isRestoring.current) return;
@@ -112,9 +121,10 @@ export const useGraphState = () => {
             case 'wavetable':
                 newNode = { id: newId, type, position, data: { 
                     label: `Wavetable`,
-                    table: 'Sine',
+                    tableName: 'Sine',
+                    frequency: 440,
                     position: 0,
-                    exposedParameters: ['position']
+                    exposedParameters: ['frequency', 'position']
                 }};
                 break;
             case 'sampleHold':
@@ -122,7 +132,9 @@ export const useGraphState = () => {
                     label: `S & H`,
                     rate: 10.0,
                     amplitude: 1.0,
-                    exposedParameters: ['rate']
+                    bpmSync: false,
+                    syncRate: '1/8',
+                    exposedParameters: ['rate', 'amplitude']
                 }};
                 break;
             case 'lfo':
@@ -132,6 +144,7 @@ export const useGraphState = () => {
                     frequency: 5.0,
                     amplitude: 1.0,
                     bpmSync: false,
+                    syncRate: '1/4',
                     exposedParameters: ['frequency', 'amplitude']
                 }};
                 break;
@@ -185,6 +198,7 @@ export const useGraphState = () => {
                     feedback: 0.5,
                     mix: 0.5,
                     bpmSync: false,
+                    syncRate: '1/8',
                     exposedParameters: ['delayTime', 'feedback', 'mix']
                 }};
                 break;

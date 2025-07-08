@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    { "id": "1", "type": "oscillator", "position": { "x": 100, "y": 100 }, "data": { "label": "Root (C4)", "waveform": "Sine", "frequency": 261.63 } },
+    { "id": "2", "type": "oscillator", "position": { "x": 100, "y": 250 }, "data": { "label": "Third (E4)", "waveform": "Sine", "frequency": 329.63 } },
+    { "id": "3", "type": "oscillator", "position": { "x": 100, "y": 400 }, "data": { "label": "Fifth (G4)", "waveform": "Sine", "frequency": 392.00 } },
+    { "id": "4", "type": "mixer", "position": { "x": 350, "y": 250 }, "data": { "label": "Chord Mixer" } },
+    { "id": "5", "type": "adsr", "position": { "x": 600, "y": 250 }, "data": { "label": "Piano Env", "attack": 0.01, "decay": 0.4, "sustain": 0.1, "release": 0.3 } },
+    { "id": "6", "type": "output", "position": { "x": 850, "y": 250 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "1", "sourceHandle": "output", "target": "4", "targetHandle": "input_1", "id": "edge_1" },
+    { "source": "2", "sourceHandle": "output", "target": "4", "targetHandle": "input_2", "id": "edge_2" },
+    { "source": "3", "sourceHandle": "output", "target": "4", "targetHandle": "input_3", "id": "edge_3" },
+    { "source": "4", "sourceHandle": "output", "target": "5", "targetHandle": "input", "id": "edge_4" },
+    { "source": "5", "sourceHandle": "output", "target": "6", "targetHandle": "input", "id": "edge_5" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}
