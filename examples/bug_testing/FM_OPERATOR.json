@@ -1,0 +1,176 @@
+{
+  "nodes": [
+    {
+      "id": "5",
+      "type": "output",
+      "position": {
+        "x": 886.75,
+        "y": 1079.75
+      },
+      "data": {
+        "label": "Output"
+      },
+      "width": 150,
+      "height": 60,
+      "positionAbsolute": {
+        "x": 886.75,
+        "y": 1079.75
+      }
+    },
+    {
+      "id": "7",
+      "type": "instrument",
+      "position": {
+        "x": 696.4166666666666,
+        "y": 704.4166666666666
+      },
+      "data": {
+        "name": "FM",
+        "label": "FM",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [
+          "output"
+        ],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "lfo",
+              "position": {
+                "x": 433.75,
+                "y": 626.75
+              },
+              "data": {
+                "label": "LFO",
+                "waveform": "Sine",
+                "frequency": 5,
+                "amplitude": 1,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ]
+              },
+              "width": 182,
+              "height": 43,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 433.75,
+                "y": 626.75
+              }
+            },
+            {
+              "id": "2",
+              "type": "noise",
+              "position": {
+                "x": 940.75,
+                "y": 592.75
+              },
+              "data": {
+                "label": "Noise",
+                "type": "Pink",
+                "amplitude": 1,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              },
+              "width": 182,
+              "height": 43,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 940.75,
+                "y": 592.75
+              }
+            },
+            {
+              "id": "3",
+              "type": "fmOperator",
+              "position": {
+                "x": 714.75,
+                "y": 893.75
+              },
+              "data": {
+                "label": "FM Operator",
+                "frequency": 92.051,
+                "modIndex": 113,
+                "exposedParameters": [
+                  "frequency",
+                  "modIndex"
+                ]
+              },
+              "width": 192,
+              "height": 55,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 714.75,
+                "y": 893.75
+              },
+              "dragging": false
+            },
+            {
+              "id": "4",
+              "type": "InstrumentOutput",
+              "position": {
+                "x": 400,
+                "y": 140
+              },
+              "data": {
+                "label": "Out: output",
+                "name": "output"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input_mod"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input_carrier"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "4",
+              "to_port": "input"
+            }
+          ]
+        }
+      },
+      "width": 202,
+      "height": 50,
+      "positionAbsolute": {
+        "x": 696.4166666666666,
+        "y": 704.4166666666666
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "7",
+      "sourceHandle": "output",
+      "target": "5",
+      "targetHandle": "input",
+      "id": "e7-5",
+      "selected": true
+    }
+  ],
+  "viewport": {
+    "x": -421.5,
+    "y": -1003.5,
+    "zoom": 2
+  }
+}

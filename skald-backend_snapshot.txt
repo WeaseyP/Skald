@@ -1,0 +1,1351 @@
+Project snapshot for: skald-backend
+Generated with 8 files.
+
+--- START FILE: build_and_test.bat ---
+
+@echo off
+setlocal
+
+echo [SKALD] NOTE: This script is for local testing of the audio harness.
+echo [SKALD] It uses the 'tester\generated_audio\audio.odin' file.
+echo [SKALD] To generate that file, use the Skald UI and copy the code into that location.
+echo.
+
+echo [SKALD] Building test harness...
+
+:: Build the 'tester' directory. Odin will find the manually placed audio.odin file.
+odin build tester -file -out:test_harness.exe
+set BUILD_ERROR=%errorlevel%
+
+if %BUILD_ERROR% neq 0 (
+    echo [SKALD] Test harness build FAILED. Exiting.
+    exit /b 1
+)
+echo [SKALD] Test harness build successful.
+
+echo.
+echo [SKALD] Running test harness...
+echo ----------------------------------------------------
+.\test_harness.exe
+
+
+--- END FILE: build_and_test.bat ---
+
+--- START FILE: build_codegen.bat ---
+
+@echo off
+setlocal
+
+echo [SKALD] Building skald_codegen CLI for UI...
+
+:: Build the Odin executable and output it directly into the skald-ui project folder.
+:: The ..\skald-ui\ path assumes this script is run from the skald-backend directory.
+odin build . -file -out:..\skald-ui\skald_codegen.exe
+if errorlevel 1 (
+    echo [SKALD] CLI build FAILED. Exiting.
+    exit /b 1
+)
+
+echo [SKALD] CLI build successful. Output to ..\skald-ui\skald_codegen.exe
+
+
+--- END FILE: build_codegen.bat ---
+
+--- START FILE: graph.json ---
+
+{
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Oscillator",
+      "position": { "x": 100, "y": 150 },
+      "parameters": {
+        "waveform": "Sawtooth",  
+        "frequency": 440.0,
+        "amplitude": 0.3         
+      }
+    },
+    {
+      "id": 3,
+      "type": "Filter",
+      "position": { "x": 350, "y": 150 },
+      "parameters": {
+        "type": "Lowpass",
+        "cutoff": 200.0          
+      }
+    },
+    {
+      "id": 2,
+      "type": "GraphOutput",
+      "position": { "x": 600, "y": 150 },
+      "parameters": {}
+    }
+  ],
+  "connections": [
+    { "from_node": 1, "from_port": "output", "to_node": 3, "to_port": "input" },
+    { "from_node": 3, "from_port": "output", "to_node": 2, "to_port": "input" }
+  ]
+}
+
+--- END FILE: graph.json ---
+
+--- START FILE: main.odin ---
+
+package skald_codegen
+
+import "core:fmt"
+import "core:os"
+import "core:strings"
+import "core:math"
+import rand "core:math/rand"
+import json "core:encoding/json"
+
+// =================================================================================
+// SECTION A: Core Data Structures & JSON Contract
+// =================================================================================
+Note_Event :: struct {
+    note:       u8,
+    velocity:   f32,
+    start_time: f32,
+    duration:   f32,
+}
+
+Node :: struct {
+    id:         int,
+    type:       string,
+    parameters: json.Object,
+    subgraph:   ^Graph,
+}
+
+Node_Raw :: struct {
+    id:         int,
+    type:       string,
+    parameters: json.Object,
+    subgraph:   json.Object,
+}
+
+Connection :: struct {
+    from_node: int,
+    from_port: string,
+    to_node:   int,
+    to_port:   string,
+}
+
+Graph :: struct {
+    nodes:       map[int]Node,
+    connections: []Connection,
+    events:      []Note_Event,
+}
+
+Graph_Raw :: struct {
+    nodes:       []Node_Raw,
+    connections: []Connection,
+    events:      []Note_Event,
+}
+
+// =================================================================================
+// SECTION B: Graph Traversal & Analysis Helpers
+// =================================================================================
+topological_sort :: proc(graph: ^Graph) -> (sorted_nodes: []Node, is_dag: bool) {
+    if graph == nil do return nil, true
+    in_degree := make(map[int]int)
+    defer delete(in_degree)
+    for _, node in graph.nodes {
+        in_degree[node.id] = 0
+    }
+    for conn in graph.connections {
+        if _, ok := in_degree[conn.to_node]; ok {
+            in_degree[conn.to_node] += 1
+        }
+    }
+    queue := make([dynamic]int)
+    defer delete(queue)
+    for id, degree in in_degree {
+        if degree == 0 do append(&queue, id)
+    }
+    
+    sorted := make([dynamic]Node)
+
+    for len(queue) > 0 {
+        node_id := queue[0]
+        pop_front(&queue)
+        if node, ok := graph.nodes[node_id]; ok {
+            append(&sorted, node)
+        }
+        for conn in graph.connections {
+            if conn.from_node == node_id {
+                target_node_id := conn.to_node
+                if degree, ok := in_degree[target_node_id]; ok {
+                    new_degree := degree - 1
+                    in_degree[target_node_id] = new_degree
+                    if new_degree == 0 do append(&queue, target_node_id)
+                }
+            }
+        }
+    }
+    return sorted[:], len(sorted) == len(graph.nodes)
+}
+
+find_input_for_port :: proc(graph: ^Graph, target_node_id: int, target_port: string) -> (id: int, ok: bool) {
+    if graph == nil do return -1, false
+    for conn in graph.connections {
+        if conn.to_node == target_node_id && conn.to_port == target_port do return conn.from_node, true
+    }
+    return -1, false
+}
+
+// =================================================================================
+// SECTION C: Type-Safe Parameter Fetching System
+// =================================================================================
+get_output_var :: proc(node_id: int) -> string {
+    return fmt.tprintf("node_%d_out", node_id)
+}
+
+get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: f32) -> string {
+    if graph != nil {
+        if id, ok := find_input_for_port(graph, node.id, input_port); ok {
+            return get_output_var(id)
+        }
+    }
+    if val, ok := node.parameters[param_name]; ok {
+        if f, ok2 := val.(f64); ok2 do return fmt.tprintf("%f", f)
+        if i, ok2 := val.(i64); ok2 do return fmt.tprintf("%f", f64(i))
+    }
+    return fmt.tprintf("%f", default_val)
+}
+
+get_string_param :: proc(node: Node, param_name: string, default_val: string) -> string {
+    if val, ok := node.parameters[param_name]; ok {
+        if s, ok2 := val.(string); ok2 do return s
+    }
+    return default_val
+}
+
+get_int_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: int) -> string {
+    if graph != nil {
+        if id, ok := find_input_for_port(graph, node.id, input_port); ok {
+            return get_output_var(id) 
+        }
+    }
+    if val, ok := node.parameters[param_name]; ok {
+        if i, ok2 := val.(i64); ok2 do return fmt.tprintf("%d", i)
+        if f, ok2 := val.(f64); ok2 do return fmt.tprintf("%d", int(f))
+    }
+    return fmt.tprintf("%d", default_val)
+}
+
+// =================================================================================
+// SECTION D: Modular Code Generation Procedures
+// =================================================================================
+
+generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, instrument: Node) {
+    freq_str := "voice.current_freq" // Use the voice's frequency for glide
+    amp_str  := get_f32_param(graph, node, "amplitude", "input_amp", 0.5)
+    pw_str   := get_f32_param(graph, node, "pulseWidth", "input_pulseWidth", 0.5)
+    phase_str:= get_f32_param(nil, node, "phase", "", 0.0) // Phase is not connectable
+    waveform := get_string_param(node, "waveform", "Sine")
+    
+    unison_count_str := get_int_param(nil, instrument, "unison", "", 1)
+    detune_str := get_f32_param(nil, instrument, "detune", "", 5.0)
+
+    fmt.sbprintf(sb, "\t\t// --- Oscillator Node %d (Unison/Detune) ---\n", node.id)
+    fmt.sbprint(sb, "\t\t{\n")
+    fmt.sbprintf(sb, "\t\t\tunison_out: f32 = 0.0;\n")
+    fmt.sbprintf(sb, "\t\t\tunison_count := %s;\n", unison_count_str)
+    fmt.sbprint(sb, "\t\t\tfor i in 0..<unison_count {\n")
+    fmt.sbprint(sb, "\t\t\t\tdetune_amount: f32 = 0.0;\n")
+    fmt.sbprintf(sb, "\t\t\t\tif unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (%s);\n", detune_str)
+    fmt.sbprintf(sb, "\t\t\t\tdetuned_freq := (%s) * math.pow(2.0, detune_amount / 1200.0);\n", freq_str)
+    // FIX: Explicitly cast the parameter string to f32 to avoid type mismatch.
+    fmt.sbprintf(sb, "\t\t\t\tphase_rads := f32(%s) * (f32(math.PI) / 180.0);\n", phase_str)
+    fmt.sbprintf(sb, "\t\t\t\tvoice.state.osc_%d_phase[i] = math.mod(voice.state.osc_%d_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));\n", node.id, node.id)
+    fmt.sbprintf(sb, "\t\t\t\tfinal_phase := voice.state.osc_%d_phase[i] + phase_rads;\n", node.id)
+
+    // FIX: Use multiple prints to avoid potential fmt parsing issues with quotes.
+    fmt.sbprint(sb, "\t\t\t\tswitch \"")
+    fmt.sbprint(sb, waveform)
+    fmt.sbprint(sb, "\" {\n")
+    fmt.sbprint(sb,  "\t\t\t\tcase \"Sawtooth\":\n")
+    fmt.sbprint(sb,  "\t\t\t\t\tunison_out += ((final_phase / f32(math.PI)) - 1.0);\n")
+    fmt.sbprint(sb,  "\t\t\t\tcase \"Square\":\n")
+    fmt.sbprintf(sb, "\t\t\t\t\tif math.sin(final_phase) > %s do unison_out += 1.0; else do unison_out -= 1.0;\n", pw_str)
+    fmt.sbprint(sb,  "\t\t\t\tcase \"Triangle\":\n")
+    fmt.sbprint(sb,  "\t\t\t\t\tunison_out += (2.0 / f32(math.PI)) * math.asin(math.sin(final_phase));\n")
+    fmt.sbprint(sb,  "\t\t\t\tcase:\n") // Default to Sine
+    fmt.sbprint(sb,  "\t\t\t\t\tunison_out += math.sin(final_phase);\n")
+    fmt.sbprint(sb,  "\t\t\t\t}\n") // End of switch
+
+    fmt.sbprint(sb, "\t\t\t}\n") // End of for loop
+    fmt.sbprintf(sb, "\t\t\tif unison_count > 0 do node_%d_out = (unison_out / f32(unison_count)) * (%s);\n", node.id, amp_str)
+    fmt.sbprint(sb, "\t\t}\n\n")
+}
+
+generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    input_str := "1.0" 
+    if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
+    
+    depth_str := get_f32_param(nil, node, "depth", "", 1.0)
+    
+    fmt.sbprintf(sb, "\t\t// --- ADSR Node %d ---\n", node.id)
+    fmt.sbprint(sb, "\t\t{\n") 
+    fmt.sbprint(sb, "\t\t\tenvelope: f32 = 0.0;\n")
+    fmt.sbprintf(sb, "\t\t\tswitch voice.state.adsr_%d_stage {\n", node.id)
+    fmt.sbprint(sb, "\t\t\tcase .Attack:\n")
+    fmt.sbprint(sb, "\t\t\t\tif voice.attack > 0 do envelope = voice.time_active / voice.attack; else do envelope = 1.0;\n")
+    fmt.sbprint(sb, "\t\t\t\tif voice.time_active >= voice.attack {\n")
+    fmt.sbprintf(sb, "\t\t\t\t\tvoice.state.adsr_%d_stage = .Decay;\n", node.id)
+    fmt.sbprint(sb, "\t\t\t\t}\n")
+    fmt.sbprint(sb, "\t\t\tcase .Decay:\n")
+    fmt.sbprint(sb, "\t\t\t\ttime_in_decay := voice.time_active - voice.attack;\n")
+    fmt.sbprint(sb, "\t\t\t\tif voice.decay > 0 do envelope = 1.0 - (time_in_decay / voice.decay) * (1.0 - voice.sustain); else do envelope = voice.sustain;\n")
+    fmt.sbprint(sb, "\t\t\t\tif time_in_decay >= voice.decay {\n")
+    fmt.sbprintf(sb, "\t\t\t\t\tvoice.state.adsr_%d_stage = .Sustain;\n", node.id)
+    fmt.sbprint(sb, "\t\t\t\t}\n")
+    fmt.sbprint(sb, "\t\t\tcase .Sustain:\n")
+    fmt.sbprint(sb, "\t\t\t\tenvelope = voice.sustain;\n")
+    fmt.sbprint(sb, "\t\t\tcase .Release:\n")
+    fmt.sbprint(sb, "\t\t\t\ttime_in_release := voice.time_active - voice.time_released;\n")
+    fmt.sbprintf(sb, "\t\t\t\tif voice.release > 0 do envelope = voice.state.adsr_%d_level_at_release * (1.0 - (time_in_release / voice.release)); else do envelope = 0.0;\n", node.id)
+    fmt.sbprintf(sb, "\t\t\t\tif envelope <= 0 { voice.is_active = false; }\n")
+    fmt.sbprint(sb, "\t\t\t}\n")
+    fmt.sbprintf(sb, "\t\t\tnode_%d_out = (%s) * envelope * (%s);\n", node.id, input_str, depth_str)
+    fmt.sbprint(sb, "\t\t}\n\n")
+}
+
+generate_noise_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    amp_str := get_f32_param(graph, node, "amplitude", "input_amp", 0.5)
+    fmt.sbprintf(sb, "\t// --- Noise Node %d ---\n", node.id)
+    fmt.sbprintf(sb, "\tnode_%d_out = (rand.float32(&voice.state.noise_%d_rng) * 2.0 - 1.0) * (%s);\n\n", node.id, node.id, amp_str)
+}
+
+generate_filter_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    input_str := "0.0"
+    if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
+    
+    cutoff_str := get_f32_param(graph, node, "cutoff", "input_cutoff", 1000.0)
+    f_type     := get_string_param(node, "type", "LowPass")
+    
+    fmt.sbprintf(sb, "\t// --- Filter Node %d ---\n", node.id)
+    fmt.sbprint(sb, "\t{\n")
+    fmt.sbprintf(sb, "\t\tc_%d := 2.0 * f32(math.PI) * (%s) / sample_rate;\n", node.id, cutoff_str)
+    fmt.sbprintf(sb, "\t\ta1_%d := math.exp(-c_%d);\n", node.id, node.id)
+    fmt.sbprintf(sb, "\t\tb1_%d := 1.0 - a1_%d;\n", node.id, node.id)
+    fmt.sbprintf(sb, "\t\tfiltered_sample_%d := (%s) * b1_%d + voice.state.filter_%d_z1 * a1_%d;\n", node.id, input_str, node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\t\tvoice.state.filter_%d_z1 = filtered_sample_%d;\n", node.id, node.id)
+
+    switch f_type {
+    case "HighPass":
+        fmt.sbprintf(sb, "\t\tnode_%d_out = %s - filtered_sample_%d;\n", node.id, input_str, node.id)
+    case: // "LowPass", "BandPass", "Notch" all default to lowpass for now
+        fmt.sbprintf(sb, "\t\tnode_%d_out = filtered_sample_%d;\n", node.id, node.id)
+    }
+    fmt.sbprint(sb, "\t}\n\n")
+}
+
+generate_lfo_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    freq_str := get_f32_param(graph, node, "frequency", "", 5.0) 
+    amp_str  := get_f32_param(graph, node, "amplitude", "", 1.0)
+    waveform := get_string_param(node, "waveform", "Sine")
+
+    fmt.sbprintf(sb, "\t// --- LFO Node %d ---\n", node.id)
+    fmt.sbprintf(sb, "\tvoice.state.lfo_%d_phase = math.mod(voice.state.lfo_%d_phase + (2 * f32(math.PI) * (%s) / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, freq_str)
+    
+    switch waveform {
+    case "Sawtooth":
+        fmt.sbprintf(sb, "\tnode_%d_out = ((voice.state.lfo_%d_phase / f32(math.PI)) - 1.0) * (%s);\n\n", node.id, node.id, amp_str)
+    case "Square":
+        fmt.sbprintf(sb, "\tif math.sin(voice.state.lfo_%d_phase) > 0 do node_%d_out = %s; else do node_%d_out = -%s;\n\n", node.id, node.id, amp_str, node.id, amp_str)
+    case "Triangle":
+        fmt.sbprintf(sb, "\tnode_%d_out = (2.0 / f32(math.PI)) * math.asin(math.sin(voice.state.lfo_%d_phase)) * (%s);\n\n", node.id, node.id, amp_str)
+    case: // "Sine"
+        fmt.sbprintf(sb, "\tnode_%d_out = math.sin(voice.state.lfo_%d_phase) * (%s);\n\n", node.id, node.id, amp_str)
+    }
+}
+
+generate_sample_hold_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    rate_str := get_f32_param(graph, node, "rate", "", 10.0)
+    amp_str  := get_f32_param(graph, node, "amplitude", "", 1.0)
+    fmt.sbprintf(sb, "\t// --- Sample & Hold Node %d ---\n", node.id)
+    fmt.sbprintf(sb, "\tvoice.state.sh_%d_counter += 1;\n", node.id)
+    fmt.sbprintf(sb, "\tupdate_interval_%d := u64(sample_rate / (%s));\n", node.id, rate_str)
+    fmt.sbprintf(sb, "\tif voice.state.sh_%d_counter >= update_interval_%d {\n", node.id, node.id)
+    fmt.sbprintf(sb, "\t\tvoice.state.sh_%d_current_value = rand.float32(&voice.state.sh_%d_rng) * 2.0 - 1.0;\n", node.id, node.id)
+    fmt.sbprint(sb, "\t\tvoice.state.sh_%d_counter = 0;\n", node.id)
+    fmt.sbprint(sb, "\t}\n")
+    fmt.sbprintf(sb, "\tnode_%d_out = voice.state.sh_%d_current_value * (%s);\n\n", node.id, node.id, amp_str)
+}
+
+generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    carrier_str := "0.0"
+    mod_str     := "0.0"
+    if id, ok := find_input_for_port(graph, node.id, "input_carrier"); ok do carrier_str = get_output_var(id)
+    if id, ok := find_input_for_port(graph, node.id, "input_mod"); ok do mod_str = get_output_var(id)
+    ratio_str := get_f32_param(graph, node, "frequencyRatio", "", 1.0)
+    amp_str := get_f32_param(graph, node, "amplitude", "", 100.0)
+
+    fmt.sbprintf(sb, "\t// --- FM Operator Node %d ---\n", node.id)
+    fmt.sbprintf(sb, "\tcarrier_freq_%d := (%s) * (%s);\n", node.id, carrier_str, ratio_str)
+    fmt.sbprintf(sb, "\tvoice.state.fm_%d_phase = math.mod(voice.state.fm_%d_phase + (2 * f32(math.PI) * carrier_freq_%d / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\tnode_%d_out = math.sin(voice.state.fm_%d_phase + (%s) * (%s));\n\n", node.id, node.id, mod_str, amp_str)
+}
+
+generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    freq_str := get_f32_param(graph, node, "frequency", "input_freq", 440.0)
+    fmt.sbprintf(sb, "\t// --- Wavetable Node %d (Placeholder) ---\n", node.id)
+    fmt.sbprintf(sb, "\tvoice.state.wavetable_%d_phase = math.mod(voice.state.wavetable_%d_phase + (2 * f32(math.PI) * (%s) / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, freq_str)
+    fmt.sbprintf(sb, "\tnode_%d_out = math.sin(voice.state.wavetable_%d_phase);\n\n", node.id, node.id)
+}
+
+generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    input_str := "0.0"
+    if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
+    time_str    := get_f32_param(graph, node, "delayTime", "", 0.5)
+    fdbk_str    := get_f32_param(graph, node, "feedback", "", 0.5)
+    mix_str     := get_f32_param(graph, node, "wetDryMix", "", 0.5)
+    
+    fmt.sbprintf(sb, "\t// --- Delay Node %d ---\n", node.id)
+    fmt.sbprint(sb, "\t{\n")
+    fmt.sbprintf(sb, "\t\tdelay_samples_%d := int(math.clamp((%s) * sample_rate, 0, %d-1));\n", node.id, time_str, 96000)
+    fmt.sbprintf(sb, "\t\tread_index_%d := (voice.state.delay_%d_write_index - delay_samples_%d + len(voice.state.delay_%d_buffer)) %% len(voice.state.delay_%d_buffer);\n", node.id, node.id, node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\t\tdelayed_sample_%d := voice.state.delay_%d_buffer[read_index_%d];\n", node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\t\tvoice.state.delay_%d_buffer[voice.state.delay_%d_write_index] = (%s) + delayed_sample_%d * (%s);\n", node.id, node.id, input_str, node.id, fdbk_str)
+    fmt.sbprintf(sb, "\t\tvoice.state.delay_%d_write_index = (voice.state.delay_%d_write_index + 1) %% len(voice.state.delay_%d_buffer);\n", node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\t\tnode_%d_out = (%s) * (1.0 - (%s)) + delayed_sample_%d * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)
+    fmt.sbprint(sb, "\t}\n\n")
+}
+
+generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    input_str := "0.0"
+    if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
+    fmt.sbprintf(sb, "\t// --- Reverb Node %d (Passthrough) ---\n", node.id)
+    fmt.sbprintf(sb, "\tnode_%d_out = %s;\n\n", node.id, input_str)
+}
+
+generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    input_str := "0.0"
+    if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
+    drive_str := get_f32_param(graph, node, "drive", "", 20.0)
+    shape := get_string_param(node, "shape", "SoftClip")
+    
+    fmt.sbprintf(sb, "\t// --- Distortion Node %d ---\n", node.id)
+    switch shape {
+    case "HardClip":
+        fmt.sbprintf(sb, "\tnode_%d_out = math.clamp((%s) * (%s), -1.0, 1.0);\n\n", node.id, input_str, drive_str)
+    case: // "SoftClip"
+        fmt.sbprintf(sb, "\tnode_%d_out = math.tanh((%s) * (%s));\n\n", node.id, input_str, drive_str)
+    }
+}
+
+generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    fmt.sbprintf(sb, "\t// --- Mixer Node %d ---\n", node.id)
+    fmt.sbprint(sb, "\t{\n")
+    fmt.sbprintf(sb, "\t\tmix_sum_%d: f32 = 0.0;\n", node.id)
+    for i in 1..=8 { 
+        port_name := fmt.tprintf("input_%d", i)
+        if id, ok := find_input_for_port(graph, node.id, port_name); ok {
+            gain_param := fmt.tprintf("input_%d_gain", i)
+            gain_str := get_f32_param(graph, node, gain_param, "", 0.75)
+            fmt.sbprintf(sb, "\t\tmix_sum_%d += %s * (%s);\n", node.id, get_output_var(id), gain_str)
+        }
+    }
+    fmt.sbprintf(sb, "\t\tnode_%d_out = mix_sum_%d;\n", node.id, node.id)
+    fmt.sbprint(sb, "\t}\n\n")
+}
+
+generate_panner_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+    input_str := "0.0"
+    if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
+    pan_str := get_f32_param(graph, node, "pan", "input_pan", 0.0)
+    fmt.sbprintf(sb, "\t// --- Panner Node %d ---\n", node.id)
+    fmt.sbprint(sb, "\t{\n")
+    fmt.sbprintf(sb, "\t\tpan_angle_%d := ((%s) * 0.5 + 0.5) * f32(math.PI) / 2.0;\n", node.id, pan_str)
+    fmt.sbprintf(sb, "\t\tnode_%d_out_left = (%s) * math.cos(pan_angle_%d);\n", node.id, input_str, node.id)
+    fmt.sbprintf(sb, "\t\tnode_%d_out_right = (%s) * math.sin(pan_angle_%d);\n", node.id, input_str, node.id)
+    fmt.sbprint(sb, "\t}\n\n")
+}
+
+generate_processor_code :: proc(graph: ^Graph) -> string {
+    instrument_node: Node
+    found_instrument := false
+    for _, node in graph.nodes {
+        if node.type == "Instrument" {
+            instrument_node = node
+            found_instrument = true
+            break
+        }
+    }
+    if !found_instrument {
+        return "// ERROR: No Instrument node found in the graph."
+    }
+    if instrument_node.subgraph == nil {
+        return "// ERROR: Instrument node has no subgraph."
+    }
+    subgraph := instrument_node.subgraph
+    sorted_nodes, is_dag := topological_sort(subgraph)
+    if !is_dag {
+        return "// ERROR: Instrument subgraph contains a cycle."
+    }
+
+    sb := strings.builder_make()
+    defer strings.builder_destroy(&sb)
+
+    polyphony_str := get_int_param(nil, instrument_node, "polyphony", "", 8) 
+    glide_time_str := get_f32_param(nil, instrument_node, "glideTime", "", 0.05)
+
+    fmt.sbprint(&sb, "package generated_audio\n\n")
+    fmt.sbprint(&sb, "import \"core:math\"\nimport rand \"core:math/rand\"\n\n")
+
+    // --- Voice State Generation ---
+    fmt.sbprint(&sb, "// --- Voice State (Generated from Instrument subgraph) ---\n")
+    fmt.sbprint(&sb, "Voice_State :: struct {\n")
+    for node in sorted_nodes {
+        // Use a temporary lowercased string for the switch to handle case-insensitivity
+        node_type_lower := strings.to_lower(node.type)
+        switch node_type_lower {
+        case "oscillator":
+            unison_count_str := get_int_param(nil, instrument_node, "unison", "", 1)
+            fmt.sbprintf(&sb, "\tosc_%d_phase: [%s]f32,\n", node.id, unison_count_str)
+        case "adsr":
+            fmt.sbprintf(&sb, "\tadsr_%d_stage: ADSR_Stage,\n", node.id)
+            fmt.sbprintf(&sb, "\tadsr_%d_level_at_release: f32,\n", node.id)
+        case "noise":
+            fmt.sbprintf(&sb, "\tnoise_%d_rng: rand.Default_Random_State,\n", node.id)
+        case "filter":
+            fmt.sbprintf(&sb, "\tfilter_%d_z1: f32,\n", node.id)
+        case "lfo":
+            fmt.sbprintf(&sb, "\tlfo_%d_phase: f32,\n", node.id)
+        case "samplehold":
+            fmt.sbprintf(&sb, "\tsh_%d_counter: u64,\n", node.id)
+            fmt.sbprintf(&sb, "\tsh_%d_current_value: f32,\n", node.id)
+            fmt.sbprintf(&sb, "\tsh_%d_rng: rand.Default_Random_State,\n", node.id)
+        case "fmoperator":
+            fmt.sbprintf(&sb, "\tfm_%d_phase: f32,\n", node.id)
+        case "wavetable":
+            fmt.sbprintf(&sb, "\twavetable_%d_phase: f32,\n", node.id)
+        case "delay":
+            fmt.sbprintf(&sb, "\tdelay_%d_buffer: [96000]f32, // Max delay of ~2s at 48kHz\n", node.id)
+            fmt.sbprintf(&sb, "\tdelay_%d_write_index: int,\n", node.id)
+        }
+    }
+    fmt.sbprint(&sb, "}\n\n")
+
+    fmt.sbprint(&sb, "ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }\n\n")
+    fmt.sbprint(&sb, "Voice :: struct {\n")
+    fmt.sbprint(&sb, "\tis_active: bool,\n")
+    fmt.sbprint(&sb, "\tnote: u8,\n\ttarget_freq: f32,\n\tcurrent_freq: f32, // For glide\n")
+    fmt.sbprint(&sb, "\tattack: f32,\n\tdecay: f32,\n\tsustain: f32,\n\trelease: f32,\n")
+    fmt.sbprint(&sb, "\ttime_active: f32,\n\ttime_released: f32,\n")
+    fmt.sbprint(&sb, "\tstate: Voice_State,\n")
+    fmt.sbprint(&sb, "}\n\n")
+
+    fmt.sbprint(&sb, "AudioProcessor :: struct {\n")
+    fmt.sbprintf(&sb, "\tvoices: [%s]Voice,\n", polyphony_str)
+    fmt.sbprint(&sb, "\tnext_voice_index: int,\n")
+    fmt.sbprint(&sb, "}\n\n")
+    
+    // --- State Initialization ---
+    needs_init := false
+    for node in sorted_nodes {
+        node_type_lower := strings.to_lower(node.type)
+        if node_type_lower == "noise" || node_type_lower == "samplehold" {
+            needs_init = true
+            break
+        }
+    }
+
+    if needs_init {
+        fmt.sbprint(&sb, "init_processor :: proc(p: ^AudioProcessor) {\n")
+        fmt.sbprintf(&sb, "\tfor i in 0..<%s {\n", polyphony_str)
+        fmt.sbprint(&sb, "\t\tv := &p.voices[i];\n")
+        for node in sorted_nodes {
+            node_type_lower := strings.to_lower(node.type)
+            switch node_type_lower {
+            case "noise":
+                fmt.sbprintf(&sb, "\t\tv.state.noise_%d_rng = rand.create(u64(i) * 31 + 17);\n", node.id)
+            case "samplehold":
+                fmt.sbprintf(&sb, "\t\tv.state.sh_%d_rng = rand.create(u64(i) * 19 + 23);\n", node.id)
+            }
+        }
+        fmt.sbprint(&sb, "\t}\n")
+        fmt.sbprint(&sb, "}\n\n")
+    } else {
+        fmt.sbprint(&sb, "init_processor :: proc(p: ^AudioProcessor) {}\n\n")
+    }
+
+    // --- Voice Processing Logic ---
+    fmt.sbprint(&sb, "// Processes a single voice\n")
+    fmt.sbprint(&sb, "process_voice :: proc(voice: ^Voice, sample_rate: f32) -> f32 {\n")
+    for node in sorted_nodes {
+        if strings.to_lower(node.type) == "panner" {
+            fmt.sbprintf(&sb, "\tnode_%d_out_left: f32;\n", node.id)
+            fmt.sbprintf(&sb, "\tnode_%d_out_right: f32;\n", node.id)
+        } else {
+            fmt.sbprintf(&sb, "\tnode_%d_out: f32;\n", node.id)
+        }
+    }
+    fmt.sbprint(&sb, "\n")
+    
+    fmt.sbprintf(&sb, "\tglide_coeff := 1.0 - math.exp(-1.0 / (sample_rate * (%s) + 0.0001));\n", glide_time_str)
+    fmt.sbprintf(&sb, "\tvoice.current_freq += (voice.target_freq - voice.current_freq) * glide_coeff;\n\n")
+
+    for node in sorted_nodes {
+        node_type_lower := strings.to_lower(node.type)
+        switch node_type_lower {
+        case "oscillator":
+            generate_oscillator_code(&sb, node, subgraph, instrument_node)
+        case "adsr":
+            generate_adsr_code(&sb, node, subgraph)
+        case "noise":
+            generate_noise_code(&sb, node, subgraph)
+        case "filter":
+            generate_filter_code(&sb, node, subgraph)
+        case "lfo":
+            generate_lfo_code(&sb, node, subgraph)
+        case "samplehold":
+            generate_sample_hold_code(&sb, node, subgraph)
+        case "fmoperator":
+            generate_fm_operator_code(&sb, node, subgraph)
+        case "wavetable":
+            generate_wavetable_code(&sb, node, subgraph)
+        case "delay":
+            generate_delay_code(&sb, node, subgraph)
+        case "reverb":
+            generate_reverb_code(&sb, node, subgraph)
+        case "distortion":
+            generate_distortion_code(&sb, node, subgraph)
+        case "mixer":
+            generate_mixer_code(&sb, node, subgraph)
+        case "panner":
+            generate_panner_code(&sb, node, subgraph)
+        case "graphinput":
+            input_name_val := get_string_param(node, "name", "gate")
+            if input_name_val == "gate" {
+                fmt.sbprintf(&sb, "\tnode_%d_out = 1.0; // Default for Gate GraphInput\n\n", node.id)
+            } else {
+                fmt.sbprintf(&sb, "\tnode_%d_out = 0.0; // Default for other GraphInput\n\n", node.id)
+            }
+        }
+    }
+    
+    subgraph_output_id := -1
+    for node in sorted_nodes {
+        if strings.to_lower(node.type) == "graphoutput" {
+            if id, ok := find_input_for_port(subgraph, node.id, "input"); ok {
+                subgraph_output_id = id
+                break
+            }
+        }
+    }
+
+    if subgraph_output_id != -1 {
+        is_panner_output := false
+        if output_node, ok := subgraph.nodes[subgraph_output_id]; ok {
+            if strings.to_lower(output_node.type) == "panner" {
+                is_panner_output = true
+            }
+        }
+        
+        if is_panner_output {
+            fmt.sbprintf(&sb, "\treturn (node_%d_out_left + node_%d_out_right) * 0.5;\n", subgraph_output_id, subgraph_output_id)
+        } else {
+            fmt.sbprintf(&sb, "\treturn node_%d_out;\n", subgraph_output_id)
+        }
+    } else {
+        fmt.sbprint(&sb, "\treturn 0.0; // No valid subgraph output found\n")
+    }
+
+    fmt.sbprint(&sb, "}\n\n")
+    
+    // --- Main Sample Processing ---
+    fmt.sbprint(&sb, "// --- Main Processing Function ---\n")
+    fmt.sbprint(&sb, "process_sample :: proc(p: ^AudioProcessor, sample_rate: f32, time: u64) -> (left: f32, right: f32) {\n")
+    fmt.sbprint(&sb, "\toutput_left: f32 = 0.0;\n")
+    fmt.sbprint(&sb, "\toutput_right: f32 = 0.0;\n")
+    fmt.sbprint(&sb, "\t// NOTE: Event scheduling logic to trigger voices would go here, driven by a Note_Event array.\n")
+    fmt.sbprintf(&sb, "\tfor i in 0..<%s {\n", polyphony_str)
+    fmt.sbprint(&sb, "\t\tvoice := &p.voices[i];\n")
+    fmt.sbprint(&sb, "\t\tif voice.is_active {\n")
+    fmt.sbprint(&sb, "\t\t\tmono_out := process_voice(voice, sample_rate);\n")
+    fmt.sbprint(&sb, "\t\t\toutput_left += mono_out;\n")
+    fmt.sbprint(&sb, "\t\t\toutput_right += mono_out;\n")
+    fmt.sbprint(&sb, "\t\t\tvoice.time_active += 1.0 / sample_rate;\n")
+    fmt.sbprint(&sb, "\t\t}\n")
+    fmt.sbprint(&sb, "\t}\n")
+    fmt.sbprintf(&sb, "\treturn output_left, output_right;\n")
+    fmt.sbprint(&sb, "}\n")
+
+    return strings.to_string(sb)
+}
+
+
+// =================================================================================
+// SECTION F: Main Execution & JSON Parsing (Refactored for correctness)
+// =================================================================================
+
+// build_graph_from_raw recursively constructs the main graph and any nested instrument subgraphs.
+build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
+    graph: Graph
+    graph.nodes = make(map[int]Node)
+    graph.connections = graph_raw.connections
+    graph.events = graph_raw.events
+
+    for raw_node in graph_raw.nodes {
+        node := Node {
+            id = raw_node.id,
+            type = raw_node.type,
+            parameters = raw_node.parameters,
+            subgraph = nil, // Start as nil
+        }
+
+        if raw_node.type == "Instrument" && len(raw_node.subgraph) > 0 {
+            subgraph_raw: Graph_Raw
+    
+            // Manually unmarshal nodes from the subgraph map
+            if nodes_val, ok := raw_node.subgraph["nodes"]; ok {
+                // Marshal the value back to bytes, then unmarshal into the struct
+                nodes_bytes, err := json.marshal(nodes_val)
+                if err == nil {
+                    defer delete(nodes_bytes)
+                    json.unmarshal(nodes_bytes, &subgraph_raw.nodes)
+                }
+            }
+            
+            // Manually unmarshal connections from the subgraph map
+            if conns_val, ok := raw_node.subgraph["connections"]; ok {
+                // Marshal the value back to bytes, then unmarshal into the struct
+                conns_bytes, err := json.marshal(conns_val)
+                if err == nil {
+                    defer delete(conns_bytes)
+                    json.unmarshal(conns_bytes, &subgraph_raw.connections)
+                }
+            }
+
+            subgraph_obj := build_graph_from_raw(&subgraph_raw)
+            node.subgraph = new(Graph)
+            node.subgraph^ = subgraph_obj
+        }
+        graph.nodes[raw_node.id] = node
+    }
+    return graph
+}
+
+
+main :: proc() {
+    input_bytes, read_err := os.read_entire_file_from_handle(os.stdin)
+    if read_err != true {
+        // fmt.eprintf("Error reading from stdin: %v\n", read_err)
+        os.exit(1)
+    }
+    
+    graph_raw: Graph_Raw
+    parse_err := json.unmarshal(input_bytes, &graph_raw)
+    if parse_err != nil {
+        // fmt.eprintf("Error parsing JSON: %v\n", parse_err)
+        os.exit(1)
+    }
+    
+    graph := build_graph_from_raw(&graph_raw)
+    
+    generated_code := generate_processor_code(&graph)
+    fmt.print(generated_code)
+}
+
+--- END FILE: main.odin ---
+
+--- START FILE: tester/generated_audio/AlarmPulse.json ---
+
+{
+  "nodes": [
+    { "id": "1", "type": "lfo", "position": { "x": 100, "y": 50 }, "data": { "label": "Pulse LFO", "waveform": "Square", "frequency": 4 } },
+    { "id": "2", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Alarm Tone", "waveform": "Sawtooth", "frequency": 880 } },
+    { "id": "3", "type": "output", "position": { "x": 350, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "1", "sourceHandle": "output", "target": "2", "targetHandle": "input_amp", "id": "edge_1" },
+    { "source": "2", "sourceHandle": "output", "target": "3", "targetHandle": "input", "id": "edge_2" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}
+
+--- END FILE: tester/generated_audio/AlarmPulse.json ---
+
+--- START FILE: tester/generated_audio/audio.odin ---
+
+package generated_audio
+
+import "core:math"
+
+// --- Local PRNG Implementation (xorshift32) ---
+PRNG_State :: struct {
+	state: u32,
+}
+
+// Generates the next u32 and updates the state.
+next_u32 :: proc(rng: ^PRNG_State) -> u32 {
+	x := rng.state;
+	x = x ~ (x << 13);
+	x = x ~ (x >> 17);
+	x = x ~ (x << 5);
+	rng.state = x;
+	return x;
+}
+
+// Generates the next f32 in the range [-1.0, 1.0)
+next_float32 :: proc(rng: ^PRNG_State) -> f32 {
+	i := next_u32(rng) >> 8;
+	return (f32(i) / f32(1<<24)) * 2.0 - 1.0;
+}
+
+
+// --- Voice State ---
+Voice_State :: struct {
+	noise_rng:               PRNG_State,
+	adsr_1_stage:            ADSR_Stage,
+	adsr_1_level_at_release: f32,
+}
+
+ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }
+
+// Voice struct no longer holds instrument-wide parameters
+Voice :: struct {
+	is_active: bool,
+	note: u8,
+	target_freq: f32,
+	current_freq: f32, // For glide
+	attack: f32,
+	decay: f32,
+	sustain: f32,
+	release: f32,
+	time_active: f32,
+	time_released: f32,
+	state: Voice_State,
+}
+
+// AudioProcessor now holds the shared, runtime-changeable parameters
+AudioProcessor :: struct {
+	voices:           [8]Voice,
+	next_voice_index: int,
+
+	attack:           f32,
+	decay:            f32,
+	sustain:          f32,
+	release:          f32,
+}
+
+init_processor :: proc(p: ^AudioProcessor) {
+	// Initialize default instrument parameters on the processor
+	p.attack = 0.1;
+	p.decay = 0.63;
+	p.sustain = 0.0;
+	p.release = 1.0;
+
+	// Initialize individual voice states
+	for i in 0..<8 {
+		v := &p.voices[i];
+		v.state.noise_rng.state = u32(i*31 + 17) | 1;
+	}
+}
+
+// Processes a single voice, taking the processor as an argument to access shared parameters
+process_voice :: proc(p: ^AudioProcessor, voice: ^Voice, sample_rate: f32) -> f32 {
+	node_2_out: f32;
+	node_1_out: f32;
+
+	glide_coeff := 1.0 - math.exp(-1.0 / (sample_rate * (0.050) + 0.0001));
+	voice.current_freq += (voice.target_freq - voice.current_freq) * glide_coeff;
+
+	// --- Noise Node 2 ---
+	node_2_out = next_float32(&voice.state.noise_rng) * 1.0;
+
+	// --- ADSR Node 1 ---
+	{
+		envelope: f32 = 0.0;
+		switch voice.state.adsr_1_stage {
+		case .Idle:
+			envelope = 0.0;
+		case .Attack:
+			if p.attack > 0 do envelope = voice.time_active / p.attack; else do envelope = 1.0;
+			if voice.time_active >= p.attack {
+				voice.state.adsr_1_stage = .Decay;
+			}
+		case .Decay:
+			time_in_decay := voice.time_active - p.attack;
+			if p.decay > 0 do envelope = 1.0 - (time_in_decay / p.decay) * (1.0 - p.sustain); else do envelope = p.sustain;
+			if time_in_decay >= p.decay {
+				voice.state.adsr_1_stage = .Sustain;
+			}
+		case .Sustain:
+			envelope = p.sustain;
+		case .Release:
+			time_in_release := voice.time_active - voice.time_released;
+			if p.release > 0 do envelope = voice.state.adsr_1_level_at_release * (1.0 - (time_in_release / p.release)); else do envelope = 0.0;
+			if envelope <= 0 {
+				voice.is_active = false;
+			}
+		}
+		// Correctly apply envelope to the output outside the switch
+		node_1_out = node_2_out * envelope * 1.0;
+	}
+	return node_1_out;
+}
+
+// --- Main Processing Function ---
+process_sample :: proc(p: ^AudioProcessor, sample_rate: f32, time: u64) -> (left: f32, right: f32) {
+	output_left: f32 = 0.0;
+	output_right: f32 = 0.0;
+	for i in 0..<8 {
+		voice := &p.voices[i];
+		if voice.is_active {
+			// Update the call to pass the processor 'p'
+			mono_out := process_voice(p, voice, sample_rate);
+			output_left += mono_out;
+			output_right += mono_out;
+			voice.time_active += 1.0 / sample_rate;
+		}
+	}
+	return output_left, output_right;
+}
+
+--- END FILE: tester/generated_audio/audio.odin ---
+
+--- START FILE: tester/test_harness.odin ---
+
+// File: tester/test_harness.odin
+package main
+
+import "core:fmt"
+import "core:time"
+import "core:mem"
+import "core:sync"
+import "core:thread"
+import ma "vendor:miniaudio"
+import ga "generated_audio"
+
+// A simple ring buffer to hold pre-calculated samples.
+Ring_Buffer :: struct {
+	data:      []f32,
+	write_pos: int,
+	read_pos:  int,
+}
+
+App_State :: struct {
+	processor:       ga.AudioProcessor,
+	device:          ma.device,
+	ring_buffer:     Ring_Buffer,
+	mutex:           sync.Mutex,
+	is_running:      bool,
+	time_in_samples: u64,
+}
+
+// THE PRODUCER THREAD
+sample_generator_thread_proc :: proc(data: rawptr) {
+	app_state := (^App_State)(data)
+
+	for app_state.is_running {
+		buffer_was_full := false
+
+		sync.lock(&app_state.mutex)
+
+		samples_in_buffer := app_state.ring_buffer.write_pos - app_state.ring_buffer.read_pos
+		if samples_in_buffer < 0 {
+			samples_in_buffer += len(app_state.ring_buffer.data)
+		}
+
+		if samples_in_buffer < len(app_state.ring_buffer.data) - 2 {
+			// Generate sample and pass the current time
+			left, right := ga.process_sample(&app_state.processor, f32(app_state.device.sampleRate), app_state.time_in_samples)
+
+			// Increment time *after* processing the sample
+			app_state.time_in_samples += 1
+
+			app_state.ring_buffer.data[app_state.ring_buffer.write_pos] = left
+			app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
+
+			app_state.ring_buffer.data[app_state.ring_buffer.write_pos] = right
+			app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
+
+		} else {
+			buffer_was_full = true
+		}
+
+		sync.unlock(&app_state.mutex)
+
+		if buffer_was_full {
+			time.sleep(1 * time.Millisecond)
+		}
+	}
+}
+
+// THE CONSUMER
+audio_callback :: proc "c" (p_device: ^ma.device, p_output: rawptr, p_input: rawptr, frame_count: u32) {
+	app_state := (^App_State)(p_device.pUserData)
+	output_buffer := mem.slice_ptr((^f32)(p_output), int(frame_count * p_device.playback.channels))
+
+	sync.lock(&app_state.mutex)
+	for i in 0..<len(output_buffer) {
+		if app_state.ring_buffer.read_pos == app_state.ring_buffer.write_pos {
+			output_buffer[i] = 0.0 // Buffer is empty, output silence.
+		} else {
+			output_buffer[i] = app_state.ring_buffer.data[app_state.ring_buffer.read_pos]
+			app_state.ring_buffer.read_pos = (app_state.ring_buffer.read_pos + 1) % len(app_state.ring_buffer.data)
+		}
+	}
+	sync.unlock(&app_state.mutex)
+}
+
+main :: proc() {
+	app_state: App_State
+	app_state.is_running = true
+
+	// Initialize the processor using the generated function
+	ga.init_processor(&app_state.processor)
+
+	// --- Trigger one voice to make sound ---
+	if len(app_state.processor.voices) > 0 {
+		voice := &app_state.processor.voices[0];
+
+		// A "Note On" event:
+		voice.is_active = true;
+		voice.state.adsr_1_stage = .Attack;
+		voice.time_active = 0.0;
+	}
+
+	app_state.ring_buffer.data = make([]f32, 4096)
+
+	device_config := ma.device_config_init(.playback)
+	device_config.playback.format = .f32
+	device_config.playback.channels = 2
+	device_config.sampleRate = 48000
+	device_config.dataCallback = audio_callback
+	device_config.pUserData = &app_state
+
+	if ma.device_init(nil, &device_config, &app_state.device) != .SUCCESS {
+		fmt.eprintln("Failed to initialize audio device.")
+		return
+	}
+	defer ma.device_uninit(&app_state.device)
+	fmt.printf("Audio device initialized: %s\n", app_state.device.playback.name)
+
+	thread.run_with_data(&app_state, sample_generator_thread_proc)
+
+	if ma.device_start(&app_state.device) != .SUCCESS {
+		fmt.eprintln("Failed to start audio device.")
+		app_state.is_running = false
+		return
+	}
+
+	fmt.println("Playing audio... Press Ctrl+C to quit.")
+
+	for {
+		time.sleep(1 * time.Second)
+	}
+
+	app_state.is_running = false
+	ma.device_stop(&app_state.device)
+}
+
+--- END FILE: tester/test_harness.odin ---
+
+--- START FILE: tester_snapshot.txt ---
+
+Project snapshot for: tester
+Generated with 3 files.
+
+--- START FILE: generated_audio/AlarmPulse.json ---
+
+{
+  "nodes": [
+    { "id": "1", "type": "lfo", "position": { "x": 100, "y": 50 }, "data": { "label": "Pulse LFO", "waveform": "Square", "frequency": 4 } },
+    { "id": "2", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Alarm Tone", "waveform": "Sawtooth", "frequency": 880 } },
+    { "id": "3", "type": "output", "position": { "x": 350, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "1", "sourceHandle": "output", "target": "2", "targetHandle": "input_amp", "id": "edge_1" },
+    { "source": "2", "sourceHandle": "output", "target": "3", "targetHandle": "input", "id": "edge_2" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}
+
+--- END FILE: generated_audio/AlarmPulse.json ---
+
+--- START FILE: generated_audio/audio.odin ---
+
+package generated_audio
+
+import "core:math"
+
+// --- Local PRNG Implementation (xorshift32) ---
+PRNG_State :: struct {
+	state: u32,
+}
+
+// Generates the next u32 and updates the state.
+next_u32 :: proc(rng: ^PRNG_State) -> u32 {
+	x := rng.state;
+	x = x ~ (x << 13);
+	x = x ~ (x >> 17);
+	x = x ~ (x << 5);
+	rng.state = x;
+	return x;
+}
+
+// Generates the next f32 in the range [-1.0, 1.0)
+next_float32 :: proc(rng: ^PRNG_State) -> f32 {
+	i := next_u32(rng) >> 8;
+	return (f32(i) / f32(1<<24)) * 2.0 - 1.0;
+}
+
+
+// --- Voice State ---
+Voice_State :: struct {
+	noise_rng:               PRNG_State,
+	adsr_1_stage:            ADSR_Stage,
+	adsr_1_level_at_release: f32,
+}
+
+ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }
+
+// Voice struct no longer holds instrument-wide parameters
+Voice :: struct {
+	is_active: bool,
+	note: u8,
+	target_freq: f32,
+	current_freq: f32, // For glide
+	attack: f32,
+	decay: f32,
+	sustain: f32,
+	release: f32,
+	time_active: f32,
+	time_released: f32,
+	state: Voice_State,
+}
+
+// AudioProcessor now holds the shared, runtime-changeable parameters
+AudioProcessor :: struct {
+	voices:           [8]Voice,
+	next_voice_index: int,
+
+	attack:           f32,
+	decay:            f32,
+	sustain:          f32,
+	release:          f32,
+}
+
+init_processor :: proc(p: ^AudioProcessor) {
+	// Initialize default instrument parameters on the processor
+	p.attack = 0.1;
+	p.decay = 0.63;
+	p.sustain = 0.0;
+	p.release = 1.0;
+
+	// Initialize individual voice states
+	for i in 0..<8 {
+		v := &p.voices[i];
+		v.state.noise_rng.state = u32(i*31 + 17) | 1;
+	}
+}
+
+// Processes a single voice, taking the processor as an argument to access shared parameters
+process_voice :: proc(p: ^AudioProcessor, voice: ^Voice, sample_rate: f32) -> f32 {
+	node_2_out: f32;
+	node_1_out: f32;
+
+	glide_coeff := 1.0 - math.exp(-1.0 / (sample_rate * (0.050) + 0.0001));
+	voice.current_freq += (voice.target_freq - voice.current_freq) * glide_coeff;
+
+	// --- Noise Node 2 ---
+	node_2_out = next_float32(&voice.state.noise_rng) * 1.0;
+
+	// --- ADSR Node 1 ---
+	{
+		envelope: f32 = 0.0;
+		switch voice.state.adsr_1_stage {
+		case .Idle:
+			envelope = 0.0;
+		case .Attack:
+			if p.attack > 0 do envelope = voice.time_active / p.attack; else do envelope = 1.0;
+			if voice.time_active >= p.attack {
+				voice.state.adsr_1_stage = .Decay;
+			}
+		case .Decay:
+			time_in_decay := voice.time_active - p.attack;
+			if p.decay > 0 do envelope = 1.0 - (time_in_decay / p.decay) * (1.0 - p.sustain); else do envelope = p.sustain;
+			if time_in_decay >= p.decay {
+				voice.state.adsr_1_stage = .Sustain;
+			}
+		case .Sustain:
+			envelope = p.sustain;
+		case .Release:
+			time_in_release := voice.time_active - voice.time_released;
+			if p.release > 0 do envelope = voice.state.adsr_1_level_at_release * (1.0 - (time_in_release / p.release)); else do envelope = 0.0;
+			if envelope <= 0 {
+				voice.is_active = false;
+			}
+		}
+		// Correctly apply envelope to the output outside the switch
+		node_1_out = node_2_out * envelope * 1.0;
+	}
+	return node_1_out;
+}
+
+// --- Main Processing Function ---
+process_sample :: proc(p: ^AudioProcessor, sample_rate: f32, time: u64) -> (left: f32, right: f32) {
+	output_left: f32 = 0.0;
+	output_right: f32 = 0.0;
+	for i in 0..<8 {
+		voice := &p.voices[i];
+		if voice.is_active {
+			// Update the call to pass the processor 'p'
+			mono_out := process_voice(p, voice, sample_rate);
+			output_left += mono_out;
+			output_right += mono_out;
+			voice.time_active += 1.0 / sample_rate;
+		}
+	}
+	return output_left, output_right;
+}
+
+--- END FILE: generated_audio/audio.odin ---
+
+--- START FILE: test_harness.odin ---
+
+// File: tester/test_harness.odin
+package main
+
+import "core:fmt"
+import "core:time"
+import "core:mem"
+import "core:sync"
+import "core:thread"
+import ma "vendor:miniaudio"
+import ga "generated_audio"
+
+// A simple ring buffer to hold pre-calculated samples.
+Ring_Buffer :: struct {
+	data:      []f32,
+	write_pos: int,
+	read_pos:  int,
+}
+
+App_State :: struct {
+	processor:       ga.AudioProcessor,
+	device:          ma.device,
+	ring_buffer:     Ring_Buffer,
+	mutex:           sync.Mutex,
+	is_running:      bool,
+	time_in_samples: u64,
+}
+
+// THE PRODUCER THREAD
+sample_generator_thread_proc :: proc(data: rawptr) {
+	app_state := (^App_State)(data)
+
+	for app_state.is_running {
+		buffer_was_full := false
+
+		sync.lock(&app_state.mutex)
+
+		samples_in_buffer := app_state.ring_buffer.write_pos - app_state.ring_buffer.read_pos
+		if samples_in_buffer < 0 {
+			samples_in_buffer += len(app_state.ring_buffer.data)
+		}
+
+		if samples_in_buffer < len(app_state.ring_buffer.data) - 2 {
+			// Generate sample and pass the current time
+			left, right := ga.process_sample(&app_state.processor, f32(app_state.device.sampleRate), app_state.time_in_samples)
+
+			// Increment time *after* processing the sample
+			app_state.time_in_samples += 1
+
+			app_state.ring_buffer.data[app_state.ring_buffer.write_pos] = left
+			app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
+
+			app_state.ring_buffer.data[app_state.ring_buffer.write_pos] = right
+			app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
+
+		} else {
+			buffer_was_full = true
+		}
+
+		sync.unlock(&app_state.mutex)
+
+		if buffer_was_full {
+			time.sleep(1 * time.Millisecond)
+		}
+	}
+}
+
+// THE CONSUMER
+audio_callback :: proc "c" (p_device: ^ma.device, p_output: rawptr, p_input: rawptr, frame_count: u32) {
+	app_state := (^App_State)(p_device.pUserData)
+	output_buffer := mem.slice_ptr((^f32)(p_output), int(frame_count * p_device.playback.channels))
+
+	sync.lock(&app_state.mutex)
+	for i in 0..<len(output_buffer) {
+		if app_state.ring_buffer.read_pos == app_state.ring_buffer.write_pos {
+			output_buffer[i] = 0.0 // Buffer is empty, output silence.
+		} else {
+			output_buffer[i] = app_state.ring_buffer.data[app_state.ring_buffer.read_pos]
+			app_state.ring_buffer.read_pos = (app_state.ring_buffer.read_pos + 1) % len(app_state.ring_buffer.data)
+		}
+	}
+	sync.unlock(&app_state.mutex)
+}
+
+main :: proc() {
+	app_state: App_State
+	app_state.is_running = true
+
+	// Initialize the processor using the generated function
+	ga.init_processor(&app_state.processor)
+
+	// --- Trigger one voice to make sound ---
+	if len(app_state.processor.voices) > 0 {
+		voice := &app_state.processor.voices[0];
+
+		// A "Note On" event:
+		voice.is_active = true;
+		voice.state.adsr_1_stage = .Attack;
+		voice.time_active = 0.0;
+	}
+
+	app_state.ring_buffer.data = make([]f32, 4096)
+
+	device_config := ma.device_config_init(.playback)
+	device_config.playback.format = .f32
+	device_config.playback.channels = 2
+	device_config.sampleRate = 48000
+	device_config.dataCallback = audio_callback
+	device_config.pUserData = &app_state
+
+	if ma.device_init(nil, &device_config, &app_state.device) != .SUCCESS {
+		fmt.eprintln("Failed to initialize audio device.")
+		return
+	}
+	defer ma.device_uninit(&app_state.device)
+	fmt.printf("Audio device initialized: %s\n", app_state.device.playback.name)
+
+	thread.run_with_data(&app_state, sample_generator_thread_proc)
+
+	if ma.device_start(&app_state.device) != .SUCCESS {
+		fmt.eprintln("Failed to start audio device.")
+		app_state.is_running = false
+		return
+	}
+
+	fmt.println("Playing audio... Press Ctrl+C to quit.")
+
+	for {
+		time.sleep(1 * time.Second)
+	}
+
+	app_state.is_running = false
+	ma.device_stop(&app_state.device)
+}
+
+--- END FILE: test_harness.odin ---
+
+
+
+--- END FILE: tester_snapshot.txt ---
+

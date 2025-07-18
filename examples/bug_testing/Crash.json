@@ -1,0 +1,151 @@
+{
+  "nodes": [
+    {
+      "id": "4",
+      "type": "output",
+      "position": {
+        "x": 1183.075212011177,
+        "y": 1050.0896546614415
+      },
+      "data": {
+        "label": "Output"
+      },
+      "width": 150,
+      "height": 60,
+      "positionAbsolute": {
+        "x": 1183.075212011177,
+        "y": 1050.0896546614415
+      }
+    },
+    {
+      "id": "5",
+      "type": "instrument",
+      "position": {
+        "x": 310.7153353567386,
+        "y": 905.5172991659146
+      },
+      "data": {
+        "name": "Crash",
+        "label": "Crash",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [
+          "output"
+        ],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "adsr",
+              "position": {
+                "x": 549.177977468155,
+                "y": 976.8414833678264
+              },
+              "data": {
+                "label": "ADSR",
+                "attack": 0.1,
+                "decay": 0.6333333333333333,
+                "sustain": 0,
+                "release": 1,
+                "amount": 1,
+                "velocitySensitivity": 0.5,
+                "attackCurve": "linear",
+                "decayCurve": "linear",
+                "releaseCurve": "linear",
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "amount"
+                ]
+              },
+              "width": 182,
+              "height": 43,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 549.177977468155,
+                "y": 976.8414833678264
+              }
+            },
+            {
+              "id": "2",
+              "type": "noise",
+              "position": {
+                "x": 72.25269324532229,
+                "y": 834.1931149640027
+              },
+              "data": {
+                "label": "Noise",
+                "type": "White",
+                "amplitude": 1,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              },
+              "width": 182,
+              "height": 43,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 72.25269324532229,
+                "y": 834.1931149640027
+              }
+            },
+            {
+              "id": "3",
+              "type": "InstrumentOutput",
+              "position": {
+                "x": 400,
+                "y": 140
+              },
+              "data": {
+                "label": "Out: output",
+                "name": "output"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "1",
+              "to_port": "input"
+            },
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            }
+          ]
+        }
+      },
+      "width": 202,
+      "height": 50,
+      "positionAbsolute": {
+        "x": 310.7153353567386,
+        "y": 905.5172991659146
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "5",
+      "sourceHandle": "output",
+      "target": "4",
+      "targetHandle": "input",
+      "id": "e5-4",
+      "selected": true
+    }
+  ],
+  "viewport": {
+    "x": 368.50172506249646,
+    "y": 242.88187054549894,
+    "zoom": 0.5743491774985173
+  }
+}

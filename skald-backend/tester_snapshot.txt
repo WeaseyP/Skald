@@ -1,0 +1,297 @@
+Project snapshot for: tester
+Generated with 3 files.
+
+--- START FILE: generated_audio/AlarmPulse.json ---
+
+{
+  "nodes": [
+    { "id": "1", "type": "lfo", "position": { "x": 100, "y": 50 }, "data": { "label": "Pulse LFO", "waveform": "Square", "frequency": 4 } },
+    { "id": "2", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Alarm Tone", "waveform": "Sawtooth", "frequency": 880 } },
+    { "id": "3", "type": "output", "position": { "x": 350, "y": 200 }, "data": { "label": "Output" } }
+  ],
+  "edges": [
+    { "source": "1", "sourceHandle": "output", "target": "2", "targetHandle": "input_amp", "id": "edge_1" },
+    { "source": "2", "sourceHandle": "output", "target": "3", "targetHandle": "input", "id": "edge_2" }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}
+
+--- END FILE: generated_audio/AlarmPulse.json ---
+
+--- START FILE: generated_audio/audio.odin ---
+
+package generated_audio
+
+import "core:math"
+
+// --- Local PRNG Implementation (xorshift32) ---
+PRNG_State :: struct {
+	state: u32,
+}
+
+// Generates the next u32 and updates the state.
+next_u32 :: proc(rng: ^PRNG_State) -> u32 {
+	x := rng.state;
+	x = x ~ (x << 13);
+	x = x ~ (x >> 17);
+	x = x ~ (x << 5);
+	rng.state = x;
+	return x;
+}
+
+// Generates the next f32 in the range [-1.0, 1.0)
+next_float32 :: proc(rng: ^PRNG_State) -> f32 {
+	i := next_u32(rng) >> 8;
+	return (f32(i) / f32(1<<24)) * 2.0 - 1.0;
+}
+
+
+// --- Voice State ---
+Voice_State :: struct {
+	noise_rng:               PRNG_State,
+	adsr_1_stage:            ADSR_Stage,
+	adsr_1_level_at_release: f32,
+}
+
+ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }
+
+// Voice struct no longer holds instrument-wide parameters
+Voice :: struct {
+	is_active: bool,
+	note: u8,
+	target_freq: f32,
+	current_freq: f32, // For glide
+	attack: f32,
+	decay: f32,
+	sustain: f32,
+	release: f32,
+	time_active: f32,
+	time_released: f32,
+	state: Voice_State,
+}
+
+// AudioProcessor now holds the shared, runtime-changeable parameters
+AudioProcessor :: struct {
+	voices:           [8]Voice,
+	next_voice_index: int,
+
+	attack:           f32,
+	decay:            f32,
+	sustain:          f32,
+	release:          f32,
+}
+
+init_processor :: proc(p: ^AudioProcessor) {
+	// Initialize default instrument parameters on the processor
+	p.attack = 0.1;
+	p.decay = 0.63;
+	p.sustain = 0.0;
+	p.release = 1.0;
+
+	// Initialize individual voice states
+	for i in 0..<8 {
+		v := &p.voices[i];
+		v.state.noise_rng.state = u32(i*31 + 17) | 1;
+	}
+}
+
+// Processes a single voice, taking the processor as an argument to access shared parameters
+process_voice :: proc(p: ^AudioProcessor, voice: ^Voice, sample_rate: f32) -> f32 {
+	node_2_out: f32;
+	node_1_out: f32;
+
+	glide_coeff := 1.0 - math.exp(-1.0 / (sample_rate * (0.050) + 0.0001));
+	voice.current_freq += (voice.target_freq - voice.current_freq) * glide_coeff;
+
+	// --- Noise Node 2 ---
+	node_2_out = next_float32(&voice.state.noise_rng) * 1.0;
+
+	// --- ADSR Node 1 ---
+	{
+		envelope: f32 = 0.0;
+		switch voice.state.adsr_1_stage {
+		case .Idle:
+			envelope = 0.0;
+		case .Attack:
+			if p.attack > 0 do envelope = voice.time_active / p.attack; else do envelope = 1.0;
+			if voice.time_active >= p.attack {
+				voice.state.adsr_1_stage = .Decay;
+			}
+		case .Decay:
+			time_in_decay := voice.time_active - p.attack;
+			if p.decay > 0 do envelope = 1.0 - (time_in_decay / p.decay) * (1.0 - p.sustain); else do envelope = p.sustain;
+			if time_in_decay >= p.decay {
+				voice.state.adsr_1_stage = .Sustain;
+			}
+		case .Sustain:
+			envelope = p.sustain;
+		case .Release:
+			time_in_release := voice.time_active - voice.time_released;
+			if p.release > 0 do envelope = voice.state.adsr_1_level_at_release * (1.0 - (time_in_release / p.release)); else do envelope = 0.0;
+			if envelope <= 0 {
+				voice.is_active = false;
+			}
+		}
+		// Correctly apply envelope to the output outside the switch
+		node_1_out = node_2_out * envelope * 1.0;
+	}
+	return node_1_out;
+}
+
+// --- Main Processing Function ---
+process_sample :: proc(p: ^AudioProcessor, sample_rate: f32, time: u64) -> (left: f32, right: f32) {
+	output_left: f32 = 0.0;
+	output_right: f32 = 0.0;
+	for i in 0..<8 {
+		voice := &p.voices[i];
+		if voice.is_active {
+			// Update the call to pass the processor 'p'
+			mono_out := process_voice(p, voice, sample_rate);
+			output_left += mono_out;
+			output_right += mono_out;
+			voice.time_active += 1.0 / sample_rate;
+		}
+	}
+	return output_left, output_right;
+}
+
+--- END FILE: generated_audio/audio.odin ---
+
+--- START FILE: test_harness.odin ---
+
+// File: tester/test_harness.odin
+package main
+
+import "core:fmt"
+import "core:time"
+import "core:mem"
+import "core:sync"
+import "core:thread"
+import ma "vendor:miniaudio"
+import ga "generated_audio"
+
+// A simple ring buffer to hold pre-calculated samples.
+Ring_Buffer :: struct {
+	data:      []f32,
+	write_pos: int,
+	read_pos:  int,
+}
+
+App_State :: struct {
+	processor:       ga.AudioProcessor,
+	device:          ma.device,
+	ring_buffer:     Ring_Buffer,
+	mutex:           sync.Mutex,
+	is_running:      bool,
+	time_in_samples: u64,
+}
+
+// THE PRODUCER THREAD
+sample_generator_thread_proc :: proc(data: rawptr) {
+	app_state := (^App_State)(data)
+
+	for app_state.is_running {
+		buffer_was_full := false
+
+		sync.lock(&app_state.mutex)
+
+		samples_in_buffer := app_state.ring_buffer.write_pos - app_state.ring_buffer.read_pos
+		if samples_in_buffer < 0 {
+			samples_in_buffer += len(app_state.ring_buffer.data)
+		}
+
+		if samples_in_buffer < len(app_state.ring_buffer.data) - 2 {
+			// Generate sample and pass the current time
+			left, right := ga.process_sample(&app_state.processor, f32(app_state.device.sampleRate), app_state.time_in_samples)
+
+			// Increment time *after* processing the sample
+			app_state.time_in_samples += 1
+
+			app_state.ring_buffer.data[app_state.ring_buffer.write_pos] = left
+			app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
+
+			app_state.ring_buffer.data[app_state.ring_buffer.write_pos] = right
+			app_state.ring_buffer.write_pos = (app_state.ring_buffer.write_pos + 1) % len(app_state.ring_buffer.data)
+
+		} else {
+			buffer_was_full = true
+		}
+
+		sync.unlock(&app_state.mutex)
+
+		if buffer_was_full {
+			time.sleep(1 * time.Millisecond)
+		}
+	}
+}
+
+// THE CONSUMER
+audio_callback :: proc "c" (p_device: ^ma.device, p_output: rawptr, p_input: rawptr, frame_count: u32) {
+	app_state := (^App_State)(p_device.pUserData)
+	output_buffer := mem.slice_ptr((^f32)(p_output), int(frame_count * p_device.playback.channels))
+
+	sync.lock(&app_state.mutex)
+	for i in 0..<len(output_buffer) {
+		if app_state.ring_buffer.read_pos == app_state.ring_buffer.write_pos {
+			output_buffer[i] = 0.0 // Buffer is empty, output silence.
+		} else {
+			output_buffer[i] = app_state.ring_buffer.data[app_state.ring_buffer.read_pos]
+			app_state.ring_buffer.read_pos = (app_state.ring_buffer.read_pos + 1) % len(app_state.ring_buffer.data)
+		}
+	}
+	sync.unlock(&app_state.mutex)
+}
+
+main :: proc() {
+	app_state: App_State
+	app_state.is_running = true
+
+	// Initialize the processor using the generated function
+	ga.init_processor(&app_state.processor)
+
+	// --- Trigger one voice to make sound ---
+	if len(app_state.processor.voices) > 0 {
+		voice := &app_state.processor.voices[0];
+
+		// A "Note On" event:
+		voice.is_active = true;
+		voice.state.adsr_1_stage = .Attack;
+		voice.time_active = 0.0;
+	}
+
+	app_state.ring_buffer.data = make([]f32, 4096)
+
+	device_config := ma.device_config_init(.playback)
+	device_config.playback.format = .f32
+	device_config.playback.channels = 2
+	device_config.sampleRate = 48000
+	device_config.dataCallback = audio_callback
+	device_config.pUserData = &app_state
+
+	if ma.device_init(nil, &device_config, &app_state.device) != .SUCCESS {
+		fmt.eprintln("Failed to initialize audio device.")
+		return
+	}
+	defer ma.device_uninit(&app_state.device)
+	fmt.printf("Audio device initialized: %s\n", app_state.device.playback.name)
+
+	thread.run_with_data(&app_state, sample_generator_thread_proc)
+
+	if ma.device_start(&app_state.device) != .SUCCESS {
+		fmt.eprintln("Failed to start audio device.")
+		app_state.is_running = false
+		return
+	}
+
+	fmt.println("Playing audio... Press Ctrl+C to quit.")
+
+	for {
+		time.sleep(1 * time.Second)
+	}
+
+	app_state.is_running = false
+	ma.device_stop(&app_state.device)
+}
+
+--- END FILE: test_harness.odin ---
+
