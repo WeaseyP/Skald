@@ -1,41 +1,41 @@
-// skald-ui/src/hooks/nodeEditor/instrument.ts
-import { Node } from 'reactflow';
+import { Node, Edge } from 'reactflow';
 import { Voice } from './voice';
 
 export class Instrument {
-    public input: GainNode; // Main input for the instrument (not used yet)
-    public output: GainNode; // Main output for the instrument
+    public input: GainNode;
+    public output: GainNode;
     private context: AudioContext;
     private voices: Voice[] = [];
     private nextVoiceIndex = 0;
-    private nodeData: any;
 
     constructor(context: AudioContext, node: Node) {
         this.context = context;
         this.input = context.createGain();
         this.output = context.createGain();
-        this.nodeData = node.data;
 
-        const voiceCount = this.nodeData.voiceCount || 8;
-        const subgraph = {
-            nodes: this.nodeData.subgraph.nodes,
-            edges: this.nodeData.subgraph.connections.map((c: any) => ({
-                id: `e${c.from_node}-${c.to_node}`,
-                source: c.from_node.toString(),
-                target: c.to_node.toString(),
-                sourceHandle: c.from_port,
-                targetHandle: c.to_port,
-            }))
-        };
+        const { voiceCount = 8, subgraph } = node.data;
+        if (!subgraph || !subgraph.nodes || !subgraph.connections) {
+            console.error("Instrument node is missing a valid subgraph.", node);
+            return;
+        }
+
+        const reactFlowEdges: Edge[] = subgraph.connections.map((c: any) => ({
+            id: `e${c.from_node}-${c.to_node}`,
+            source: String(c.from_node),
+            target: String(c.to_node),
+            sourceHandle: c.from_port,
+            targetHandle: c.to_port,
+        }));
+        const fullSubgraph = { nodes: subgraph.nodes, connections: reactFlowEdges };
 
         for (let i = 0; i < voiceCount; i++) {
-            const voice = new Voice(context, subgraph);
+            const voice = new Voice(context, fullSubgraph);
+            this.input.connect(voice.input); // Connect master input to each voice
             voice.connect(this.output);
             this.voices.push(voice);
         }
     }
-
-    // Simple trigger for testing. Will trigger the next available voice.
+    
     public trigger() {
         const voice = this.voices[this.nextVoiceIndex];
         if (voice) {
@@ -44,22 +44,20 @@ export class Instrument {
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
     }
 
-    public connect(destination: AudioNode | AudioParam) {
-        this.output.connect(destination);
+    public connect(destination: AudioNode | AudioParam, outputIndex?: number, inputIndex?: number) {
+        this.output.connect(destination, outputIndex, inputIndex);
     }
-
+    
     public disconnect() {
         this.output.disconnect();
         this.voices.forEach(v => v.disconnect());
     }
 
-    public updateNodeData(data: any) {
-         Object.keys(data).forEach(key => {
-            const value = data[key];
-            // Check if this is a parameter for a sub-node
-            if(typeof value === 'object' && value.subNodeId) {
-                this.voices.forEach(voice => {
-                    voice.updateNodeData(value.subNodeId, value.data);
+    public updateNodeData(data: any, bpm: number) {
+        this.voices.forEach(voice => {
+            if(data.subgraph && data.subgraph.nodes) {
+                data.subgraph.nodes.forEach((subNode: Node) => {
+                    voice.updateNodeData(subNode.id, subNode.data, bpm);
                 });
             }
         });

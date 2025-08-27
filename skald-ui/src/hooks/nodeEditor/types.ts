@@ -1,0 +1,1 @@
+export type AdsrDataMap = Map<string, { gainNode: GainNode; data: any }>;
