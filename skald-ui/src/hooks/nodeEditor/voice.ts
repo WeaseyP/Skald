@@ -1,6 +1,8 @@
 import { Node, Edge } from 'reactflow';
-import { createAudioNode, connectNodes, convertBpmToSeconds } from './audioNodeUtils';
+import { connectNodes } from './audioNodeUtils';
 import type { AdsrDataMap } from './types';
+import { nodeCreationMap } from './audioNodeFactory';
+import { nodeUpdateMap } from './audioNodeUpdaters';
 
 export class Voice {
     private audioContext: AudioContext;
@@ -20,7 +22,14 @@ export class Voice {
 
     private buildSubgraph() {
         this.subgraph.nodes.forEach(node => {
-            const audioNode = createAudioNode(this.audioContext, node, this.adsrData);
+            let audioNode: AudioNode | null = null;
+            if (node.type && nodeCreationMap[node.type]) {
+                const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
+                audioNode = creator(this.audioContext, node, this.adsrData);
+            } else {
+                const creator = nodeCreationMap['default'] as Function;
+                audioNode = creator(this.audioContext, node, this.adsrData);
+            }
             if (audioNode) {
                 this.internalNodes.set(node.id, audioNode);
             }
@@ -81,110 +90,14 @@ export class Voice {
     }
 
     public updateNodeData(nodeId: string, data: any, bpm: number) {
-        const nodeToUpdate = this.internalNodes.get(nodeId);
+        const liveNode = this.internalNodes.get(nodeId);
         const nodeDef = this.subgraph.nodes.find(n => n.id === nodeId);
-        if (!nodeToUpdate || !nodeDef) return;
 
-        const now = this.audioContext.currentTime;
-        const rampTime = 0.02;
-
-        if (nodeToUpdate instanceof OscillatorNode) {
-            if (data.frequency !== undefined) nodeToUpdate.frequency.setTargetAtTime(data.frequency, now, rampTime);
-        } else if (nodeToUpdate instanceof BiquadFilterNode) {
-            if (data.cutoff !== undefined) nodeToUpdate.frequency.setTargetAtTime(data.cutoff, now, rampTime);
-            if (data.resonance !== undefined) nodeToUpdate.Q.setTargetAtTime(data.resonance, now, rampTime);
-        } else if (nodeToUpdate instanceof GainNode && nodeDef.type === 'lfo') {
-            const compositeNode = nodeToUpdate as any;
-            if (!compositeNode.internalNodes) return;
-            const { lfo } = compositeNode.internalNodes;
-    
-            if (data.sync) {
-                const timeInSeconds = convertBpmToSeconds(bpm, data.noteDivision || '1/4');
-                const frequency = timeInSeconds > 0 ? 1 / timeInSeconds : 0;
-                lfo.frequency.setTargetAtTime(frequency, now, rampTime);
-            } else {
-                if (data.frequency !== undefined) lfo.frequency.setTargetAtTime(data.frequency, now, rampTime);
+        if (liveNode && nodeDef && nodeDef.type) {
+            const updater = nodeUpdateMap[nodeDef.type as keyof typeof nodeUpdateMap];
+            if (updater) {
+                updater(liveNode, data, this.audioContext, bpm, this.adsrData, nodeId);
             }
-            
-            if (data.amplitude !== undefined) nodeToUpdate.gain.setTargetAtTime(data.amplitude, now, rampTime);
-        } else if (nodeToUpdate instanceof GainNode && nodeDef.type === 'adsr') {
-             if (data.amplitude !== undefined) nodeToUpdate.gain.setTargetAtTime(data.amplitude, now, rampTime);
-             const adsr = this.adsrData.get(nodeId);
-             if (adsr) adsr.data = { ...adsr.data, ...data };
-        } else if (nodeToUpdate instanceof AudioWorkletNode) {
-            if (nodeDef.type === 'wavetable') {
-                 if(data.frequency !== undefined) nodeToUpdate.parameters.get('frequency')?.setTargetAtTime(data.frequency, now, rampTime);
-                 if(data.position !== undefined) nodeToUpdate.parameters.get('position')?.setTargetAtTime(data.position, now, rampTime);
-            } else if (nodeDef.type === 'sample-hold') {
-                if (data.rate !== undefined) {
-                    nodeToUpdate.parameters.get('rate')?.setTargetAtTime(data.rate, now, rampTime);
-                }
-            }
-        } else if (nodeDef.type === 'delay') {
-            const compositeNode = nodeToUpdate as any;
-            if (!compositeNode.internalNodes) return;
-            const { delay, feedback, wet, dry } = compositeNode.internalNodes;
-
-            if (data.sync) {
-                const timeInSeconds = convertBpmToSeconds(bpm, data.noteDivision || '1/8');
-                delay.delayTime.setTargetAtTime(timeInSeconds, now, rampTime);
-            } else {
-                if (data.delayTime !== undefined) delay.delayTime.setTargetAtTime(data.delayTime, now, rampTime);
-            }
-
-            if (data.feedback !== undefined) feedback.gain.setTargetAtTime(data.feedback, now, rampTime);
-            if (data.mix !== undefined) {
-                wet.gain.setTargetAtTime(data.mix, now, rampTime);
-                dry.gain.setTargetAtTime(1.0 - data.mix, now, rampTime);
-            }
-        } else if (nodeToUpdate instanceof WaveShaperNode && nodeDef.type === 'distortion') {
-            if (data.drive !== undefined) {
-                const curve = new Float32Array(256);
-                const drive = data.drive;
-                for (let i = 0; i < 256; i++) {
-                    const x = i * 2 / 256 - 1;
-                    curve[i] = (Math.PI + drive) * x / (Math.PI + drive * Math.abs(x));
-                }
-                nodeToUpdate.curve = curve;
-            }
-        } else if (nodeToUpdate instanceof StereoPannerNode && nodeDef.type === 'panner') {
-            if (data.pan !== undefined) {
-                nodeToUpdate.pan.setTargetAtTime(data.pan, now, rampTime);
-            }
-        } else if (nodeDef.type === 'reverb') {
-            const compositeNode = nodeToUpdate as any;
-            if (!compositeNode.internalNodes) return;
-            const { wet, dry } = compositeNode.internalNodes;
-            if (data.mix !== undefined) {
-                wet.gain.setTargetAtTime(data.mix, now, rampTime);
-                dry.gain.setTargetAtTime(1.0 - data.mix, now, rampTime);
-            }
-        } else if (nodeDef.type === 'mixer') {
-            const compositeNode = nodeToUpdate as any;
-            if (!compositeNode.inputGains) return;
-
-            if (data.gain !== undefined) {
-                compositeNode.gain.setTargetAtTime(data.gain, now, rampTime);
-            }
-
-            for (const key in data) {
-                if (key.startsWith('input_') && key.endsWith('_gain')) {
-                    const handle = key.substring(0, key.length - 5);
-                    const inputGainNode = compositeNode.inputGains.get(handle);
-                    if (inputGainNode) {
-                        inputGainNode.gain.setTargetAtTime(data[key], now, rampTime);
-                    }
-                }
-            }
-        } else if (nodeDef.type === 'fmOperator') {
-            const compositeNode = nodeToUpdate as any;
-            if (!compositeNode.internalNodes) return;
-            const { carrier, modulator, modulationIndex } = compositeNode.internalNodes;
-
-            if (data.frequency !== undefined) carrier.frequency.setTargetAtTime(data.frequency, now, rampTime);
-            if (data.modulatorFrequency !== undefined) modulator.frequency.setTargetAtTime(data.modulatorFrequency, now, rampTime);
-            if (data.modulationIndex !== undefined) modulationIndex.gain.setTargetAtTime(data.modulationIndex, now, rampTime);
-            if (data.gain !== undefined) compositeNode.gain.setTargetAtTime(data.gain, now, rampTime);
         }
     }
 }

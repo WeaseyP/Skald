@@ -6,7 +6,8 @@ import { wavetableProcessorString } from './audioWorklets/wavetable.worklet';
 import { useSequencer } from './useSequencer';
 import { Instrument } from './instrument';
 import { AdsrDataMap } from './types';
-import { createAudioNode, connectNodes, disconnectNodes, convertBpmToSeconds } from './audioNodeUtils';
+import { connectNodes, disconnectNodes } from './audioNodeUtils';
+import { nodeCreationMap } from './audioNodeFactory';
 
 type AudioNodeMap = Map<string, AudioNode | Instrument>;
 
@@ -73,8 +74,12 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 let newAudioNode: AudioNode | Instrument | null = null;
                 if (node.type === 'instrument') {
                     newAudioNode = new Instrument(context, node);
+                } else if (node.type && nodeCreationMap[node.type]) {
+                    const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
+                    newAudioNode = creator(context, node, adsrNodes.current);
                 } else {
-                    newAudioNode = createAudioNode(context, node, adsrNodes.current);
+                    const creator = nodeCreationMap['default'] as Function;
+                    newAudioNode = creator(context, node, adsrNodes.current);
                 }
                 if (newAudioNode) audioNodes.current.set(node.id, newAudioNode);
             } else {
