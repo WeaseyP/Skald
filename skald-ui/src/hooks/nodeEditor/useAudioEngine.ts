@@ -1,107 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Node, Edge, Connection } from 'reactflow';
 import useDeepCompareEffect from 'use-deep-compare-effect';
+import { sampleHoldProcessorString } from './audioWorklets/sampleHold.worklet';
+import { wavetableProcessorString } from './audioWorklets/wavetable.worklet';
+import { useSequencer } from './useSequencer';
 
 // =================================================================================
-// SECTION A: FORWARD-DECLARED TYPES & AUDIO WORKLETS
+// SECTION A: FORWARD-DECLARED TYPES
 // =================================================================================
 
 type AdsrDataMap = Map<string, { gainNode: GainNode; data: any }>;
-
-// These string definitions remain unchanged.
-const sampleHoldProcessorString = `
-class SampleHoldProcessor extends AudioWorkletProcessor {
-  static get parameterDescriptors() {
-    return [{ name: 'rate', defaultValue: 10.0, minValue: 0 }];
-  }
-  constructor() {
-    super();
-    this.updateInterval = 1 / 10.0 * sampleRate;
-    this.value = Math.random() * 2 - 1;
-    this.counter = 0;
-  }
-  process(inputs, outputs, parameters) {
-    const output = outputs[0];
-    const rate = parameters.rate[0];
-    this.updateInterval = 1 / rate * sampleRate;
-    for (let channel = 0; channel < output.length; ++channel) {
-      const outputChannel = output[channel];
-      for (let i = 0; i < outputChannel.length; ++i) {
-        if (this.counter >= this.updateInterval) {
-            this.value = Math.random() * 2 - 1;
-            this.counter = 0;
-        }
-        outputChannel[i] = this.value;
-        this.counter++;
-      }
-    }
-    return true;
-  }
-}
-registerProcessor('sample-hold-processor', SampleHoldProcessor);
-`;
-
-const wavetableProcessorString = `
-class WavetableProcessor extends AudioWorkletProcessor {
-    static get parameterDescriptors() {
-        return [
-            { name: 'frequency', defaultValue: 440, minValue: 20, maxValue: 20000 },
-            { name: 'position', defaultValue: 0, minValue: 0, maxValue: 3 },
-        ];
-    }
-    constructor(options) {
-        super(options);
-        this.phase = 0;
-        this.tables = this.createTables();
-    }
-    createTables() {
-        const size = 2048;
-        const sine = new Float32Array(size);
-        const triangle = new Float32Array(size);
-        const sawtooth = new Float32Array(size);
-        const square = new Float32Array(size);
-        for (let i = 0; i < size; i++) {
-            const angle = (i / size) * 2 * Math.PI;
-            sine[i] = Math.sin(angle);
-            triangle[i] = (Math.abs((i / size) * 4 - 2) - 1);
-            sawtooth[i] = (i / size) * 2 - 1;
-            square[i] = (i < size / 2) ? 1 : -1;
-        }
-        return [sine, triangle, sawtooth, square];
-    }
-    process(inputs, outputs, parameters) {
-        const output = outputs[0];
-        const frequency = parameters.frequency;
-        const position = parameters.position;
-        for (let channel = 0; channel < output.length; ++channel) {
-            const outputChannel = output[channel];
-            for (let i = 0; i < outputChannel.length; ++i) {
-                const freq = frequency.length > 1 ? frequency[i] : frequency[0];
-                const pos = position.length > 1 ? position[i] : position[0];
-                const tableIndex = Math.floor(pos);
-                const nextTableIndex = (tableIndex + 1) % this.tables.length;
-                const tableFraction = pos - tableIndex;
-                const table1 = this.tables[tableIndex];
-                const table2 = this.tables[nextTableIndex];
-                const readIndex = (this.phase * table1.length);
-                const readIndexInt = Math.floor(readIndex);
-                const readIndexFrac = readIndex - readIndexInt;
-                const v1_1 = table1[readIndexInt % table1.length];
-                const v1_2 = table1[(readIndexInt + 1) % table1.length];
-                const sample1 = v1_1 + (v1_2 - v1_1) * readIndexFrac;
-                const v2_1 = table2[readIndexInt % table2.length];
-                const v2_2 = table2[(readIndexInt + 1) % table2.length];
-                const sample2 = v2_1 + (v2_2 - v2_1) * readIndexFrac;
-                outputChannel[i] = sample1 + (sample2 - sample1) * tableFraction;
-                this.phase += freq / sampleRate;
-                if (this.phase > 1) this.phase -= 1;
-            }
-        }
-        return true;
-    }
-}
-registerProcessor('wavetable-processor', WavetableProcessor);
-`;
 
 // =================================================================================
 // SECTION B: HELPER FUNCTIONS
@@ -677,48 +585,9 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     const audioContext = useRef<AudioContext | null>(null);
     const audioNodes = useRef<Map<string, AudioNode | Instrument>>(new Map());
     const adsrNodes = useRef<AdsrDataMap>(new Map());
-    const loopIntervalId = useRef<NodeJS.Timeout | null>(null);
     const prevGraphState = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
 
-    const triggerAdsr = (gainNode: GainNode, data: any, startTime: number) => {
-        const { attack = 0.1, decay = 0.2, sustain = 0.5 } = data;
-        gainNode.gain.cancelScheduledValues(startTime);
-        gainNode.gain.setValueAtTime(0, startTime);
-        gainNode.gain.linearRampToValueAtTime(1, startTime + attack);
-        gainNode.gain.linearRampToValueAtTime(sustain, startTime + attack + decay);
-    };
-    
-    const startSequencer = useCallback(() => {
-        if (loopIntervalId.current) clearInterval(loopIntervalId.current);
-        const loopDuration = (60 / bpm) * 4 * 1000; // 4 beats
-
-        const tick = () => {
-            if (!audioContext.current) return;
-            const now = audioContext.current.currentTime;
-            
-            // Trigger global (non-instrument) ADSRs
-            adsrNodes.current.forEach(({ gainNode, data }) => {
-                triggerAdsr(gainNode, data, now);
-            });
-
-            // Trigger all instruments
-            audioNodes.current.forEach(node => {
-                if (node instanceof Instrument) {
-                    node.trigger();
-                }
-            });
-        };
-        
-        tick(); // Trigger immediately
-        loopIntervalId.current = setInterval(tick, loopDuration);
-    }, [bpm]);
-
-    const stopSequencer = () => {
-        if (loopIntervalId.current) {
-            clearInterval(loopIntervalId.current);
-            loopIntervalId.current = null;
-        }
-    };
+    useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
 
     const handlePlay = useCallback(async () => {
         if (isPlaying) return;
@@ -739,7 +608,6 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     }, [isPlaying]);
 
     const handleStop = useCallback(() => {
-        stopSequencer();
         if (!isPlaying || !audioContext.current) return;
         audioContext.current.close().then(() => {
             setIsPlaying(false);
@@ -872,15 +740,6 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         prevGraphState.current = { nodes, edges };
 
     }, [nodes, edges, isPlaying]);
-
-    useEffect(() => {
-        if (isPlaying && isLooping) {
-            startSequencer();
-        } else {
-            stopSequencer();
-        }
-        return stopSequencer;
-    }, [isPlaying, isLooping, bpm, startSequencer]);
 
     useEffect(() => {
         return () => { if (audioContext.current) handleStop(); };
