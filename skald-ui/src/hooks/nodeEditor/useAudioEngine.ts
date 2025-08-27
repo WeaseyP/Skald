@@ -273,13 +273,13 @@ const createAudioNode = (context: AudioContext, node: Node, adsrDataMap: AdsrDat
             dryGain.connect(outputNode);
 
             inputNode.connect(delayNode);
+            inputNode.connect(delayNode);
+            delayNode.connect(feedbackNode);
+            feedbackNode.connect(delayNode);
             delayNode.connect(wetGain);
             wetGain.connect(outputNode);
 
-            feedbackNode.connect(wetGain);
-            wetGain.connect(outputNode);
 
-            
             const compositeNode = inputNode as any;
             compositeNode.output = outputNode;
             compositeNode.internalNodes = {
@@ -791,6 +791,13 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 } else if (liveNode instanceof BiquadFilterNode) {
                     liveNode.frequency.setTargetAtTime(node.data.cutoff, now, rampTime);
                     liveNode.Q.setTargetAtTime(node.data.resonance, now, rampTime);
+                } else if (node.type === 'reverb') {
+                    const compositeNode = liveNode as any;
+                    if (compositeNode.internalNodes && node.data.mix !== undefined) {
+                        const { wet, dry } = compositeNode.internalNodes;
+                        wet.gain.setTargetAtTime(node.data.mix, now, rampTime);
+                        dry.gain.setTargetAtTime(1.0 - node.data.mix, now, rampTime);
+                    }
                 } else if (liveNode instanceof GainNode && (node.type === 'adsr' || node.type === 'lfo')) {
                     if (node.data.amplitude !== undefined) liveNode.gain.setTargetAtTime(node.data.amplitude, now, rampTime);
                     const adsr = adsrNodes.current.get(node.id);
@@ -799,6 +806,37 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     if (node.type === 'wavetable') {
                         liveNode.parameters.get('frequency')?.setTargetAtTime(node.data.frequency, now, rampTime);
                         liveNode.parameters.get('position')?.setTargetAtTime(node.data.position, now, rampTime);
+                    }
+                }
+                else { 
+                    const compositeNode = liveNode as any;
+                    if (!compositeNode.internalNodes) return;
+
+                    if (node.type === 'delay') {
+                        const { delay, feedback, wet, dry } = compositeNode.internalNodes;
+                        if (node.data.sync) {
+                            const timeInSeconds = convertBpmToSeconds(bpm, node.data.noteDivision || '1/8');
+                            delay.delayTime.setTargetAtTime(timeInSeconds, now, rampTime);
+                        } else {
+                            if (node.data.delayTime !== undefined) delay.delayTime.setTargetAtTime(node.data.delayTime, now, rampTime);
+                        }
+                        if (node.data.feedback !== undefined) feedback.gain.setTargetAtTime(node.data.feedback, now, rampTime);
+                        if (node.data.mix !== undefined) {
+                            wet.gain.setTargetAtTime(node.data.mix, now, rampTime);
+                            dry.gain.setTargetAtTime(1.0 - node.data.mix, now, rampTime);
+                        }
+                    } else if (node.type === 'reverb') {
+                        const { wet, dry } = compositeNode.internalNodes;
+                        if (node.data.mix !== undefined) {
+                            wet.gain.setTargetAtTime(node.data.mix, now, rampTime);
+                            dry.gain.setTargetAtTime(1.0 - node.data.mix, now, rampTime);
+                        }
+                    } else if (node.type === 'fmOperator') {
+                        const { carrier, modulator, modulationIndex } = compositeNode.internalNodes;
+                        if (node.data.frequency !== undefined) carrier.frequency.setTargetAtTime(node.data.frequency, now, rampTime);
+                        if (node.data.modulatorFrequency !== undefined) modulator.frequency.setTargetAtTime(node.data.modulatorFrequency, now, rampTime);
+                        if (node.data.modulationIndex !== undefined) modulationIndex.gain.setTargetAtTime(node.data.modulationIndex, now, rampTime);
+                        if (node.data.gain !== undefined) compositeNode.gain.setTargetAtTime(node.data.gain, now, rampTime);
                     }
                 }
             }
