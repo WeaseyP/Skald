@@ -83,12 +83,17 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 }
                 if (newAudioNode) audioNodes.current.set(node.id, newAudioNode);
             } else {
-                // Node updates are handled within the Instrument/Voice classes
-                 if (liveNode instanceof Instrument) {
+                const prevNode = prevNodes.find(p => p.id === node.id);
+
+                if (liveNode instanceof Instrument) {
+                    // Instruments are managed by their own update logic, which is sensitive to BPM changes as well.
                     liveNode.updateNodeData(node.data, bpm);
+                } else if (prevNode && JSON.stringify(prevNode.data) !== JSON.stringify(node.data)) {
+                    // For other nodes, we trigger an update if the node's data has changed.
+                    if (typeof (liveNode as any).update === 'function') {
+                        (liveNode as any).update(node.data);
+                    }
                 }
-                // NOTE: We could add logic here to update non-instrument nodes if needed,
-                // but for now we assume updates primarily happen within instrument subgraphs.
             }
         });
 
