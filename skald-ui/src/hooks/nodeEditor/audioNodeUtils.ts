@@ -1,5 +1,4 @@
 import { Node, Edge, Connection } from 'reactflow';
-import { Instrument } from './instrument';
 import type { AdsrDataMap } from './types';
 
 const noteDivisionMap: { [key: string]: number } = {
