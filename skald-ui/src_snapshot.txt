@@ -216,7 +216,7 @@ const EditorLayout = () => {
                     onLoad={handleLoad}
                     onCreateInstrument={handleCreateInstrument}
                     onCreateGroup={handleCreateGroup}
-                    canCreateInstrument={selectedNodesForGrouping.length > 1}
+                    canCreateInstrument={selectedNodesForGrouping.length > 0}
                     bpm={bpm}
                     onBpmChange={setBpm}
                     isLooping={isLooping}

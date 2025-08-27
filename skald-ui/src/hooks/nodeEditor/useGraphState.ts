@@ -267,7 +267,7 @@ export const useGraphState = () => {
     }, [future, nodes, edges]);
 
     const handleCreateInstrument = useCallback(() => {
-        if (selectedNodesForGrouping.length <= 1) return;
+        if (selectedNodesForGrouping.length < 1) return;
         setIsNamePromptVisible(true);
     }, [selectedNodesForGrouping]);
 
