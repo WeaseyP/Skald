@@ -3,6 +3,7 @@ import { Node, Edge } from 'reactflow';
 import useDeepCompareEffect from 'use-deep-compare-effect';
 import { sampleHoldProcessorString } from './audioWorklets/sampleHold.worklet';
 import { wavetableProcessorString } from './audioWorklets/wavetable.worklet';
+import { adsrProcessorString } from './audioWorklets/adsr.worklet';
 import { useSequencer } from './useSequencer';
 import { Instrument } from './instrument';
 import { AdsrDataMap } from './types';
@@ -27,9 +28,11 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         try {
             const sampleHoldBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
             const wavetableBlob = new Blob([wavetableProcessorString], { type: 'application/javascript' });
+            const adsrBlob = new Blob([adsrProcessorString], { type: 'application/javascript' });
             await Promise.all([
                 context.audioWorklet.addModule(URL.createObjectURL(sampleHoldBlob)),
-                context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob))
+                context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob)),
+                context.audioWorklet.addModule(URL.createObjectURL(adsrBlob))
             ]);
             setIsPlaying(true);
         } catch (e) {
@@ -118,6 +121,11 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                         if (fmInput) {
                             disconnectNodes(sourceNode, fmInput, edge);
                         }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'ADSRNode' && edge.targetHandle === 'input_gate') {
+                        const adsrGate = (target as any).gate;
+                        if (adsrGate) {
+                            disconnectNodes(sourceNode, adsrGate, edge);
+                        }
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         disconnectNodes(sourceNode, targetNode, edge);
@@ -143,6 +151,11 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                         const fmInput = (target as any).modulatorInput;
                         if (fmInput) {
                             connectNodes(sourceNode, fmInput, edge);
+                        }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'ADSRNode' && edge.targetHandle === 'input_gate') {
+                        const adsrGate = (target as any).gate;
+                        if (adsrGate) {
+                            connectNodes(sourceNode, adsrGate, edge);
                         }
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;

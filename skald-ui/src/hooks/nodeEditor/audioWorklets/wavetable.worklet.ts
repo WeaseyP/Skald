@@ -10,6 +10,12 @@ class WavetableProcessor extends AudioWorkletProcessor {
         super(options);
         this.phase = 0;
         this.tables = this.createTables();
+        this.port.onmessage = (event) => {
+            if (event.data.type === 'update-table' && event.data.table) {
+                // Replace the last table (originally square wave) with the custom one.
+                this.tables[3] = event.data.table;
+            }
+        };
     }
     createTables() {
         const size = 2048;
