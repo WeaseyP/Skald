@@ -11,5 +11,20 @@ export const createLfoNode = (context: AudioContext, node: Node): AudioNode => {
 
     const compositeNode = lfoGain as any;
     compositeNode.internalNodes = { lfo: lfo };
+
+    compositeNode.update = (data: any) => {
+        if (data.frequency !== undefined) {
+            lfo.frequency.setValueAtTime(data.frequency, context.currentTime);
+        }
+        const shape = data.shape || data.waveform;
+        if (shape) {
+            lfo.type = shape.toLowerCase() as OscillatorType;
+        }
+        const amount = data.amount ?? data.amplitude;
+        if (amount !== undefined) {
+            lfoGain.gain.setValueAtTime(amount, context.currentTime);
+        }
+    };
+
     return compositeNode;
 };

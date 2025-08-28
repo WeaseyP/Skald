@@ -26,5 +26,19 @@ export const createDelayNode = (context: AudioContext, node: Node): AudioNode =>
     const compositeNode = inputNode as any;
     compositeNode.output = outputNode;
     compositeNode.internalNodes = { delay: delayNode, feedback: feedbackNode, wet: wetGain, dry: dryGain };
+
+    compositeNode.update = (data: any) => {
+        if (data.delayTime !== undefined) {
+            delayNode.delayTime.setValueAtTime(data.delayTime, context.currentTime);
+        }
+        if (data.feedback !== undefined) {
+            feedbackNode.gain.setValueAtTime(data.feedback, context.currentTime);
+        }
+        if (data.mix !== undefined) {
+            wetGain.gain.setValueAtTime(data.mix, context.currentTime);
+            dryGain.gain.setValueAtTime(1.0 - data.mix, context.currentTime);
+        }
+    };
+    
     return compositeNode;
 };
