@@ -105,8 +105,23 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 const target = audioNodes.current.get(edge.target);
                 if (source && target) {
                     const sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
-                    const targetNode = target instanceof Instrument ? target.input : target;
-                    disconnectNodes(sourceNode, targetNode, edge);
+                    
+                    const targetSkaldNode = (target as any)._skaldNode;
+                    if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
+                        const mixerInstance = targetSkaldNode as any;
+                        const inputGain = mixerInstance.getInputGain(edge.targetHandle);
+                        if (inputGain) {
+                            disconnectNodes(sourceNode, inputGain, edge);
+                        }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
+                        const fmInput = (target as any).modulatorInput;
+                        if (fmInput) {
+                            disconnectNodes(sourceNode, fmInput, edge);
+                        }
+                    } else {
+                        const targetNode = target instanceof Instrument ? target.input : target;
+                        disconnectNodes(sourceNode, targetNode, edge);
+                    }
                 }
             }
         });
@@ -118,8 +133,21 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 const target = audioNodes.current.get(edge.target);
                 if (source && target) {
                     const sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
-                    const targetNode = target instanceof Instrument ? target.input : target;
-                    connectNodes(sourceNode, targetNode, edge);
+
+                    const targetSkaldNode = (target as any)._skaldNode;
+                    if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
+                        const mixerInstance = targetSkaldNode as any;
+                        const inputGain = mixerInstance.getOrCreateInputGain(edge.targetHandle);
+                        connectNodes(sourceNode, inputGain, edge);
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
+                        const fmInput = (target as any).modulatorInput;
+                        if (fmInput) {
+                            connectNodes(sourceNode, fmInput, edge);
+                        }
+                    } else {
+                        const targetNode = target instanceof Instrument ? target.input : target;
+                        connectNodes(sourceNode, targetNode, edge);
+                    }
                 }
             }
         });
