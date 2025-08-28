@@ -1,32 +1,40 @@
-// skald-ui/src/hooks/nodeEditor/voice.ts
 import { Node, Edge } from 'reactflow';
-import { createAudioNode, connectNodes, AudioNodeMap, AdsrDataMap } from './useAudioEngine'; // We will export these types from the main hook
+import { connectNodes } from './audioNodeUtils';
+import type { AdsrDataMap } from './types';
+import { nodeCreationMap } from './audioNodeFactory';
 
 export class Voice {
     private audioContext: AudioContext;
-    private internalNodes: AudioNodeMap = new Map();
+    private internalNodes: Map<string, AudioNode> = new Map();
     private adsrData: AdsrDataMap = new Map();
-    private output: GainNode;
-    private subgraph: { nodes: Node[]; edges: Edge[] };
+    public output: GainNode;
+    private subgraph: { nodes: Node[]; connections: Edge[] };
+    public input: GainNode;
 
-    constructor(context: AudioContext, subgraph: { nodes: Node[]; edges: Edge[] }) {
+    constructor(context: AudioContext, subgraph: { nodes: Node[]; connections: Edge[] }) {
         this.audioContext = context;
         this.subgraph = subgraph;
-        this.output = this.audioContext.createGain();
+        this.input = context.createGain();
+        this.output = context.createGain();
         this.buildSubgraph();
     }
 
     private buildSubgraph() {
-        // 1. Create all internal audio nodes
         this.subgraph.nodes.forEach(node => {
-            const audioNode = createAudioNode(this.audioContext, node, this.adsrData);
+            let audioNode: AudioNode | null = null;
+            if (node.type && nodeCreationMap[node.type]) {
+                const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
+                audioNode = creator(this.audioContext, node, this.adsrData);
+            } else {
+                const creator = nodeCreationMap['default'] as Function;
+                audioNode = creator(this.audioContext, node, this.adsrData);
+            }
             if (audioNode) {
                 this.internalNodes.set(node.id, audioNode);
             }
         });
 
-        // 2. Connect the internal nodes
-        this.subgraph.edges.forEach(edge => {
+        this.subgraph.connections.forEach(edge => {
             const sourceNode = this.internalNodes.get(edge.source);
             const targetNode = this.internalNodes.get(edge.target);
             if (sourceNode && targetNode) {
@@ -34,14 +42,19 @@ export class Voice {
             }
         });
 
-        // 3. Connect the final output of the subgraph to the voice's main output
-        const outputNode = this.subgraph.nodes.find(n => n.type === 'output');
-        if (outputNode) {
-            const finalInternalNode = this.internalNodes.get(outputNode.id);
-            if(finalInternalNode) {
-                finalInternalNode.connect(this.output);
+        this.subgraph.nodes.filter(n => n.type === 'InstrumentInput').forEach(inputNode => {
+            const internalInNode = this.internalNodes.get(inputNode.id);
+            if (internalInNode) {
+                this.input.connect(internalInNode);
             }
-        }
+        });
+
+        this.subgraph.nodes.filter(n => n.type === 'InstrumentOutput').forEach(outputNode => {
+             const internalOutNode = this.internalNodes.get(outputNode.id);
+             if (internalOutNode) {
+                 internalOutNode.connect(this.output);
+             }
+        });
     }
 
     public trigger(startTime: number) {
@@ -63,32 +76,26 @@ export class Voice {
             gainNode.gain.linearRampToValueAtTime(0, startTime + release);
         });
     }
-
+    
     public connect(destination: AudioNode | AudioParam) {
         this.output.connect(destination);
     }
-
+    
     public disconnect() {
         this.output.disconnect();
-        this.internalNodes.forEach(node => node.disconnect());
+        this.internalNodes.forEach(node => {
+            try { node.disconnect(); } catch (e) { /* ignore */ }
+        });
     }
 
     public updateNodeData(nodeId: string, data: any) {
-        const nodeToUpdate = this.internalNodes.get(nodeId);
-        const nodeDef = this.subgraph.nodes.find(n => n.id === nodeId);
-        if (!nodeToUpdate || !nodeDef) return;
+        const liveNode = this.internalNodes.get(nodeId);
 
-        const now = this.audioContext.currentTime;
-        const rampTime = 0.02;
-
-        if (nodeToUpdate instanceof OscillatorNode) {
-            if (data.frequency !== undefined) nodeToUpdate.frequency.setTargetAtTime(data.frequency, now, rampTime);
-        } else if (nodeToUpdate instanceof BiquadFilterNode) {
-            if (data.cutoff !== undefined) nodeToUpdate.frequency.setTargetAtTime(data.cutoff, now, rampTime);
-            if (data.resonance !== undefined) nodeToUpdate.Q.setTargetAtTime(data.resonance, now, rampTime);
-        } else if (nodeToUpdate instanceof GainNode && nodeDef.type === 'adsr') {
-            const adsr = this.adsrData.get(nodeId);
-            if (adsr) adsr.data = { ...adsr.data, ...data };
+        if (liveNode) {
+            const skaldNode = (liveNode as any)._skaldNode;
+            if (skaldNode && typeof skaldNode.update === 'function') {
+                skaldNode.update(data);
+            }
         }
     }
 }

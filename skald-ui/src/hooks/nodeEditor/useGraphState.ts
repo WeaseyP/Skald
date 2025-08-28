@@ -183,12 +183,12 @@ export const useGraphState = () => {
                     decay: 0.2, 
                     sustain: 0.5, 
                     release: 1.0,
-                    amount: 1.0,
+                    depth: 1.0,
                     velocitySensitivity: 0.5,
                     attackCurve: 'linear',
                     decayCurve: 'linear',
                     releaseCurve: 'linear',
-                    exposedParameters: ['attack', 'decay', 'sustain', 'release', 'amount']
+                    exposedParameters: ['attack', 'decay', 'sustain', 'release', 'depth']
                 }};
                 break;
             case 'delay':
@@ -267,7 +267,7 @@ export const useGraphState = () => {
     }, [future, nodes, edges]);
 
     const handleCreateInstrument = useCallback(() => {
-        if (selectedNodesForGrouping.length <= 1) return;
+        if (selectedNodesForGrouping.length < 0) return;
         setIsNamePromptVisible(true);
     }, [selectedNodesForGrouping]);
 
