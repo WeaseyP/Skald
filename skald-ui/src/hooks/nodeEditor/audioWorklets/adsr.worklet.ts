@@ -6,6 +6,7 @@ class ADSRProcessor extends AudioWorkletProcessor {
             { name: 'decay', defaultValue: 0.1, minValue: 0.001, maxValue: 10 },
             { name: 'sustain', defaultValue: 0.5, minValue: 0, maxValue: 1 },
             { name: 'release', defaultValue: 0.5, minValue: 0.001, maxValue: 10 },
+            { name: 'depth', defaultValue: 1.0, minValue: 0, maxValue: 1 },
         ];
     }
 

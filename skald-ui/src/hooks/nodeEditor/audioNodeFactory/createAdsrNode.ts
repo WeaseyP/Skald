@@ -21,6 +21,7 @@ class ADSRNode extends BaseSkaldNode {
         this.output.parameters.get('decay')?.setValueAtTime(data.decay ?? 0.1, this.context.currentTime);
         this.output.parameters.get('sustain')?.setValueAtTime(data.sustain ?? 0.5, this.context.currentTime);
         this.output.parameters.get('release')?.setValueAtTime(data.release ?? 0.5, this.context.currentTime);
+        this.output.parameters.get('depth')?.setValueAtTime(data.depth ?? 1.0, this.context.currentTime);
     }
 }
 

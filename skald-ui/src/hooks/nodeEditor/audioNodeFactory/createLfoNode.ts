@@ -25,13 +25,11 @@ class LfoNode extends BaseSkaldNode {
         if (data.frequency !== undefined) {
             this.lfo.frequency.setValueAtTime(data.frequency, this.context.currentTime);
         }
-        const shape = data.shape || data.waveform;
-        if (shape) {
-            this.lfo.type = shape.toLowerCase() as OscillatorType;
+        if (data.waveform) {
+            this.lfo.type = data.waveform.toLowerCase() as OscillatorType;
         }
-        const amount = data.amount ?? data.amplitude;
-        if (amount !== undefined) {
-            this.output.gain.setValueAtTime(amount, this.context.currentTime);
+        if (data.amplitude !== undefined) {
+            this.output.gain.setValueAtTime(data.amplitude, this.context.currentTime);
         }
     }
 }

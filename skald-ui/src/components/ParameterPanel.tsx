@@ -234,8 +234,8 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                         value={{ attack: data.attack, decay: data.decay, sustain: data.sustain, release: data.release }}
                         onChange={(newAdsr) => handleParameterChange('adsr', newAdsr, subNodeId || node.id)}
                     />
-                    {createControl('amount', 'Amount/Depth', 
-                        <CustomSlider min={0} max={1} value={data.amount ?? 1} onChange={val => handleParameterChange('amount', val, subNodeId || node.id)} />
+                    {createControl('depth', 'Depth', 
+                        <CustomSlider min={0} max={1} value={data.depth ?? 1} onChange={val => handleParameterChange('depth', val, subNodeId || node.id)} />
                     )}
                     {createControl('velocitySensitivity', 'Velocity Sens.', 
                         <CustomSlider min={0} max={1} value={data.velocitySensitivity ?? 0.5} onChange={val => handleParameterChange('velocitySensitivity', val, subNodeId || node.id)} />
