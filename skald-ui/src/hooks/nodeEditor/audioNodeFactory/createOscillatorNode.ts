@@ -1,27 +1,44 @@
 import { Node } from 'reactflow';
+import { BaseSkaldNode } from './BaseSkaldNode';
 
-export const createOscillatorNode = (context: AudioContext, node: Node): AudioNode => {
-    const gainNode = context.createGain();
-    gainNode.gain.setValueAtTime(node.data.amplitude ?? 1, context.currentTime);
+class OscillatorNode extends BaseSkaldNode {
+    public output: GainNode;
+    private osc: OscillatorNode;
+    private context: AudioContext;
 
-    const osc = context.createOscillator();
-    osc.type = (node.data.waveform || 'sawtooth').toLowerCase() as OscillatorType;
-    osc.frequency.setValueAtTime(node.data.frequency || 440, context.currentTime);
-    
-    osc.connect(gainNode);
-    osc.start();
+    constructor(context: AudioContext, data: any) {
+        super();
+        this.context = context;
 
-    (gainNode as any).update = (data: any) => {
+        this.output = context.createGain();
+        this.osc = context.createOscillator();
+
+        this.output.gain.setValueAtTime(data.amplitude ?? 1, context.currentTime);
+        this.osc.type = (data.waveform || 'sawtooth').toLowerCase() as OscillatorType;
+        this.osc.frequency.setValueAtTime(data.frequency || 440, context.currentTime);
+        
+        this.osc.connect(this.output);
+        this.osc.start();
+    }
+
+    update(data: any): void {
         if (data.frequency) {
-            osc.frequency.setValueAtTime(data.frequency, context.currentTime);
+            this.osc.frequency.setValueAtTime(data.frequency, this.context.currentTime);
         }
         if (data.waveform) {
-            osc.type = data.waveform.toLowerCase() as OscillatorType;
+            this.osc.type = data.waveform.toLowerCase() as OscillatorType;
         }
         if (data.amplitude !== undefined) {
-            gainNode.gain.setValueAtTime(data.amplitude, context.currentTime);
+            this.output.gain.setValueAtTime(data.amplitude, this.context.currentTime);
         }
-    };
+    }
+}
 
-    return gainNode;
+export const createOscillatorNode = (context: AudioContext, node: Node): AudioNode => {
+    const oscillatorNodeInstance = new OscillatorNode(context, node.data);
+    
+    const outputNode = oscillatorNodeInstance.output as any;
+    outputNode._skaldNode = oscillatorNodeInstance;
+
+    return outputNode;
 };

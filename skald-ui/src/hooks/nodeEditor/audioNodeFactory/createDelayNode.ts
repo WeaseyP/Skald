@@ -1,44 +1,63 @@
 import { Node } from 'reactflow';
+import { BaseSkaldNode } from './BaseSkaldNode';
 
-export const createDelayNode = (context: AudioContext, node: Node): AudioNode => {
-    const inputNode = context.createGain();
-    const outputNode = context.createGain();
-    const delayNode = context.createDelay(5.0);
-    const feedbackNode = context.createGain();
-    const wetGain = context.createGain();
-    const dryGain = context.createGain();
+class DelayNode extends BaseSkaldNode {
+    public input: GainNode;
+    public output: GainNode;
+    private delay: DelayNode;
+    private feedback: GainNode;
+    private wet: GainNode;
+    private dry: GainNode;
+    private context: AudioContext;
 
-    const { delayTime = 0.5, feedback = 0.5, mix = 0.5 } = node.data;
+    constructor(context: AudioContext, data: any) {
+        super();
+        this.context = context;
 
-    delayNode.delayTime.setValueAtTime(delayTime, context.currentTime);
-    feedbackNode.gain.setValueAtTime(feedback, context.currentTime);
-    wetGain.gain.setValueAtTime(mix, context.currentTime);
-    dryGain.gain.setValueAtTime(1.0 - mix, context.currentTime);
+        this.input = context.createGain();
+        this.output = context.createGain();
+        this.delay = context.createDelay(5.0);
+        this.feedback = context.createGain();
+        this.wet = context.createGain();
+        this.dry = context.createGain();
 
-    inputNode.connect(dryGain);
-    dryGain.connect(outputNode);
-    inputNode.connect(delayNode);
-    delayNode.connect(feedbackNode);
-    feedbackNode.connect(delayNode);
-    delayNode.connect(wetGain);
-    wetGain.connect(outputNode);
+        const { delayTime = 0.5, feedback = 0.5, mix = 0.5 } = data;
+        this.delay.delayTime.setValueAtTime(delayTime, context.currentTime);
+        this.feedback.gain.setValueAtTime(feedback, context.currentTime);
+        this.wet.gain.setValueAtTime(mix, context.currentTime);
+        this.dry.gain.setValueAtTime(1.0 - mix, context.currentTime);
 
-    const compositeNode = inputNode as any;
-    compositeNode.output = outputNode;
-    compositeNode.internalNodes = { delay: delayNode, feedback: feedbackNode, wet: wetGain, dry: dryGain };
+        this.input.connect(this.dry);
+        this.dry.connect(this.output);
+        this.input.connect(this.delay);
+        this.delay.connect(this.feedback);
+        this.feedback.connect(this.delay);
+        this.delay.connect(this.wet);
+        this.wet.connect(this.output);
+    }
 
-    compositeNode.update = (data: any) => {
+    update(data: any): void {
         if (data.delayTime !== undefined) {
-            delayNode.delayTime.setValueAtTime(data.delayTime, context.currentTime);
+            this.delay.delayTime.setValueAtTime(data.delayTime, this.context.currentTime);
         }
         if (data.feedback !== undefined) {
-            feedbackNode.gain.setValueAtTime(data.feedback, context.currentTime);
+            this.feedback.gain.setValueAtTime(data.feedback, this.context.currentTime);
         }
         if (data.mix !== undefined) {
-            wetGain.gain.setValueAtTime(data.mix, context.currentTime);
-            dryGain.gain.setValueAtTime(1.0 - data.mix, context.currentTime);
+            this.wet.gain.setValueAtTime(data.mix, this.context.currentTime);
+            this.dry.gain.setValueAtTime(1.0 - data.mix, this.context.currentTime);
         }
-    };
+    }
+}
+
+export const createDelayNode = (context: AudioContext, node: Node): AudioNode => {
+    const delayNodeInstance = new DelayNode(context, node.data);
     
-    return compositeNode;
+    const inputNode = delayNodeInstance.input as any;
+    inputNode._skaldNode = delayNodeInstance;
+    
+    // For compatibility with existing connection logic
+    inputNode.output = delayNodeInstance.output;
+
+    return inputNode;
 };

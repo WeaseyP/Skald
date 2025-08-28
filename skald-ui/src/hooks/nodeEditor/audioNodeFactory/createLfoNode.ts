@@ -1,30 +1,46 @@
 import { Node } from 'reactflow';
+import { BaseSkaldNode } from './BaseSkaldNode';
 
-export const createLfoNode = (context: AudioContext, node: Node): AudioNode => {
-    const lfo = context.createOscillator();
-    lfo.type = (node.data.waveform || 'sine').toLowerCase() as OscillatorType;
-    lfo.frequency.setValueAtTime(node.data.frequency || 5.0, context.currentTime);
-    lfo.start();
-    const lfoGain = context.createGain();
-    lfoGain.gain.setValueAtTime(node.data.amplitude || 1.0, context.currentTime);
-    lfo.connect(lfoGain);
+class LfoNode extends BaseSkaldNode {
+    public output: GainNode;
+    private lfo: OscillatorNode;
+    private context: AudioContext;
 
-    const compositeNode = lfoGain as any;
-    compositeNode.internalNodes = { lfo: lfo };
+    constructor(context: AudioContext, data: any) {
+        super();
+        this.context = context;
 
-    compositeNode.update = (data: any) => {
+        this.lfo = context.createOscillator();
+        this.output = context.createGain();
+
+        this.lfo.type = (data.waveform || 'sine').toLowerCase() as OscillatorType;
+        this.lfo.frequency.setValueAtTime(data.frequency || 5.0, context.currentTime);
+        this.output.gain.setValueAtTime(data.amplitude || 1.0, context.currentTime);
+        
+        this.lfo.connect(this.output);
+        this.lfo.start();
+    }
+
+    update(data: any): void {
         if (data.frequency !== undefined) {
-            lfo.frequency.setValueAtTime(data.frequency, context.currentTime);
+            this.lfo.frequency.setValueAtTime(data.frequency, this.context.currentTime);
         }
         const shape = data.shape || data.waveform;
         if (shape) {
-            lfo.type = shape.toLowerCase() as OscillatorType;
+            this.lfo.type = shape.toLowerCase() as OscillatorType;
         }
         const amount = data.amount ?? data.amplitude;
         if (amount !== undefined) {
-            lfoGain.gain.setValueAtTime(amount, context.currentTime);
+            this.output.gain.setValueAtTime(amount, this.context.currentTime);
         }
-    };
+    }
+}
 
-    return compositeNode;
+export const createLfoNode = (context: AudioContext, node: Node): AudioNode => {
+    const lfoNodeInstance = new LfoNode(context, node.data);
+    
+    const outputNode = lfoNodeInstance.output as any;
+    outputNode._skaldNode = lfoNodeInstance;
+
+    return outputNode;
 };

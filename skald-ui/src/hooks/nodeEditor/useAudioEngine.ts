@@ -90,8 +90,9 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     liveNode.updateNodeData(node.data, bpm);
                 } else if (prevNode && JSON.stringify(prevNode.data) !== JSON.stringify(node.data)) {
                     // For other nodes, we trigger an update if the node's data has changed.
-                    if (typeof (liveNode as any).update === 'function') {
-                        (liveNode as any).update(node.data);
+                    const skaldNode = (liveNode as any)._skaldNode;
+                    if (skaldNode && typeof skaldNode.update === 'function') {
+                        skaldNode.update(node.data);
                     }
                 }
             }

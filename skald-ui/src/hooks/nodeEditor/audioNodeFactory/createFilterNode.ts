@@ -1,22 +1,37 @@
 import { Node } from 'reactflow';
+import { BaseSkaldNode } from './BaseSkaldNode';
 
-export const createFilterNode = (context: AudioContext, node: Node): AudioNode => {
-    const filter = context.createBiquadFilter();
-    filter.type = (node.data.type || 'lowpass').toLowerCase() as BiquadFilterType;
-    filter.frequency.setValueAtTime(node.data.cutoff || 800, context.currentTime);
-    filter.Q.setValueAtTime(node.data.resonance || 1.0, context.currentTime);
+class FilterNode extends BaseSkaldNode {
+    public node: BiquadFilterNode;
+    private context: AudioContext;
 
-    (filter as any).update = (data: any) => {
+    constructor(context: AudioContext, data: any) {
+        super();
+        this.context = context;
+        this.node = context.createBiquadFilter();
+        this.node.type = (data.type || 'lowpass').toLowerCase() as BiquadFilterType;
+        this.node.frequency.setValueAtTime(data.cutoff || 800, context.currentTime);
+        this.node.Q.setValueAtTime(data.resonance || 1.0, context.currentTime);
+    }
+
+    update(data: any): void {
         if (data.type) {
-            filter.type = data.type.toLowerCase() as BiquadFilterType;
+            this.node.type = data.type.toLowerCase() as BiquadFilterType;
         }
         if (data.cutoff !== undefined) {
-            filter.frequency.setValueAtTime(data.cutoff, context.currentTime);
+            this.node.frequency.setValueAtTime(data.cutoff, this.context.currentTime);
         }
         if (data.resonance !== undefined) {
-            filter.Q.setValueAtTime(data.resonance, context.currentTime);
+            this.node.Q.setValueAtTime(data.resonance, this.context.currentTime);
         }
-    };
+    }
+}
+
+export const createFilterNode = (context: AudioContext, node: Node): AudioNode => {
+    const filterNodeInstance = new FilterNode(context, node.data);
     
-    return filter;
+    const filterNode = filterNodeInstance.node as any;
+    filterNode._skaldNode = filterNodeInstance;
+
+    return filterNode;
 };
