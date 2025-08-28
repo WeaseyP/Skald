@@ -86,10 +86,15 @@ As a developer, I want the backend to support all new advanced parameters.
 
 ~~SKALD-73: Implement Odin codegen for new ADSR, Oscillator, and effects parameters.~~ <br> ~~SKALD-74: Implement Odin codegen for polyphony, glide, and unison.~~ <br> ~~SKALD-75: Update JSON contract in CONTRACT.md.~~
 
-SKALD-E13: Ensuring all nodes work together
+SKALD-E13: Comprehensive Testing (ONGOING)
+	
 
+As a developer, I want to ensure the stability and correctness of all audio nodes.
+	
 
-SKALD-E14: Beat Sequencer
+Continue bug testing every node combination on the front end audio preview and the backend audio codegen.
+
+SKALD-E14: Beat Sequencer (NEXT)
 	
 
 As a musician, I want to arrange my custom sounds into a loop.
