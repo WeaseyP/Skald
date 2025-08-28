@@ -2,7 +2,6 @@ import { Node, Edge } from 'reactflow';
 import { connectNodes } from './audioNodeUtils';
 import type { AdsrDataMap } from './types';
 import { nodeCreationMap } from './audioNodeFactory';
-import { nodeUpdateMap } from './audioNodeUpdaters';
 
 export class Voice {
     private audioContext: AudioContext;
@@ -89,14 +88,13 @@ export class Voice {
         });
     }
 
-    public updateNodeData(nodeId: string, data: any, bpm: number) {
+    public updateNodeData(nodeId: string, data: any) {
         const liveNode = this.internalNodes.get(nodeId);
-        const nodeDef = this.subgraph.nodes.find(n => n.id === nodeId);
 
-        if (liveNode && nodeDef && nodeDef.type) {
-            const updater = nodeUpdateMap[nodeDef.type as keyof typeof nodeUpdateMap];
-            if (updater) {
-                updater(liveNode, data, this.audioContext, bpm, this.adsrData, nodeId);
+        if (liveNode) {
+            const skaldNode = (liveNode as any)._skaldNode;
+            if (skaldNode && typeof skaldNode.update === 'function') {
+                skaldNode.update(data);
             }
         }
     }

@@ -5,3 +5,4 @@ export abstract class BaseSkaldNode {
 export type SkaldNodeWithUpdate = AudioNode & {
     _skaldNode: BaseSkaldNode;
 };
+
