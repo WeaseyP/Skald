@@ -114,62 +114,74 @@ The visual graph is the centerpiece of the UI. Implemented with React Flow, it w
 The code generation engine is the Odin application. It's a focused tool that performs a single task perfectly. It will contain parsers for the JSON structure, logic for topologically sorting the graph to ensure correct processing order, and a set of templates or builders for generating the Odin code for each supported node type. It does not contain any UI, audio, or state management logic.
 4. Key Features
 
-    Visual Node Graph Editor: Implemented using the React Flow library within the React/Electron application.
+    Visual Node Graph Editor: A modern, responsive UI built with React Flow that supports dragging, connecting, selecting, and deleting nodes.
 
-    Extensive Node Library: Node definitions and their corresponding code generation logic will be managed primarily in the Odin backend.
+    Instant Audio Preview: A real-time audio engine using the Web Audio API that allows users to hear their creations immediately, providing a tight feedback loop for sound design.
 
-    Real-time Parameter Editing: A dedicated React component will display the parameters for the currently selected node.
+    One-Click Code Generation: A single button that invokes the Odin backend to produce clean, high-performance, and human-readable code.
 
-    Instant Audio Preview: A service within the React application will translate the React Flow graph into a corresponding Web Audio API graph.
+    Project Management: The ability to save and load complex audio graphs as simple `.json` files.
 
-    One-Click Code Generation: A "Generate Code" button in the UI triggers the stdin/stdout communication process with the backend Odin CLI.
+    Extensive Node Library: A comprehensive suite of nodes for synthesis and audio processing:
+        Generators:
+            Oscillator: Generates classic waveforms (Sine, Saw, Square, Triangle) with unison and detune capabilities.
+            Noise: Produces White and Pink noise.
+            FM Operator: A sine wave oscillator specialized for Frequency Modulation synthesis.
+            Wavetable: A (placeholder) node for future wavetable synthesis.
+        Modulators:
+            ADSR Envelope: Shapes the amplitude of a signal over time.
+            LFO (Low-Frequency Oscillator): Creates cyclic modulation with multiple waveforms and optional BPM synchronization.
+            Sample & Hold: Generates random values at a specified rate, with optional BPM synchronization.
+        Effects:
+            Filter: A multi-mode filter (Lowpass, Highpass, Bandpass, Notch) with cutoff and resonance controls.
+            Delay: An echo effect with time, feedback, and mix controls, with optional BPM synchronization.
+            Reverb: Simulates acoustic spaces.
+            Distortion: Adds harmonic grit with drive and tone shaping.
+        Utilities:
+            Mixer: Combines multiple audio signals with individual gain controls.
+            Panner: Positions sound in the stereo field.
+            Graph Input/Output: Defines the public interface for reusable Instrument subgraphs.
+        Composition:
+            Instrument: A powerful container node that encapsulates a complete subgraph, enabling polyphony, glide, and the creation of complex, reusable sounds.
 
-    Project Management: The Electron frontend will use Node.js's fs module to handle saving and loading the graph state.
+    Advanced UI Controls:
+        Context-Aware Parameter Panel: The UI displays the correct controls for the selected node.
+        Specialized Editors: Custom UI for ADSR envelopes and XY pads for filter control.
+        Parameter Exposure: A system for "exposing" internal parameters of an Instrument to its top-level interface.
 
 5. Implementation Plan
 
 The project is executed in a series of focused phases.
 
-    Phase 1-9: (COMPLETED)
+    Phase 1-9: (COMPLETED) Foundational development of the UI, backend, and core node set.
 
-    Phase 10: Bug Squashing (Current Phase)
+    Phase 10: Bug Squashing (COMPLETED) Identified and resolved critical bugs to improve stability and user experience.
 
-        Goal: Identify and resolve critical bugs to improve stability and user experience.
+    Phase 10.5: Foundational Backend Refactor (COMPLETED) Addressed critical architectural flaws in the Odin backend to ensure the codebase is scalable, maintainable, and correct.
 
-        Tasks: Fix non-functional sliders, restore Oscillator node, and perform comprehensive regression testing.
+    Phase 11: Advanced Node Implementation (Backend) (COMPLETED) Implemented the Odin codegen logic for all advanced nodes.
 
-    Phase 10.5: Foundational Backend Refactor
+    Phase 12: Advanced Parameter & Control Implementation (Backend) (COMPLETED) Implemented the Odin codegen logic for new parameters like polyphony, unison, glide, and BPM-synced effects.
 
-        Goal: Address critical architectural flaws in the Odin backend to ensure the codebase is scalable, maintainable, and correct before implementing new features.
+    Phase 13: Comprehensive Testing (Current Phase)
+        Goal: Ensure all existing nodes are working as intended and are stable, especially in the frontend audio preview.
+        Tasks:
+            - Continue comprehensive bug testing of all node interactions.
+            - Refine and fix issues in the Web Audio API preview engine.
+            - Ensure backend codegen is robust for all edge cases discovered during testing.
 
-        Task A: Modularize Code Generation: Refactor the monolithic process_sample switch statement into smaller, dedicated procedures for each node type.
-
-        Task B: Implement a Sequencer-Ready Event System: Replace the simple gate: bool with a robust event system (events: []Note_Event) to handle note-on/note-off messages for a future sequencer.
-
-        Task C: Expand State Management: Update collect_stateful_nodes and the AudioProcessor struct to include all new stateful nodes (e.g., Filter, LFO, Delay, Reverb).
-
-        Task D: Create a Generic Parameter-Fetching System: Replace the hardcoded get_param_value_str helper with a set of type-safe procedures for fetching parameters of different types (f32, string, bool).
-
-        Task E: Update JSON Contract: Ensure CONTRACT.md is updated to reflect all new nodes, parameters, and data structures.
-
-    Phase 11: Advanced Node Implementation (Backend)
-
-        Goal: Implement the Odin codegen logic for the advanced nodes introduced in Phase 8.
-
-    Phase 12: Advanced Parameter & Control Implementation (Backend)
-
-        Goal: Implement the Odin codegen logic for the new parameters and UI controls from Phase 9.
-
-    Phase 13: Beat Sequencer
-
+    Phase 14: Beat Sequencer (Next Phase)
         Goal: Allow users to arrange their created instruments into a looping musical pattern.
-
-    Phase 14: Integration Kit & Offline Export
-
+        Tasks:
+            - Design and build the Sequencer UI panel.
+            - Implement BPM and transport controls.
+            - Create a "Sound Library" panel to manage instruments.
+            - Implement the note placement grid and playback logic.
+            
+    Phase 15: Integration Kit & Offline Export
         Goal: Refine the existing test harness into a polished "Integration Kit" and add a direct-to-file export option.
 
-    Phase 15: Web Application Deployment (Future Goal)
-
+    Phase 16: Web Application Deployment (Future Goal)
         Goal: Deploy Skald as a web service.
 
 6. Build and Deployment Strategy
