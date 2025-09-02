@@ -5,12 +5,12 @@ class MixerNode extends BaseSkaldNode {
     public output: GainNode;
     private inputGains: Map<string, GainNode>;
     private context: AudioContext;
+    private timeConstant = 0.02;
 
     constructor(context: AudioContext, data: any) {
         super();
         this.context = context;
         this.output = context.createGain();
-        this.output.gain.setValueAtTime(data.gain ?? 1.0, context.currentTime);
         this.inputGains = new Map<string, GainNode>();
         this.update(data);
     }
@@ -40,17 +40,19 @@ class MixerNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        const now = this.context.currentTime;
         // Update main output gain
         if (data.gain !== undefined) {
-            this.output.gain.setValueAtTime(data.gain, this.context.currentTime);
+            this.output.gain.setTargetAtTime(data.gain, now, this.timeConstant);
         }
 
-        // Update individual input gains
+        // Update individual input gains based on 'levelX' properties
         for (const [key, value] of Object.entries(data)) {
-            if (key.startsWith('input_') && key.endsWith('_gain')) {
-                const handleId = key.replace('_gain', '');
+            if (key.startsWith('level')) {
+                const inputIndex = key.substring(5); // "level1" -> "1"
+                const handleId = `input_${inputIndex}`;
                 const gainNode = this.getOrCreateInputGain(handleId);
-                gainNode.gain.setValueAtTime(value as number, this.context.currentTime);
+                gainNode.gain.setTargetAtTime(value as number, now, this.timeConstant);
             }
         }
     }

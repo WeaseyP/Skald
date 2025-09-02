@@ -9,6 +9,7 @@ class DelayNode extends BaseSkaldNode {
     private wet: GainNode;
     private dry: GainNode;
     private context: AudioContext;
+    private timeConstant = 0.02;
 
     constructor(context: AudioContext, data: any) {
         super();
@@ -16,17 +17,12 @@ class DelayNode extends BaseSkaldNode {
 
         this.input = context.createGain();
         this.output = context.createGain();
-        this.delay = context.createDelay(5.0);
+        this.delay = context.createDelay(5.0); // Max delay time of 5s
         this.feedback = context.createGain();
         this.wet = context.createGain();
         this.dry = context.createGain();
 
-        const { delayTime = 0.5, feedback = 0.5, mix = 0.5 } = data;
-        this.delay.delayTime.setValueAtTime(delayTime, context.currentTime);
-        this.feedback.gain.setValueAtTime(feedback, context.currentTime);
-        this.wet.gain.setValueAtTime(mix, context.currentTime);
-        this.dry.gain.setValueAtTime(1.0 - mix, context.currentTime);
-
+        // Connections
         this.input.connect(this.dry);
         this.dry.connect(this.output);
         this.input.connect(this.delay);
@@ -34,18 +30,40 @@ class DelayNode extends BaseSkaldNode {
         this.feedback.connect(this.delay);
         this.delay.connect(this.wet);
         this.wet.connect(this.output);
+        
+        this.update(data, {}); // Initial update
     }
 
-    update(data: any): void {
-        if (data.delayTime !== undefined) {
-            this.delay.delayTime.setValueAtTime(data.delayTime, this.context.currentTime);
+    update(data: any, options?: { bpm?: number }): void {
+        const now = this.context.currentTime;
+
+        // --- Delay Time Calculation ---
+        let delayTimeValue = data.delayTime || 0.5;
+        if (data.bpmSync && options?.bpm) {
+            const rateString = data.syncRate || '1/4';
+            try {
+                const rateValue = eval(rateString);
+                if (typeof rateValue === 'number' && rateValue > 0) {
+                     delayTimeValue = (4 * rateValue * 60) / options.bpm;
+                }
+            } catch (e) {
+                console.error("Could not parse syncRate:", rateString);
+            }
         }
+
+        // Clamp delay time to the max allowed by the DelayNode
+        if (delayTimeValue > this.delay.delayTime.maxValue) {
+            delayTimeValue = this.delay.delayTime.maxValue;
+        }
+
+        this.delay.delayTime.setTargetAtTime(delayTimeValue, now, this.timeConstant);
+
         if (data.feedback !== undefined) {
-            this.feedback.gain.setValueAtTime(data.feedback, this.context.currentTime);
+            this.feedback.gain.setTargetAtTime(data.feedback, now, this.timeConstant);
         }
         if (data.mix !== undefined) {
-            this.wet.gain.setValueAtTime(data.mix, this.context.currentTime);
-            this.dry.gain.setValueAtTime(1.0 - data.mix, this.context.currentTime);
+            this.wet.gain.setTargetAtTime(data.mix, now, this.timeConstant);
+            this.dry.gain.setTargetAtTime(1.0 - data.mix, now, this.timeConstant);
         }
     }
 }

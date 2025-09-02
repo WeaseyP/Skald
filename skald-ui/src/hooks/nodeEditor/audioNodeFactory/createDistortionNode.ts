@@ -9,6 +9,9 @@ class DistortionNode extends BaseSkaldNode {
     private wet: GainNode;
     private dry: GainNode;
     private context: AudioContext;
+    private timeConstant = 0.02;
+    private currentShape: string | undefined;
+    private currentDrive: number | undefined;
 
     constructor(context: AudioContext, data: any) {
         super();
@@ -71,15 +74,22 @@ class DistortionNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
-        const shape = data.shape || 'classic';
+        const now = this.context.currentTime;
+        const shape = (data.shape || 'classic').toLowerCase();
         const drive = data.drive || 50;
         const mix = data.mix ?? 1.0;
         const tone = data.tone ?? 10000;
 
-        this.shaper.curve = this._generateCurve(shape, drive);
-        this.toneFilter.frequency.setValueAtTime(tone, this.context.currentTime);
-        this.wet.gain.setValueAtTime(mix, this.context.currentTime);
-        this.dry.gain.setValueAtTime(1.0 - mix, this.context.currentTime);
+        // Only regenerate curve if shape or drive has changed
+        if (shape !== this.currentShape || drive !== this.currentDrive) {
+            this.shaper.curve = this._generateCurve(shape, drive);
+            this.currentShape = shape;
+            this.currentDrive = drive;
+        }
+
+        this.toneFilter.frequency.setTargetAtTime(tone, now, this.timeConstant);
+        this.wet.gain.setTargetAtTime(mix, now, this.timeConstant);
+        this.dry.gain.setTargetAtTime(1.0 - mix, now, this.timeConstant);
     }
 }
 

@@ -4,6 +4,8 @@ import useDeepCompareEffect from 'use-deep-compare-effect';
 import { sampleHoldProcessorString } from './audioWorklets/sampleHold.worklet';
 import { wavetableProcessorString } from './audioWorklets/wavetable.worklet';
 import { adsrProcessorString } from './audioWorklets/adsr.worklet';
+import { oscillatorProcessorString } from './audioWorklets/oscillator.worklet';
+import { noiseProcessorString } from './audioWorklets/noise.worklet';
 import { useSequencer } from './useSequencer';
 import { Instrument } from './instrument';
 import { AdsrDataMap } from './types';
@@ -18,6 +20,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     const audioNodes = useRef<AudioNodeMap>(new Map());
     const adsrNodes = useRef<AdsrDataMap>(new Map());
     const prevGraphState = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
+    const prevBpm = useRef<number>(bpm);
 
     useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
 
@@ -29,10 +32,14 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
             const sampleHoldBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
             const wavetableBlob = new Blob([wavetableProcessorString], { type: 'application/javascript' });
             const adsrBlob = new Blob([adsrProcessorString], { type: 'application/javascript' });
+            const oscillatorBlob = new Blob([oscillatorProcessorString], { type: 'application/javascript' });
+            const noiseBlob = new Blob([noiseProcessorString], { type: 'application/javascript' });
             await Promise.all([
                 context.audioWorklet.addModule(URL.createObjectURL(sampleHoldBlob)),
                 context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob)),
-                context.audioWorklet.addModule(URL.createObjectURL(adsrBlob))
+                context.audioWorklet.addModule(URL.createObjectURL(adsrBlob)),
+                context.audioWorklet.addModule(URL.createObjectURL(oscillatorBlob)),
+                context.audioWorklet.addModule(URL.createObjectURL(noiseBlob))
             ]);
             setIsPlaying(true);
         } catch (e) {
@@ -95,11 +102,27 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     // For other nodes, we trigger an update if the node's data has changed.
                     const skaldNode = (liveNode as any)._skaldNode;
                     if (skaldNode && typeof skaldNode.update === 'function') {
-                        skaldNode.update(node.data);
+                        skaldNode.update(node.data, { bpm });
                     }
                 }
             }
         });
+        
+        // --- BPM Change Update ---
+        // If BPM has changed, find all nodes with bpmSync enabled and force an update.
+        if (bpm !== prevBpm.current) {
+            nodes.forEach(node => {
+                if (node.data?.bpmSync) {
+                    const liveNode = audioNodes.current.get(node.id);
+                    if (liveNode && !(liveNode instanceof Instrument)) {
+                         const skaldNode = (liveNode as any)._skaldNode;
+                         if (skaldNode && typeof skaldNode.update === 'function') {
+                            skaldNode.update(node.data, { bpm });
+                         }
+                    }
+                }
+            });
+        }
 
         // Handle edge deletions
         prevEdges.forEach(edge => {
@@ -115,6 +138,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                         const inputGain = mixerInstance.getInputGain(edge.targetHandle);
                         if (inputGain) {
                             disconnectNodes(sourceNode, inputGain, edge);
+                            mixerInstance.removeInputGain(edge.targetHandle);
                         }
                     } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
                         const fmInput = (target as any).modulatorInput;
@@ -125,6 +149,13 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                         const adsrGate = (target as any).gate;
                         if (adsrGate) {
                             disconnectNodes(sourceNode, adsrGate, edge);
+                        }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SampleHoldNode' && edge.targetHandle) {
+                        const destinationNode = targetSkaldNode.output; // The worklet itself
+                         if (edge.targetHandle === 'input_signal') {
+                            sourceNode.disconnect(destinationNode, 0, 0);
+                        } else if (edge.targetHandle === 'input_trigger') {
+                            sourceNode.disconnect(destinationNode, 0, 1);
                         }
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
@@ -157,6 +188,13 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                         if (adsrGate) {
                             connectNodes(sourceNode, adsrGate, edge);
                         }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SampleHoldNode' && edge.targetHandle) {
+                        const destinationNode = targetSkaldNode.output; // The worklet itself
+                        if (edge.targetHandle === 'input_signal') {
+                            sourceNode.connect(destinationNode, 0, 0); // connect to input 0
+                        } else if (edge.targetHandle === 'input_trigger') {
+                            sourceNode.connect(destinationNode, 0, 1); // connect to input 1
+                        }
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         connectNodes(sourceNode, targetNode, edge);
@@ -166,6 +204,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         });
 
         prevGraphState.current = { nodes, edges };
+        prevBpm.current = bpm;
 
     }, [nodes, edges, isPlaying, bpm]);
 

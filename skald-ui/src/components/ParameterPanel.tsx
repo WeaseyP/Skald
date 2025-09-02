@@ -242,21 +242,27 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                     )}
                 </> );
             case 'filter':
+                const filterTypes = ['Lowpass', 'Highpass', 'Bandpass', 'Notch', 'Lowshelf', 'Highshelf', 'Peaking', 'Allpass'];
+                const typeUsesGain = ['lowshelf', 'highshelf', 'peaking'].includes(data.type?.toLowerCase());
+
                 return ( <>
-                    {createControl('type', 'Filter Type', createSelect('type', ['Lowpass', 'Highpass', 'Bandpass', 'Notch']), false )}
+                    {createControl('type', 'Filter Type', createSelect('type', filterTypes), false )}
                     <XYPad
-                        xValue={data.cutoff}
-                        yValue={data.resonance}
+                        xValue={data.frequency}
+                        yValue={data.q}
                         minX={20}
                         maxX={20000}
                         minY={0.1}
                         maxY={30}
-                        onChange={({x, y}) => handleParameterChange('filter', { cutoff: x, resonance: y }, subNodeId || node.id)}
+                        onChange={({x, y}) => handleParameterChange('filter', { frequency: x, q: y }, subNodeId || node.id)}
                         xScale="log"
                         yScale="log"
                     />
-                    <div>Cutoff: {(data.cutoff ?? 1000).toFixed(2)} Hz</div>
-                    <div>Resonance: {(data.resonance ?? 1).toFixed(2)}</div>
+                    <div>Frequency: {(data.frequency ?? 1000).toFixed(2)} Hz</div>
+                    <div>Q: {(data.q ?? 1).toFixed(2)}</div>
+                    {typeUsesGain && createControl('gain', 'Gain (dB)', 
+                        <CustomSlider min={-40} max={40} value={data.gain ?? 0} onChange={val => handleParameterChange('gain', val, subNodeId || node.id)} />
+                    )}
                 </> );
             case 'lfo':
                 return ( <>
@@ -275,6 +281,19 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                         <CustomSlider min={0} max={1} value={data.amplitude ?? 1} onChange={val => handleParameterChange('amplitude', val, subNodeId || node.id)} />
                     )}
                     {renderBpmSyncToggle(node, subNodeId)}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+                        <label htmlFor={`unipolar-${node.id}`} style={{...labelStyles, cursor: 'pointer'}}>
+                            Unipolar (0 to 1)
+                        </label>
+                        <input
+                            id={`unipolar-${node.id}`}
+                            type="checkbox"
+                            name="unipolar"
+                            checked={data.unipolar || false}
+                            onChange={(e) => handleGenericChange(e, subNodeId || node.id)}
+                            style={{ height: '18px', width: '18px', cursor: 'pointer' }}
+                        />
+                    </div>
                 </> );
             case 'delay':
                 return ( <>
@@ -312,6 +331,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 </> );
             case 'fmOperator':
                 return ( <>
+                    {createControl('waveform', 'Carrier Waveform', createSelect('waveform', ['Sine', 'Sawtooth', 'Triangle', 'Square']), false )}
                     {createControl('frequency', 'Carrier Freq (Hz)', 
                         <CustomSlider min={20} max={20000} value={data.frequency ?? 440} onChange={val => handleParameterChange('frequency', val, subNodeId || node.id)} scale="log" />
                     )}
@@ -321,12 +341,14 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 </> );
             case 'wavetable':
                 return ( <>
-                    {createControl('tableName', 'Table', createSelect('tableName', ['Sine', 'Triangle', 'Sawtooth', 'Square']), false )}
                     {createControl('frequency', 'Frequency (Hz)', 
                         <CustomSlider min={20} max={20000} value={data.frequency ?? 440} onChange={val => handleParameterChange('frequency', val, subNodeId || node.id)} scale="log" />
                     )}
                     {createControl('position', 'Table Position', 
                         <CustomSlider min={0} max={3} value={data.position ?? 0} onChange={val => handleParameterChange('position', val, subNodeId || node.id)} step={0.01} />
+                    )}
+                    {createControl('amplitude', 'Amplitude', 
+                        <CustomSlider min={0} max={1} value={data.amplitude ?? 0.5} onChange={val => handleParameterChange('amplitude', val, subNodeId || node.id)} />
                     )}
                 </> );
             case 'oscillator':
@@ -347,7 +369,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 </> );
             case 'noise':
                 return ( <>
-                    {createControl('type', 'Noise Type', createSelect('type', ['White', 'Pink']), false )}
+                    {createControl('type', 'Noise Type', createSelect('type', ['White', 'Pink', 'Brown']), false )}
                     {createControl('amplitude', 'Amplitude', 
                         <CustomSlider min={0} max={1} value={data.amplitude ?? 1} onChange={val => handleParameterChange('amplitude', val, subNodeId || node.id)} />
                     )}
@@ -366,6 +388,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 </> );
             case 'distortion':
                 return ( <>
+                    {createControl('shape', 'Shape', createSelect('shape', ['Classic', 'Soft', 'Hard', 'Asymmetric']), false )}
                     {createControl('drive', 'Drive', 
                         <CustomSlider min={1} max={100} value={data.drive ?? 20} onChange={val => handleParameterChange('drive', val, subNodeId || node.id)} />
                     )}
@@ -387,6 +410,11 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                         , true)
                     );
                 }
+                mixerControls.push(
+                    createControl('gain', `Main Level`,
+                        <CustomSlider min={0} max={1.5} value={data.gain ?? 1.0} onChange={val => handleParameterChange('gain', val, subNodeId || node.id)} />
+                    , true)
+                );
                 return <>{mixerControls}</>;
             case 'panner':
                 return ( <>

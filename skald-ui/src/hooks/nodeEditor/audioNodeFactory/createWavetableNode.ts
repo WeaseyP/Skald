@@ -19,14 +19,17 @@ class WavetableNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        const now = this.context.currentTime;
+        const timeConstant = 0.02;
+
         if (data.frequency !== undefined) {
-            this.worklet.parameters.get('frequency')?.setValueAtTime(data.frequency, this.context.currentTime);
+            this.worklet.parameters.get('frequency')?.setTargetAtTime(data.frequency, now, timeConstant);
         }
         if (data.position !== undefined) {
-            this.worklet.parameters.get('position')?.setValueAtTime(data.position, this.context.currentTime);
+            this.worklet.parameters.get('position')?.setTargetAtTime(data.position, now, timeConstant);
         }
         if (data.amplitude !== undefined) {
-            this.output.gain.setValueAtTime(data.amplitude, this.context.currentTime);
+            this.output.gain.setTargetAtTime(data.amplitude, now, timeConstant);
         }
         if (data.table) {
             // The 'table' data is expected to be an array of numbers (Float32Array)

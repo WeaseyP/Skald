@@ -4,11 +4,16 @@ import { BaseSkaldNode } from './BaseSkaldNode';
 class ReverbNode extends BaseSkaldNode {
     public input: GainNode;
     public output: GainNode;
-    private convolver: ConvolverNode;
+    
     private wet: GainNode;
     private dry: GainNode;
     private preDelay: DelayNode;
     private context: AudioContext;
+    private timeConstant = 0.02;
+
+    // --- Algorithmic Reverb components ---
+    private readonly combFilters: { delay: DelayNode, feedback: GainNode }[] = [];
+    private readonly combFilterDelayTimes = [0.0297, 0.0371, 0.0411, 0.0437]; // Prime-ish numbers
 
     constructor(context: AudioContext, data: any) {
         super();
@@ -16,55 +21,56 @@ class ReverbNode extends BaseSkaldNode {
 
         this.input = context.createGain();
         this.output = context.createGain();
-        this.convolver = context.createConvolver();
         this.wet = context.createGain();
         this.dry = context.createGain();
-        this.preDelay = context.createDelay(1.0); // Max pre-delay of 1s
+        this.preDelay = context.createDelay(1.0);
 
-        const { mix = 0.5, preDelay = 0.0, decay = 2.0 } = data;
-
-        this.wet.gain.setValueAtTime(mix, context.currentTime);
-        this.dry.gain.setValueAtTime(1.0 - mix, context.currentTime);
-        this.preDelay.delayTime.setValueAtTime(preDelay, context.currentTime);
-
-        this._generateImpulse(decay);
-
+        // --- Build the algorithmic reverb graph ---
         this.input.connect(this.dry);
         this.dry.connect(this.output);
         this.input.connect(this.preDelay);
-        this.preDelay.connect(this.convolver);
-        this.convolver.connect(this.wet);
-        this.wet.connect(this.output);
-    }
 
-    private _generateImpulse(decayTime: number) {
-        const sampleRate = this.context.sampleRate;
-        const length = sampleRate * Math.max(0.01, decayTime); // Ensure length is not zero
-        const impulse = this.context.createBuffer(2, length, sampleRate);
-        const impulseL = impulse.getChannelData(0);
-        const impulseR = impulse.getChannelData(1);
-
-        for (let i = 0; i < length; i++) {
-            const n = (Math.random() * 2 - 1);
-            // Using an exponential decay
-            impulseL[i] = n * Math.pow(1 - i / length, 2);
-            impulseR[i] = n * Math.pow(1 - i / length, 2);
+        // Create parallel comb filters
+        for (const time of this.combFilterDelayTimes) {
+            const delay = context.createDelay(1.0);
+            delay.delayTime.value = time;
+            
+            const feedback = context.createGain();
+            
+            this.preDelay.connect(delay);
+            delay.connect(feedback);
+            feedback.connect(delay);
+            
+            // Output of each delay goes to the wet mix
+            delay.connect(this.wet);
+            
+            this.combFilters.push({ delay, feedback });
         }
-        this.convolver.buffer = impulse;
+        
+        this.wet.connect(this.output);
+        
+        this.update(data);
     }
 
     update(data: any): void {
+        const now = this.context.currentTime;
+
         if (data.mix !== undefined) {
-            this.wet.gain.setValueAtTime(data.mix, this.context.currentTime);
-            this.dry.gain.setValueAtTime(1.0 - data.mix, this.context.currentTime);
+            this.wet.gain.setTargetAtTime(data.mix, now, this.timeConstant);
+            this.dry.gain.setTargetAtTime(1.0 - data.mix, now, this.timeConstant);
         }
         if (data.preDelay !== undefined) {
-            this.preDelay.delayTime.setValueAtTime(data.preDelay, this.context.currentTime);
+            this.preDelay.delayTime.setTargetAtTime(data.preDelay, now, this.timeConstant);
         }
         if (data.decay !== undefined) {
-            // This is computationally expensive and can cause audio glitches.
-            // In a real-world scenario, a more sophisticated approach (e.g., cross-fading) would be needed.
-            this._generateImpulse(data.decay);
+            // Map decay (e.g., 0-10s) to feedback gain (0-0.99)
+            // This is a simple linear mapping, could be exponential for better feel
+            const maxDecay = 10.0;
+            const feedbackGain = (data.decay / maxDecay) * 0.95; // Max gain < 1 to prevent runaway feedback
+            
+            for (const filter of this.combFilters) {
+                filter.feedback.gain.setTargetAtTime(feedbackGain, now, this.timeConstant);
+            }
         }
     }
 }

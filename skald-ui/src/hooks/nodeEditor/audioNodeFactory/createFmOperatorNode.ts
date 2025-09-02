@@ -26,14 +26,19 @@ class FmOperatorNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        const now = this.context.currentTime;
+        const timeConstant = 0.02;
+
+        // Set the carrier's base frequency. This is not the modulated frequency.
         if (data.frequency !== undefined) {
-            this.carrier.frequency.setValueAtTime(data.frequency, this.context.currentTime);
+            this.carrier.frequency.setTargetAtTime(data.frequency, now, timeConstant);
         }
         if (data.waveform) {
             this.carrier.type = data.waveform.toLowerCase() as OscillatorType;
         }
-        if (data.modulationIndex !== undefined) {
-            this.modulatorInput.gain.setValueAtTime(data.modulationIndex, this.context.currentTime);
+        // Set the gain of the modulator input, which controls the modulation depth (index)
+        if (data.modIndex !== undefined) {
+            this.modulatorInput.gain.setTargetAtTime(data.modIndex, now, timeConstant);
         }
     }
 }

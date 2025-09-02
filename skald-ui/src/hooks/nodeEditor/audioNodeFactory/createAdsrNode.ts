@@ -5,6 +5,7 @@ class ADSRNode extends BaseSkaldNode {
     public output: AudioWorkletNode;
     public gate: AudioNode; // The gate input is the first input of the worklet itself.
     private context: AudioContext;
+    private timeConstant = 0.02; // Time constant for smooth parameter changes
 
     constructor(context: AudioContext, data: any) {
         super();
@@ -17,11 +18,13 @@ class ADSRNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
-        this.output.parameters.get('attack')?.setValueAtTime(data.attack ?? 0.1, this.context.currentTime);
-        this.output.parameters.get('decay')?.setValueAtTime(data.decay ?? 0.1, this.context.currentTime);
-        this.output.parameters.get('sustain')?.setValueAtTime(data.sustain ?? 0.5, this.context.currentTime);
-        this.output.parameters.get('release')?.setValueAtTime(data.release ?? 0.5, this.context.currentTime);
-        this.output.parameters.get('depth')?.setValueAtTime(data.depth ?? 1.0, this.context.currentTime);
+        const now = this.context.currentTime;
+        this.output.parameters.get('attack')?.setTargetAtTime(data.attack ?? 0.1, now, this.timeConstant);
+        this.output.parameters.get('decay')?.setTargetAtTime(data.decay ?? 0.1, now, this.timeConstant);
+        this.output.parameters.get('sustain')?.setTargetAtTime(data.sustain ?? 0.5, now, this.timeConstant);
+        this.output.parameters.get('release')?.setTargetAtTime(data.release ?? 0.5, now, this.timeConstant);
+        this.output.parameters.get('depth')?.setTargetAtTime(data.depth ?? 1.0, now, this.timeConstant);
+        this.output.parameters.get('velocitySensitivity')?.setTargetAtTime(data.velocitySensitivity ?? 0.5, now, this.timeConstant);
     }
 }
 
