@@ -212,5 +212,18 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         return () => { if (audioContext.current) handleStop(); };
     }, [handleStop]);
 
-    return { isPlaying, handlePlay, handleStop };
+    const previewNode = useCallback((nodeId: string) => {
+        if (!audioContext.current) return;
+        const node = audioNodes.current.get(nodeId);
+        if (node && (node as any).gate && (node as any).constructor.name === 'AudioWorkletNode') {
+            const now = audioContext.current.currentTime;
+            const adsrGate = (node as any).gate;
+            const trigger = new ConstantSourceNode(audioContext.current, { offset: 1 });
+            trigger.connect(adsrGate);
+            trigger.start(now);
+            trigger.stop(now + 0.1);
+        }
+    }, []);
+
+    return { isPlaying, handlePlay, handleStop, previewNode };
 };

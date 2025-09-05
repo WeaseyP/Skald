@@ -107,11 +107,11 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
     // --- EVENT HANDLERS ---
 
-    const handleParameterChange = (paramName: string, value: any, subNodeId?: string) => {
-        const dataToUpdate = typeof value === 'object' && !Array.isArray(value) 
-            ? value 
-            : { [paramName]: value };
-        
+    const handleParameterChange = (paramName: string | null, value: any, subNodeId?: string) => {
+        const dataToUpdate = (typeof value === 'object' && !Array.isArray(value) && value !== null)
+            ? value
+            : { [paramName!]: value };
+
         if (subNodeId) {
             const subNode = allNodes.find(n => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find(n => n.id === subNodeId);
             if (!subNode) return;
@@ -232,7 +232,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 return ( <>
                     <AdsrEnvelopeEditor 
                         value={{ attack: data.attack, decay: data.decay, sustain: data.sustain, release: data.release }}
-                        onChange={(newAdsr) => handleParameterChange('adsr', newAdsr, subNodeId || node.id)}
+                        onChange={(newAdsr) => handleParameterChange(null, newAdsr, subNodeId || node.id)}
                     />
                     {createControl('depth', 'Depth', 
                         <CustomSlider min={0} max={1} value={data.depth ?? 1} onChange={val => handleParameterChange('depth', val, subNodeId || node.id)} />

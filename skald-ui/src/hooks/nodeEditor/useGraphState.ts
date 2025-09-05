@@ -30,7 +30,7 @@ const getId = () => ++id;
 
 type HistoryState = { nodes: Node[]; edges: Edge[] };
 
-export const useGraphState = () => {
+export const useGraphState = (previewNode?: (nodeId: string) => void) => {
     const { screenToFlowPosition } = useReactFlow();
     const [nodes, setNodes] = useState<Node[]>(initialNodes);
     const [edges, setEdges] = useState<Edge[]>(initialEdges);
@@ -96,9 +96,16 @@ export const useGraphState = () => {
     }, [saveStateForUndo]);
     
     const onSelectionChange = useCallback((params: OnSelectionChangeParams) => {
-        setSelectedNode(params.nodes.length === 1 ? params.nodes[0] : null);
+        if (params.nodes.length === 1) {
+            setSelectedNode(params.nodes[0]);
+            if (previewNode) {
+                previewNode(params.nodes[0].id);
+            }
+        } else {
+            setSelectedNode(null);
+        }
         setSelectedNodesForGrouping(params.nodes);
-    }, []);
+    }, [previewNode]);
 
     const onDrop = useCallback((event: React.DragEvent) => {
         event.preventDefault();

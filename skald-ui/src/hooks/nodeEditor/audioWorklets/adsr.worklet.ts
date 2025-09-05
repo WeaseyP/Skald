@@ -107,16 +107,15 @@ class ADSRProcessor extends AudioWorkletProcessor {
                 case 'decay':
                     // Approach sustain level exponentially
                     this._value = this._sustainLevel + (this._value - this._sustainLevel) * this._decayCoeff;
-                    // If decay is very short, snap to target
-                    if (decayTime < 0.0015) this._value = this._sustainLevel;
-                     // If sustain is 0, transition to idle after decay
-                    if (this._sustainLevel < 0.001 && this._value <= this._sustainLevel) {
-                         this._state = 'idle';
+                    // If decay is very short, or we're close enough, snap to target
+                    if (decayTime < 0.0015 || Math.abs(this._value - this._sustainLevel) < 0.001) {
+                        this._value = this._sustainLevel;
+                        this._state = 'sustain';
                     }
                     break;
 
                 case 'sustain':
-                    // Hold at sustain level
+                    // Hold at sustain level until the gate is released
                     this._value = this._sustainLevel;
                     break;
 

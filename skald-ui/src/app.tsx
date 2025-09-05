@@ -103,7 +103,7 @@ const EditorLayout = () => {
         handleCreateGroup,
     } = useGraphState();
 
-    const { isPlaying, handlePlay, handleStop } = useAudioEngine(nodes, edges, isLooping, bpm);
+    const { isPlaying, handlePlay, handleStop, previewNode } = useAudioEngine(nodes, edges, isLooping, bpm);
     const { handleSave, handleLoad } = useFileIO(reactFlowInstance, setNodes, setEdges, () => {}, () => {}); 
 
     const handleGenerate = async () => {
