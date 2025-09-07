@@ -20,8 +20,8 @@ class ADSRProcessor extends AudioWorkletProcessor {
         super();
         this._state = 'idle';
         this._value = 0.0;
-        this._lastGate = 0;
         this._velocity = 0;
+        this._gateOn = false;
 
         // Coefficients for exponential curves. Calculated once per parameter change.
         this._attackCoeff = 0;
@@ -73,18 +73,20 @@ class ADSRProcessor extends AudioWorkletProcessor {
         for (let i = 0; i < output.length; i++) {
             const currentGate = gate ? gate[i] : 0;
 
-            // --- Gate Logic ---
-            if (currentGate > 0 && this._lastGate <= 0) {
-                this._state = 'attack';
-                // Capture velocity from the gate signal's peak.
-                this._velocity = currentGate; 
+            // --- Schmitt Trigger Gate Logic & State Machine ---
+            if (!this._gateOn && currentGate > 0.1) { // Gate turns on
+                this._gateOn = true;
+                if (this._state === 'idle') { // Only start a new note if we are idle
+                    this._state = 'attack';
+                    this._velocity = currentGate;
+                }
             }
-
-            if (currentGate <= 0 && this._lastGate > 0) {
-                this._state = 'release';
+            if (this._gateOn && currentGate < 0.05) { // Gate turns off
+                this._gateOn = false;
+                if (this._state !== 'idle') { // Go to release unless we are already idle
+                    this._state = 'release';
+                }
             }
-
-            this._lastGate = currentGate;
 
             // --- State Machine ---
             switch (this._state) {

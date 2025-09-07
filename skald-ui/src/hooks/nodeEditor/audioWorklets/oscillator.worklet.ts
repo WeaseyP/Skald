@@ -12,6 +12,7 @@ class OscillatorProcessor extends AudioWorkletProcessor {
         super();
         this._phase = 0;
         this._waveform = (options?.processorOptions?.waveform || 'sawtooth').toLowerCase(); 
+        this._sampleCounter = 0;
         
         this.port.onmessage = (event) => {
             if (event.data.waveform) {
@@ -58,6 +59,12 @@ class OscillatorProcessor extends AudioWorkletProcessor {
             this._phase += freq / sampleRate;
             if (this._phase >= 1.0) {
                 this._phase -= 1.0;
+            }
+
+            this._sampleCounter++;
+            if (this._sampleCounter >= 2000) {
+                console.log('[Skald Debug][Oscillator] Waveform: ' + this._waveform + ', Freq: ' + freq.toFixed(2) + ', Phase: ' + this._phase.toFixed(4));
+                this._sampleCounter = 0;
             }
         }
 

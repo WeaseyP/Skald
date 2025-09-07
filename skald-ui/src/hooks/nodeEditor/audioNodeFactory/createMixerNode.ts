@@ -6,10 +6,15 @@ class MixerNode extends BaseSkaldNode {
     private inputGains: Map<string, GainNode>;
     private context: AudioContext;
     private timeConstant = 0.02;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
         this.output = context.createGain();
         this.inputGains = new Map<string, GainNode>();
         this.update(data);
@@ -40,6 +45,7 @@ class MixerNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
         // Update main output gain
         if (data.gain !== undefined) {
@@ -56,10 +62,32 @@ class MixerNode extends BaseSkaldNode {
             }
         }
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        if (targetHandle) {
+            console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
+            const gainNode = this.getOrCreateInputGain(targetHandle);
+            sourceNode.connect(gainNode);
+        }
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        if (targetHandle) {
+            console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
+            const gainNode = this.getInputGain(targetHandle);
+            if (gainNode) {
+                try {
+                    sourceNode.disconnect(gainNode);
+                } catch (e) {
+                    // Ignore errors from disconnecting non-connected nodes.
+                }
+            }
+        }
+    }
 }
 
 export const createMixerNode = (context: AudioContext, node: Node): AudioNode => {
-    const instance = new MixerNode(context, node.data);
+    const instance = new MixerNode(context, node.id, node.type, node.data);
     
     // The mixer does not have a single 'input' node. 
     // We return the output node, and attach the instance to it.

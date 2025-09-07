@@ -6,6 +6,7 @@ export * from './ADSRNode';
 export * from './LFONode';
 export * from './SampleHoldNode';
 export * from './DelayNode';
+export * from './GainNode';
 export * from './ReverbNode';
 export * from './DistortionNode';
 export * from './MixerNode';

@@ -19,7 +19,7 @@ import NamePromptModal from './components/NamePromptModal';
 import { 
     OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode, 
     LFONode, SampleHoldNode, DelayNode, ReverbNode, DistortionNode, 
-    MixerNode, PannerNode, GroupNode, FmOperatorNode, WavetableNode 
+    MixerNode, PannerNode, GroupNode, FmOperatorNode, WavetableNode, GainNode
 } from './components/Nodes';
 import InstrumentNode from './components/InstrumentNode';
 
@@ -56,6 +56,7 @@ const parameterPanelStyles: React.CSSProperties = {
 
 // Define nodeTypes outside the component to prevent re-creation on every render.
 const nodeTypes = { 
+    gain: GainNode,
     oscillator: OscillatorNode,
     filter: FilterNode,
     output: GraphOutputNode,

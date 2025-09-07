@@ -9,10 +9,16 @@ class LfoNode extends BaseSkaldNode {
     private timeConstant = 0.02;
     private unipolarCurve: Float32Array;
     private bipolarCurve: Float32Array;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
 
         this.lfo = context.createOscillator();
         this.waveShaper = context.createWaveShaper();
@@ -36,6 +42,7 @@ class LfoNode extends BaseSkaldNode {
     }
 
     update(data: any, options?: { bpm?: number }): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
 
         // --- Frequency Calculation ---
@@ -65,10 +72,18 @@ class LfoNode extends BaseSkaldNode {
         // --- Unipolar/Bipolar Switching ---
         this.waveShaper.curve = data.unipolar ? this.unipolarCurve : this.bipolarCurve;
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Node ${this.id} has no inputs.`);
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Node ${this.id} has no inputs.`);
+    }
 }
 
 export const createLfoNode = (context: AudioContext, node: Node): AudioNode => {
-    const lfoNodeInstance = new LfoNode(context, node.data);
+    const lfoNodeInstance = new LfoNode(context, node.id, node.type, node.data);
     
     const outputNode = lfoNodeInstance.output as any;
     outputNode._skaldNode = lfoNodeInstance;

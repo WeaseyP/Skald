@@ -12,11 +12,17 @@ class DistortionNode extends BaseSkaldNode {
     private timeConstant = 0.02;
     private currentShape: string | undefined;
     private currentDrive: number | undefined;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
         
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
+
         this.input = context.createGain();
         this.output = context.createGain();
         this.shaper = context.createWaveShaper();
@@ -74,6 +80,7 @@ class DistortionNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
         const shape = (data.shape || 'classic').toLowerCase();
         const drive = data.drive || 50;
@@ -91,10 +98,24 @@ class DistortionNode extends BaseSkaldNode {
         this.wet.gain.setTargetAtTime(mix, now, this.timeConstant);
         this.dry.gain.setTargetAtTime(1.0 - mix, now, this.timeConstant);
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
+        sourceNode.connect(this.input);
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
+        try {
+            sourceNode.disconnect(this.input);
+        } catch (e) {
+            // Ignore errors from disconnecting non-connected nodes.
+        }
+    }
 }
 
 export const createDistortionNode = (context: AudioContext, node: Node): AudioNode => {
-    const instance = new DistortionNode(context, node.data);
+    const instance = new DistortionNode(context, node.id, node.type, node.data);
     
     const inputNode = instance.input as any;
     inputNode._skaldNode = instance;

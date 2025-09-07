@@ -5,10 +5,17 @@ class FilterNode extends BaseSkaldNode {
     public node: BiquadFilterNode;
     private context: AudioContext;
     private timeConstant = 0.02;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+        
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
+
         this.node = context.createBiquadFilter();
         
         // Initialize with new or old property names for backwards compatibility
@@ -24,6 +31,7 @@ class FilterNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
         if (data.type) {
             this.node.type = data.type.toLowerCase() as BiquadFilterType;
@@ -41,10 +49,24 @@ class FilterNode extends BaseSkaldNode {
             this.node.gain.setTargetAtTime(data.gain, now, this.timeConstant);
         }
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
+        sourceNode.connect(this.node);
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
+        try {
+            sourceNode.disconnect(this.node);
+        } catch (e) {
+            // Ignore errors from disconnecting non-connected nodes.
+        }
+    }
 }
 
 export const createFilterNode = (context: AudioContext, node: Node): AudioNode => {
-    const filterNodeInstance = new FilterNode(context, node.data);
+    const filterNodeInstance = new FilterNode(context, node.id, node.type, node.data);
     
     const filterNode = filterNodeInstance.node as any;
     filterNode._skaldNode = filterNodeInstance;

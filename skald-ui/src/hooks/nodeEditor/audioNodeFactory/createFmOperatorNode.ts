@@ -6,10 +6,16 @@ class FmOperatorNode extends BaseSkaldNode {
     public modulatorInput: GainNode;
     private carrier: OscillatorNode;
     private context: AudioContext;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
         
         this.carrier = context.createOscillator();
         this.modulatorInput = context.createGain();
@@ -26,6 +32,7 @@ class FmOperatorNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
         const timeConstant = 0.02;
 
@@ -41,10 +48,28 @@ class FmOperatorNode extends BaseSkaldNode {
             this.modulatorInput.gain.setTargetAtTime(data.modIndex, now, timeConstant);
         }
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
+        if (targetHandle === 'input_mod') {
+            sourceNode.connect(this.modulatorInput);
+        }
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
+        if (targetHandle === 'input_mod') {
+            try {
+                sourceNode.disconnect(this.modulatorInput);
+            } catch (e) {
+                // Ignore errors from disconnecting non-connected nodes.
+            }
+        }
+    }
 }
 
 export const createFmOperatorNode = (context: AudioContext, node: Node): AudioNode => {
-    const instance = new FmOperatorNode(context, node.data);
+    const instance = new FmOperatorNode(context, node.id, node.type, node.data);
     
     // This node has a named input 'input_mod', not a primary input.
     // We return the output node and attach the instance for updates.

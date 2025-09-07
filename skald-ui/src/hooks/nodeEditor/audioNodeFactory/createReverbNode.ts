@@ -10,14 +10,19 @@ class ReverbNode extends BaseSkaldNode {
     private preDelay: DelayNode;
     private context: AudioContext;
     private timeConstant = 0.02;
+    private id: string;
+    private type: string;
 
     // --- Algorithmic Reverb components ---
     private readonly combFilters: { delay: DelayNode, feedback: GainNode }[] = [];
     private readonly combFilterDelayTimes = [0.0297, 0.0371, 0.0411, 0.0437]; // Prime-ish numbers
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
 
         this.input = context.createGain();
         this.output = context.createGain();
@@ -53,6 +58,7 @@ class ReverbNode extends BaseSkaldNode {
     }
 
     update(data: any): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
 
         if (data.mix !== undefined) {
@@ -73,10 +79,24 @@ class ReverbNode extends BaseSkaldNode {
             }
         }
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
+        sourceNode.connect(this.input);
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
+        try {
+            sourceNode.disconnect(this.input);
+        } catch (e) {
+            // Ignore errors
+        }
+    }
 }
 
 export const createReverbNode = (context: AudioContext, node: Node): AudioNode => {
-    const reverbNodeInstance = new ReverbNode(context, node.data);
+    const reverbNodeInstance = new ReverbNode(context, node.id, node.type, node.data);
     
     const inputNode = reverbNodeInstance.input as any;
     inputNode._skaldNode = reverbNodeInstance;

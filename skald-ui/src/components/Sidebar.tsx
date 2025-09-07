@@ -198,6 +198,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'distortion')} draggable>Distortion</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'mixer')} draggable>Mixer</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'panner')} draggable>Panner</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'gain')} draggable>Gain</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'output')} draggable>Output</div>
             </div>
         </div>

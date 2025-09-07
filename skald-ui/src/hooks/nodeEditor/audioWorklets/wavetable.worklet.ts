@@ -10,6 +10,7 @@ class WavetableProcessor extends AudioWorkletProcessor {
         super(options);
         this.phase = 0;
         this.tables = this.createTables();
+        this._sampleCounter = 0;
         this.port.onmessage = (event) => {
             if (event.data.type === 'update-table' && event.data.table) {
                 // Replace the last table (originally square wave) with the custom one.
@@ -58,6 +59,12 @@ class WavetableProcessor extends AudioWorkletProcessor {
                 outputChannel[i] = sample1 + (sample2 - sample1) * tableFraction;
                 this.phase += freq / sampleRate;
                 if (this.phase > 1) this.phase -= 1;
+
+                this._sampleCounter++;
+                if (this._sampleCounter >= 2000) {
+                    console.log('[Skald Debug][Wavetable] Freq: ' + freq.toFixed(2) + ', Pos: ' + pos.toFixed(2) + ', Phase: ' + this.phase.toFixed(4));
+                    this._sampleCounter = 0;
+                }
             }
         }
         return true;

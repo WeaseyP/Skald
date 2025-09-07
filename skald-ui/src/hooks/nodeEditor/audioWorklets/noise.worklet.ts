@@ -3,6 +3,7 @@ class NoiseProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
         this._type = (options?.processorOptions?.type || 'white').toLowerCase();
+        this._sampleCounter = 0;
 
         // State for pink noise generation (Voss-McCartney algorithm)
         this._pink_b0 = 0;
@@ -60,6 +61,12 @@ class NoiseProcessor extends AudioWorkletProcessor {
                     break;
             }
             output[i] = value;
+
+            this._sampleCounter++;
+            if (this._sampleCounter >= 2000) {
+                console.log('[Skald Debug][Noise] Type: ' + this._type + ', Last Value: ' + value.toFixed(4));
+                this._sampleCounter = 0;
+            }
         }
         return true;
     }

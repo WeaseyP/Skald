@@ -7,10 +7,15 @@ class OscillatorNode extends BaseSkaldNode {
     private context: AudioContext;
     private timeConstant = 0.02;
     private currentWaveform: string;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
         this.currentWaveform = (data.waveform || 'sawtooth').toLowerCase();
 
         this.output = context.createGain();
@@ -25,6 +30,7 @@ class OscillatorNode extends BaseSkaldNode {
     }
 
     update(data: any, options?: { bpm?: number }): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
 
         if (data.frequency) {
@@ -47,6 +53,7 @@ class OscillatorNode extends BaseSkaldNode {
     }
     
     connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
         switch (targetHandle) {
             case 'gain':
                 sourceNode.connect(this.output.gain);
@@ -65,6 +72,7 @@ class OscillatorNode extends BaseSkaldNode {
     }
 
     disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
         try {
             switch (targetHandle) {
                 case 'gain':
@@ -87,7 +95,7 @@ class OscillatorNode extends BaseSkaldNode {
 }
 
 export const createOscillatorNode = (context: AudioContext, node: Node): AudioNode => {
-    const oscillatorNodeInstance = new OscillatorNode(context, node.data);
+    const oscillatorNodeInstance = new OscillatorNode(context, node.id, node.type, node.data);
     
     const outputNode = oscillatorNodeInstance.output as any;
     outputNode._skaldNode = oscillatorNodeInstance;

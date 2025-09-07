@@ -21,19 +21,21 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     const adsrNodes = useRef<AdsrDataMap>(new Map());
     const prevGraphState = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
     const prevBpm = useRef<number>(bpm);
+    const isInitialized = useRef(false);
 
-    useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
-
-    const handlePlay = useCallback(async () => {
-        if (isPlaying) return;
+    const initializeAudio = useCallback(async () => {
+        if (isInitialized.current) return;
+        
         const context = new AudioContext();
         audioContext.current = context;
+        
         try {
             const sampleHoldBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
             const wavetableBlob = new Blob([wavetableProcessorString], { type: 'application/javascript' });
             const adsrBlob = new Blob([adsrProcessorString], { type: 'application/javascript' });
             const oscillatorBlob = new Blob([oscillatorProcessorString], { type: 'application/javascript' });
             const noiseBlob = new Blob([noiseProcessorString], { type: 'application/javascript' });
+            
             await Promise.all([
                 context.audioWorklet.addModule(URL.createObjectURL(sampleHoldBlob)),
                 context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob)),
@@ -41,21 +43,35 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 context.audioWorklet.addModule(URL.createObjectURL(oscillatorBlob)),
                 context.audioWorklet.addModule(URL.createObjectURL(noiseBlob))
             ]);
-            setIsPlaying(true);
+            
+            isInitialized.current = true;
         } catch (e) {
             console.error('Error loading AudioWorklet:', e);
             audioContext.current = null;
         }
-    }, [isPlaying]);
+    }, []);
+
+    useEffect(() => {
+        initializeAudio();
+    }, [initializeAudio]);
+
+    useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
+
+    const handlePlay = useCallback(async () => {
+        if (isPlaying || !audioContext.current) return;
+        if (!isInitialized.current) {
+            await initializeAudio();
+        }
+        if (audioContext.current?.state === 'suspended') {
+            audioContext.current.resume();
+        }
+        setIsPlaying(true);
+    }, [isPlaying, initializeAudio]);
 
     const handleStop = useCallback(() => {
         if (!isPlaying || !audioContext.current) return;
-        audioContext.current.close().then(() => {
+        audioContext.current.suspend().then(() => {
             setIsPlaying(false);
-            audioContext.current = null;
-            audioNodes.current.clear();
-            adsrNodes.current.clear();
-            prevGraphState.current = { nodes: [], edges: [] };
         });
     }, [isPlaying]);
 
@@ -168,7 +184,11 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     }, [nodes, edges, isPlaying, bpm]);
 
     useEffect(() => {
-        return () => { if (audioContext.current) handleStop(); };
+        return () => {
+            if (audioContext.current) {
+                handleStop();
+            }
+        };
     }, [handleStop]);
 
     const previewNode = useCallback((nodeId: string) => {

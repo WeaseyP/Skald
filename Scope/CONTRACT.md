@@ -86,7 +86,7 @@ A sine wave oscillator configured for Frequency Modulation synthesis.
 ### **Modulators**
 
 #### **`ADSR`**
-Shapes a signal with an Attack-Decay-Sustain-Release envelope.
+Generates a control signal shaped like an Attack-Decay-Sustain-Release envelope. This signal is typically used to control the gain of another node (like a Gain/VCA node) or the cutoff of a filter.
 * **Parameters**:
     * `attack` (number): Attack time in seconds (e.g., `0.01`).
     * `decay` (number): Decay time in seconds (e.g., `0.2`).
@@ -94,8 +94,8 @@ Shapes a signal with an Attack-Decay-Sustain-Release envelope.
     * `release` (number): Release time in seconds (e.g., `0.5`).
     * `depth` (number): The overall impact of the envelope, `0.0` to `1.0`. (Default: `1.0`).
 * **Ports**:
-    * Inputs: `input` (signal to shape), `gate` (to trigger the envelope)
-    * Outputs: `output`
+    * Inputs: `gate` (to trigger the envelope)
+    * Outputs: `output` (the control signal)
 
 #### **`LFO`**
 A Low-Frequency Oscillator for creating cyclical modulation.

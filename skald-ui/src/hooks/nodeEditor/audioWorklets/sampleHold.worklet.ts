@@ -11,6 +11,7 @@ class SampleHoldProcessor extends AudioWorkletProcessor {
         super();
         this._lastTrigger = 0;
         this._heldValue = 0;
+        this._sampleCounter = 0;
         
         // Internal clock state
         this._phase = 0;
@@ -57,6 +58,12 @@ class SampleHoldProcessor extends AudioWorkletProcessor {
             this._lastTrigger = trigger;
 
             output[i] = this._heldValue * amplitude;
+
+            this._sampleCounter++;
+            if (this._sampleCounter >= 2000) {
+                console.log('[Skald Debug][SampleHold] Held: ' + this._heldValue.toFixed(4) + ', Trigger: ' + (trigger > 0 ? 'High' : 'Low'));
+                this._sampleCounter = 0;
+            }
         }
 
         return true;

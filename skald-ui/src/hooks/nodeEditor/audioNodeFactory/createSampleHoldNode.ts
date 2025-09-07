@@ -8,10 +8,15 @@ class SampleHoldNode extends BaseSkaldNode {
 
     private context: AudioContext;
     private timeConstant = 0.02;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
         
         this.output = new AudioWorkletNode(context, 'sample-hold-processor', {
             numberOfInputs: 2,
@@ -26,6 +31,7 @@ class SampleHoldNode extends BaseSkaldNode {
     }
 
     update(data: any, options?: { bpm?: number }): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
 
         // --- Rate Calculation ---
@@ -49,10 +55,36 @@ class SampleHoldNode extends BaseSkaldNode {
             this.output.parameters.get('amplitude')?.setTargetAtTime(data.amplitude, now, this.timeConstant);
         }
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
+        if (targetHandle === 'input_signal') {
+            sourceNode.connect(this.input_signal, 0, 0);
+        } else if (targetHandle === 'input_trigger') {
+            sourceNode.connect(this.input_trigger, 0, 1);
+        }
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
+        if (targetHandle === 'input_signal') {
+            try {
+                sourceNode.disconnect(this.input_signal, 0, 0);
+            } catch (e) {
+                // Ignore errors
+            }
+        } else if (targetHandle === 'input_trigger') {
+            try {
+                sourceNode.disconnect(this.input_trigger, 0, 1);
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+    }
 }
 
 export const createSampleHoldNode = (context: AudioContext, node: Node): AudioNode => {
-    const instance = new SampleHoldNode(context, node.data);
+    const instance = new SampleHoldNode(context, node.id, node.type, node.data);
     
     // The main output is the worklet itself
     const outputNode = instance.output as any;

@@ -10,10 +10,16 @@ class DelayNode extends BaseSkaldNode {
     private dry: GainNode;
     private context: AudioContext;
     private timeConstant = 0.02;
+    private id: string;
+    private type: string;
 
-    constructor(context: AudioContext, data: any) {
+    constructor(context: AudioContext, id: string, type: string, data: any) {
         super();
         this.context = context;
+        this.id = id;
+        this.type = type;
+
+        console.log(`[Skald Debug][${this.type}] Node created with ID: ${this.id}`);
 
         this.input = context.createGain();
         this.output = context.createGain();
@@ -35,6 +41,7 @@ class DelayNode extends BaseSkaldNode {
     }
 
     update(data: any, options?: { bpm?: number }): void {
+        console.log(`[Skald Debug][${this.type}] Updating node ${this.id} with data:`, data);
         const now = this.context.currentTime;
 
         // --- Delay Time Calculation ---
@@ -66,10 +73,24 @@ class DelayNode extends BaseSkaldNode {
             this.dry.gain.setTargetAtTime(1.0 - data.mix, now, this.timeConstant);
         }
     }
+
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Connecting input to ${this.id}. Target handle: ${targetHandle}`);
+        sourceNode.connect(this.input);
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        console.log(`[Skald Debug][${this.type}] Disconnecting input from ${this.id}. Target handle: ${targetHandle}`);
+        try {
+            sourceNode.disconnect(this.input);
+        } catch (e) {
+            // Ignore errors from disconnecting non-connected nodes.
+        }
+    }
 }
 
 export const createDelayNode = (context: AudioContext, node: Node): AudioNode => {
-    const delayNodeInstance = new DelayNode(context, node.data);
+    const delayNodeInstance = new DelayNode(context, node.id, node.type, node.data);
     
     const inputNode = delayNodeInstance.input as any;
     inputNode._skaldNode = delayNodeInstance;

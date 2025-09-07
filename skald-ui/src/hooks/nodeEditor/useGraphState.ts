@@ -52,11 +52,16 @@ export const useGraphState = (previewNode?: (nodeId: string) => void) => {
         }
     }, [nodes, selectedNode?.id]);
 
+    const nodesRef = useRef(nodes);
+    nodesRef.current = nodes;
+    const edgesRef = useRef(edges);
+    edgesRef.current = edges;
+
     const saveStateForUndo = useCallback(() => {
         if (isRestoring.current) return;
-        setHistory(prev => [...prev, { nodes, edges }]);
+        setHistory(prev => [...prev, { nodes: nodesRef.current, edges: edgesRef.current }]);
         setFuture([]);
-    }, [nodes, edges]);
+    }, []);
 
     const onNodesChange: OnNodesChange = useCallback((changes: NodeChange[]) => {
         const isUndoable = changes.some(c => c.type === 'add' || c.type === 'remove' || (c.type === 'position' && !c.dragging));

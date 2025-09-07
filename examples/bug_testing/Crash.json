@@ -41,87 +41,42 @@
             {
               "id": "1",
               "type": "adsr",
-              "position": {
-                "x": 549.177977468155,
-                "y": 976.8414833678264
-              },
+              "position": { "x": 250, "y": 250 },
               "data": {
                 "label": "ADSR",
-                "attack": 0.1,
-                "decay": 0.6333333333333333,
-                "sustain": 0,
-                "release": 1,
-                "amount": 1,
-                "velocitySensitivity": 0.5,
-                "attackCurve": "linear",
-                "decayCurve": "linear",
-                "releaseCurve": "linear",
-                "exposedParameters": [
-                  "attack",
-                  "decay",
-                  "sustain",
-                  "release",
-                  "amount"
-                ]
-              },
-              "width": 182,
-              "height": 43,
-              "selected": true,
-              "dragging": false,
-              "positionAbsolute": {
-                "x": 549.177977468155,
-                "y": 976.8414833678264
+                "attack": 0.01, "decay": 0.5, "sustain": 0, "release": 0.5, "depth": 1.0
               }
             },
             {
               "id": "2",
               "type": "noise",
-              "position": {
-                "x": 72.25269324532229,
-                "y": 834.1931149640027
-              },
-              "data": {
-                "label": "Noise",
-                "type": "White",
-                "amplitude": 1,
-                "exposedParameters": [
-                  "amplitude"
-                ]
-              },
-              "width": 182,
-              "height": 43,
-              "selected": true,
-              "positionAbsolute": {
-                "x": 72.25269324532229,
-                "y": 834.1931149640027
-              }
+              "position": { "x": 50, "y": 50 },
+              "data": { "label": "Noise", "type": "White", "amplitude": 1 }
             },
             {
               "id": "3",
               "type": "InstrumentOutput",
-              "position": {
-                "x": 400,
-                "y": 140
-              },
-              "data": {
-                "label": "Out: output",
-                "name": "output"
-              }
+              "position": { "x": 650, "y": 150 },
+              "data": { "label": "Out: output", "name": "output" }
+            },
+            {
+              "id": "6",
+              "type": "gain",
+              "position": { "x": 450, "y": 150 },
+              "data": { "label": "VCA", "gain": 0 }
+            },
+            {
+              "id": "7",
+              "type": "InstrumentInput",
+              "position": { "x": 50, "y": 250 },
+              "data": { "label": "In: gate", "name": "gate" }
             }
           ],
           "connections": [
-            {
-              "from_node": "2",
-              "from_port": "output",
-              "to_node": "1",
-              "to_port": "input"
-            },
-            {
-              "from_node": "1",
-              "from_port": "output",
-              "to_node": "3",
-              "to_port": "input"
-            }
+            { "from_node": "2", "from_port": "output", "to_node": "6", "to_port": "input" },
+            { "from_node": "1", "from_port": "output", "to_node": "6", "to_port": "input_gain" },
+            { "from_node": "6", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "7", "from_port": "output", "to_node": "1", "to_port": "gate" }
           ]
         }
       },

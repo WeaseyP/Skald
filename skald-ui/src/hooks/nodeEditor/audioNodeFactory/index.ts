@@ -15,8 +15,10 @@ import { createOutputNode } from './createOutputNode';
 import { createInstrumentInputNode } from './createInstrumentInputNode';
 import { createInstrumentOutputNode } from './createInstrumentOutputNode';
 import { createDefaultNode } from './createDefaultNode';
+import { createGainNode } from './createGainNode';
 
 export const nodeCreationMap = {
+    'gain': createGainNode,
     'adsr': createAdsrNode,
     'oscillator': createOscillatorNode,
     'noise': createNoiseNode,
