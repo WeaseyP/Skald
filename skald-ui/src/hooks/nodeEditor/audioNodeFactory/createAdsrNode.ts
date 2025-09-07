@@ -17,7 +17,7 @@ class ADSRNode extends BaseSkaldNode {
         this.update(data);
     }
 
-    update(data: any): void {
+    update(data: any, options?: { bpm?: number }): void {
         const now = this.context.currentTime;
         this.output.parameters.get('attack')?.setTargetAtTime(data.attack ?? 0.1, now, this.timeConstant);
         this.output.parameters.get('decay')?.setTargetAtTime(data.decay ?? 0.1, now, this.timeConstant);
@@ -25,6 +25,20 @@ class ADSRNode extends BaseSkaldNode {
         this.output.parameters.get('release')?.setTargetAtTime(data.release ?? 0.5, now, this.timeConstant);
         this.output.parameters.get('depth')?.setTargetAtTime(data.depth ?? 1.0, now, this.timeConstant);
         this.output.parameters.get('velocitySensitivity')?.setTargetAtTime(data.velocitySensitivity ?? 0.5, now, this.timeConstant);
+    }
+    
+    connectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        // Any input to an ADSR node is treated as a gate signal for the worklet.
+        // The `gate` property is the worklet node itself.
+        sourceNode.connect(this.gate);
+    }
+
+    disconnectInput(sourceNode: AudioNode, targetHandle: string | null): void {
+        try {
+            sourceNode.disconnect(this.gate);
+        } catch (e) {
+            // Ignore errors from disconnecting non-connected nodes.
+        }
     }
 }
 

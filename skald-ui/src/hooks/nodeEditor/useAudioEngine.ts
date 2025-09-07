@@ -133,30 +133,8 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     const sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
                     
                     const targetSkaldNode = (target as any)._skaldNode;
-                    if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
-                        const mixerInstance = targetSkaldNode as any;
-                        const inputGain = mixerInstance.getInputGain(edge.targetHandle);
-                        if (inputGain) {
-                            disconnectNodes(sourceNode, inputGain, edge);
-                            mixerInstance.removeInputGain(edge.targetHandle);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
-                        const fmInput = (target as any).modulatorInput;
-                        if (fmInput) {
-                            disconnectNodes(sourceNode, fmInput, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'ADSRNode' && edge.targetHandle === 'input_gate') {
-                        const adsrGate = (target as any).gate;
-                        if (adsrGate) {
-                            disconnectNodes(sourceNode, adsrGate, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SampleHoldNode' && edge.targetHandle) {
-                        const destinationNode = targetSkaldNode.output; // The worklet itself
-                         if (edge.targetHandle === 'input_signal') {
-                            sourceNode.disconnect(destinationNode, 0, 0);
-                        } else if (edge.targetHandle === 'input_trigger') {
-                            sourceNode.disconnect(destinationNode, 0, 1);
-                        }
+                    if (targetSkaldNode && typeof targetSkaldNode.disconnectInput === 'function') {
+                        targetSkaldNode.disconnectInput(sourceNode, edge.targetHandle || null, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         disconnectNodes(sourceNode, targetNode, edge);
@@ -174,27 +152,8 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     const sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
 
                     const targetSkaldNode = (target as any)._skaldNode;
-                    if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
-                        const mixerInstance = targetSkaldNode as any;
-                        const inputGain = mixerInstance.getOrCreateInputGain(edge.targetHandle);
-                        connectNodes(sourceNode, inputGain, edge);
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
-                        const fmInput = (target as any).modulatorInput;
-                        if (fmInput) {
-                            connectNodes(sourceNode, fmInput, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'ADSRNode' && edge.targetHandle === 'input_gate') {
-                        const adsrGate = (target as any).gate;
-                        if (adsrGate) {
-                            connectNodes(sourceNode, adsrGate, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SampleHoldNode' && edge.targetHandle) {
-                        const destinationNode = targetSkaldNode.output; // The worklet itself
-                        if (edge.targetHandle === 'input_signal') {
-                            sourceNode.connect(destinationNode, 0, 0); // connect to input 0
-                        } else if (edge.targetHandle === 'input_trigger') {
-                            sourceNode.connect(destinationNode, 0, 1); // connect to input 1
-                        }
+                    if (targetSkaldNode && typeof targetSkaldNode.connectInput === 'function') {
+                        targetSkaldNode.connectInput(sourceNode, edge.targetHandle || null, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         connectNodes(sourceNode, targetNode, edge);
@@ -214,16 +173,136 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
 
     const previewNode = useCallback((nodeId: string) => {
         if (!audioContext.current) return;
-        const node = audioNodes.current.get(nodeId);
-        if (node && (node as any).gate && (node as any).constructor.name === 'AudioWorkletNode') {
-            const now = audioContext.current.currentTime;
-            const adsrGate = (node as any).gate;
-            const trigger = new ConstantSourceNode(audioContext.current, { offset: 1 });
-            trigger.connect(adsrGate);
-            trigger.start(now);
-            trigger.stop(now + 0.1);
+        const context = audioContext.current;
+        const now = context.currentTime;
+    
+        const reactFlowNode = nodes.find(n => n.id === nodeId);
+        if (!reactFlowNode) return;
+    
+        const audioNode = audioNodes.current.get(nodeId);
+        if (!audioNode) return;
+        
+        const nodeType = reactFlowNode.type;
+    
+        // Temporary master output for the preview, makes cleanup easy
+        const previewOut = context.createGain();
+        previewOut.connect(context.destination);
+    
+        const cleanup = (previewDuration: number) => {
+            setTimeout(() => {
+                previewOut.disconnect();
+            }, previewDuration * 1000);
+        };
+    
+        switch (nodeType) {
+            case 'adsr': {
+                const { attack = 0.1, decay = 0.1, release = 0.5 } = reactFlowNode.data;
+                const gateOnDuration = attack + decay;
+                const totalDuration = Math.min(attack + decay + release + 0.5, 10);
+    
+                const osc = new OscillatorNode(context, { frequency: 440, type: 'sawtooth' });
+                const vca = new GainNode(context, { gain: 0 });
+                
+                audioNode.connect(vca.gain);
+                osc.connect(vca);
+                vca.connect(previewOut);
+                osc.start(now);
+                osc.stop(now + totalDuration);
+    
+                const adsrGate = (audioNode as any).gate;
+                if (adsrGate) {
+                    const trigger = new ConstantSourceNode(context, { offset: 0 });
+                    trigger.offset.setValueAtTime(1, now);
+                    trigger.offset.setValueAtTime(0, now + gateOnDuration);
+                    trigger.connect(adsrGate);
+                    trigger.start(now);
+                    trigger.stop(now + totalDuration);
+                }
+    
+                cleanup(totalDuration);
+                break;
+            }
+    
+            case 'oscillator':
+            case 'wavetable':
+            case 'fmOperator':
+            case 'noise': {
+                const sourceOutput = audioNode; 
+                const vca = context.createGain();
+                vca.gain.value = 0;
+                
+                const tempAdsr = new AudioWorkletNode(context, 'adsr-processor');
+                const tempAdsrData = { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.3 };
+                const { attack, decay, release } = tempAdsrData;
+                const gateOnDuration = attack + decay;
+                const totalDuration = attack + decay + release + 0.5;
+    
+                const adsrParams = tempAdsr.parameters;
+                adsrParams.get('attack')?.setValueAtTime(tempAdsrData.attack, now);
+                adsrParams.get('decay')?.setValueAtTime(tempAdsrData.decay, now);
+                adsrParams.get('sustain')?.setValueAtTime(tempAdsrData.sustain, now);
+                adsrParams.get('release')?.setValueAtTime(tempAdsrData.release, now);
+    
+                sourceOutput.connect(vca);
+                tempAdsr.connect(vca.gain);
+                vca.connect(previewOut);
+    
+                const trigger = new ConstantSourceNode(context, { offset: 0 });
+                trigger.offset.setValueAtTime(1, now);
+                trigger.offset.setValueAtTime(0, now + gateOnDuration);
+                trigger.connect(tempAdsr);
+                trigger.start(now);
+                trigger.stop(now + totalDuration);
+    
+                cleanup(totalDuration);
+                break;
+            }
+    
+            case 'filter':
+            case 'distortion':
+            case 'delay':
+            case 'reverb':
+            case 'panner': {
+                const osc = new OscillatorNode(context, { frequency: 440, type: 'sawtooth' });
+                const vca = context.createGain();
+                vca.gain.value = 0;
+    
+                const tempAdsr = new AudioWorkletNode(context, 'adsr-processor');
+                const tempAdsrData = { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.3 };
+                const { attack, decay, release } = tempAdsrData;
+                const gateOnDuration = attack + decay;
+                const totalDuration = attack + decay + release + 0.5;
+    
+                const adsrParams = tempAdsr.parameters;
+                adsrParams.get('attack')?.setValueAtTime(tempAdsrData.attack, now);
+                adsrParams.get('decay')?.setValueAtTime(tempAdsrData.decay, now);
+                adsrParams.get('sustain')?.setValueAtTime(tempAdsrData.sustain, now);
+                adsrParams.get('release')?.setValueAtTime(tempAdsrData.release, now);
+                
+                osc.connect(vca);
+                vca.connect(audioNode);
+                audioNode.connect(previewOut);
+                tempAdsr.connect(vca.gain);
+                osc.start(now);
+                osc.stop(now + totalDuration);
+                
+                const trigger = new ConstantSourceNode(context, { offset: 0 });
+                trigger.offset.setValueAtTime(1, now);
+                trigger.offset.setValueAtTime(0, now + gateOnDuration);
+                trigger.connect(tempAdsr);
+                trigger.start(now);
+                trigger.stop(now + totalDuration);
+    
+                cleanup(totalDuration);
+                break;
+            }
+    
+            default:
+                console.log(`Preview not implemented for node type: ${nodeType}`);
+                // No cleanup needed if nothing happens
+                break;
         }
-    }, []);
+    }, [nodes]);
 
     return { isPlaying, handlePlay, handleStop, previewNode };
 };

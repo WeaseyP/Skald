@@ -14,8 +14,8 @@ const oscillatorNodeStyles: React.CSSProperties = { ...baseNodeStyles, backgroun
 const OscillatorNodeComponent: React.FC<NodeProps> = ({ data }) => {
     return (
         <div style={oscillatorNodeStyles}>
-            <Handle type="target" position={Position.Left} id="input_freq" style={{ top: '33%' }} />
-            <Handle type="target" position={Position.Left} id="input_amp" style={{ top: '66%' }} />
+            <Handle type="target" position={Position.Left} id="frequency" style={{ top: '33%' }} />
+            <Handle type="target" position={Position.Left} id="gain" style={{ top: '66%' }} />
             <div><strong>{data.label || 'Oscillator'}</strong></div>
             <Handle type="source" position={Position.Right} id="output" />
         </div>
