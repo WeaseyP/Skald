@@ -21,21 +21,23 @@ import {
     useReactFlow,
     OnSelectionChangeParams,
 } from 'reactflow';
+import { NODE_DEFINITIONS } from '../../definitions/node-definitions';
+import { NodeParams } from '../../definitions/types';
 
-const initialNodes: Node[] = [];
+const initialNodes: Node<NodeParams>[] = [];
 const initialEdges: Edge[] = [];
 
 let id = 0;
 const getId = () => ++id;
 
-type HistoryState = { nodes: Node[]; edges: Edge[] };
+type HistoryState = { nodes: Node<NodeParams>[]; edges: Edge[] };
 
 export const useGraphState = () => {
     const { screenToFlowPosition } = useReactFlow();
-    const [nodes, setNodes] = useState<Node[]>(initialNodes);
+    const [nodes, setNodes] = useState<Node<NodeParams>[]>(initialNodes);
     const [edges, setEdges] = useState<Edge[]>(initialEdges);
-    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-    const [selectedNodesForGrouping, setSelectedNodesForGrouping] = useState<Node[]>([]);
+    const [selectedNode, setSelectedNode] = useState<Node<NodeParams> | null>(null);
+    const [selectedNodesForGrouping, setSelectedNodesForGrouping] = useState<Node<NodeParams>[]>([]);
     
     const [history, setHistory] = useState<HistoryState[]>([]);
     const [future, setFuture] = useState<HistoryState[]>([]);
@@ -76,7 +78,7 @@ export const useGraphState = () => {
         setEdges(eds => addEdge(edge, eds));
     }, [saveStateForUndo]);
 
-    const updateNodeData = useCallback((nodeId: string, data: object, subNodeId?: string) => {
+    const updateNodeData = useCallback((nodeId: string, data: Partial<NodeParams>, subNodeId?: string) => {
         saveStateForUndo();
         setNodes(nds => nds.map(node => {
             if (node.id === nodeId) {
@@ -103,144 +105,22 @@ export const useGraphState = () => {
     const onDrop = useCallback((event: React.DragEvent) => {
         event.preventDefault();
         const type = event.dataTransfer.getData('application/reactflow');
-        if (!type) return;
+        if (!type || !NODE_DEFINITIONS[type]) return;
 
         const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         const newId = `${getId()}`;
-        let newNode: Node;
+        const definition = NODE_DEFINITIONS[type];
 
-        switch (type) {
-            case 'fmOperator':
-                newNode = { id: newId, type, position, data: { 
-                    label: `FM Operator`,
-                    frequency: 440,
-                    modIndex: 100,
-                    exposedParameters: ['frequency', 'modIndex']
-                }};
-                break;
-            case 'wavetable':
-                newNode = { id: newId, type, position, data: { 
-                    label: `Wavetable`,
-                    tableName: 'Sine',
-                    frequency: 440,
-                    position: 0,
-                    exposedParameters: ['frequency', 'position']
-                }};
-                break;
-            case 'sampleHold':
-                newNode = { id: newId, type, position, data: { 
-                    label: `S & H`,
-                    rate: 10.0,
-                    amplitude: 1.0,
-                    bpmSync: false,
-                    syncRate: '1/8',
-                    exposedParameters: ['rate', 'amplitude']
-                }};
-                break;
-            case 'lfo':
-                newNode = { id: newId, type, position, data: { 
-                    label: `LFO`, 
-                    waveform: "Sine",
-                    frequency: 5.0,
-                    amplitude: 1.0,
-                    bpmSync: false,
-                    syncRate: '1/4',
-                    exposedParameters: ['frequency', 'amplitude']
-                }};
-                break;
-            case 'oscillator':
-                newNode = { id: newId, type, position, data: { 
-                    label: `Oscillator`, 
-                    frequency: 440.0, 
-                    waveform: "Sawtooth",
-                    amplitude: 0.5,
-                    pulseWidth: 0.5,
-                    phase: 0,
-                    exposedParameters: ['frequency', 'amplitude', 'pulseWidth', 'phase']
-                }};
-                break;
-            case 'filter':
-                newNode = { id: newId, type, position, data: { 
-                    label: `Filter`, 
-                    type: 'Lowpass', 
-                    cutoff: 800.0,
-                    resonance: 1.0,
-                    exposedParameters: ['cutoff', 'resonance']
-                }};
-                break;
-            case 'noise':
-                newNode = { id: newId, type, position, data: { 
-                    label: `Noise`, 
-                    type: 'White',
-                    amplitude: 1.0,
-                    exposedParameters: ['amplitude']
-                }};
-                break;
-            case 'adsr':
-                newNode = { id: newId, type, position, data: { 
-                    label: `ADSR`, 
-                    attack: 0.1, 
-                    decay: 0.2, 
-                    sustain: 0.5, 
-                    release: 1.0,
-                    depth: 1.0,
-                    velocitySensitivity: 0.5,
-                    attackCurve: 'linear',
-                    decayCurve: 'linear',
-                    releaseCurve: 'linear',
-                    exposedParameters: ['attack', 'decay', 'sustain', 'release', 'depth']
-                }};
-                break;
-            case 'delay':
-                newNode = { id: newId, type, position, data: {
-                    label: 'Delay',
-                    delayTime: 0.5,
-                    feedback: 0.5,
-                    mix: 0.5,
-                    bpmSync: false,
-                    syncRate: '1/8',
-                    exposedParameters: ['delayTime', 'feedback', 'mix']
-                }};
-                break;
-            case 'reverb':
-                newNode = { id: newId, type, position, data: {
-                    label: 'Reverb',
-                    decay: 3.0,
-                    preDelay: 0.01,
-                    mix: 0.5,
-                    exposedParameters: ['decay', 'mix']
-                }};
-                break;
-            case 'distortion':
-                newNode = { id: newId, type, position, data: {
-                    label: 'Distortion',
-                    drive: 20,
-                    tone: 4000,
-                    mix: 0.5,
-                    exposedParameters: ['drive', 'tone', 'mix']
-                }};
-                break;
-            case 'mixer':
-                newNode = { id: newId, type, position, data: {
-                    label: 'Mixer',
-                    inputCount: 4,
-                    level1: 0.75, level2: 0.75, level3: 0.75, level4: 0.75,
-                    exposedParameters: ['level1', 'level2', 'level3', 'level4']
-                }};
-                break;
-            case 'panner':
-                newNode = { id: newId, type, position, data: {
-                    label: 'Panner',
-                    pan: 0,
-                    exposedParameters: ['pan']
-                }};
-                break;
-            case 'output':
-                newNode = { id: newId, type, position, data: { label: `Output` } };
-                break;
-            default:
-                return;
-        }
+        const newNode: Node<NodeParams> = {
+            id: newId,
+            type,
+            position,
+            data: {
+                ...definition.defaultParameters,
+                label: definition.label, // Add label from definition
+            } as NodeParams,
+        };
+
         setNodes((nds) => nds.concat(newNode));
     }, [screenToFlowPosition]);
 
