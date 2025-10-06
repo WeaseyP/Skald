@@ -9,7 +9,8 @@ import { Instrument } from './instrument';
 import { AdsrDataMap } from './types';
 import { connectNodes, disconnectNodes } from './audioNodeUtils';
 import { nodeCreationMap } from './audioNodeFactory';
-import { useAudioEngineV2 } from './useAudioEngine.v2'; // Import the new v2 engine
+import { useOscillatorHandler } from './node-handlers/useOscillatorHandler';
+import { useAdsrHandler } from './node-handlers/useAdsrHandler';
 
 type AudioNodeMap = Map<string, AudioNode | Instrument>;
 
@@ -20,8 +21,13 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     const adsrNodes = useRef<AdsrDataMap>(new Map());
     const prevGraphState = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
 
-    // Instantiate the v2 engine
-    const audioEngineV2 = useAudioEngineV2({ audioContextRef: audioContext, audioNodes });
+    const oscillatorHandler = useOscillatorHandler({ audioContextRef: audioContext, audioNodes });
+    const adsrHandler = useAdsrHandler({ audioContextRef: audioContext, audioNodes, adsrNodes });
+
+    const nodeHandlers: { [key: string]: any } = {
+        oscillator: oscillatorHandler,
+        adsr: adsrHandler,
+    };
 
     useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
 
@@ -58,22 +64,21 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
 
     useDeepCompareEffect(() => {
         if (!isPlaying || !audioContext.current) return;
-        
+
         const { nodes: prevNodes, edges: prevEdges } = prevGraphState.current;
         const context = audioContext.current;
 
         // Handle node deletions
         prevNodes.forEach(node => {
             if (!nodes.find(n => n.id === node.id)) {
-                // Delegate to v2 engine if it's an oscillator
-                if (node.type === 'oscillator') {
-                    audioEngineV2.deleteNode(node);
-                } else { // Otherwise, use original logic
+                const handler = node.type ? nodeHandlers[node.type] : null;
+                if (handler) {
+                    handler.remove(node);
+                } else {
                     const audioNode = audioNodes.current.get(node.id);
                     if (audioNode) {
                         audioNode.disconnect();
                         audioNodes.current.delete(node.id);
-                        if (node.type === 'adsr') adsrNodes.current.delete(node.id);
                     }
                 }
             }
@@ -83,12 +88,12 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         nodes.forEach(node => {
             const liveNode = audioNodes.current.get(node.id);
             const prevNode = prevNodes.find(p => p.id === node.id);
+            const handler = node.type ? nodeHandlers[node.type] : null;
 
             if (!liveNode) {
-                // Delegate to v2 engine if it's an oscillator
-                if (node.type === 'oscillator') {
-                    audioEngineV2.createNode(node);
-                } else { // Otherwise, use original logic
+                if (handler) {
+                    handler.create(node);
+                } else {
                     let newAudioNode: AudioNode | Instrument | null = null;
                     if (node.type === 'instrument') {
                         newAudioNode = new Instrument(context, node);
@@ -102,10 +107,9 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     if (newAudioNode) audioNodes.current.set(node.id, newAudioNode);
                 }
             } else {
-                // Delegate to v2 engine if it's an oscillator
-                if (node.type === 'oscillator' && prevNode) {
-                     audioEngineV2.updateNode(node, prevNode);
-                } else { // Otherwise, use original logic
+                if (handler && prevNode) {
+                    handler.update(node, prevNode);
+                } else {
                     if (liveNode instanceof Instrument) {
                         liveNode.updateNodeData(node.data, bpm);
                     } else if (prevNode && JSON.stringify(prevNode.data) !== JSON.stringify(node.data)) {
@@ -145,6 +149,9 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                         if (adsrGate) {
                             disconnectNodes(sourceNode, adsrGate, edge);
                         }
+                    } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
+                        // When disconnecting from a GainNode's gain parameter
+                        disconnectNodes(sourceNode, target.gain, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         disconnectNodes(sourceNode, targetNode, edge);
@@ -176,6 +183,9 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                         if (adsrGate) {
                             connectNodes(sourceNode, adsrGate, edge);
                         }
+                    } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
+                        // When connecting to a GainNode's gain parameter for modulation
+                        connectNodes(sourceNode, target.gain, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         connectNodes(sourceNode, targetNode, edge);
@@ -186,7 +196,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
 
         prevGraphState.current = { nodes, edges };
 
-    }, [nodes, edges, isPlaying, bpm, audioEngineV2]);
+    }, [nodes, edges, isPlaying, bpm, nodeHandlers]);
 
     useEffect(() => {
         return () => { if (audioContext.current) handleStop(); };

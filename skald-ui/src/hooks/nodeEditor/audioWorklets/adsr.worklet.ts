@@ -7,6 +7,7 @@ class ADSRProcessor extends AudioWorkletProcessor {
             { name: 'sustain', defaultValue: 0.5, minValue: 0, maxValue: 1 },
             { name: 'release', defaultValue: 0.5, minValue: 0.001, maxValue: 10 },
             { name: 'depth', defaultValue: 1.0, minValue: 0, maxValue: 1 },
+            { name: 'loop', defaultValue: 0, minValue: 0, maxValue: 1 },
         ];
     }
 
@@ -16,6 +17,9 @@ class ADSRProcessor extends AudioWorkletProcessor {
         this.value = 0.0;
         this.lastGate = 0;
         this.releaseInitialValue = 0.0;
+        this.attackCounter = 0;
+        this.decayCounter = 0;
+        this.releaseCounter = 0;
     }
 
     process(inputs, outputs, parameters) {
@@ -27,6 +31,8 @@ class ADSRProcessor extends AudioWorkletProcessor {
         const decayDuration = Math.max(1, parameters.decay[0] * sampleRate);
         const sustainLevel = parameters.sustain[0];
         const releaseDuration = Math.max(1, parameters.release[0] * sampleRate);
+        const depth = parameters.depth[0];
+        const isLooping = parameters.loop[0] > 0.5;
         
         for (let i = 0; i < output.length; i++) {
             const currentGate = gate ? gate[i] : 0;
@@ -60,8 +66,13 @@ class ADSRProcessor extends AudioWorkletProcessor {
                 case 'decay':
                     this.value = sustainLevel + (1.0 - sustainLevel) * (1 - (this.decayCounter / decayDuration));
                     if (this.decayCounter >= decayDuration) {
-                        this.value = sustainLevel;
-                        this.state = 'sustain';
+                        if (isLooping && currentGate > 0) {
+                            this.state = 'attack';
+                            this.attackCounter = 0;
+                        } else {
+                            this.value = sustainLevel;
+                            this.state = 'sustain';
+                        }
                     }
                     this.decayCounter++;
                     break;
@@ -77,7 +88,7 @@ class ADSRProcessor extends AudioWorkletProcessor {
                     this.releaseCounter++;
                     break;
             }
-            output[i] = Math.max(0, this.value);
+            output[i] = Math.max(0, this.value * depth);
         }
         return true;
     }

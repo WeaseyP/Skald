@@ -8,6 +8,7 @@ class SkaldOscillatorNode extends BaseSkaldNode {
 
     private osc: OscillatorNode | null = null;
     private phaseDelay: DelayNode;
+    private smoothingTimeConstant = 0.015; // Time in seconds for smoothing
 
     // PWM-specific nodes
     private pwmOsc: OscillatorNode | null = null;
@@ -21,7 +22,8 @@ class SkaldOscillatorNode extends BaseSkaldNode {
         this.output = context.createGain();
         this.phaseDelay = context.createDelay(1.0); // Max delay 1s
 
-        this.output.gain.setValueAtTime(data.amplitude ?? 0.5, context.currentTime);
+        this.output.gain.cancelScheduledValues(this.context.currentTime);
+        this.output.gain.setTargetAtTime(data.amplitude ?? 0.5, this.context.currentTime, this.smoothingTimeConstant);
 
         this.setupWaveform(data);
         
@@ -41,18 +43,17 @@ class SkaldOscillatorNode extends BaseSkaldNode {
             
             this.pwmOsc = this.context.createOscillator();
             this.pwmOsc.type = 'sawtooth';
-            this.pwmOsc.frequency.setValueAtTime(frequency, this.context.currentTime);
+            this.pwmOsc.frequency.cancelScheduledValues(this.context.currentTime);
+            this.pwmOsc.frequency.setTargetAtTime(frequency, this.context.currentTime, this.smoothingTimeConstant);
 
             this.dcOffset = this.context.createConstantSource();
             this.updatePulseWidth(data.pulseWidth ?? 0.5);
             
             this.shaper = this.context.createWaveShaper();
-            // A steep curve to simulate a comparator
-            this.shaper.curve = new Float32Array([-1, 1]);
+            this.shaper.curve = new Float32Array([-1, 1]); // Steep curve for comparator effect
 
-            // Amplify the summed signal before shaping to get a sharp transition
             const summer = this.context.createGain();
-            summer.gain.value = 1000; 
+            summer.gain.value = 1000; // Amplify for a sharp transition
 
             this.pwmOsc.connect(summer);
             this.dcOffset.connect(summer);
@@ -65,7 +66,8 @@ class SkaldOscillatorNode extends BaseSkaldNode {
             this.isPwm = false;
             this.osc = this.context.createOscillator();
             this.osc.type = waveform as OscillatorType;
-            this.osc.frequency.setValueAtTime(frequency, this.context.currentTime);
+            this.osc.frequency.cancelScheduledValues(this.context.currentTime);
+            this.osc.frequency.setTargetAtTime(frequency, this.context.currentTime, this.smoothingTimeConstant);
             this.osc.connect(this.phaseDelay);
             this.osc.start();
         }
@@ -75,22 +77,20 @@ class SkaldOscillatorNode extends BaseSkaldNode {
 
     private updatePulseWidth(pulseWidth: number) {
         if (this.dcOffset) {
-            // Map pulseWidth (0.01-0.99) to a DC offset from 1 to -1
-            // This shifts the sawtooth wave up or down before it hits the comparator (shaper)
-            this.dcOffset.offset.setValueAtTime(1 - 2 * pulseWidth, this.context.currentTime);
+            this.dcOffset.offset.cancelScheduledValues(this.context.currentTime);
+            this.dcOffset.offset.setTargetAtTime(1 - 2 * pulseWidth, this.context.currentTime, this.smoothingTimeConstant);
         }
     }
 
     private updatePhase(phase: number, frequency: number) {
-        // Phase is 0-360 degrees. Convert to a delay in seconds.
         if (frequency > 0) {
             const phaseOffset = (phase / 360.0) / frequency;
-            this.phaseDelay.delayTime.setValueAtTime(phaseOffset, this.context.currentTime);
+            this.phaseDelay.delayTime.cancelScheduledValues(this.context.currentTime);
+            this.phaseDelay.delayTime.setTargetAtTime(phaseOffset, this.context.currentTime, this.smoothingTimeConstant);
         }
     }
     
     private cleanup() {
-        // Disconnect and stop any existing nodes to allow for waveform switching
         if (this.osc) {
             this.osc.stop();
             this.osc.disconnect();
@@ -123,11 +123,13 @@ class SkaldOscillatorNode extends BaseSkaldNode {
         const frequency = data.frequency ?? targetOsc?.frequency.value ?? 440;
         
         if (data.frequency && targetOsc) {
-            targetOsc.frequency.setValueAtTime(data.frequency, this.context.currentTime);
+            targetOsc.frequency.cancelScheduledValues(this.context.currentTime);
+            targetOsc.frequency.setTargetAtTime(data.frequency, this.context.currentTime, this.smoothingTimeConstant);
         }
 
         if (data.amplitude !== undefined) {
-            this.output.gain.setValueAtTime(data.amplitude, this.context.currentTime);
+            this.output.gain.cancelScheduledValues(this.context.currentTime);
+            this.output.gain.setTargetAtTime(data.amplitude, this.context.currentTime, this.smoothingTimeConstant);
         }
 
         if (data.pulseWidth !== undefined && this.isPwm) {
@@ -148,9 +150,7 @@ class SkaldOscillatorNode extends BaseSkaldNode {
 export const createOscillatorNode = (context: AudioContext, node: Node): AudioNode => {
     const oscillatorNodeInstance = new SkaldOscillatorNode(context, node.data as OscillatorParams);
     
-    // Return the final output node of the oscillator graph
     const outputNode = oscillatorNodeInstance.output as any;
-    // Attach the class instance to the node for access to the update method
     outputNode._skaldNode = oscillatorNodeInstance;
 
     return outputNode;
