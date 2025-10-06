@@ -44,6 +44,12 @@ export class Instrument {
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
     }
 
+    public noteOff() {
+        if (!this.context) return;
+        const releaseTime = this.context.currentTime;
+        this.voices.forEach(voice => voice.release(releaseTime));
+    }
+
     public connect(destination: AudioNode | AudioParam, outputIndex?: number, inputIndex?: number) {
         this.output.connect(destination, outputIndex, inputIndex);
     }
