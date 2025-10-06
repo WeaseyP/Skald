@@ -124,6 +124,10 @@ export interface PannerParams extends BaseNodeParams {
   pan: number;
 }
 
+export interface GainParams extends BaseNodeParams {
+    gain: number;
+}
+
 export interface OutputParams extends BaseNodeParams {
   // No specific parameters
 }
@@ -195,5 +199,6 @@ export type NodeParams =
   | DistortionParams
   | MixerParams
   | PannerParams
+  | GainParams
   | OutputParams
   | InstrumentParams;

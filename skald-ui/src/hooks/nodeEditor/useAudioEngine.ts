@@ -9,6 +9,7 @@ import { Instrument } from './instrument';
 import { AdsrDataMap } from './types';
 import { connectNodes, disconnectNodes } from './audioNodeUtils';
 import { nodeCreationMap } from './audioNodeFactory';
+import { useAudioEngineV2 } from './useAudioEngine.v2'; // Import the new v2 engine
 
 type AudioNodeMap = Map<string, AudioNode | Instrument>;
 
@@ -18,6 +19,9 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     const audioNodes = useRef<AudioNodeMap>(new Map());
     const adsrNodes = useRef<AdsrDataMap>(new Map());
     const prevGraphState = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
+
+    // Instantiate the v2 engine
+    const audioEngineV2 = useAudioEngineV2({ audioContextRef: audioContext, audioNodes });
 
     useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
 
@@ -61,11 +65,16 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         // Handle node deletions
         prevNodes.forEach(node => {
             if (!nodes.find(n => n.id === node.id)) {
-                const audioNode = audioNodes.current.get(node.id);
-                if (audioNode) {
-                    audioNode.disconnect();
-                    audioNodes.current.delete(node.id);
-                    if (node.type === 'adsr') adsrNodes.current.delete(node.id);
+                // Delegate to v2 engine if it's an oscillator
+                if (node.type === 'oscillator') {
+                    audioEngineV2.deleteNode(node);
+                } else { // Otherwise, use original logic
+                    const audioNode = audioNodes.current.get(node.id);
+                    if (audioNode) {
+                        audioNode.disconnect();
+                        audioNodes.current.delete(node.id);
+                        if (node.type === 'adsr') adsrNodes.current.delete(node.id);
+                    }
                 }
             }
         });
@@ -73,33 +82,43 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         // Handle node additions and updates
         nodes.forEach(node => {
             const liveNode = audioNodes.current.get(node.id);
-            if (!liveNode) {
-                let newAudioNode: AudioNode | Instrument | null = null;
-                if (node.type === 'instrument') {
-                    newAudioNode = new Instrument(context, node);
-                } else if (node.type && nodeCreationMap[node.type]) {
-                    const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
-                    newAudioNode = creator(context, node, adsrNodes.current);
-                } else {
-                    const creator = nodeCreationMap['default'] as Function;
-                    newAudioNode = creator(context, node, adsrNodes.current);
-                }
-                if (newAudioNode) audioNodes.current.set(node.id, newAudioNode);
-            } else {
-                const prevNode = prevNodes.find(p => p.id === node.id);
+            const prevNode = prevNodes.find(p => p.id === node.id);
 
-                if (liveNode instanceof Instrument) {
-                    // Instruments are managed by their own update logic, which is sensitive to BPM changes as well.
-                    liveNode.updateNodeData(node.data, bpm);
-                } else if (prevNode && JSON.stringify(prevNode.data) !== JSON.stringify(node.data)) {
-                    // For other nodes, we trigger an update if the node's data has changed.
-                    const skaldNode = (liveNode as any)._skaldNode;
-                    if (skaldNode && typeof skaldNode.update === 'function') {
-                        skaldNode.update(node.data);
+            if (!liveNode) {
+                // Delegate to v2 engine if it's an oscillator
+                if (node.type === 'oscillator') {
+                    audioEngineV2.createNode(node);
+                } else { // Otherwise, use original logic
+                    let newAudioNode: AudioNode | Instrument | null = null;
+                    if (node.type === 'instrument') {
+                        newAudioNode = new Instrument(context, node);
+                    } else if (node.type && nodeCreationMap[node.type]) {
+                        const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
+                        newAudioNode = creator(context, node, adsrNodes.current);
+                    } else {
+                        const creator = nodeCreationMap['default'] as Function;
+                        newAudioNode = creator(context, node, adsrNodes.current);
+                    }
+                    if (newAudioNode) audioNodes.current.set(node.id, newAudioNode);
+                }
+            } else {
+                // Delegate to v2 engine if it's an oscillator
+                if (node.type === 'oscillator' && prevNode) {
+                     audioEngineV2.updateNode(node, prevNode);
+                } else { // Otherwise, use original logic
+                    if (liveNode instanceof Instrument) {
+                        liveNode.updateNodeData(node.data, bpm);
+                    } else if (prevNode && JSON.stringify(prevNode.data) !== JSON.stringify(node.data)) {
+                        const skaldNode = (liveNode as any)._skaldNode;
+                        if (skaldNode && typeof skaldNode.update === 'function') {
+                            skaldNode.update(node.data);
+                        }
                     }
                 }
             }
         });
+
+        // --- EDGE HANDLING (remains unchanged for now) ---
 
         // Handle edge deletions
         prevEdges.forEach(edge => {
@@ -167,7 +186,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
 
         prevGraphState.current = { nodes, edges };
 
-    }, [nodes, edges, isPlaying, bpm]);
+    }, [nodes, edges, isPlaying, bpm, audioEngineV2]);
 
     useEffect(() => {
         return () => { if (audioContext.current) handleStop(); };

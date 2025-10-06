@@ -144,6 +144,11 @@ const defaultPannerParams: PannerParams = {
     exposedParameters: ['pan']
 };
 
+const defaultGainParams: GainParams = {
+    gain: 0.75,
+    exposedParameters: ['gain']
+};
+
 const defaultOutputParams: OutputParams = {
     exposedParameters: []
 };
@@ -180,6 +185,7 @@ export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
     distortion: { type: 'distortion', label: 'Distortion', defaultParameters: defaultDistortionParams, codegenType: 'Distortion' },
     mixer: { type: 'mixer', label: 'Mixer', defaultParameters: defaultMixerParams, codegenType: 'Mixer' },
     panner: { type: 'panner', label: 'Panner', defaultParameters: defaultPannerParams, codegenType: 'Panner' },
+    gain: { type: 'gain', label: 'VCA', defaultParameters: defaultGainParams, codegenType: 'Gain' },
     output: { type: 'output', label: 'Output', defaultParameters: defaultOutputParams, codegenType: 'GraphOutput' },
     instrument: { type: 'instrument', label: 'Instrument', defaultParameters: defaultInstrumentParams, codegenType: 'Instrument' },
     group: { type: 'group', label: 'Group', defaultParameters: { exposedParameters: [] }, codegenType: 'Group' },
