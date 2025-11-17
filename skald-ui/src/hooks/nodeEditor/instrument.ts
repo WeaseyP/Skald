@@ -36,17 +36,16 @@ export class Instrument {
         }
     }
     
-    public trigger() {
+    public trigger(startTime: number) {
         const voice = this.voices[this.nextVoiceIndex];
         if (voice) {
-            voice.trigger(this.context.currentTime);
+            voice.trigger(startTime);
         }
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
     }
 
-    public noteOff() {
+    public noteOff(releaseTime: number) {
         if (!this.context) return;
-        const releaseTime = this.context.currentTime;
         this.voices.forEach(voice => voice.release(releaseTime));
     }
 

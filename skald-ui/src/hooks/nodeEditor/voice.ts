@@ -59,6 +59,7 @@ export class Voice {
 
     public trigger(startTime: number) {
         this.adsrData.forEach(({ gainNode, data }) => {
+            console.log(`Voice trigger at ${startTime}`, data);
             const { attack = 0.01, decay = 0.1, sustain = 0.8 } = data;
             gainNode.gain.cancelScheduledValues(startTime);
             gainNode.gain.setValueAtTime(0, startTime);
@@ -69,6 +70,7 @@ export class Voice {
 
     public release(startTime: number) {
         this.adsrData.forEach(({ gainNode, data }) => {
+            console.log(`Voice release at ${startTime}`, data);
             const { release = 0.5 } = data;
             const currentGain = gainNode.gain.value;
             gainNode.gain.cancelScheduledValues(startTime);
