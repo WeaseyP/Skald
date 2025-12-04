@@ -11,6 +11,7 @@ import { connectNodes, disconnectNodes } from './audioNodeUtils';
 import { nodeCreationMap } from './audioNodeFactory';
 import { useOscillatorHandler } from './node-handlers/useOscillatorHandler';
 import { useAdsrHandler } from './node-handlers/useAdsrHandler';
+import { Logger } from '../../utils/Logger';
 
 type AudioNodeMap = Map<string, AudioNode | Instrument>;
 
@@ -33,8 +34,10 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
 
     const handlePlay = useCallback(async () => {
         if (isPlaying) return;
+        Logger.log('Audio Engine: Starting...');
         const context = new AudioContext();
         audioContext.current = context;
+        Logger.log(`Audio Engine: Context created (State: ${context.state})`);
         try {
             const sampleHoldBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
             const wavetableBlob = new Blob([wavetableProcessorString], { type: 'application/javascript' });
@@ -45,20 +48,24 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 context.audioWorklet.addModule(URL.createObjectURL(adsrBlob))
             ]);
             setIsPlaying(true);
+            Logger.log('Audio Engine: Started successfully');
         } catch (e) {
             console.error('Error loading AudioWorklet:', e);
+            Logger.log(`Audio Engine: Error loading AudioWorklet - ${e}`);
             audioContext.current = null;
         }
     }, [isPlaying]);
 
     const handleStop = useCallback(() => {
         if (!isPlaying || !audioContext.current) return;
+        Logger.log('Audio Engine: Stopping...');
         audioContext.current.close().then(() => {
             setIsPlaying(false);
             audioContext.current = null;
             audioNodes.current.clear();
             adsrNodes.current.clear();
             prevGraphState.current = { nodes: [], edges: [] };
+            Logger.log('Audio Engine: Stopped');
         });
     }, [isPlaying]);
 
@@ -71,6 +78,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         // Handle node deletions
         prevNodes.forEach(node => {
             if (!nodes.find(n => n.id === node.id)) {
+                Logger.log(`Audio Engine: Removing node ${node.id} (${node.type})`);
                 const handler = node.type ? nodeHandlers[node.type] : null;
                 if (handler) {
                     handler.remove(node);
@@ -91,6 +99,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
             const handler = node.type ? nodeHandlers[node.type] : null;
 
             if (!liveNode) {
+                Logger.log(`Audio Engine: Creating node ${node.id} (${node.type})`);
                 if (handler) {
                     handler.create(node);
                 } else {
