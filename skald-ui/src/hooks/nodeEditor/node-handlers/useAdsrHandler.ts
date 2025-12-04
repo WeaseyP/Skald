@@ -9,6 +9,7 @@ import { useCallback } from 'react';
 import { Node } from 'reactflow';
 import { AdsrDataMap } from '../types';
 import { AdsrParams } from '../../../definitions/types';
+import { Logger } from '../../../utils/Logger';
 
 type AudioNodeMap = Map<string, AudioNode>;
 
@@ -36,6 +37,7 @@ export const useAdsrHandler = ({ audioContextRef, audioNodes, adsrNodes }: UseAd
         envelopeNode.connect(masterNode);
 
         const data = node.data || { attack: 0.1, decay: 0.2, sustain: 0.5 };
+        Logger.log(`ADSR Handler: Created node ${node.id} with params: ${JSON.stringify(data)}`);
         
         // The adsrNodes map stores the node that will be modulated by the sequencer
         adsrNodes.current.set(node.id, { gainNode: envelopeNode, data });
@@ -54,11 +56,13 @@ export const useAdsrHandler = ({ audioContextRef, audioNodes, adsrNodes }: UseAd
         
         const adsrEntry = adsrNodes.current.get(node.id);
         if (adsrEntry) {
+            Logger.log(`ADSR Handler: Updated node ${node.id} params to: ${JSON.stringify(node.data)}`);
             adsrEntry.data = node.data;
         }
     }, [adsrNodes]);
 
     const remove = useCallback((node: Node) => {
+        Logger.log(`ADSR Handler: Removing node ${node.id}`);
         const audioNode = audioNodes.current.get(node.id) as MasterAdsrNode;
         if (!audioNode) return;
 

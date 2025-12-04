@@ -10,4 +10,7 @@ contextBridge.exposeInMainWorld('electron', {
         
     loadGraph: (): Promise<string | null> =>
         ipcRenderer.invoke('load-graph'),
+
+    logMessage: (message: string): Promise<void> =>
+        ipcRenderer.invoke('log-message', message),
 });

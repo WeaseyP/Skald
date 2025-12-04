@@ -123,3 +123,24 @@ ipcMain.handle('load-graph', async () => {
   }
   return null;
 });
+
+// Setup logs directory and file
+const logsDir = path.join(app.getAppPath(), 'logs');
+if (!fs.existsSync(logsDir)) {
+  try {
+    fs.mkdirSync(logsDir);
+  } catch (err) {
+    console.error("Failed to create logs directory:", err);
+  }
+}
+
+const logFileName = `skald-log-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+const logFilePath = path.join(logsDir, logFileName);
+
+ipcMain.handle('log-message', async (_, message: string) => {
+    try {
+        fs.appendFileSync(logFilePath, message + '\n');
+    } catch (err) {
+        console.error("Failed to write to log file:", err);
+    }
+});
