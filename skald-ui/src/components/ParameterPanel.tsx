@@ -4,6 +4,7 @@ import { CustomSlider } from './controls/CustomSlider';
 import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
+import { GainParams } from '../../definitions/types';
 
 // --- STYLES ---
 const panelStyles: React.CSSProperties = {
@@ -122,6 +123,21 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
         const newData = { ...selectedNode.data, ...dataToUpdate };
         onUpdateNode(selectedNode.id, newData);
+    };
+
+    const handleMixerChange = (channelId: number, newLevel: number, subNodeId?: string) => {
+        const nodeToUpdate = subNodeId 
+            ? (allNodes.find(n => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find(n => n.id === subNodeId))
+            : selectedNode;
+
+        if (!nodeToUpdate || nodeToUpdate.type !== 'mixer') return;
+
+        const currentLevels = nodeToUpdate.data.levels || [];
+        const newLevels = currentLevels.map(ch => 
+            ch.id === channelId ? { ...ch, level: newLevel } : ch
+        );
+        
+        handleParameterChange('levels', newLevels, subNodeId);
     };
 
     const handleGenericChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, subNodeId?: string) => {
@@ -377,21 +393,25 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                     )}
                 </> );
             case 'mixer':
-                const inputCount = data.inputCount || 4;
-                const mixerControls = [];
-                for (let i = 1; i <= inputCount; i++) {
-                    const paramKey = `level${i}`;
-                    mixerControls.push(
-                        createControl(paramKey, `Input ${i} Level`,
-                            <CustomSlider min={0} max={1} value={data[paramKey] ?? 0.75} onChange={val => handleParameterChange(paramKey, val, subNodeId || node.id)} />
-                        , true)
-                    );
-                }
-                return <>{mixerControls}</>;
+                return (
+                    <>
+                        {(data.levels || []).map(channel =>
+                            createControl(`level${channel.id}`, `Input ${channel.id} Level`,
+                                <CustomSlider min={0} max={1} value={channel.level} onChange={val => handleMixerChange(channel.id, val, subNodeId || node.id)} />
+                            , true)
+                        )}
+                    </>
+                );
             case 'panner':
                 return ( <>
                     {createControl('pan', 'Pan', 
                         <CustomSlider min={-1} max={1} value={data.pan ?? 0} onChange={val => handleParameterChange('pan', val, subNodeId || node.id)} />
+                    )}
+                </> );
+            case 'gain':
+                return ( <>
+                    {createControl('gain', 'Gain', 
+                        <CustomSlider min={0} max={1} value={data.gain ?? 0.75} onChange={val => handleParameterChange('gain', val, subNodeId || node.id)} />
                     )}
                 </> );
             case 'instrument':
@@ -436,6 +456,10 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                          ))}
                      </>
                  );
+            case 'InstrumentInput':
+                return <p>Instrument input port.</p>;
+            case 'InstrumentOutput':
+                return <p>Instrument output port.</p>;
             default:
                 return <p>This node has no configurable parameters.</p>;
         }

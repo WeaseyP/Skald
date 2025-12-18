@@ -1,4 +1,4 @@
-package skald_codegen
+package skald_core
 
 import "core:encoding/json"
 

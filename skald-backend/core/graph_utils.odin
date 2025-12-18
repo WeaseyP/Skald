@@ -1,4 +1,4 @@
-package skald_codegen
+package skald_core
 
 // =================================================================================
 // SECTION B: Graph Traversal & Analysis Helpers

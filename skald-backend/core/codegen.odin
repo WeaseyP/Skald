@@ -1,9 +1,10 @@
-package skald_codegen
+package skald_core
 
 import "core:fmt"
 import "core:strings"
 import "core:math"
 import rand "core:math/rand"
+import json "core:encoding/json"
 
 // =================================================================================
 // SECTION D: Modular Code Generation Procedures
@@ -11,24 +12,25 @@ import rand "core:math/rand"
 
 generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, instrument: Node) {
 	freq_str: string
-	// Priority 1: Check for an input connection to the frequency port.
+	
+	// Determine Base Frequency (Parameter OR Voice Frequency)
+	base_freq_str := "voice.current_freq" // Priority 3: Default to voice frequency
+	if val, ok := node.parameters["frequency"]; ok {
+        #partial switch v in val {
+		// Priority 2: Use fixed parameter if present
+		case json.Float:
+			base_freq_str = fmt.tprintf("%f", v)
+		case json.Integer:
+			base_freq_str = fmt.tprintf("%f", f64(v))
+        }
+	}
+
+	// Apply Modulation (Priority 1: Add Input)
 	if id, ok := find_input_for_port(graph, node.id, "input_freq"); ok {
-		freq_str = get_output_var(id)
+		input_str := get_output_var(id)
+		freq_str = fmt.tprintf("(%s) + (%s)", base_freq_str, input_str)
 	} else {
-		// Priority 2: Check for a fixed 'frequency' parameter on the node itself for drone behavior.
-		if val, ok := node.parameters["frequency"]; ok {
-			if f, ok2 := val.(f64); ok2 {
-				freq_str = fmt.tprintf("%f", f)
-			} else if i, ok2 := val.(i64); ok2 {
-				freq_str = fmt.tprintf("%f", f64(i))
-			} else {
-				// Fallback if parameter has an unexpected type.
-				freq_str = "voice.current_freq"
-			}
-		} else {
-			// Priority 3: Default to the voice's current note frequency for standard synth behavior.
-			freq_str = "voice.current_freq"
-		}
+		freq_str = base_freq_str
 	}
 
 	amp_str  := get_f32_param(graph, node, "amplitude", "input_amp", 0.5)
@@ -78,7 +80,7 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\t// --- ADSR Node %d ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
 	fmt.sbprint(sb, "\t\t\tenvelope: f32 = 0.0;\n")
-	fmt.sbprintf(sb, "\t\t\tswitch voice.state.adsr_%d_stage {\n", node.id)
+	fmt.sbprintf(sb, "\t\t\tswitch voice.state.adsr_%d_stage {{\n", node.id)
 	fmt.sbprint(sb, "\t\t\tcase .Idle:\n")
 	fmt.sbprint(sb, "\t\t\t\tenvelope = 0.0;\n")
 	fmt.sbprint(sb, "\t\t\tcase .Attack:\n")
@@ -118,23 +120,35 @@ generate_noise_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 generate_filter_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	input_str := "0.0"
 	if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
-
+	
 	cutoff_str := get_f32_param(graph, node, "cutoff", "input_cutoff", 1000.0)
+	res_str    := get_f32_param(graph, node, "resonance", "input_res", 1.0)
 	f_type     := get_string_param(node, "type", "LowPass")
 
-	fmt.sbprintf(sb, "\t\t// --- Filter Node %d ---\n", node.id)
+	fmt.sbprintf(sb, "\t\t// --- Filter Node %d (SVF) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tc_%d := 2.0 * f32(math.PI) * (%s) / sample_rate;\n", node.id, cutoff_str)
-	fmt.sbprintf(sb, "\t\t\ta1_%d := math.exp(-c_%d);\n", node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tb1_%d := 1.0 - a1_%d;\n", node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tfiltered_sample_%d := (%s) * b1_%d + voice.state.filter_%d_z1 * a1_%d;\n", node.id, input_str, node.id, node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tvoice.state.filter_%d_z1 = filtered_sample_%d;\n", node.id, node.id)
+	// Algorithm: Chamberlin SVF
+	// f = 2 * sin(pi * cutoff / fs)
+	// q = 1.0 / res
+	// low = low + f * band
+	// high = input - low - q*band
+	// band = band + f * high
+	fmt.sbprintf(sb, "\t\t\tf_%d := 2.0 * math.sin(f32(math.PI) * (%s) / sample_rate);\n", node.id, cutoff_str)
+	fmt.sbprintf(sb, "\t\t\tq_%d := 1.0 / (%s);\n", node.id, res_str)
+	
+	fmt.sbprintf(sb, "\t\t\tvoice.state.filter_%d_low += f_%d * voice.state.filter_%d_band;\n", node.id, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\thigh_%d := (%s) - voice.state.filter_%d_low - q_%d * voice.state.filter_%d_band;\n", node.id, input_str, node.id, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\tvoice.state.filter_%d_band += f_%d * high_%d;\n", node.id, node.id, node.id)
 
 	switch f_type {
 	case "HighPass":
-		fmt.sbprintf(sb, "\t\t\tnode_%d_out = %s - filtered_sample_%d;\n", node.id, input_str, node.id)
-	case: // "LowPass", "BandPass", "Notch" all default to lowpass for now
-		fmt.sbprintf(sb, "\t\t\tnode_%d_out = filtered_sample_%d;\n", node.id, node.id)
+		fmt.sbprintf(sb, "\t\t\tnode_%d_out = high_%d;\n", node.id, node.id)
+	case "BandPass":
+		fmt.sbprintf(sb, "\t\t\tnode_%d_out = voice.state.filter_%d_band;\n", node.id, node.id)
+	case "Notch":
+		fmt.sbprintf(sb, "\t\t\tnode_%d_out = high_%d + voice.state.filter_%d_low;\n", node.id, node.id, node.id)
+	case: // LowPass
+		fmt.sbprintf(sb, "\t\t\tnode_%d_out = voice.state.filter_%d_low;\n", node.id, node.id)
 	}
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
@@ -285,6 +299,16 @@ generate_panner_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
+generate_gain_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+	input_str := "0.0"
+	if id, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id)
+	
+	gain_str := get_f32_param(graph, node, "gain", "input_gain", 1.0)
+
+	fmt.sbprintf(sb, "\t\t// --- Gain Node %d ---\n", node.id)
+	fmt.sbprintf(sb, "\t\tnode_%d_out = (%s) * (%s);\n\n", node.id, input_str, gain_str)
+}
+
 // Generates note_on and note_off procedures for the test harness.
 generate_note_on_off_code :: proc(sb: ^strings.Builder, subgraph_nodes: []Node, polyphony_str: string, has_adsr: bool) {
 	fmt.sbprint(sb, "// --- Note On/Off Handlers ---\n")
@@ -426,7 +450,8 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 		case "noise":
 			fmt.sbprintf(&sb, "\tnoise_%d_rng: PRNG_State,\n", node.id)
 		case "filter":
-			fmt.sbprintf(&sb, "\tfilter_%d_z1: f32,\n", node.id)
+			fmt.sbprintf(&sb, "\tfilter_%d_low: f32,\n", node.id)
+			fmt.sbprintf(&sb, "\tfilter_%d_band: f32,\n", node.id)
 		case "lfo":
 			fmt.sbprintf(&sb, "\tlfo_%d_phase: f32,\n", node.id)
 		case "samplehold":
@@ -567,6 +592,8 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 			generate_mixer_code(&sb, node, subgraph)
 		case "panner":
 			generate_panner_code(&sb, node, subgraph)
+		case "gain":
+			generate_gain_code(&sb, node, subgraph)
 		case "graphinput":
 			input_name_val := get_string_param(node, "name", "gate")
 			if input_name_val == "gate" {
