@@ -6,6 +6,9 @@ import "core:time"
 import "core:mem"
 import "core:sync"
 import "core:thread"
+import "core:os"
+import "core:strings"
+import "core:strconv"
 import ma "vendor:miniaudio"
 import ga "generated_audio"
 
@@ -79,6 +82,33 @@ audio_callback :: proc "c" (p_device: ^ma.device, p_output: rawptr, p_input: raw
 	sync.unlock(&app_state.mutex)
 }
 
+run_headless :: proc(filename: string, duration: f32, p: ^ga.AudioProcessor) {
+    fmt.printf("[Headless] Generating %.2f seconds of audio to '%s'...\n", duration, filename)
+    
+    f, err := os.open(filename, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0o644)
+    if err != 0 {
+        fmt.eprintln("Failed to open output file:", filename)
+        return
+    }
+    defer os.close(f)
+
+    sample_rate := f32(48000.0)
+    total_samples := int(duration * sample_rate)
+    
+    // Write CSV Header
+    os.write_string(f, "time,left,right\n")
+
+    time_samples: u64 = 0
+    for i in 0..<total_samples {
+        left, right := ga.process_sample(p, sample_rate, time_samples)
+        time_samples += 1
+        
+        line := fmt.tprintf("%f,%f,%f\n", f32(i)/sample_rate, left, right)
+        os.write_string(f, line)
+    }
+    fmt.println("[Headless] Generation complete.")
+}
+
 main :: proc() {
 	app_state: App_State
 	app_state.is_running = true
@@ -87,7 +117,28 @@ main :: proc() {
 
 	ga.init_processor(app_state.processor)
 	ga.note_on(app_state.processor, 60, 1.0)
+    
+    // Check Arguments
+    output_filename := ""
+    duration_val: f32 = 1.0
+    
+    for arg in os.args {
+        if strings.has_prefix(arg, "-out:") {
+             output_filename = strings.trim_prefix(arg, "-out:")
+        }
+        if strings.has_prefix(arg, "-dur:") {
+            if val, ok := strconv.parse_f32(strings.trim_prefix(arg, "-dur:")); ok {
+                duration_val = val
+            }
+        }
+    }
+    
+    if output_filename != "" {
+        run_headless(output_filename, duration_val, app_state.processor)
+        return
+    }
 
+    // --- Interactive Mode ---
 	app_state.ring_buffer.data = make([]f32, 4096)
 	defer delete(app_state.ring_buffer.data)
 
@@ -105,7 +156,6 @@ main :: proc() {
 	defer ma.device_uninit(&app_state.device)
 	fmt.printf("Audio device initialized: %s\n", app_state.device.playback.name)
 
-	// CORRECTED: 'run_with_data' is the correct procedure name.
 	thread.run_with_data(&app_state, sample_generator_thread_proc)
 
 	if ma.device_start(&app_state.device) != .SUCCESS {

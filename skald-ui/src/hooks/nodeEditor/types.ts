@@ -1,1 +1,1 @@
-export type AdsrDataMap = Map<string, { gainNode: GainNode; data: Partial<AdsrParams> }>;
+export type AdsrDataMap = Map<string, { worklet: AudioWorkletNode }>;

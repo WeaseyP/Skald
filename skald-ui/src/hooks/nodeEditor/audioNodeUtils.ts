@@ -13,7 +13,7 @@ const noteDivisionMap: { [key: string]: number } = {
 export const convertBpmToSeconds = (bpm: number, division: string): number => {
     if (bpm === 0) return 0;
     const quarterNoteTime = 60 / bpm;
-    
+
     let timeMultiplier = 1;
     let noteValue = division;
 
@@ -24,7 +24,7 @@ export const convertBpmToSeconds = (bpm: number, division: string): number => {
         timeMultiplier = 1.5;
         noteValue = noteValue.slice(0, -1);
     }
-    
+
     const baseNoteKey = noteValue.startsWith('1/') ? noteValue.substring(2) : noteValue;
     const beatMultiplier = noteDivisionMap[baseNoteKey];
 
@@ -38,23 +38,28 @@ export const convertBpmToSeconds = (bpm: number, division: string): number => {
 
 export const connectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge | Connection) => {
     try {
-        if (targetNode.hasOwnProperty('inputGains') && edge.targetHandle && edge.targetHandle.startsWith('input_')) {
+        const effectiveSource = (sourceNode as any).output instanceof AudioNode ? (sourceNode as any).output : sourceNode;
+        const handle = edge.targetHandle;
+
+        if (targetNode.hasOwnProperty('inputGains') && handle && handle.startsWith('input_')) {
             const context = targetNode.context as AudioContext;
-            let inputGain = targetNode.inputGains.get(edge.targetHandle);
+            let inputGain = targetNode.inputGains.get(handle);
             if (!inputGain) {
                 inputGain = context.createGain();
                 inputGain.connect(targetNode);
-                targetNode.inputGains.set(edge.targetHandle, inputGain);
+                targetNode.inputGains.set(handle, inputGain);
             }
-            sourceNode.connect(inputGain);
-        } else if (targetNode instanceof AudioWorkletNode && edge.targetHandle?.startsWith('input_')) {
-            const paramName = edge.targetHandle.substring(6);
+            effectiveSource.connect(inputGain);
+        } else if (targetNode instanceof AudioWorkletNode && handle?.startsWith('input_')) {
+            const paramName = handle.substring(6);
             const param = targetNode.parameters.get(paramName);
-            if (param) sourceNode.connect(param);
-        } else if (targetNode[edge.targetHandle as keyof AudioNode] instanceof AudioParam) {
-            sourceNode.connect(targetNode[edge.targetHandle as keyof AudioNode]);
+            if (param) effectiveSource.connect(param);
+        } else if (handle && targetNode[handle as keyof AudioNode] instanceof AudioParam) {
+            effectiveSource.connect(targetNode[handle as keyof AudioNode]);
+        } else if (handle && targetNode[handle as keyof AudioNode] instanceof AudioNode) {
+            effectiveSource.connect(targetNode[handle as keyof AudioNode]);
         } else {
-            sourceNode.connect(targetNode);
+            effectiveSource.connect(targetNode);
         }
     } catch (e) {
         console.error(`Failed to connect ${edge.source} to ${edge.target}`, e);

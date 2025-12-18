@@ -8,6 +8,11 @@ main
 *.obj
 *.dll
 *.so
+*.pdb
+
+# Scripts/Data
+*.csv
+skald-backend/tester/generated_audio/audio.odin
 
 # Editor/IDE specific
 .vscode/

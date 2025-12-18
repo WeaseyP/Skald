@@ -10,12 +10,19 @@ export class Voice {
     public output: GainNode;
     private subgraph: { nodes: Node[]; connections: Edge[] };
     public input: GainNode;
+    private gateSource: ConstantSourceNode;
 
     constructor(context: AudioContext, subgraph: { nodes: Node[]; connections: Edge[] }) {
         this.audioContext = context;
         this.subgraph = subgraph;
         this.input = context.createGain();
         this.output = context.createGain();
+
+        // Create a central Gate signal for this voice
+        this.gateSource = context.createConstantSource();
+        this.gateSource.offset.setValueAtTime(0, context.currentTime); // Use setValueAtTime for immediate effect
+        this.gateSource.start();
+
         this.buildSubgraph();
     }
 
@@ -34,6 +41,13 @@ export class Voice {
             }
         });
 
+        // Loop through all registered ADSR worklets and connect the Voice Gate to them
+        this.adsrData.forEach(({ worklet }) => {
+            // The ADSR Worklet expects the Gate signal on input 0.
+            // Since we connect the Gate Source (ConstantSource) to it, it drives the envelope.
+            this.gateSource.connect(worklet);
+        });
+
         this.subgraph.connections.forEach(edge => {
             const sourceNode = this.internalNodes.get(edge.source);
             const targetNode = this.internalNodes.get(edge.target);
@@ -50,39 +64,52 @@ export class Voice {
         });
 
         this.subgraph.nodes.filter(n => n.type === 'InstrumentOutput').forEach(outputNode => {
-             const internalOutNode = this.internalNodes.get(outputNode.id);
-             if (internalOutNode) {
-                 internalOutNode.connect(this.output);
-             }
+            const internalOutNode = this.internalNodes.get(outputNode.id);
+            if (internalOutNode) {
+                internalOutNode.connect(this.output);
+            }
         });
     }
 
     public trigger(startTime: number) {
-        this.adsrData.forEach(({ gainNode, data }) => {
-            const { attack = 0.01, decay = 0.1, sustain = 0.8 } = data;
-            gainNode.gain.cancelScheduledValues(startTime);
-            gainNode.gain.setValueAtTime(0, startTime);
-            gainNode.gain.linearRampToValueAtTime(1, startTime + attack);
-            gainNode.gain.linearRampToValueAtTime(sustain, startTime + attack + decay);
+        // Open the Gate
+        this.gateSource.offset.cancelScheduledValues(startTime);
+        this.gateSource.offset.setValueAtTime(1, startTime);
+
+        // Also trigger via parameter for robustness
+        this.adsrData.forEach(({ worklet }) => {
+            const gateParam = worklet.parameters.get('gate');
+            if (gateParam) {
+                gateParam.cancelScheduledValues(startTime);
+                gateParam.setValueAtTime(1, startTime);
+            }
         });
+        // Log is helpful but might be spammy if not careful, rely on Worklet logs.
     }
 
     public release(startTime: number) {
-        this.adsrData.forEach(({ gainNode, data }) => {
-            const { release = 0.5 } = data;
-            const currentGain = gainNode.gain.value;
-            gainNode.gain.cancelScheduledValues(startTime);
-            gainNode.gain.setValueAtTime(currentGain, startTime);
-            gainNode.gain.linearRampToValueAtTime(0, startTime + release);
+        // Close the Gate
+        this.gateSource.offset.cancelScheduledValues(startTime);
+        this.gateSource.offset.setValueAtTime(0, startTime);
+
+        // Also release via parameter
+        this.adsrData.forEach(({ worklet }) => {
+            const gateParam = worklet.parameters.get('gate');
+            if (gateParam) {
+                gateParam.cancelScheduledValues(startTime);
+                gateParam.setValueAtTime(0, startTime);
+            }
         });
     }
-    
+
     public connect(destination: AudioNode | AudioParam) {
-        this.output.connect(destination);
+        this.output.connect(destination as any);
     }
-    
+
     public disconnect() {
         this.output.disconnect();
+        this.gateSource.stop();
+        this.gateSource.disconnect();
         this.internalNodes.forEach(node => {
             try { node.disconnect(); } catch (e) { /* ignore */ }
         });

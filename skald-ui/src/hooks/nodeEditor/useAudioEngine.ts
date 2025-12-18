@@ -11,11 +11,13 @@ import { connectNodes, disconnectNodes } from './audioNodeUtils';
 import { nodeCreationMap } from './audioNodeFactory';
 import { useOscillatorHandler } from './node-handlers/useOscillatorHandler';
 import { useAdsrHandler } from './node-handlers/useAdsrHandler';
+import { logger } from '../../utils/logger';
 
 type AudioNodeMap = Map<string, AudioNode | Instrument>;
 
 export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean, bpm: number) => {
     const [isPlaying, setIsPlaying] = useState(false);
+    const [graphVersion, setGraphVersion] = useState(0);
     const audioContext = useRef<AudioContext | null>(null);
     const audioNodes = useRef<AudioNodeMap>(new Map());
     const adsrNodes = useRef<AdsrDataMap>(new Map());
@@ -32,10 +34,12 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
     useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
 
     const handlePlay = useCallback(async () => {
+        logger.info('AudioEngine', 'Play requeted');
         if (isPlaying) return;
         const context = new AudioContext();
         audioContext.current = context;
         try {
+            logger.info('AudioEngine', 'Loading AudioWorklets...');
             const sampleHoldBlob = new Blob([sampleHoldProcessorString], { type: 'application/javascript' });
             const wavetableBlob = new Blob([wavetableProcessorString], { type: 'application/javascript' });
             const adsrBlob = new Blob([adsrProcessorString], { type: 'application/javascript' });
@@ -44,16 +48,20 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob)),
                 context.audioWorklet.addModule(URL.createObjectURL(adsrBlob))
             ]);
+            logger.info('AudioEngine', 'AudioWorklets loaded. Starting playback.');
             setIsPlaying(true);
         } catch (e) {
+            logger.error('AudioEngine', 'Error loading AudioWorklet', e);
             console.error('Error loading AudioWorklet:', e);
             audioContext.current = null;
         }
     }, [isPlaying]);
 
     const handleStop = useCallback(() => {
+        logger.info('AudioEngine', 'Stop requested');
         if (!isPlaying || !audioContext.current) return;
         audioContext.current.close().then(() => {
+            logger.info('AudioEngine', 'AudioContext closed');
             setIsPlaying(false);
             audioContext.current = null;
             audioNodes.current.clear();
@@ -68,9 +76,10 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         const { nodes: prevNodes, edges: prevEdges } = prevGraphState.current;
         const context = audioContext.current;
 
-        // Handle node deletions
+        // ... (Node deletion logic) ...
         prevNodes.forEach(node => {
             if (!nodes.find(n => n.id === node.id)) {
+                logger.debug('AudioEngine', `Removing node ${node.id} (${node.type})`);
                 const handler = node.type ? nodeHandlers[node.type] : null;
                 if (handler) {
                     handler.remove(node);
@@ -84,13 +93,14 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
             }
         });
 
-        // Handle node additions and updates
+        // ... (Node addition/update logic) ...
         nodes.forEach(node => {
             const liveNode = audioNodes.current.get(node.id);
             const prevNode = prevNodes.find(p => p.id === node.id);
             const handler = node.type ? nodeHandlers[node.type] : null;
 
             if (!liveNode) {
+                logger.debug('AudioEngine', `Creating node ${node.id} (${node.type})`);
                 if (handler) {
                     handler.create(node);
                 } else {
@@ -122,16 +132,16 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
             }
         });
 
-        // --- EDGE HANDLING (remains unchanged for now) ---
-
+        // ... (Edge handling) ...
         // Handle edge deletions
         prevEdges.forEach(edge => {
             if (!edges.find(e => e.id === edge.id)) {
+                // ... (existing disconnect logic) ...
                 const source = audioNodes.current.get(edge.source);
                 const target = audioNodes.current.get(edge.target);
                 if (source && target) {
                     const sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
-                    
+
                     const targetSkaldNode = (target as any)._skaldNode;
                     if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
                         const mixerInstance = targetSkaldNode as any;
@@ -150,7 +160,6 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                             disconnectNodes(sourceNode, adsrGate, edge);
                         }
                     } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
-                        // When disconnecting from a GainNode's gain parameter
                         disconnectNodes(sourceNode, target.gain, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
@@ -163,6 +172,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         // Handle edge additions
         edges.forEach(edge => {
             if (!prevEdges.find(e => e.id === edge.id)) {
+                // ... (existing connect logic) ...
                 const source = audioNodes.current.get(edge.source);
                 const target = audioNodes.current.get(edge.target);
                 if (source && target) {
@@ -184,7 +194,6 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                             connectNodes(sourceNode, adsrGate, edge);
                         }
                     } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
-                        // When connecting to a GainNode's gain parameter for modulation
                         connectNodes(sourceNode, target.gain, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
@@ -194,9 +203,13 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
             }
         });
 
+
         prevGraphState.current = { nodes, edges };
+        setGraphVersion(v => v + 1);
 
     }, [nodes, edges, isPlaying, bpm, nodeHandlers]);
+
+    useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes, graphVersion);
 
     useEffect(() => {
         return () => { if (audioContext.current) handleStop(); };

@@ -1,25 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
+import { logger } from '../../utils/logger';
 import { Instrument } from './instrument';
-import { AdsrDataMap } from './types';
-import { AdsrParams } from '../../definitions/types';
+import type { AdsrDataMap } from './types';
 
-const noteOn = (gainNode: GainNode, data: Partial<AdsrParams>, startTime: number) => {
-    if (!data) return;
-    const { attack = 0.1, decay = 0.2, sustain = 0.5 } = data;
-    gainNode.gain.cancelScheduledValues(startTime);
-    gainNode.gain.setValueAtTime(0, startTime);
-    gainNode.gain.linearRampToValueAtTime(1, startTime + attack);
-    gainNode.gain.linearRampToValueAtTime(sustain, startTime + attack + decay);
-};
-
-const noteOff = (gainNode: GainNode, data: Partial<AdsrParams>, releaseTime: number) => {
-    if (!data) return;
-    const { release = 0.5 } = data;
-    // Before scheduling the release, cancel any pending changes and set the current gain value.
-    gainNode.gain.cancelScheduledValues(releaseTime);
-    gainNode.gain.setValueAtTime(gainNode.gain.value, releaseTime);
-    gainNode.gain.linearRampToValueAtTime(0, releaseTime + release);
-};
+// Simplified map for AudioNodes, just focusing on what we store
+type AudioNodeMap = Map<string, AudioNode | Instrument>;
 
 export const useSequencer = (
     bpm: number,
@@ -27,12 +12,28 @@ export const useSequencer = (
     isPlaying: boolean,
     audioContext: React.MutableRefObject<AudioContext | null>,
     adsrNodes: React.MutableRefObject<AdsrDataMap>,
-    audioNodes: React.MutableRefObject<Map<string, AudioNode | Instrument>>
+    audioNodes: React.MutableRefObject<AudioNodeMap>,
+    graphVersion: number
 ) => {
     const loopIntervalId = useRef<NodeJS.Timeout | null>(null);
     const noteOffTimeoutIds = useRef<NodeJS.Timeout[]>([]);
 
+    const noteOn = useCallback((worklet: AudioWorkletNode, startTime: number) => {
+        const gateParam = worklet.parameters.get('gate');
+        if (gateParam) {
+            gateParam.setValueAtTime(1, startTime);
+        }
+    }, []);
+
+    const noteOff = useCallback((worklet: AudioWorkletNode, endTime: number) => {
+        const gateParam = worklet.parameters.get('gate');
+        if (gateParam) {
+            gateParam.setValueAtTime(0, endTime);
+        }
+    }, []);
+
     const startSequencer = useCallback(() => {
+        logger.info('Sequencer', 'Starting sequencer', { bpm, isLooping });
         if (loopIntervalId.current) clearInterval(loopIntervalId.current);
         const loopDuration = (60 / bpm) * 4 * 1000; // 4 beats
         const noteDuration = loopDuration * 0.8; // Note will last for 80% of the loop
@@ -40,25 +41,30 @@ export const useSequencer = (
         const tick = () => {
             if (!audioContext.current) return;
             const now = audioContext.current.currentTime;
-            
+            logger.debug('Sequencer', 'Tick', { currentTime: now });
+
             // Clear any previous note-off timeouts
             noteOffTimeoutIds.current.forEach(clearTimeout);
             noteOffTimeoutIds.current = [];
 
             // Trigger global (non-instrument) ADSRs
-            adsrNodes.current.forEach(({ gainNode, data }) => {
-                noteOn(gainNode, data, now);
+            adsrNodes.current.forEach(({ worklet }, id) => {
+                logger.debug('Sequencer', `Triggering ADSR Node ${id}`, { now });
+                noteOn(worklet, now);
 
                 const timeoutId = setTimeout(() => {
                     if (!audioContext.current) return;
-                    noteOff(gainNode, data, audioContext.current.currentTime);
+                    noteOff(worklet, audioContext.current.currentTime);
                 }, noteDuration);
                 noteOffTimeoutIds.current.push(timeoutId);
             });
 
             // Trigger all instruments
-            audioNodes.current.forEach(node => {
+            let instrumentCount = 0;
+            audioNodes.current.forEach((node, id) => {
                 if (node instanceof Instrument) {
+                    instrumentCount++;
+                    logger.debug('Sequencer', `Triggering Instrument ${id}`, { now });
                     node.trigger();
                     const timeoutId = setTimeout(() => {
                         node.noteOff();
@@ -66,13 +72,21 @@ export const useSequencer = (
                     noteOffTimeoutIds.current.push(timeoutId);
                 }
             });
+
+            if (instrumentCount === 0) {
+                logger.debug('Sequencer', 'Tick fired but no instruments found.');
+            }
         };
-        
+
         tick(); // Trigger immediately
-        loopIntervalId.current = setInterval(tick, loopDuration);
-    }, [bpm, audioContext, adsrNodes, audioNodes]);
+
+        if (isLooping) {
+            loopIntervalId.current = setInterval(tick, loopDuration);
+        }
+    }, [bpm, isLooping, audioContext, adsrNodes, audioNodes, graphVersion, noteOn, noteOff]);
 
     const stopSequencer = () => {
+        logger.info('Sequencer', 'Stopping sequencer');
         if (loopIntervalId.current) {
             clearInterval(loopIntervalId.current);
             loopIntervalId.current = null;
@@ -82,7 +96,8 @@ export const useSequencer = (
     };
 
     useEffect(() => {
-        if (isPlaying && isLooping) {
+        logger.debug('Sequencer', 'Effect Change', { isPlaying, isLooping });
+        if (isPlaying) {
             startSequencer();
         } else {
             stopSequencer();

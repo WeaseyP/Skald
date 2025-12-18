@@ -9,12 +9,12 @@ class WavetableNode extends BaseSkaldNode {
     constructor(context: AudioContext, data: any) {
         super();
         this.context = context;
-        
+
         this.output = context.createGain();
         this.worklet = new AudioWorkletNode(context, 'wavetable-processor');
 
         this.worklet.connect(this.output);
-        
+
         this.update(data);
     }
 
@@ -37,10 +37,14 @@ class WavetableNode extends BaseSkaldNode {
 
 export const createWavetableNode = (context: AudioContext, node: Node): AudioNode => {
     const instance = new WavetableNode(context, node.data);
-    
+
     // This node is a source, so we return the output gain.
     const outputNode = instance.output as any;
     outputNode._skaldNode = instance;
+
+    // Expose Worklet Params for connection
+    outputNode.frequency = (instance as any).worklet.parameters.get('frequency');
+    outputNode.position = (instance as any).worklet.parameters.get('position');
 
     return outputNode;
 };

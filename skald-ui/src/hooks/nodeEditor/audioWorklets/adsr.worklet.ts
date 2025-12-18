@@ -8,6 +8,7 @@ class ADSRProcessor extends AudioWorkletProcessor {
             { name: 'release', defaultValue: 0.5, minValue: 0.001, maxValue: 10 },
             { name: 'depth', defaultValue: 1.0, minValue: 0, maxValue: 1 },
             { name: 'loop', defaultValue: 0, minValue: 0, maxValue: 1 },
+            { name: 'gate', defaultValue: 0, minValue: 0, maxValue: 1 },
         ];
     }
 
@@ -20,12 +21,14 @@ class ADSRProcessor extends AudioWorkletProcessor {
         this.attackCounter = 0;
         this.decayCounter = 0;
         this.releaseCounter = 0;
+        this.debugCounter = 0;
     }
 
     process(inputs, outputs, parameters) {
         const output = outputs[0][0];
         const gateInput = inputs[0];
-        const gate = gateInput.length > 0 ? gateInput[0] : null;
+        const gateChannel = gateInput.length > 0 ? gateInput[0] : null;
+        const gateParam = parameters.gate;
 
         const attackDuration = Math.max(1, parameters.attack[0] * sampleRate);
         const decayDuration = Math.max(1, parameters.decay[0] * sampleRate);
@@ -34,21 +37,37 @@ class ADSRProcessor extends AudioWorkletProcessor {
         const depth = parameters.depth[0];
         const isLooping = parameters.loop[0] > 0.5;
         
+        // Log parameter changes occasionally or on significant events if needed,
+        // but for now let's focus on state transitions.
+
         for (let i = 0; i < output.length; i++) {
-            const currentGate = gate ? gate[i] : 0;
+            const inputSample = gateChannel ? gateChannel[i] : 0;
+            const paramSample = gateParam.length > 1 ? gateParam[i] : gateParam[0];
+            const currentGate = Math.max(inputSample, paramSample);
+
+            if (isNaN(currentGate)) { console.error('Gate NaN'); }
+
+            this.debugCounter++;
+            if (this.debugCounter % 44100 === 0) {
+                 console.log(\`[ADSR Debug] State: \${this.state}, Gate: \${currentGate}, Val: \${this.value}, Sustain: \${sustainLevel}, Out: \${this.value * depth}\`);
+            }
 
             if (currentGate > 0 && this.lastGate <= 0) {
+                console.log(\`[ADSR] Gate ON. Val: \${currentGate}. State: \${this.state} -> attack\`);
                 this.state = 'attack';
                 this.attackCounter = 0;
             }
 
             if (currentGate <= 0 && this.lastGate > 0) {
+                console.log(\`[ADSR] Gate OFF. Val: \${currentGate}. State: \${this.state} -> release\`);
                 this.state = 'release';
                 this.releaseCounter = 0;
                 this.releaseInitialValue = this.value;
             }
 
             this.lastGate = currentGate;
+
+            const prevState = this.state;
 
             switch (this.state) {
                 case 'idle':
@@ -67,6 +86,7 @@ class ADSRProcessor extends AudioWorkletProcessor {
                     this.value = sustainLevel + (1.0 - sustainLevel) * (1 - (this.decayCounter / decayDuration));
                     if (this.decayCounter >= decayDuration) {
                         if (isLooping && currentGate > 0) {
+                            console.log(\`[ADSR] Loop triggered. State: \${this.state} -> attack\`);
                             this.state = 'attack';
                             this.attackCounter = 0;
                         } else {
@@ -88,6 +108,11 @@ class ADSRProcessor extends AudioWorkletProcessor {
                     this.releaseCounter++;
                     break;
             }
+
+            if (this.state !== prevState) {
+                console.log(\`[ADSR] State changed: \${prevState} -> \${this.state}\`);
+            }
+
             output[i] = Math.max(0, this.value * depth);
         }
         return true;
