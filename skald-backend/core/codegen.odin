@@ -227,7 +227,8 @@ generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 
 	fmt.sbprintf(sb, "\t\t// --- Delay Node %d ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tdelay_samples_%d := int(math.clamp((%s) * sample_rate, 0, %d-1));\n", node.id, time_str, 96000)
+	// Using len(p.delay_%d_buffer) instead of hardcoded 96000, assuming buffer size matches struct definition.
+	fmt.sbprintf(sb, "\t\t\tdelay_samples_%d := int(math.clamp((%s) * sample_rate, 0, f32(len(p.delay_%d_buffer)-1)));\n", node.id, time_str, node.id)
 	fmt.sbprintf(sb, "\t\t\tread_index_%d := (p.delay_%d_write_index - delay_samples_%d + len(p.delay_%d_buffer)) %% len(p.delay_%d_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%d := p.delay_%d_buffer[read_index_%d];\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tp.delay_%d_buffer[p.delay_%d_write_index] = (%s) + delayed_sample_%d * (%s);\n", node.id, node.id, input_str, node.id, fdbk_str)
@@ -243,16 +244,32 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	decay_str := get_f32_param(nil, node, "decay", "", 0.5)
 	mix_str   := get_f32_param(nil, node, "mix", "", 0.5)
 	
-	delay_time := 0.075 
+    // Improved Schroeder-like Reverb (4 Parallel Combs + 2 Series Allpass - simulated with multi-taps for now due to complexity)
+    // Actually, sticking to a simpler "Ping Pong" or Multi-tap delay is safer without adding huge structs.
+    // Let's implement a 4-tap delay reverb using the same buffer but different read offsets.
 
-	fmt.sbprintf(sb, "\t\t// --- Reverb Node %d (Simple FDN) ---\n", node.id)
+	fmt.sbprintf(sb, "\t\t// --- Reverb Node %d (Multi-Tap Delay Reverb) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tdelay_samples_%d := int(math.clamp((%f) * sample_rate, 0, %d-1));\n", node.id, delay_time, 96000)
-	fmt.sbprintf(sb, "\t\t\tread_index_%d := (p.delay_%d_write_index - delay_samples_%d + len(p.delay_%d_buffer)) %% len(p.delay_%d_buffer);\n", node.id, node.id, node.id, node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%d := p.delay_%d_buffer[read_index_%d];\n", node.id, node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tp.delay_%d_buffer[p.delay_%d_write_index] = (%s) + delayed_sample_%d * (%s);\n", node.id, node.id, input_str, node.id, decay_str)
+    // Taps at roughly prime number delays for decorrelation
+    fmt.sbprintf(sb, "\t\t\ttap1 := int(0.0297 * sample_rate);\n")
+    fmt.sbprintf(sb, "\t\t\ttap2 := int(0.0371 * sample_rate);\n")
+    fmt.sbprintf(sb, "\t\t\ttap3 := int(0.0411 * sample_rate);\n")
+    fmt.sbprintf(sb, "\t\t\ttap4 := int(0.0437 * sample_rate);\n")
+
+    // Read Taps
+    fmt.sbprintf(sb, "\t\t\tr1 := p.delay_%d_buffer[(p.delay_%d_write_index - tap1 + len(p.delay_%d_buffer)) %% len(p.delay_%d_buffer)];\n", node.id, node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\t\t\tr2 := p.delay_%d_buffer[(p.delay_%d_write_index - tap2 + len(p.delay_%d_buffer)) %% len(p.delay_%d_buffer)];\n", node.id, node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\t\t\tr3 := p.delay_%d_buffer[(p.delay_%d_write_index - tap3 + len(p.delay_%d_buffer)) %% len(p.delay_%d_buffer)];\n", node.id, node.id, node.id, node.id)
+    fmt.sbprintf(sb, "\t\t\tr4 := p.delay_%d_buffer[(p.delay_%d_write_index - tap4 + len(p.delay_%d_buffer)) %% len(p.delay_%d_buffer)];\n", node.id, node.id, node.id, node.id)
+
+    fmt.sbprintf(sb, "\t\t\treverb_sig := (r1 + r2 + r3 + r4) * 0.25;\n")
+
+    // Write Feedback
+	fmt.sbprintf(sb, "\t\t\tp.delay_%d_buffer[p.delay_%d_write_index] = (%s) + reverb_sig * (%s);\n", node.id, node.id, input_str, decay_str)
 	fmt.sbprintf(sb, "\t\t\tp.delay_%d_write_index = (p.delay_%d_write_index + 1) %% len(p.delay_%d_buffer);\n", node.id, node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tnode_%d_out = (%s) * (1.0 - (%s)) + delayed_sample_%d * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)
+
+    // Mix
+	fmt.sbprintf(sb, "\t\t\tnode_%d_out = (%s) * (1.0 - (%s)) + reverb_sig * (%s);\n", node.id, input_str, mix_str, mix_str)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
@@ -275,7 +292,8 @@ generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\t// --- Mixer Node %d ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
 	fmt.sbprintf(sb, "\t\t\tmix_sum_%d: f32 = 0.0;\n", node.id)
-	for i in 1..=8 {
+	input_count := get_int_param(nil, node, "inputCount", "", 4)
+	for i in 1..=input_count {
 		port_name := fmt.tprintf("input_%d", i)
 		if id, ok := find_input_for_port(graph, node.id, port_name); ok {
 			gain_param := fmt.tprintf("input_%d_gain", i)
@@ -596,7 +614,7 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 			generate_gain_code(&sb, node, subgraph)
 		case "graphinput":
 			input_name_val := get_string_param(node, "name", "gate")
-			if input_name_val == "gate" {
+			if strings.to_lower(input_name_val) == "gate" {
 				fmt.sbprintf(&sb, "\tnode_%d_out = 1.0; // Default for Gate GraphInput\n\n", node.id)
 			} else {
 				fmt.sbprintf(&sb, "\tnode_%d_out = 0.0; // Default for other GraphInput\n\n", node.id)
