@@ -16,18 +16,25 @@ class SkaldOscillatorNode extends BaseSkaldNode {
     private shaper: WaveShaperNode | null = null;
     private isPwm: boolean = false;
 
-    constructor(context: AudioContext, data: OscillatorParams) {
+    // Polyphony/Pitch tracking
+    private frequencySource: AudioNode | null = null;
+    private baseFrequency: number = 440;
+
+    constructor(context: AudioContext, data: OscillatorParams, frequencySource?: AudioNode) {
         super();
         this.context = context;
         this.output = context.createGain();
         this.phaseDelay = context.createDelay(1.0); // Max delay 1s
+        this.frequencySource = frequencySource || null;
+        this.baseFrequency = data.frequency || 440;
 
         this.output.gain.cancelScheduledValues(this.context.currentTime);
         this.output.gain.setTargetAtTime(data.amplitude ?? 0.5, this.context.currentTime, this.smoothingTimeConstant);
 
         this.setupWaveform(data);
         
-        const freq = data.frequency || 440;
+        // Initial Phase Update
+        const freq = this.baseFrequency;
         const phase = data.phase || 0;
         this.updatePhase(phase, freq);
     }
@@ -36,7 +43,10 @@ class SkaldOscillatorNode extends BaseSkaldNode {
         this.cleanup(); // Disconnect previous nodes if any
 
         const waveform = (data.waveform || 'sawtooth').toLowerCase();
-        const frequency = data.frequency || 440;
+
+        // If we have a frequencySource (polyphonic voice), the oscillator base freq is 0 (so it tracks input).
+        // Otherwise it is the parameter value.
+        const initialFreq = this.frequencySource ? 0 : this.baseFrequency;
 
         if (waveform === 'square') {
             this.isPwm = true;
@@ -44,7 +54,11 @@ class SkaldOscillatorNode extends BaseSkaldNode {
             this.pwmOsc = this.context.createOscillator();
             this.pwmOsc.type = 'sawtooth';
             this.pwmOsc.frequency.cancelScheduledValues(this.context.currentTime);
-            this.pwmOsc.frequency.setTargetAtTime(frequency, this.context.currentTime, this.smoothingTimeConstant);
+            this.pwmOsc.frequency.setValueAtTime(initialFreq, this.context.currentTime);
+
+            if (this.frequencySource) {
+                this.frequencySource.connect(this.pwmOsc.frequency);
+            }
 
             this.dcOffset = this.context.createConstantSource();
             this.updatePulseWidth(data.pulseWidth ?? 0.5);
@@ -67,7 +81,12 @@ class SkaldOscillatorNode extends BaseSkaldNode {
             this.osc = this.context.createOscillator();
             this.osc.type = waveform as OscillatorType;
             this.osc.frequency.cancelScheduledValues(this.context.currentTime);
-            this.osc.frequency.setTargetAtTime(frequency, this.context.currentTime, this.smoothingTimeConstant);
+            this.osc.frequency.setValueAtTime(initialFreq, this.context.currentTime);
+
+            if (this.frequencySource) {
+                this.frequencySource.connect(this.osc.frequency);
+            }
+
             this.osc.connect(this.phaseDelay);
             this.osc.start();
         }
@@ -119,13 +138,19 @@ class SkaldOscillatorNode extends BaseSkaldNode {
             this.setupWaveform(data);
         }
 
+        this.baseFrequency = data.frequency ?? 440;
         const targetOsc = this.isPwm ? this.pwmOsc : this.osc;
-        const frequency = data.frequency ?? targetOsc?.frequency.value ?? 440;
         
-        if (data.frequency && targetOsc) {
-            targetOsc.frequency.cancelScheduledValues(this.context.currentTime);
-            targetOsc.frequency.setTargetAtTime(data.frequency, this.context.currentTime, this.smoothingTimeConstant);
+        // If we don't have a frequency source, we control pitch manually.
+        // If we DO have a source, we might treat data.frequency as an offset (detune),
+        // but for now, standard parity implies we ignore the knob for pitch tracking
+        // OR we treat it as a fine tune.
+        // Let's stick to: If Voice, Freq = Source. If Standalone, Freq = Knob.
+        if (!this.frequencySource && targetOsc && data.frequency !== undefined) {
+             targetOsc.frequency.cancelScheduledValues(this.context.currentTime);
+             targetOsc.frequency.setTargetAtTime(this.baseFrequency, this.context.currentTime, this.smoothingTimeConstant);
         }
+        // If we wanted 'Detune', we could add it to the 0 base.
 
         if (data.amplitude !== undefined) {
             this.output.gain.cancelScheduledValues(this.context.currentTime);
@@ -137,7 +162,7 @@ class SkaldOscillatorNode extends BaseSkaldNode {
         }
 
         if (data.phase !== undefined) {
-            this.updatePhase(data.phase, frequency);
+            this.updatePhase(data.phase, this.baseFrequency);
         }
     }
 
@@ -147,8 +172,9 @@ class SkaldOscillatorNode extends BaseSkaldNode {
     }
 }
 
-export const createOscillatorNode = (context: AudioContext, node: Node): AudioNode => {
-    const oscillatorNodeInstance = new SkaldOscillatorNode(context, node.data as OscillatorParams);
+export const createOscillatorNode = (context: AudioContext, node: Node, adsrMap: any, frequencySource?: AudioNode): AudioNode => {
+    // Note: adsrMap is passed by the factory caller but unused here.
+    const oscillatorNodeInstance = new SkaldOscillatorNode(context, node.data as OscillatorParams, frequencySource);
     
     const outputNode = oscillatorNodeInstance.output as any;
     outputNode._skaldNode = oscillatorNodeInstance;

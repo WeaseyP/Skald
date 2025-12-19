@@ -11,6 +11,7 @@ export class Voice {
     private subgraph: { nodes: Node[]; connections: Edge[] };
     public input: GainNode;
     private gateSource: ConstantSourceNode;
+    private frequencySource: ConstantSourceNode;
 
     constructor(context: AudioContext, subgraph: { nodes: Node[]; connections: Edge[] }) {
         this.audioContext = context;
@@ -18,10 +19,16 @@ export class Voice {
         this.input = context.createGain();
         this.output = context.createGain();
 
-        // Create a central Gate signal for this voice
+        // Central Gate Signal
         this.gateSource = context.createConstantSource();
-        this.gateSource.offset.setValueAtTime(0, context.currentTime); // Use setValueAtTime for immediate effect
+        this.gateSource.offset.setValueAtTime(0, context.currentTime);
         this.gateSource.start();
+
+        // Central Frequency Signal (Pitch)
+        // Default to 440, but trigger() will update this.
+        this.frequencySource = context.createConstantSource();
+        this.frequencySource.offset.setValueAtTime(440, context.currentTime);
+        this.frequencySource.start();
 
         this.buildSubgraph();
     }
@@ -29,12 +36,17 @@ export class Voice {
     private buildSubgraph() {
         this.subgraph.nodes.forEach(node => {
             let audioNode: AudioNode | null = null;
+
+            // Pass the frequencySource to the factory.
+            // Factories like createOscillator and createFmOperator will use it.
+            // Others will ignore it.
+
             if (node.type && nodeCreationMap[node.type]) {
                 const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
-                audioNode = creator(this.audioContext, node, this.adsrData);
+                audioNode = creator(this.audioContext, node, this.adsrData, this.frequencySource);
             } else {
                 const creator = nodeCreationMap['default'] as Function;
-                audioNode = creator(this.audioContext, node, this.adsrData);
+                audioNode = creator(this.audioContext, node, this.adsrData, this.frequencySource);
             }
             if (audioNode) {
                 this.internalNodes.set(node.id, audioNode);
@@ -44,7 +56,6 @@ export class Voice {
         // Loop through all registered ADSR worklets and connect the Voice Gate to them
         this.adsrData.forEach(({ worklet }) => {
             // The ADSR Worklet expects the Gate signal on input 0.
-            // Since we connect the Gate Source (ConstantSource) to it, it drives the envelope.
             this.gateSource.connect(worklet);
         });
 
@@ -71,7 +82,14 @@ export class Voice {
         });
     }
 
-    public trigger(startTime: number) {
+    public trigger(startTime: number, note?: number) {
+        // Update Frequency if note is provided
+        if (note !== undefined) {
+            const freq = 440 * Math.pow(2, (note - 69) / 12);
+            this.frequencySource.offset.cancelScheduledValues(startTime);
+            this.frequencySource.offset.setValueAtTime(freq, startTime);
+        }
+
         // Open the Gate
         this.gateSource.offset.cancelScheduledValues(startTime);
         this.gateSource.offset.setValueAtTime(1, startTime);
@@ -84,7 +102,6 @@ export class Voice {
                 gateParam.setValueAtTime(1, startTime);
             }
         });
-        // Log is helpful but might be spammy if not careful, rely on Worklet logs.
     }
 
     public release(startTime: number) {
@@ -110,12 +127,14 @@ export class Voice {
         this.output.disconnect();
         this.gateSource.stop();
         this.gateSource.disconnect();
+        this.frequencySource.stop();
+        this.frequencySource.disconnect();
         this.internalNodes.forEach(node => {
             try { node.disconnect(); } catch (e) { /* ignore */ }
         });
     }
 
-    public updateNodeData(nodeId: string, data: any) {
+    public updateNodeData(nodeId: string, data: any, bpm: number) {
         const liveNode = this.internalNodes.get(nodeId);
 
         if (liveNode) {

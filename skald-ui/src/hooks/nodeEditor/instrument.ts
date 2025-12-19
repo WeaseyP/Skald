@@ -36,18 +36,27 @@ export class Instrument {
         }
     }
     
-    public trigger() {
+    // Updated trigger signature to support scheduling and note
+    public trigger(time?: number, note?: number) {
+        const triggerTime = time !== undefined ? time : this.context.currentTime;
         const voice = this.voices[this.nextVoiceIndex];
         if (voice) {
-            voice.trigger(this.context.currentTime);
+            voice.trigger(triggerTime, note);
         }
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
     }
 
-    public noteOff() {
+    public release(time?: number) {
         if (!this.context) return;
-        const releaseTime = this.context.currentTime;
+        const releaseTime = time !== undefined ? time : this.context.currentTime;
+        // In a real synth, we'd release the specific voice for the note.
+        // For now, release all (since we don't track which voice has which note in this simplified class).
         this.voices.forEach(voice => voice.release(releaseTime));
+    }
+
+    // Legacy support if needed
+    public noteOff() {
+        this.release();
     }
 
     public connect(destination: AudioNode | AudioParam, outputIndex?: number, inputIndex?: number) {
