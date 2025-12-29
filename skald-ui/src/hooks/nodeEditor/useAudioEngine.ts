@@ -4,18 +4,24 @@ import useDeepCompareEffect from 'use-deep-compare-effect';
 import { sampleHoldProcessorString } from './audioWorklets/sampleHold.worklet';
 import { wavetableProcessorString } from './audioWorklets/wavetable.worklet';
 import { adsrProcessorString } from './audioWorklets/adsr.worklet';
-import { useSequencer } from './useSequencer';
+import { useSequencerEngine } from '../sequencer/useSequencerEngine';
 import { Instrument } from './instrument';
-import { AdsrDataMap } from './types';
+import { AdsrDataMap, AudioNodeMap } from './types';
+import { SequencerTrack } from '../../definitions/types';
 import { connectNodes, disconnectNodes } from './audioNodeUtils';
 import { nodeCreationMap } from './audioNodeFactory';
 import { useOscillatorHandler } from './node-handlers/useOscillatorHandler';
 import { useAdsrHandler } from './node-handlers/useAdsrHandler';
 import { logger } from '../../utils/logger';
 
-type AudioNodeMap = Map<string, AudioNode | Instrument>;
-
-export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean, bpm: number) => {
+export const useAudioEngine = (
+    nodes: Node[],
+    edges: Edge[],
+    isLooping: boolean,
+    bpm: number,
+    sequencerTracks: SequencerTrack[],
+    setCurrentStep: (step: number) => void
+) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [graphVersion, setGraphVersion] = useState(0);
     const audioContext = useRef<AudioContext | null>(null);
@@ -31,7 +37,6 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         adsr: adsrHandler,
     };
 
-    useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes);
 
     const handlePlay = useCallback(async () => {
         logger.info('AudioEngine', 'Play requeted');
@@ -70,6 +75,8 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
         });
     }, [isPlaying]);
 
+    useSequencerEngine(isPlaying, bpm, sequencerTracks, audioContext, audioNodes, setCurrentStep, isLooping, handleStop);
+
     useDeepCompareEffect(() => {
         if (!isPlaying || !audioContext.current) return;
 
@@ -107,8 +114,8 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                     let newAudioNode: AudioNode | Instrument | null = null;
                     if (node.type === 'instrument') {
                         newAudioNode = new Instrument(context, node);
-                    } else if (node.type && nodeCreationMap[node.type]) {
-                        const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
+                    } else if (node.type && (nodeCreationMap as any)[node.type]) {
+                        const creator = (nodeCreationMap as any)[node.type] as Function;
                         newAudioNode = creator(context, node, adsrNodes.current);
                     } else {
                         const creator = nodeCreationMap['default'] as Function;
@@ -120,6 +127,35 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
                 if (handler && prevNode) {
                     handler.update(node, prevNode);
                 } else {
+                    // Handle Output Node Test Trigger
+                    if ((node.type === 'output' || node.type === 'InstrumentOutput') && prevNode) {
+                        const lastTrigger = (node.data as any).lastTrigger;
+                        const prevLastTrigger = (prevNode.data as any).lastTrigger;
+                        if (lastTrigger && lastTrigger !== prevLastTrigger) {
+                            logger.info('AudioEngine', 'Output Test Triggered');
+                            const now = context.currentTime;
+                            adsrNodes.current.forEach(({ worklet }) => {
+                                worklet.parameters.get('gate')?.setValueAtTime(1, now);
+                                worklet.parameters.get('gate')?.setValueAtTime(0, now + 0.2);
+                            });
+
+                            // Trigger Instruments
+                            audioNodes.current.forEach((audioNode) => {
+                                if (audioNode instanceof Instrument) {
+                                    audioNode.trigger(now, 60, 1.0);
+                                    // If Instrument needs explicit note off, we might need a way to schedule it.
+                                    // Assuming trigger handles envelope start. User might need to stop it manually if it sustains?
+                                    // But for "Audition" usually implies a preview.
+                                    // We can try calling trigger with 0 velocity after a duration if the method supports it, 
+                                    // or if there is a noteOff method.
+                                    if (typeof (audioNode as any).noteOff === 'function') {
+                                        (audioNode as any).noteOff(now + 0.2, 60);
+                                    }
+                                }
+                            });
+                        }
+                    }
+
                     if (liveNode instanceof Instrument) {
                         liveNode.updateNodeData(node.data, bpm);
                     } else if (prevNode && JSON.stringify(prevNode.data) !== JSON.stringify(node.data)) {
@@ -209,7 +245,7 @@ export const useAudioEngine = (nodes: Node[], edges: Edge[], isLooping: boolean,
 
     }, [nodes, edges, isPlaying, bpm, nodeHandlers]);
 
-    useSequencer(bpm, isLooping, isPlaying, audioContext, adsrNodes, audioNodes, graphVersion);
+    // useSequencer was replaced by useSequencerEngine above
 
     useEffect(() => {
         return () => { if (audioContext.current) handleStop(); };

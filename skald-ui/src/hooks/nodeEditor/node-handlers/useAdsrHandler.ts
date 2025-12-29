@@ -7,10 +7,8 @@
 */
 import { useCallback } from 'react';
 import { Node } from 'reactflow';
-import { AdsrDataMap } from '../types';
+import { AdsrDataMap, AudioNodeMap } from '../types';
 import { AdsrParams } from '../../../definitions/types';
-
-type AudioNodeMap = Map<string, AudioNode>;
 
 interface MasterAdsrNode extends GainNode {
     envelopeNode?: GainNode;
@@ -70,12 +68,15 @@ export const useAdsrHandler = ({ audioContextRef, audioNodes, adsrNodes }: UseAd
             const now = audioContextRef.current?.currentTime || 0;
 
             if (data) {
+                // Parameter updates
                 if (data.attack !== undefined) worklet.parameters.get('attack')?.setValueAtTime(data.attack, now);
                 if (data.decay !== undefined) worklet.parameters.get('decay')?.setValueAtTime(data.decay, now);
                 if (data.sustain !== undefined) worklet.parameters.get('sustain')?.setValueAtTime(data.sustain, now);
                 if (data.release !== undefined) worklet.parameters.get('release')?.setValueAtTime(data.release, now);
                 if (data.depth !== undefined) worklet.parameters.get('depth')?.setValueAtTime(data.depth, now);
                 if (data.loop !== undefined) worklet.parameters.get('loop')?.setValueAtTime(data.loop ? 1 : 0, now);
+
+
             }
         }
     }, [adsrNodes, audioContextRef]);

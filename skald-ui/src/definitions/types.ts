@@ -89,6 +89,8 @@ export interface AdsrParams extends BaseNodeParams {
   attackCurve: AdsrCurve;
   decayCurve: AdsrCurve;
   releaseCurve: AdsrCurve;
+  loop?: boolean;
+  lastTrigger?: number;
 }
 
 export interface DelayParams extends BaseNodeParams, BpmSynchronizable {
@@ -110,9 +112,9 @@ export interface DistortionParams extends BaseNodeParams {
 }
 
 export interface MixerChannelParams {
-    id: number;
-    level: number;
-    pan: number; // Added pan for more realistic mixing
+  id: number;
+  level: number;
+  pan: number; // Added pan for more realistic mixing
 }
 
 export interface MixerParams extends BaseNodeParams {
@@ -125,11 +127,11 @@ export interface PannerParams extends BaseNodeParams {
 }
 
 export interface GainParams extends BaseNodeParams {
-    gain: number;
+  gain: number;
 }
 
 export interface OutputParams extends BaseNodeParams {
-  // No specific parameters
+  lastTrigger?: number;
 }
 
 // === Generic Graph Interfaces (for Subgraphs) ===
@@ -142,10 +144,10 @@ export interface OutputParams extends BaseNodeParams {
  * @property {NodeParams} data - The parameter data for the node.
  */
 export interface SkaldGraphNode {
-    id: string;
-    type: string;
-    position: { x: number; y: number };
-    data: NodeParams;
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  data: NodeParams;
 }
 
 /**
@@ -156,26 +158,26 @@ export interface SkaldGraphNode {
  * @property {string} to_port - The name of the target input port (e.g., 'input').
  */
 export interface SkaldGraphConnection {
-    from_node: string;
-    from_port: string;
-    to_node: string;
-    to_port: string;
+  from_node: string;
+  from_port: string;
+  to_node: string;
+  to_port: string;
 }
 
 
 export interface InstrumentParams extends BaseNodeParams {
-    name: string;
-    voiceCount: number;
-    voiceStealing: 'oldest' | 'newest';
-    glide: number;
-    unison: number;
-    detune: number;
-    inputs: string[];
-    outputs: string[];
-    subgraph: {
-        nodes: SkaldGraphNode[];
-        connections: SkaldGraphConnection[];
-    };
+  name: string;
+  voiceCount: number;
+  voiceStealing: 'oldest' | 'newest';
+  glide: number;
+  unison: number;
+  detune: number;
+  inputs: string[];
+  outputs: string[];
+  subgraph: {
+    nodes: SkaldGraphNode[];
+    connections: SkaldGraphConnection[];
+  };
 }
 
 // === Union Type for All Node Parameters ===
@@ -202,3 +204,41 @@ export type NodeParams =
   | GainParams
   | OutputParams
   | InstrumentParams;
+
+// === Sequencer Types ===
+
+/**
+ * @interface NoteEvent
+ * Represents a single musical event (note on) in the sequencer.
+ */
+export interface NoteEvent {
+  step: number;       // 0-15 (for a 1-bar loop initially)
+  note: number;       // MIDI Note Number (e.g., 60 for C4)
+  velocity: number;   // 0.0 to 1.0
+  duration: number;   // In steps (defaults to 1)
+}
+
+/**
+ * @interface SequencerTrack
+ * Represents a track dedicated to controlling one Instrument Node.
+ */
+export interface SequencerTrack {
+  id: string;             // Unique ID (UUID)
+  targetNodeId: string;   // The ID of the Instrument Node in the ReactFlow graph
+  name: string;           // Display name (synced with Instrument label)
+  color: string;          // Visual color
+  steps: number;          // Total step count (default 16)
+  notes: NoteEvent[];     // Array of active notes
+  isMuted: boolean;
+  isSolo: boolean;
+}
+
+/**
+ * @interface SequencerState
+ * The root state object for the sequencer.
+ */
+export interface SequencerState {
+  isPlaying: boolean;
+  currentStep: number;    // The current playback step (0-15)
+  tracks: SequencerTrack[];
+}

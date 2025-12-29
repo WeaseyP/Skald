@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { Node, Edge } from 'reactflow';
 import { NODE_DEFINITIONS } from '../definitions/node-definitions';
-import { NodeParams } from '../definitions/types';
+import { NodeParams, SequencerTrack } from '../definitions/types';
 
 export const useCodeGeneration = () => {
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export const useCodeGeneration = () => {
         return nodeList.map(node => {
             const definition = NODE_DEFINITIONS[node.type!];
             const typeName = definition ? definition.codegenType : 'Unknown';
-            
+
             let parameters: any = { ...node.data };
             let subgraph: any = null;
 
@@ -56,7 +56,7 @@ export const useCodeGeneration = () => {
         });
     };
 
-    const handleGenerate = async (nodes: Node<NodeParams>[], edges: Edge[]) => {
+    const handleGenerate = async (nodes: Node<NodeParams>[], edges: Edge[], sequencerTracks: SequencerTrack[]) => {
         if (nodes.length === 0) {
             console.warn("Graph is empty. Add some nodes first.");
             setGeneratedCode("// Graph is empty. Add some nodes to generate code.");
@@ -72,7 +72,24 @@ export const useCodeGeneration = () => {
             to_port: edge.targetHandle || 'input'
         }));
 
-        const audioGraph = { nodes: graphNodes, connections: graphConnections };
+        const formattedTracks = sequencerTracks.map(track => ({
+            target_node_id: parseInt(track.targetNodeId, 10),
+            name: track.name,
+            events: track.notes.map(n => ({
+                note: n.note,
+                velocity: n.velocity,
+                start_time: n.step * 0.25, // Convert steps to beats (16th notes)
+                duration: n.duration * 0.25
+            })),
+            mute: track.isMuted,
+            solo: track.isSolo
+        }));
+
+        const audioGraph = {
+            nodes: graphNodes,
+            connections: graphConnections,
+            sequencer_tracks: formattedTracks
+        };
 
         try {
             const code = await window.electron.invokeCodegen(JSON.stringify(audioGraph, null, 2));

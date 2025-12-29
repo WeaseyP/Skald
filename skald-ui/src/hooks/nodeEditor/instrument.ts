@@ -35,11 +35,11 @@ export class Instrument {
             this.voices.push(voice);
         }
     }
-    
-    public trigger() {
+
+    public trigger(time: number, note: number, velocity: number) {
         const voice = this.voices[this.nextVoiceIndex];
         if (voice) {
-            voice.trigger(this.context.currentTime);
+            voice.trigger(time, note, velocity);
         }
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
     }
@@ -51,9 +51,9 @@ export class Instrument {
     }
 
     public connect(destination: AudioNode | AudioParam, outputIndex?: number, inputIndex?: number) {
-        this.output.connect(destination, outputIndex, inputIndex);
+        this.output.connect(destination as any, outputIndex, inputIndex);
     }
-    
+
     public disconnect() {
         this.output.disconnect();
         this.voices.forEach(v => v.disconnect());
@@ -61,9 +61,9 @@ export class Instrument {
 
     public updateNodeData(data: any, bpm: number) {
         this.voices.forEach(voice => {
-            if(data.subgraph && data.subgraph.nodes) {
+            if (data.subgraph && data.subgraph.nodes) {
                 data.subgraph.nodes.forEach((subNode: Node) => {
-                    voice.updateNodeData(subNode.id, subNode.data, bpm);
+                    voice.updateNodeData(subNode.id, subNode.data);
                 });
             }
         });

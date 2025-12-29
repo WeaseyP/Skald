@@ -1,0 +1,38 @@
+Enemy 2: The Tank
+Sound: Square Wave, Low Filtered. Heavy and bass-heavy.
+Role: Bassline support.
+Pattern: Slow, plodding steps.
+Parameters:
+- Waveform: Square
+- Filter: LowPass (800Hz)
+
+--------------------
+
+Enemy 3: The Scout
+Sound: Triangle Wave, Delay. Light and melodic.
+Role: Counter-melody.
+Pattern: Quick, syncopated pings.
+Parameters:
+- Waveform: Triangle
+- Effect: Delay
+
+--------------------
+
+Enemy 4: The Swarm
+Sound: Noise, BandPass Filtered. Percussive ticks.
+Role: Hi-hat / rhythmic texture.
+Pattern: Regular 8th notes.
+Parameters:
+- Generator: Noise
+- Envelope: Extremely short decay (Percussive)
+
+--------------------
+
+Ambient Track
+Sound: Sine Wave + Reverb. Evolving Soundscape.
+Role: Background atmosphere.
+Pattern: Long sustained drones.
+Parameters:
+- Waveform: Sine
+- Envelope: Very long Attack/Release
+- Effect: Heavy Reverb

@@ -16,10 +16,10 @@ import Sidebar from './components/Sidebar';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
 import NamePromptModal from './components/NamePromptModal';
-import { 
-    OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode, 
-    LFONode, SampleHoldNode, DelayNode, ReverbNode, DistortionNode, 
-    MixerNode, PannerNode, GroupNode, FmOperatorNode, WavetableNode 
+import {
+    OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode,
+    LFONode, SampleHoldNode, DelayNode, ReverbNode, DistortionNode,
+    MixerNode, PannerNode, GroupNode, FmOperatorNode, WavetableNode
 } from './components/Nodes';
 import InstrumentNode from './components/InstrumentNode';
 
@@ -30,10 +30,20 @@ import { useAudioEngine } from './hooks/nodeEditor/useAudioEngine';
 import { useFileIO } from './hooks/nodeEditor/useFileIO';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
 import { NODE_DEFINITIONS } from './definitions/node-definitions';
+import { SequencerDock } from './components/Sequencer/SequencerDock';
+import { useSequencerState } from './hooks/sequencer/useSequencerState';
+import { useInstrumentRegistry } from './hooks/sequencer/useInstrumentRegistry';
+
+const workspaceContainerStyles: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'row',
+    flexGrow: 1,
+    overflow: 'hidden', // Ensure content doesn't spill out
+};
 
 const appContainerStyles: React.CSSProperties = {
     display: 'flex',
-    flexDirection: 'row',
+    flexDirection: 'column',
     width: '100vw',
     height: '100vh',
     backgroundColor: '#1E1E1E',
@@ -57,13 +67,13 @@ const parameterPanelStyles: React.CSSProperties = {
 };
 
 // Define nodeTypes outside the component to prevent re-creation on every render.
-const nodeTypes = { 
+const nodeTypes = {
     oscillator: OscillatorNode,
     filter: FilterNode,
     output: GraphOutputNode,
     noise: NoiseNode,
     adsr: ADSRNode,
-    lfo: LFONode, 
+    lfo: LFONode,
     instrument: InstrumentNode,
     sampleHold: SampleHoldNode,
     delay: DelayNode,
@@ -81,7 +91,7 @@ const EditorLayout = () => {
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
     const [bpm, setBpm] = useState(120);
     const [isLooping, setIsLooping] = useState(false);
-    
+
     const {
         nodes,
         edges,
@@ -104,9 +114,35 @@ const EditorLayout = () => {
         handleCreateGroup,
     } = useGraphState();
 
-    const { isPlaying, handlePlay, handleStop } = useAudioEngine(nodes, edges, isLooping, bpm);
-    const { handleSave, handleLoad } = useFileIO(reactFlowInstance, setNodes, setEdges, () => {}, () => {}); 
     const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration();
+
+    const sequencerStateHooks = useSequencerState();
+    useInstrumentRegistry(nodes, sequencerStateHooks);
+
+    const { isPlaying, handlePlay, handleStop } = useAudioEngine(
+        nodes,
+        edges,
+        isLooping,
+        bpm,
+        sequencerStateHooks.tracks,
+        sequencerStateHooks.setCurrentStep
+    );
+
+    const { handleSave, handleLoad } = useFileIO(
+        reactFlowInstance,
+        setNodes,
+        setEdges,
+        () => { },
+        () => { },
+        sequencerStateHooks.tracks,
+        sequencerStateHooks.loadTracks
+    );
+
+    const sequencerState = {
+        isPlaying,
+        currentStep: sequencerStateHooks.currentStep,
+        tracks: sequencerStateHooks.tracks
+    };
 
     return (
         <div style={appContainerStyles}>
@@ -118,55 +154,72 @@ const EditorLayout = () => {
                     onCancel={() => setIsNamePromptVisible(false)}
                 />
             )}
-            <div style={sidebarPanelStyles}>
-                <Sidebar 
-                    onGenerate={() => handleGenerate(nodes, edges)} 
-                    onPlay={handlePlay} 
-                    onStop={handleStop} 
-                    isPlaying={isPlaying}
-                    onSave={handleSave}
-                    onLoad={handleLoad}
-                    onCreateInstrument={handleCreateInstrument}
-                    onCreateGroup={handleCreateGroup}
-                    canCreateInstrument={selectedNodesForGrouping.length > 0}
-                    bpm={bpm}
-                    onBpmChange={setBpm}
-                    isLooping={isLooping}
-                    onLoopToggle={() => setIsLooping(!isLooping)}
-                />
-            </div>
-            <div style={mainCanvasStyles} ref={reactFlowWrapper}>
-                <ReactFlow
-                    nodes={nodes} 
-                    edges={edges} 
-                    nodeTypes={nodeTypes}
-                    onNodesChange={onNodesChange} 
-                    onEdgesChange={onEdgesChange}
-                    onConnect={onConnect} 
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                    onDrop={onDrop}
-                    onSelectionChange={onSelectionChange}
-                    onInit={setReactFlowInstance}
-                    multiSelectionKeyCode={['Shift', 'Control']}
-                    fitView
-                >
-                    <Background />
-                    <Controls />
-                </ReactFlow>
-            </div>
-            <div style={parameterPanelStyles}>
-                {generatedCode ? (
-                    <CodePreviewPanel code={generatedCode} onClose={() => setGeneratedCode(null)} />
-                ) : (
-                    <ParameterPanel 
-                        selectedNode={selectedNode} 
-                        onUpdateNode={updateNodeData}
-                        allNodes={nodes}
-                        allEdges={edges}
+
+            <div style={workspaceContainerStyles}>
+                <div style={sidebarPanelStyles}>
+                    <Sidebar
+                        onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks)}
+                        onPlay={handlePlay}
+                        onStop={handleStop}
+                        isPlaying={isPlaying}
+                        onSave={handleSave}
+                        onLoad={handleLoad}
+                        onCreateInstrument={handleCreateInstrument}
+                        onCreateGroup={handleCreateGroup}
+                        canCreateInstrument={selectedNodesForGrouping.length > 0}
                         bpm={bpm}
+                        onBpmChange={setBpm}
+                        isLooping={isLooping}
+                        onLoopToggle={() => setIsLooping(!isLooping)}
                     />
-                )}
+                </div>
+                <div style={mainCanvasStyles} ref={reactFlowWrapper}>
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        nodeTypes={nodeTypes}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
+                        onConnect={onConnect}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                        onDrop={onDrop}
+                        onSelectionChange={onSelectionChange}
+                        onInit={setReactFlowInstance}
+                        multiSelectionKeyCode={['Shift', 'Control']}
+                        fitView
+                    >
+                        <Background />
+                        <Controls />
+                    </ReactFlow>
+                </div>
+                <div style={parameterPanelStyles}>
+                    {generatedCode ? (
+                        <CodePreviewPanel code={generatedCode} onClose={() => setGeneratedCode(null)} />
+                    ) : (
+                        <ParameterPanel
+                            selectedNode={selectedNode}
+                            onUpdateNode={updateNodeData}
+                            allNodes={nodes}
+                            allEdges={edges}
+                            bpm={bpm}
+                        />
+                    )}
+                </div>
             </div>
+
+            <SequencerDock
+                state={sequencerState}
+                bpm={bpm}
+                setBpm={setBpm}
+                onPlay={handlePlay}
+                onStop={handleStop}
+                onToggleLoop={() => setIsLooping(!isLooping)}
+                isLooping={isLooping}
+                onMuteToggle={sequencerStateHooks.toggleMute}
+                onSoloToggle={sequencerStateHooks.toggleSolo}
+                onFocusTrack={(id) => console.log('Focus track', id)}
+                onToggleStep={sequencerStateHooks.toggleStep}
+            />
         </div>
     );
 }

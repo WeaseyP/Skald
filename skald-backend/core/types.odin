@@ -33,14 +33,24 @@ Connection :: struct {
 	to_port:   string,
 }
 
+Sequencer_Track :: struct {
+	target_node_id: int,
+	name:           string,
+	events:         []Note_Event,
+	mute:           bool,
+	solo:           bool,
+}
+
 Graph :: struct {
-	nodes:       map[int]Node,
-	connections: []Connection,
-	events:      []Note_Event,
+	nodes:            map[int]Node,
+	connections:      []Connection,
+	events:           []Note_Event,
+	sequencer_tracks: []Sequencer_Track,
 }
 
 Graph_Raw :: struct {
-	nodes:       []Node_Raw,
-	connections: []Connection,
-	events:      []Note_Event,
+	nodes:            []Node_Raw,
+	connections:      []Connection,
+	events:           []Note_Event,
+	sequencer_tracks: []Sequencer_Track,
 }

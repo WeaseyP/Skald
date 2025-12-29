@@ -4,7 +4,8 @@ import "core:math"
 
 // --- Voice State (Generated from Instrument subgraph) ---
 Voice_State :: struct {
-	osc_1_phase: [1]f32,
+	lfo_1_phase: f32,
+	osc_2_phase: [1]f32,
 }
 
 Voice :: struct {
@@ -18,15 +19,30 @@ Voice :: struct {
 }
 
 AudioProcessor :: struct {
-	voices: [1]Voice,
+	voices: [8]Voice,
 	next_voice_index: int,
+}
+
+Note_Event :: struct {
+	note:       u8,
+	velocity:   f32,
+	start_time: f32,
+	duration:   f32,
+}
+
+// Track: Alarm (Target Node: 1)
+track_1_Alarm_events := [?]Note_Event{
+	{ note = 60, velocity = 1.000, start_time = 0.000, duration = 0.250 },
+	{ note = 60, velocity = 1.000, start_time = 1.000, duration = 0.250 },
+	{ note = 60, velocity = 1.000, start_time = 2.000, duration = 0.250 },
+	{ note = 60, velocity = 1.000, start_time = 3.000, duration = 0.250 },
 }
 
 // --- Note On/Off Handlers ---
 note_on :: proc(p: ^AudioProcessor, note: u8, velocity: f32) {
 	// Simple 'next available' voice stealing
 	voice := &p.voices[p.next_voice_index];
-	p.next_voice_index = (p.next_voice_index + 1) % 1;
+	p.next_voice_index = (p.next_voice_index + 1) % 8;
 
 	voice.is_active = true;
 	voice.note = note;
@@ -37,7 +53,7 @@ note_on :: proc(p: ^AudioProcessor, note: u8, velocity: f32) {
 }
 
 note_off :: proc(p: ^AudioProcessor, note: u8) {
-	for i in 0..<1 {
+	for i in 0..<8 {
 		voice := &p.voices[i];
 		if voice.is_active && voice.note == note {
 			voice.time_released = voice.time_active;
@@ -53,22 +69,27 @@ init_processor :: proc(p: ^AudioProcessor) {
 process_voice :: proc(p: ^AudioProcessor, voice: ^Voice, sample_rate: f32) -> f32 {
 	node_1_out: f32;
 	node_2_out: f32;
+	node_3_out: f32;
 
 	glide_coeff := 1.0 - math.exp(-1.0 / (sample_rate * (0.050) + 0.0001));
 	voice.current_freq += (voice.target_freq - voice.current_freq) * glide_coeff;
 
-		// --- Oscillator Node 1 (Unison/Detune) ---
+		// --- LFO Node 1 ---
+		voice.state.lfo_1_phase = math.mod(voice.state.lfo_1_phase + (2 * f32(math.PI) * (4.000) / sample_rate), 2 * f32(math.PI));
+		if math.sin(voice.state.lfo_1_phase) > 0 do node_1_out = 1.000; else do node_1_out = -1.000;
+
+		// --- Oscillator Node 2 (Unison/Detune) ---
 		{
 			unison_out: f32 = 0.0;
 			unison_count := 1;
 			for i in 0..<unison_count {
 				detune_amount: f32 = 0.0;
 				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (5.000);
-				detuned_freq := (440.000) * math.pow(2.0, detune_amount / 1200.0);
+				detuned_freq := (880.000) * math.pow(2.0, detune_amount / 1200.0);
 				phase_rads := f32(0.000) * (f32(math.PI) / 180.0);
-				voice.state.osc_1_phase[i] = math.mod(voice.state.osc_1_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));
-				final_phase := voice.state.osc_1_phase[i] + phase_rads;
-				switch "Sine" {
+				voice.state.osc_2_phase[i] = math.mod(voice.state.osc_2_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));
+				final_phase := voice.state.osc_2_phase[i] + phase_rads;
+				switch "Sawtooth" {
 				case "Sawtooth":
 					unison_out += ((final_phase / f32(math.PI)) - 1.0);
 				case "Square":
@@ -79,10 +100,10 @@ process_voice :: proc(p: ^AudioProcessor, voice: ^Voice, sample_rate: f32) -> f3
 					unison_out += math.sin(final_phase);
 				}
 			}
-			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (0.500);
+			if unison_count > 0 do node_2_out = (unison_out / f32(unison_count)) * ((0.500) + (node_1_out));
 		}
 
-	return node_1_out;
+	return node_2_out;
 }
 
 // --- Main Processing Function ---
@@ -90,7 +111,7 @@ process_sample :: proc(p: ^AudioProcessor, sample_rate: f32, time: u64) -> (left
 	output_left: f32 = 0.0;
 	output_right: f32 = 0.0;
 	// NOTE: Event scheduling logic to trigger voices would go here, driven by a Note_Event array.
-	for i in 0..<1 {
+	for i in 0..<8 {
 		voice := &p.voices[i];
 		if voice.is_active {
 			mono_out := process_voice(p, voice, sample_rate);

@@ -1,0 +1,7 @@
+Enemy 1: The Aggressor
+Sound: Sawtooth Wave, Unison Detuned. Aggressive and buzzy.
+Role: Main rhythmic drive.
+Pattern: Short, staccato notes on the root and minor third.
+Parameters:
+- Waveform: Sawtooth
+- ADSR: Fast Attack (0.01), Short Decay (0.1), Medium Sustain.

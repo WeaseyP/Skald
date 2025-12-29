@@ -1,0 +1,104 @@
+{
+    "nodes": [
+        {
+            "id": 1,
+            "type": "Instrument",
+            "position": {
+                "x": 0,
+                "y": 0
+            },
+            "parameters": {
+                "polyphony": 4,
+                "glideTime": 0.1
+            },
+            "subgraph": {
+                "nodes": [
+                    {
+                        "id": 10,
+                        "type": "Oscillator",
+                        "parameters": {
+                            "waveform": "Triangle",
+                            "frequency": 1.0
+                        }
+                    },
+                    {
+                        "id": 11,
+                        "type": "ADSR",
+                        "parameters": {
+                            "attack": 0.05,
+                            "decay": 0.1,
+                            "sustain": 0.8,
+                            "release": 0.3
+                        }
+                    },
+                    {
+                        "id": 13,
+                        "type": "Delay",
+                        "parameters": {
+                            "delayTime": 0.3,
+                            "feedback": 0.4,
+                            "mix": 0.3
+                        }
+                    },
+                    {
+                        "id": 12,
+                        "type": "GraphOutput",
+                        "parameters": {}
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": 10,
+                        "from_port": "output",
+                        "to_node": 11,
+                        "to_port": "input"
+                    },
+                    {
+                        "from_node": 11,
+                        "from_port": "output",
+                        "to_node": 13,
+                        "to_port": "input"
+                    },
+                    {
+                        "from_node": 13,
+                        "from_port": "output",
+                        "to_node": 12,
+                        "to_port": "input"
+                    }
+                ]
+            }
+        }
+    ],
+    "sequencer_tracks": [
+        {
+            "target_node_id": 1,
+            "name": "Enemy 3 Lead",
+            "events": [
+                {
+                    "note": 60,
+                    "velocity": 0.7,
+                    "start_time": 0.25,
+                    "duration": 0.2
+                },
+                {
+                    "note": 63,
+                    "velocity": 0.7,
+                    "start_time": 0.5,
+                    "duration": 0.2
+                },
+                {
+                    "note": 67,
+                    "velocity": 0.7,
+                    "start_time": 0.75,
+                    "duration": 0.4
+                },
+                {
+                    "note": 65,
+                    "velocity": 0.7,
+                    "start_time": 1.25,
+                    "duration": 0.2
+                }
+            ]
+        }
+    ]
+}

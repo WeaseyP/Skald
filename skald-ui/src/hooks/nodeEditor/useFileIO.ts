@@ -8,21 +8,28 @@
 */
 import { useCallback } from 'react';
 import { Node, Edge, ReactFlowInstance } from 'reactflow';
+import { SequencerTrack } from '../../definitions/types';
 
 export const useFileIO = (
     reactFlowInstance: ReactFlowInstance | null,
     setNodes: (nodes: Node[]) => void,
     setEdges: (edges: Edge[]) => void,
     setHistory: (history: any[]) => void,
-    setFuture: (future: any[]) => void
+    setFuture: (future: any[]) => void,
+    sequencerTracks: SequencerTrack[],
+    loadSequencerTracks: (tracks: SequencerTrack[]) => void
 ) => {
     const handleSave = useCallback(() => {
         if (reactFlowInstance) {
             const flow = reactFlowInstance.toObject();
-            const graphJson = JSON.stringify(flow, null, 2);
+            const saveData = {
+                ...flow,
+                sequencerTracks
+            };
+            const graphJson = JSON.stringify(saveData, null, 2);
             window.electron.saveGraph(graphJson);
         }
-    }, [reactFlowInstance]);
+    }, [reactFlowInstance, sequencerTracks]);
 
     const handleLoad = useCallback(async () => {
         const graphJson = await window.electron.loadGraph();
@@ -32,6 +39,9 @@ export const useFileIO = (
                 const loadedNodes = flow.nodes || [];
                 setNodes(loadedNodes);
                 setEdges(flow.edges || []);
+                if (flow.sequencerTracks) {
+                    loadSequencerTracks(flow.sequencerTracks);
+                }
                 const maxId = Math.max(0, ...loadedNodes.map((n: Node) => parseInt(n.id, 10) || 0));
                 // This is a global, so we just set it. A bit of a code smell but it's how the original worked.
                 // In a larger refactor, this `id` logic would live inside the useGraphState hook.
@@ -41,7 +51,7 @@ export const useFileIO = (
                 setFuture([]);
             }
         }
-    }, [setNodes, setEdges, setHistory, setFuture]);
+    }, [setNodes, setEdges, setHistory, setFuture, loadSequencerTracks]);
 
     return { handleSave, handleLoad };
 };

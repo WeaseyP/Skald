@@ -12,6 +12,7 @@ build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
 	graph.nodes = make(map[int]Node)
 	graph.connections = graph_raw.connections
 	graph.events = graph_raw.events
+	graph.sequencer_tracks = graph_raw.sequencer_tracks
 
 	for raw_node in graph_raw.nodes {
 		node := Node {

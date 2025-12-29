@@ -20,7 +20,12 @@ Ring_Buffer :: struct {
 }
 
 App_State :: struct {
-	processor:       ^ga.AudioProcessor,
+	p1:              ^ga.AudioProcessor_Enemy1,
+	p2:              ^ga.AudioProcessor_Enemy2,
+	p3:              ^ga.AudioProcessor_Enemy3,
+	p4:              ^ga.AudioProcessor_Enemy4,
+	p_ambient:       ^ga.AudioProcessor_Ambient,
+
 	device:          ma.device,
 	ring_buffer:     Ring_Buffer,
 	mutex:           sync.Mutex,
@@ -43,7 +48,18 @@ sample_generator_thread_proc :: proc(data: rawptr) {
 		}
 
 		if samples_in_buffer < len(app_state.ring_buffer.data) - 2 {
-			left, right := ga.process_sample(app_state.processor, f32(app_state.device.sampleRate), app_state.time_in_samples)
+            // Mix 5 tracks
+			l1, r1 := ga.process_Enemy1(app_state.p1, f32(app_state.device.sampleRate), app_state.time_in_samples)
+			l2, r2 := ga.process_Enemy2(app_state.p2, f32(app_state.device.sampleRate), app_state.time_in_samples)
+			l3, r3 := ga.process_Enemy3(app_state.p3, f32(app_state.device.sampleRate), app_state.time_in_samples)
+			l4, r4 := ga.process_Enemy4(app_state.p4, f32(app_state.device.sampleRate), app_state.time_in_samples)
+			la, ra := ga.process_Ambient(app_state.p_ambient, f32(app_state.device.sampleRate), app_state.time_in_samples)
+
+            // Normalize/Mix (Simple Summation with headroom)
+            // Divide by ~2.5 to avoid clipping with 5 loud sources
+            gain := f32(0.4) 
+            left  := (l1 + l2 + l3 + l4 + la) * gain
+            right := (r1 + r2 + r3 + r4 + ra) * gain
 
 			app_state.time_in_samples += 1
 
@@ -82,64 +98,36 @@ audio_callback :: proc "c" (p_device: ^ma.device, p_output: rawptr, p_input: raw
 	sync.unlock(&app_state.mutex)
 }
 
-run_headless :: proc(filename: string, duration: f32, p: ^ga.AudioProcessor) {
-    fmt.printf("[Headless] Generating %.2f seconds of audio to '%s'...\n", duration, filename)
-    
-    f, err := os.open(filename, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0o644)
-    if err != 0 {
-        fmt.eprintln("Failed to open output file:", filename)
-        return
-    }
-    defer os.close(f)
-
-    sample_rate := f32(48000.0)
-    total_samples := int(duration * sample_rate)
-    
-    // Write CSV Header
-    os.write_string(f, "time,left,right\n")
-
-    time_samples: u64 = 0
-    for i in 0..<total_samples {
-        left, right := ga.process_sample(p, sample_rate, time_samples)
-        time_samples += 1
-        
-        line := fmt.tprintf("%f,%f,%f\n", f32(i)/sample_rate, left, right)
-        os.write_string(f, line)
-    }
-    fmt.println("[Headless] Generation complete.")
-}
-
 main :: proc() {
 	app_state: App_State
 	app_state.is_running = true
-	app_state.processor = new(ga.AudioProcessor)
-	defer free(app_state.processor)
+    
+    // Initialize Processors
+	app_state.p1 = new(ga.AudioProcessor_Enemy1)
+	app_state.p2 = new(ga.AudioProcessor_Enemy2)
+	app_state.p3 = new(ga.AudioProcessor_Enemy3)
+	app_state.p4 = new(ga.AudioProcessor_Enemy4)
+	app_state.p_ambient = new(ga.AudioProcessor_Ambient)
 
-	ga.init_processor(app_state.processor)
-	ga.note_on(app_state.processor, 60, 1.0)
+	defer free(app_state.p1)
+	defer free(app_state.p2)
+	defer free(app_state.p3)
+	defer free(app_state.p4)
+	defer free(app_state.p_ambient)
+
+	ga.init_Enemy1(app_state.p1)
+	ga.init_Enemy2(app_state.p2)
+	ga.init_Enemy3(app_state.p3)
+	ga.init_Enemy4(app_state.p4)
+	ga.init_Ambient(app_state.p_ambient)
+
+    // Note: No manual 'note_on' calls needed here anymore, the sequencer inside 'process' handles it!
     
     // Check Arguments
-    output_filename := ""
-    duration_val: f32 = 1.0
+    // Removed Headless for brevity in this debug session, focusing on interactive playback.
     
-    for arg in os.args {
-        if strings.has_prefix(arg, "-out:") {
-             output_filename = strings.trim_prefix(arg, "-out:")
-        }
-        if strings.has_prefix(arg, "-dur:") {
-            if val, ok := strconv.parse_f32(strings.trim_prefix(arg, "-dur:")); ok {
-                duration_val = val
-            }
-        }
-    }
-    
-    if output_filename != "" {
-        run_headless(output_filename, duration_val, app_state.processor)
-        return
-    }
-
     // --- Interactive Mode ---
-	app_state.ring_buffer.data = make([]f32, 4096)
+	app_state.ring_buffer.data = make([]f32, 8192) // Increased buffer size
 	defer delete(app_state.ring_buffer.data)
 
 	device_config := ma.device_config_init(.playback)
@@ -155,6 +143,7 @@ main :: proc() {
 	}
 	defer ma.device_uninit(&app_state.device)
 	fmt.printf("Audio device initialized: %s\n", app_state.device.playback.name)
+    fmt.println("Starting playback of 5 synchronized tracks...")
 
 	thread.run_with_data(&app_state, sample_generator_thread_proc)
 

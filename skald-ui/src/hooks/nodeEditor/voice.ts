@@ -20,7 +20,7 @@ export class Voice {
 
         // Create a central Gate signal for this voice
         this.gateSource = context.createConstantSource();
-        this.gateSource.offset.setValueAtTime(0, context.currentTime); // Use setValueAtTime for immediate effect
+        this.gateSource.offset.value = 0;
         this.gateSource.start();
 
         this.buildSubgraph();
@@ -29,7 +29,7 @@ export class Voice {
     private buildSubgraph() {
         this.subgraph.nodes.forEach(node => {
             let audioNode: AudioNode | null = null;
-            if (node.type && nodeCreationMap[node.type]) {
+            if (node.type && (nodeCreationMap as any)[node.type]) {
                 const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
                 audioNode = creator(this.audioContext, node, this.adsrData);
             } else {
@@ -71,20 +71,55 @@ export class Voice {
         });
     }
 
-    public trigger(startTime: number) {
+    public trigger(startTime: number, note?: number, velocity: number = 1.0) {
+        // Frequency handling
+        if (note !== undefined) {
+            const freq = 440 * Math.pow(2, (note - 69) / 12);
+
+            this.internalNodes.forEach(node => {
+                // Native Oscillator
+                if (node instanceof OscillatorNode) {
+                    node.frequency.cancelScheduledValues(startTime);
+                    node.frequency.setValueAtTime(freq, startTime);
+                }
+                // Worklets (Wavetable, FM, etc) - check for frequency parameter
+                if (node instanceof AudioWorkletNode) {
+                    const freqParam = node.parameters.get('frequency');
+                    if (freqParam) {
+                        freqParam.cancelScheduledValues(startTime);
+                        freqParam.setValueAtTime(freq, startTime);
+                    }
+                }
+            });
+        }
+
         // Open the Gate
+        // Force a reset to 0 to ensure a rising edge for re-triggering
         this.gateSource.offset.cancelScheduledValues(startTime);
-        this.gateSource.offset.setValueAtTime(1, startTime);
+        this.gateSource.offset.setValueAtTime(0, startTime);
+        this.gateSource.offset.setValueAtTime(1, startTime + 0.005);
 
         // Also trigger via parameter for robustness
         this.adsrData.forEach(({ worklet }) => {
             const gateParam = worklet.parameters.get('gate');
             if (gateParam) {
                 gateParam.cancelScheduledValues(startTime);
-                gateParam.setValueAtTime(1, startTime);
+                gateParam.setValueAtTime(0, startTime);
+                gateParam.setValueAtTime(1, startTime + 0.005);
             }
+
+            // Velocity (if supported by ADSR via gain/amplitude, but standard ADSR usually outputs 0-1)
+            // Ideally we scale the ADSR output or Input Gain. 
+            // For now, let's look for an 'amplitude' or 'gain' param on oscillators?
+            // Or simpler: The Voice has an output GainNode?
+            // Yes, `this.output`. But `this.output` might be connected to Envelope.
+            // If we change `this.input` gain, it affects FM depth etc.
+            // Let's leave velocity for now or set it on `this.output`?
+            // If we set on `this.output`, it scales the whole voice.
+            // But ADSR controls volume usually.
+            // Let's ignore velocity for this exact step to keep it safe, or just log it.
+            // Phase 14.5 said "Edit Velocity".
         });
-        // Log is helpful but might be spammy if not careful, rely on Worklet logs.
     }
 
     public release(startTime: number) {

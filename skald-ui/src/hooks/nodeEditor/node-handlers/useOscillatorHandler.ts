@@ -8,8 +8,7 @@
 import { useCallback } from 'react';
 import { Node } from 'reactflow';
 import { createOscillatorNode } from '../audioNodeFactory/createOscillatorNode';
-
-type AudioNodeMap = Map<string, any>;
+import { AudioNodeMap } from '../types';
 
 interface UseOscillatorHandlerArgs {
     audioContextRef: React.MutableRefObject<AudioContext | null>;

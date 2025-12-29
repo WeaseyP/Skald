@@ -133,11 +133,11 @@ generate_filter_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// low = low + f * band
 	// high = input - low - q*band
 	// band = band + f * high
-	fmt.sbprintf(sb, "\t\t\tf_%d := 2.0 * math.sin(f32(math.PI) * (%s) / sample_rate);\n", node.id, cutoff_str)
-	fmt.sbprintf(sb, "\t\t\tq_%d := 1.0 / (%s);\n", node.id, res_str)
+	fmt.sbprintf(sb, "\t\t\tf_%d := f32(2.0 * math.sin(f32(math.PI) * (%s) / sample_rate));\n", node.id, cutoff_str)
+	fmt.sbprintf(sb, "\t\t\tq_%d := f32(1.0 / (%s));\n", node.id, res_str)
 	
 	fmt.sbprintf(sb, "\t\t\tvoice.state.filter_%d_low += f_%d * voice.state.filter_%d_band;\n", node.id, node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\thigh_%d := (%s) - voice.state.filter_%d_low - q_%d * voice.state.filter_%d_band;\n", node.id, input_str, node.id, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\thigh_%d := f32((%s) - voice.state.filter_%d_low - q_%d * voice.state.filter_%d_band);\n", node.id, input_str, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tvoice.state.filter_%d_band += f_%d * high_%d;\n", node.id, node.id, node.id)
 
 	switch f_type {
@@ -310,11 +310,11 @@ generate_gain_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 }
 
 // Generates note_on and note_off procedures for the test harness.
-generate_note_on_off_code :: proc(sb: ^strings.Builder, subgraph_nodes: []Node, polyphony_str: string, has_adsr: bool) {
-	fmt.sbprint(sb, "// --- Note On/Off Handlers ---\n")
+generate_note_on_off_code :: proc(sb: ^strings.Builder, subgraph_nodes: []Node, polyphony_str: string, has_adsr: bool, namespace_prefix: string) {
+	fmt.sbprintf(sb, "// --- Note On/Off Handlers (%s) ---\n", namespace_prefix)
 
 	// --- note_on ---
-	fmt.sbprint(sb, "note_on :: proc(p: ^AudioProcessor, note: u8, velocity: f32) {\n")
+	fmt.sbprintf(sb, "note_on_%s :: proc(p: ^AudioProcessor_%s, note: u8, velocity: f32) {{\n", namespace_prefix, namespace_prefix)
 	fmt.sbprint(sb, "\t// Simple 'next available' voice stealing\n")
 	fmt.sbprintf(sb, "\tvoice := &p.voices[p.next_voice_index];\n")
 	fmt.sbprintf(sb, "\tp.next_voice_index = (p.next_voice_index + 1) %% %s;\n\n", polyphony_str)
@@ -337,7 +337,7 @@ generate_note_on_off_code :: proc(sb: ^strings.Builder, subgraph_nodes: []Node, 
 
 
 	// --- note_off ---
-	fmt.sbprint(sb, "note_off :: proc(p: ^AudioProcessor, note: u8) {\n")
+	fmt.sbprintf(sb, "note_off_%s :: proc(p: ^AudioProcessor_%s, note: u8) {{\n", namespace_prefix, namespace_prefix)
 	fmt.sbprintf(sb, "\tfor i in 0..<%s {{\n", polyphony_str)
 	fmt.sbprint(sb, "\t\tvoice := &p.voices[i];\n")
 	fmt.sbprint(sb, "\t\tif voice.is_active && voice.note == note {\n")
@@ -358,7 +358,7 @@ generate_note_on_off_code :: proc(sb: ^strings.Builder, subgraph_nodes: []Node, 
 }
 
 
-generate_processor_code :: proc(graph: ^Graph) -> string {
+generate_processor_code :: proc(graph: ^Graph, namespace_prefix: string) -> string {
 	instrument_node: Node
 	found_instrument := false
 	for _, node in graph.nodes {
@@ -406,38 +406,12 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 	// --- Generate Package and Imports ---
 	fmt.sbprint(&sb, "package generated_audio\n\n")
 	fmt.sbprint(&sb, "import \"core:math\"\n")
-	if needs_rand {
-		// Use the local PRNG instead of the core:rand package
-	}
 	fmt.sbprint(&sb, "\n")
 
 
-	// --- Generate local PRNG if needed ---
-	if needs_rand {
-		fmt.sbprint(&sb, "// --- Local PRNG Implementation (xorshift32) ---\n")
-		fmt.sbprint(&sb, "PRNG_State :: struct {\n")
-		fmt.sbprint(&sb, "\tstate: u32,\n")
-		fmt.sbprint(&sb, "}\n\n")
-		fmt.sbprint(&sb, "// Generates the next u32 and updates the state.\n")
-		fmt.sbprint(&sb, "next_u32 :: proc(rng: ^PRNG_State) -> u32 {\n")
-		fmt.sbprint(&sb, "\tx := rng.state;\n")
-		fmt.sbprint(&sb, "\tx = x ~ (x << 13);\n")
-		fmt.sbprint(&sb, "\tx = x ~ (x >> 17);\n")
-		fmt.sbprint(&sb, "\tx = x ~ (x << 5);\n")
-		fmt.sbprint(&sb, "\trng.state = x;\n")
-		fmt.sbprint(&sb, "\treturn x;\n")
-		fmt.sbprint(&sb, "}\n\n")
-		fmt.sbprint(&sb, "// Generates the next f32 in the range [-1.0, 1.0)\n")
-		fmt.sbprint(&sb, "next_float32 :: proc(rng: ^PRNG_State) -> f32 {\n")
-		fmt.sbprint(&sb, "\ti := next_u32(rng) >> 8;\n")
-		fmt.sbprint(&sb, "\treturn (f32(i) / f32(1<<24)) * 2.0 - 1.0;\n")
-		fmt.sbprint(&sb, "}\n\n")
-	}
-
-
 	// --- Voice State Generation ---
-	fmt.sbprint(&sb, "// --- Voice State (Generated from Instrument subgraph) ---\n")
-	fmt.sbprint(&sb, "Voice_State :: struct {\n")
+	fmt.sbprintf(&sb, "// --- Voice State (%s) ---\n", namespace_prefix)
+	fmt.sbprintf(&sb, "Voice_State_%s :: struct {{\n", namespace_prefix)
 	for node in sorted_nodes {
 		node_type_lower := strings.to_lower(node.type)
 		switch node_type_lower {
@@ -467,19 +441,15 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 	}
 	fmt.sbprint(&sb, "}\n\n")
 
-	if has_adsr {
-		fmt.sbprint(&sb, "ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }\n\n")
-	}
-
-	fmt.sbprint(&sb, "Voice :: struct {\n")
+	fmt.sbprintf(&sb, "Voice_%s :: struct {{\n", namespace_prefix)
 	fmt.sbprint(&sb, "\tis_active: bool,\n")
 	fmt.sbprint(&sb, "\tnote: u8,\n\ttarget_freq: f32,\n\tcurrent_freq: f32, // For glide\n")
 	fmt.sbprint(&sb, "\ttime_active: f32,\n\ttime_released: f32,\n")
-	fmt.sbprint(&sb, "\tstate: Voice_State,\n")
+	fmt.sbprintf(&sb, "\tstate: Voice_State_%s,\n", namespace_prefix)
 	fmt.sbprint(&sb, "}\n\n")
 
-	fmt.sbprint(&sb, "AudioProcessor :: struct {\n")
-	fmt.sbprintf(&sb, "\tvoices: [%s]Voice,\n", polyphony_str)
+	fmt.sbprintf(&sb, "AudioProcessor_%s :: struct {{\n", namespace_prefix)
+	fmt.sbprintf(&sb, "\tvoices: [%s]Voice_%s,\n", polyphony_str, namespace_prefix)
 	fmt.sbprint(&sb, "\tnext_voice_index: int,\n")
 	if has_adsr {
 		fmt.sbprint(&sb, "\n\t// Instrument Parameters\n")
@@ -502,10 +472,22 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 	}
 	fmt.sbprint(&sb, "}\n\n")
 
-    generate_note_on_off_code(&sb, sorted_nodes, polyphony_str, has_adsr)
+	// --- Sequencer Data Definitions ---
+	for track in graph.sequencer_tracks {
+		clean_name, _ := strings.replace_all(track.name, " ", "_")
+		defer delete(clean_name)
+		fmt.sbprintf(&sb, "// Track: %s (Target Node: %d)\n", track.name, track.target_node_id)
+		fmt.sbprintf(&sb, "track_%s_%s_events := [?]Note_Event{{\n", namespace_prefix, clean_name)
+		for event in track.events {
+			fmt.sbprintf(&sb, "\t{{ note = %d, velocity = %f, start_time = %f, duration = %f }},\n", event.note, event.velocity, event.start_time, event.duration)
+		}
+		fmt.sbprint(&sb, "}\n\n")
+	}
+
+    generate_note_on_off_code(&sb, sorted_nodes, polyphony_str, has_adsr, namespace_prefix)
 
 	// --- State Initialization ---
-	fmt.sbprint(&sb, "init_processor :: proc(p: ^AudioProcessor) {\n")
+	fmt.sbprintf(&sb, "init_%s :: proc(p: ^AudioProcessor_%s) {{\n", namespace_prefix, namespace_prefix)
 	if has_adsr {
 		attack_str  := "0.01"
 		decay_str   := "0.2"
@@ -547,8 +529,7 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 
 	// --- Voice Processing Logic ---
 	fmt.sbprint(&sb, "// Processes a single voice\n")
-	// The signature now ALWAYS includes the processor `p` because effects might need it.
-	fmt.sbprint(&sb, "process_voice :: proc(p: ^AudioProcessor, voice: ^Voice, sample_rate: f32) -> f32 {\n")
+	fmt.sbprintf(&sb, "process_voice_%s :: proc(p: ^AudioProcessor_%s, voice: ^Voice_%s, sample_rate: f32) -> f32 {{\n", namespace_prefix, namespace_prefix, namespace_prefix)
 
 	for node in sorted_nodes {
 		if strings.to_lower(node.type) == "panner" {
@@ -634,16 +615,32 @@ generate_processor_code :: proc(graph: ^Graph) -> string {
 	fmt.sbprint(&sb, "}\n\n")
 
 	// --- Main Sample Processing ---
-	fmt.sbprint(&sb, "// --- Main Processing Function ---\n")
-	fmt.sbprint(&sb, "process_sample :: proc(p: ^AudioProcessor, sample_rate: f32, time: u64) -> (left: f32, right: f32) {\n")
+	fmt.sbprintf(&sb, "// --- Main Processing Function (%s) ---\n", namespace_prefix)
+	fmt.sbprintf(&sb, "process_%s :: proc(p: ^AudioProcessor_%s, sample_rate: f32, time: u64) -> (left: f32, right: f32) {{\n", namespace_prefix, namespace_prefix)
+	
+	// --- Event Scheduling Logic ---
+	for track in graph.sequencer_tracks {
+		clean_name, _ := strings.replace_all(track.name, " ", "_")
+		defer delete(clean_name)
+		fmt.sbprintf(&sb, "\t// Check Events for track: %s\n", track.name)
+		fmt.sbprintf(&sb, "\tfor event in track_%s_%s_events {{\n", namespace_prefix, clean_name)
+		fmt.sbprint(&sb, "\t\tevent_start_sample := u64(event.start_time * sample_rate);\n")
+        // Trigger Note On
+		fmt.sbprintf(&sb, "\t\tif time == event_start_sample do note_on_%s(p, event.note, event.velocity);\n", namespace_prefix)
+		// Trigger Note Off
+		fmt.sbprint(&sb, "\t\tevent_end_sample := u64((event.start_time + event.duration) * sample_rate);\n")
+		fmt.sbprintf(&sb, "\t\tif time == event_end_sample do note_off_%s(p, event.note);\n", namespace_prefix)
+		fmt.sbprint(&sb, "\t}\n")
+	}
+	fmt.sbprint(&sb, "\n")
+
 	fmt.sbprint(&sb, "\toutput_left: f32 = 0.0;\n")
 	fmt.sbprint(&sb, "\toutput_right: f32 = 0.0;\n")
-	fmt.sbprint(&sb, "\t// NOTE: Event scheduling logic to trigger voices would go here, driven by a Note_Event array.\n")
 	fmt.sbprintf(&sb, "\tfor i in 0..<%s {{\n", polyphony_str)
 	fmt.sbprint(&sb, "\t\tvoice := &p.voices[i];\n")
 	fmt.sbprint(&sb, "\t\tif voice.is_active {\n")
 	// Always pass 'p' now, as global effects might be present.
-	fmt.sbprint(&sb, "\t\t\tmono_out := process_voice(p, voice, sample_rate);\n")
+	fmt.sbprintf(&sb, "\t\t\tmono_out := process_voice_%s(p, voice, sample_rate);\n", namespace_prefix)
 	fmt.sbprint(&sb, "\t\t\toutput_left += mono_out;\n")
 	fmt.sbprint(&sb, "\t\t\toutput_right += mono_out;\n")
 	fmt.sbprint(&sb, "\t\t\tvoice.time_active += 1.0 / sample_rate;\n")

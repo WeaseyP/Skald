@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Instrument",
+      "position": { "x": 0, "y": 0 },
+      "parameters": { "polyphony": 4, "unison": 2, "detune": 5.0 },
+      "subgraph": {
+        "nodes": [
+            { "id": 10, "type": "Oscillator", "parameters": { "waveform": "Sawtooth", "frequency": 1.0 } },
+            { "id": 11, "type": "ADSR", "parameters": { "attack": 0.01, "decay": 0.1, "sustain": 0.4, "release": 0.1 } },
+            { "id": 12, "type": "GraphOutput", "parameters": {} }
+        ],
+        "connections": [
+            { "from_node": 10, "from_port": "output", "to_node": 11, "to_port": "input" },
+            { "from_node": 11, "from_port": "output", "to_node": 12, "to_port": "input" }
+        ]
+      }
+    }
+  ],
+  "sequencer_tracks": [
+    {
+      "target_node_id": 1,
+      "name": "Enemy 1 Pattern",
+      "events": [
+        { "note": 48, "velocity": 0.8, "start_time": 0.0, "duration": 0.2 },
+        { "note": 48, "velocity": 0.6, "start_time": 0.25, "duration": 0.2 },
+        { "note": 51, "velocity": 0.9, "start_time": 0.5, "duration": 0.2 },
+        { "note": 48, "velocity": 0.6, "start_time": 0.75, "duration": 0.2 }
+      ],
+      "mute": false, "solo": false
+    }
+  ],
+  "connections": []
+}

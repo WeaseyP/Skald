@@ -1,0 +1,102 @@
+{
+    "nodes": [
+        {
+            "id": 1,
+            "type": "Instrument",
+            "position": {
+                "x": 0,
+                "y": 0
+            },
+            "parameters": {
+                "polyphony": 4
+            },
+            "subgraph": {
+                "nodes": [
+                    {
+                        "id": 10,
+                        "type": "Oscillator",
+                        "parameters": {
+                            "waveform": "Square",
+                            "frequency": 0.5
+                        }
+                    },
+                    {
+                        "id": 11,
+                        "type": "ADSR",
+                        "parameters": {
+                            "attack": 0.05,
+                            "decay": 0.2,
+                            "sustain": 0.6,
+                            "release": 0.2
+                        }
+                    },
+                    {
+                        "id": 12,
+                        "type": "Filter",
+                        "parameters": {
+                            "type": "LowPass",
+                            "cutoff": 800.0
+                        }
+                    },
+                    {
+                        "id": 13,
+                        "type": "GraphOutput",
+                        "parameters": {}
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": 10,
+                        "from_port": "output",
+                        "to_node": 12,
+                        "to_port": "input"
+                    },
+                    {
+                        "from_node": 12,
+                        "from_port": "output",
+                        "to_node": 11,
+                        "to_port": "input"
+                    },
+                    {
+                        "from_node": 11,
+                        "from_port": "output",
+                        "to_node": 13,
+                        "to_port": "input"
+                    }
+                ]
+            }
+        }
+    ],
+    "sequencer_tracks": [
+        {
+            "target_node_id": 1,
+            "name": "Enemy 2 Bass",
+            "events": [
+                {
+                    "note": 36,
+                    "velocity": 0.9,
+                    "start_time": 0.0,
+                    "duration": 0.4
+                },
+                {
+                    "note": 36,
+                    "velocity": 0.8,
+                    "start_time": 0.5,
+                    "duration": 0.4
+                },
+                {
+                    "note": 38,
+                    "velocity": 0.8,
+                    "start_time": 1.0,
+                    "duration": 0.4
+                },
+                {
+                    "note": 31,
+                    "velocity": 0.9,
+                    "start_time": 1.5,
+                    "duration": 0.4
+                }
+            ]
+        }
+    ]
+}
