@@ -38,9 +38,25 @@ export const convertBpmToSeconds = (bpm: number, division: string): number => {
 
 export const connectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge | Connection) => {
     try {
-        const effectiveSource = (sourceNode as any).output instanceof AudioNode ? (sourceNode as any).output : sourceNode;
-        const handle = edge.targetHandle;
+        let effectiveSource = (sourceNode as any).output instanceof AudioNode ? (sourceNode as any).output : sourceNode;
 
+        // Handle MidiInput outputs (gate, velocity)
+        if (edge.sourceHandle === 'gate' && (sourceNode as any).gate) {
+            effectiveSource = (sourceNode as any).gate;
+        } else if (edge.sourceHandle === 'velocity' && (sourceNode as any).velocity) {
+            effectiveSource = (sourceNode as any).velocity;
+        }
+
+        const handle = edge.targetHandle;
+        const skaldNode = (targetNode as any)._skaldNode;
+
+        // 1. Check explicit inputs on the SkaldWrapper (e.g. input_freq on SkaldOscillatorNode)
+        if (skaldNode && handle && (skaldNode as any)[handle] instanceof AudioNode) {
+            effectiveSource.connect((skaldNode as any)[handle]);
+            return;
+        }
+
+        // 2. Check Input Gains (Dynamic input ports)
         if (targetNode.hasOwnProperty('inputGains') && handle && handle.startsWith('input_')) {
             const context = targetNode.context as AudioContext;
             let inputGain = targetNode.inputGains.get(handle);
@@ -50,16 +66,40 @@ export const connectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge 
                 targetNode.inputGains.set(handle, inputGain);
             }
             effectiveSource.connect(inputGain);
-        } else if (targetNode instanceof AudioWorkletNode && handle?.startsWith('input_')) {
+            return;
+        }
+
+        // 3. Check AudioWorkletParams
+        if (targetNode instanceof AudioWorkletNode && handle?.startsWith('input_')) {
             const paramName = handle.substring(6);
             const param = targetNode.parameters.get(paramName);
-            if (param) effectiveSource.connect(param);
-        } else if (handle && targetNode[handle as keyof AudioNode] instanceof AudioParam) {
-            effectiveSource.connect(targetNode[handle as keyof AudioNode]);
-        } else if (handle && targetNode[handle as keyof AudioNode] instanceof AudioNode) {
-            effectiveSource.connect(targetNode[handle as keyof AudioNode]);
+            if (param) {
+                effectiveSource.connect(param);
+                return;
+            }
+        }
+
+        // 4. Map Handles to Standard AudioParams
+        let paramName = handle;
+        if (handle === 'input_cutoff') paramName = 'frequency';
+        if (handle === 'input_resonance') paramName = 'Q';
+        if (handle === 'input_freq') paramName = 'frequency';
+        if (handle === 'input_gain') paramName = 'gain';
+        if (handle === 'input_detune') paramName = 'detune';
+
+        if (paramName && (targetNode as any)[paramName] instanceof AudioParam) {
+            effectiveSource.connect((targetNode as any)[paramName]);
+            return;
+        }
+
+        // 5. Direct Node Input (Audio Connection)
+        if (handle && (targetNode as any)[handle] instanceof AudioNode) {
+            effectiveSource.connect((targetNode as any)[handle]);
         } else {
-            effectiveSource.connect(targetNode);
+            // Fallback: If no handle match or just "input", connect to node itself
+            if (effectiveSource.connect) {
+                effectiveSource.connect(targetNode);
+            }
         }
     } catch (e) {
         console.error(`Failed to connect ${edge.source} to ${edge.target}`, e);

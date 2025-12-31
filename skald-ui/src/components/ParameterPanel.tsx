@@ -414,6 +414,12 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                         <CustomSlider min={0} max={1} value={data.gain ?? 0.75} onChange={val => handleParameterChange('gain', val, subNodeId || node.id)} />
                     )}
                 </>);
+            case 'VisualGainNode':
+                return (<>
+                    {createControl('gain', 'Gain',
+                        <CustomSlider min={0} max={1} value={data.gain ?? 0.75} onChange={val => handleParameterChange('gain', val, subNodeId || node.id)} />
+                    )}
+                </>);
             case 'instrument':
                 return (<>
                     {createControl('name', 'Instrument Name',
@@ -468,14 +474,95 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                             style={{
                                 ...inputStyles,
                                 cursor: 'pointer',
-                                background: '#e8590c',
-                                borderColor: '#d9480f',
-                                fontWeight: 'bold'
                             }}
                         >
                             Test Audio
                         </button>
                     </div>
+                );
+            case 'VisualGainNode':
+            case 'gain':
+                return (
+                    <>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={labelStyles}>Gain</label>
+                            <CustomSlider
+                                min={0}
+                                max={2}
+                                value={data.gain ?? 1}
+                                onChange={(val) => handleParameterChange('gain', val, subNodeId || node.id)}
+                            />
+                        </div>
+                    </>
+                );
+            case 'mapper':
+                return (
+                    <>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={labelStyles}>Input Min</label>
+                            <CustomSlider
+                                min={-100}
+                                max={100}
+                                value={data.inMin ?? 0}
+                                onChange={(val) => handleParameterChange('inMin', val, subNodeId || node.id)}
+                            />
+                        </div>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={labelStyles}>Input Max</label>
+                            <CustomSlider
+                                min={-100}
+                                max={100}
+                                value={data.inMax ?? 1}
+                                onChange={(val) => handleParameterChange('inMax', val, subNodeId || node.id)}
+                            />
+                        </div>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={labelStyles}>Output Min</label>
+                            <CustomSlider
+                                min={-10000}
+                                max={10000}
+                                value={data.outMin ?? 0}
+                                onChange={(val) => handleParameterChange('outMin', val, subNodeId || node.id)}
+                            />
+                        </div>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={labelStyles}>Output Max</label>
+                            <CustomSlider
+                                min={-10000}
+                                max={10000}
+                                value={data.outMax ?? 1}
+                                onChange={(val) => handleParameterChange('outMax', val, subNodeId || node.id)}
+                            />
+                        </div>
+                    </>
+                );
+            case 'midiInput':
+                return (
+                    <>
+                        {createControl('device', 'MIDI Device',
+                            <select
+                                name="device"
+                                value={data.device ?? 'All'}
+                                onChange={(e) => handleGenericChange(e, subNodeId || node.id)}
+                                style={inputStyles}
+                            >
+                                <option value="All">All Devices</option>
+                                <option value="Device A">Device A (Mock)</option>
+                                <option value="Device B">Device B (Mock)</option>
+                            </select>,
+                            false
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                            <label style={labelStyles}>Enable MPE</label>
+                            <input
+                                type="checkbox"
+                                name="useMpe"
+                                checked={data.useMpe ?? false}
+                                onChange={(e) => handleGenericChange(e, subNodeId || node.id)}
+                                style={{ height: '18px', width: '18px', cursor: 'pointer' }}
+                            />
+                        </div>
+                    </>
                 );
         }
     };

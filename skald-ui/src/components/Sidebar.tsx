@@ -102,15 +102,17 @@ interface SidebarProps {
     onBpmChange: (newBpm: number) => void;
     isLooping: boolean;
     onLoopToggle: () => void;
+    onExplodeInstrument: () => void;
+    canExplodeInstrument: boolean;
 }
 
 
 // --- MAIN COMPONENT ---
 
-const Sidebar: React.FC<SidebarProps> = ({ 
-    onGenerate, 
-    onPlay, 
-    onStop, 
+const Sidebar: React.FC<SidebarProps> = ({
+    onGenerate,
+    onPlay,
+    onStop,
     isPlaying,
     onSave,
     onLoad,
@@ -121,6 +123,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     onBpmChange,
     isLooping,
     onLoopToggle,
+    onExplodeInstrument,
+    canExplodeInstrument,
 }) => {
 
     const onDragStart = (event: React.DragEvent, nodeType: string) => {
@@ -134,10 +138,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <div>
                 <h2 style={sectionTitleStyles}>Global</h2>
-                <label style={{display: 'block', textAlign: 'center', marginBottom: '5px'}}>BPM</label>
-                <input 
-                    type="number" 
-                    value={bpm} 
+                <label style={{ display: 'block', textAlign: 'center', marginBottom: '5px' }}>BPM</label>
+                <input
+                    type="number"
+                    value={bpm}
                     onChange={(e) => onBpmChange(parseInt(e.target.value, 10))}
                     style={bpmInputStyles}
                     min="20"
@@ -151,10 +155,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {!isPlaying ? (
                     <button style={secondaryButtonStyles} onClick={onPlay}>Play</button>
                 ) : (
-                    <button style={{...secondaryButtonStyles, background: '#C53030'}} onClick={onStop}>Stop</button>
+                    <button style={{ ...secondaryButtonStyles, background: '#C53030' }} onClick={onStop}>Stop</button>
                 )}
-                <button 
-                    style={isLooping ? activeLoopButtonStyles : secondaryButtonStyles} 
+                <button
+                    style={isLooping ? activeLoopButtonStyles : secondaryButtonStyles}
                     onClick={onLoopToggle}
                 >
                     {isLooping ? 'Looping' : 'Loop'}
@@ -165,21 +169,29 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <div>
                 <h2 style={sectionTitleStyles}>Grouping</h2>
-                <button 
-                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles} 
+                <button
+                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles}
                     onClick={onCreateInstrument}
                     disabled={!canCreateInstrument}
                     title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select 2 or more nodes to create an instrument"}
                 >
                     Create Instrument
                 </button>
-                <button 
-                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles} 
+                <button
+                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles}
                     onClick={onCreateGroup}
                     disabled={!canCreateInstrument}
                     title={canCreateInstrument ? "Group selected nodes visually" : "Select 2 or more nodes to create a group"}
                 >
                     Create Group
+                </button>
+                <button
+                    style={canExplodeInstrument ? secondaryButtonStyles : disabledButtonStyles}
+                    onClick={onExplodeInstrument}
+                    disabled={!canExplodeInstrument}
+                    title={canExplodeInstrument ? "Break instrument back into its components" : "Select exactly 1 instrument to explode"}
+                >
+                    Explode Instrument
                 </button>
             </div>
 
@@ -197,8 +209,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'reverb')} draggable>Reverb</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'distortion')} draggable>Distortion</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'mixer')} draggable>Mixer</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'mapper')} draggable>Mapper</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'panner')} draggable>Panner</div>
+                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'gain')} draggable>VCA</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'output')} draggable>Output</div>
+                <div style={{ ...nodeStyles, borderColor: '#F6E05E', color: '#F6E05E' }} onDragStart={(event) => onDragStart(event, 'midiInput')} draggable>MIDI Input</div>
             </div>
         </div>
     );

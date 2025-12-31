@@ -52,6 +52,7 @@ export const useAdsrHandler = ({ audioContextRef, audioNodes, adsrNodes }: UseAd
 
         // Store the VCA as the main audio node
         (masterNode as any).envelopeNode = envelopeNode; // Keep ref for cleanup
+        (masterNode as any).output = envelopeNode; // Expose internal envelope as the 'output' source
         audioNodes.current.set(node.id, masterNode);
 
     }, [audioContextRef, audioNodes, adsrNodes]);

@@ -134,6 +134,18 @@ export interface OutputParams extends BaseNodeParams {
   lastTrigger?: number;
 }
 
+export interface MidiInputParams extends BaseNodeParams {
+  device: string;
+  useMpe: boolean;
+}
+
+export interface MapperParams extends BaseNodeParams {
+  inMin: number;
+  inMax: number;
+  outMin: number;
+  outMax: number;
+}
+
 // === Generic Graph Interfaces (for Subgraphs) ===
 
 /**
@@ -203,6 +215,8 @@ export type NodeParams =
   | PannerParams
   | GainParams
   | OutputParams
+  | MidiInputParams
+  | MapperParams
   | InstrumentParams;
 
 // === Sequencer Types ===

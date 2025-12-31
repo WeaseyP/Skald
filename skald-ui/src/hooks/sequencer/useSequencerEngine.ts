@@ -82,13 +82,33 @@ export const useSequencerEngine = (
                 logger.debug('SequencerEngine', `Triggering note on ${track.name} at step ${stepNumber}`);
                 const targetNode = audioNodesRef.current.get(track.targetNodeId);
                 if (targetNode && targetNode instanceof Instrument) {
-                    // Trigger instrument
-                    // We need to pass 'time' to trigger so it schedules the oscillator start accurately
-                    // Instrument.trigger currently takes no args in the previous implementation?
-                    // I need to check Instrument.trigger signature.
-                    // The plan says: "Wire track events to the Instrument.trigger(time, note, velocity) method"
-                    // So I will assume I need to update Instrument.trigger to accept time.
-                    targetNode.trigger(time, noteEvent.note, noteEvent.velocity);
+                    // Calculate step duration
+                    const secondsPerBeat = 60.0 / bpm;
+                    const stepDuration = 0.25 * secondsPerBeat;
+
+                    // Tie Logic: Check if next step is active on this track
+                    // Note: We need to handle the loop wrap-around carefully. 
+                    // If we are at step 15, next is 0. If loop is enabled, we check 0.
+                    // If loop is NOT enabled, there is no next step after 15 (or max steps).
+                    // Assuming 16 steps for now based on context usage. 
+                    // Ideally we use track.steps if available, but for now hardcoded 16 or current wrap logic is 16.
+                    const MAX_STEPS = 16;
+                    const nextStep = (stepNumber + 1) % MAX_STEPS;
+
+                    // Only tie if we are not at end, or if we ARE looping and at end
+                    // Actually simple check: Is there a note at nextStep?
+                    let isTied = false;
+                    if (isLooping || stepNumber < MAX_STEPS - 1) {
+                        isTied = track.notes.some(n => n.step === nextStep);
+                    }
+
+                    const voiceIndex = targetNode.trigger(time, noteEvent.note, noteEvent.velocity);
+
+                    if (!isTied) {
+                        // Schedule gate off at end of step
+                        // To allow small release tails without clicking, we might want exact time.
+                        targetNode.releaseVoice(voiceIndex, time + stepDuration);
+                    }
                 }
             }
         });

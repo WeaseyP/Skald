@@ -24,8 +24,10 @@ import {
     DistortionParams,
     MixerParams,
     PannerParams,
+    GainParams,
     OutputParams,
     InstrumentParams,
+    MidiInputParams,
     NodeParams
 } from './types';
 
@@ -34,9 +36,13 @@ import {
 export interface NodeDefinition {
     type: string;
     label: string;
-    defaultParameters: NodeParams;
+    defaultParameters: any; // Relaxed from NodeParams to avoid 'inMin' mismatch
     codegenType: string;
+    inputs?: string[];
+    outputs?: string[];
 }
+
+
 
 // --- Default Parameter Objects ---
 
@@ -171,11 +177,30 @@ const defaultInstrumentParams: InstrumentParams = {
 
 // --- Master Node Definitions Manifest ---
 
+const defaultMidiInputParams: MidiInputParams = {
+    device: 'All',
+    useMpe: false,
+    exposedParameters: ['device', 'useMpe']
+};
+
 export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
     fmOperator: { type: 'fmOperator', label: 'FM Operator', defaultParameters: defaultFmOperatorParams, codegenType: 'FmOperator' },
     wavetable: { type: 'wavetable', label: 'Wavetable', defaultParameters: defaultWavetableParams, codegenType: 'Wavetable' },
     sampleHold: { type: 'sampleHold', label: 'S & H', defaultParameters: defaultSampleHoldParams, codegenType: 'SampleHold' },
     lfo: { type: 'lfo', label: 'LFO', defaultParameters: defaultLfoParams, codegenType: 'LFO' },
+    mapper: {
+        type: 'mapper',
+        label: 'Mapper (Scale)',
+        defaultParameters: {
+            inMin: 0,
+            inMax: 1,
+            outMin: 0,
+            outMax: 20000
+        },
+        codegenType: 'Mapper',
+        inputs: ['input'],
+        outputs: ['output']
+    },
     oscillator: { type: 'oscillator', label: 'Oscillator', defaultParameters: defaultOscillatorParams, codegenType: 'Oscillator' },
     filter: { type: 'filter', label: 'Filter', defaultParameters: defaultFilterParams, codegenType: 'Filter' },
     noise: { type: 'noise', label: 'Noise', defaultParameters: defaultNoiseParams, codegenType: 'Noise' },
@@ -191,4 +216,5 @@ export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
     group: { type: 'group', label: 'Group', defaultParameters: { exposedParameters: [] }, codegenType: 'Group' },
     InstrumentInput: { type: 'InstrumentInput', label: 'Input', defaultParameters: {}, codegenType: 'GraphInput' },
     InstrumentOutput: { type: 'InstrumentOutput', label: 'Output', defaultParameters: {}, codegenType: 'GraphOutput' },
+    midiInput: { type: 'midiInput', label: 'MIDI Input', defaultParameters: defaultMidiInputParams, codegenType: 'MidiInput' },
 };

@@ -9,7 +9,7 @@ const baseNodeStyles: React.CSSProperties = {
     textAlign: 'center'
 };
 
-const oscillatorNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#e6fcf5', borderColor: '#2f9e44' };
+const gainNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#E9D8FD', borderColor: '#B794F4' };
 
 const handleLabelStyles: React.CSSProperties = {
     fontSize: '0.6em',
@@ -18,19 +18,20 @@ const handleLabelStyles: React.CSSProperties = {
     pointerEvents: 'none'
 };
 
-const OscillatorNodeComponent: React.FC<NodeProps> = ({ data }) => {
+const GainNodeComponent = ({ data }: NodeProps) => {
     return (
-        <div style={oscillatorNodeStyles}>
+        <div style={gainNodeStyles}>
             <div style={{ position: 'relative', height: '10px' }}>
-                <Handle type="target" position={Position.Left} id="input_freq" style={{ top: '50%' }} />
-                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Freq</span>
-            </div>
-            <div style={{ position: 'relative', height: '10px', marginTop: '5px' }}>
-                <Handle type="target" position={Position.Left} id="input_amp" style={{ top: '50%' }} />
-                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Amp</span>
+                <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
+                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>In</span>
             </div>
 
-            <div style={{ margin: '5px 0' }}><strong>{data.label || 'Oscillator'}</strong></div>
+            <div style={{ position: 'relative', height: '10px', marginTop: '5px' }}>
+                <Handle type="target" position={Position.Left} id="input_gain" style={{ top: '50%' }} background="#555" />
+                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Gain</span>
+            </div>
+
+            <div style={{ margin: '5px 0' }}><strong>{data.label || 'VCA'}</strong></div>
 
             <div style={{ position: 'relative', height: '10px' }}>
                 <span style={{ ...handleLabelStyles, right: '10px', top: '0px' }}>Out</span>
@@ -40,4 +41,4 @@ const OscillatorNodeComponent: React.FC<NodeProps> = ({ data }) => {
     );
 };
 
-export const OscillatorNode = memo(OscillatorNodeComponent);
+export const VisualGainNode = memo(GainNodeComponent);

@@ -18,8 +18,8 @@ import CodePreviewPanel from './components/CodePreviewPanel';
 import NamePromptModal from './components/NamePromptModal';
 import {
     OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode,
-    LFONode, SampleHoldNode, DelayNode, ReverbNode, DistortionNode,
-    MixerNode, PannerNode, GroupNode, FmOperatorNode, WavetableNode
+    MixerNode, PannerNode, GroupNode, FmOperatorNode, WavetableNode, MidiInputNode, VisualGainNode, MapperNode,
+    LFONode, SampleHoldNode, DelayNode, ReverbNode, DistortionNode
 } from './components/Nodes';
 import InstrumentNode from './components/InstrumentNode';
 
@@ -84,6 +84,9 @@ const nodeTypes = {
     group: GroupNode,
     fmOperator: FmOperatorNode,
     wavetable: WavetableNode,
+    midiInput: MidiInputNode,
+    gain: VisualGainNode,
+    mapper: MapperNode,
 };
 
 const EditorLayout = () => {
@@ -112,6 +115,7 @@ const EditorLayout = () => {
         handleCreateInstrument,
         handleInstrumentNameSubmit,
         handleCreateGroup,
+        handleExplodeInstrument,
     } = useGraphState();
 
     const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration();
@@ -171,6 +175,8 @@ const EditorLayout = () => {
                         onBpmChange={setBpm}
                         isLooping={isLooping}
                         onLoopToggle={() => setIsLooping(!isLooping)}
+                        onExplodeInstrument={handleExplodeInstrument}
+                        canExplodeInstrument={selectedNodesForGrouping.length === 1 && selectedNodesForGrouping[0].type === 'instrument'}
                     />
                 </div>
                 <div style={mainCanvasStyles} ref={reactFlowWrapper}>

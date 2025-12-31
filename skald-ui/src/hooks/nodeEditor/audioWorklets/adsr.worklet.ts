@@ -54,7 +54,9 @@ class ADSRProcessor extends AudioWorkletProcessor {
 
             if (currentGate > 0 && this.lastGate <= 0) {
                 console.log(\`[ADSR] Gate ON. Val: \${currentGate}. State: \${this.state} -> attack\`);
+                // Hard Reset for Monophonic/Legato re-triggering prevention
                 this.state = 'attack';
+                this.value = 0.0; // Force reset to silence
                 this.attackCounter = 0;
             }
 

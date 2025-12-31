@@ -13,3 +13,6 @@ export * from './PannerNode';
 export * from './GroupNode';
 export * from './FmOperatorNode';
 export * from './WavetableNode';
+export { default as MidiInputNode } from './MidiInputNode';
+export { VisualGainNode } from './GainNode';
+export * from './MapperNode';

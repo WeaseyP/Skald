@@ -33,7 +33,7 @@ export const useGraphState = () => {
     const [edges, setEdges] = useState<Edge[]>(initialEdges);
     const [selectedNode, setSelectedNode] = useState<Node<NodeParams> | null>(null);
     const [selectedNodesForGrouping, setSelectedNodesForGrouping] = useState<Node<NodeParams>[]>([]);
-    
+
     const [history, setHistory] = useState<HistoryState[]>([]);
     const [future, setFuture] = useState<HistoryState[]>([]);
     const isRestoring = useRef(false);
@@ -91,7 +91,7 @@ export const useGraphState = () => {
             return node;
         }));
     }, [saveStateForUndo]);
-    
+
     const onSelectionChange = useCallback((params: OnSelectionChangeParams) => {
         setSelectedNode(params.nodes.length === 1 ? params.nodes[0] : null);
         setSelectedNodesForGrouping(params.nodes);
@@ -102,7 +102,7 @@ export const useGraphState = () => {
         isRestoring.current = true;
         const lastState = history[history.length - 1];
         setHistory(history.slice(0, -1));
-        setFuture(prevFuture => [ { nodes, edges }, ...prevFuture]);
+        setFuture(prevFuture => [{ nodes, edges }, ...prevFuture]);
         setNodes(lastState.nodes);
         setEdges(lastState.edges);
         isRestoring.current = false;
@@ -124,6 +124,7 @@ export const useGraphState = () => {
         handleCreateInstrument,
         handleInstrumentNameSubmit,
         handleCreateGroup,
+        handleExplodeInstrument,
     } = useNodeComposition({
         nodes,
         edges,
@@ -154,5 +155,6 @@ export const useGraphState = () => {
         handleCreateInstrument,
         handleInstrumentNameSubmit,
         handleCreateGroup,
+        handleExplodeInstrument,
     };
 };

@@ -36,17 +36,25 @@ export class Instrument {
         }
     }
 
-    public trigger(time: number, note: number, velocity: number) {
-        const voice = this.voices[this.nextVoiceIndex];
+    public trigger(time: number, note: number, velocity: number): number {
+        const index = this.nextVoiceIndex;
+        const voice = this.voices[index];
         if (voice) {
             voice.trigger(time, note, velocity);
         }
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
+        return index;
     }
 
-    public noteOff() {
+    public releaseVoice(index: number, time: number) {
+        if (this.voices[index]) {
+            this.voices[index].release(time);
+        }
+    }
+
+    public noteOff(time?: number) {
         if (!this.context) return;
-        const releaseTime = this.context.currentTime;
+        const releaseTime = time ?? this.context.currentTime;
         this.voices.forEach(voice => voice.release(releaseTime));
     }
 

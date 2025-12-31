@@ -176,7 +176,18 @@ export const useAudioEngine = (
                 const source = audioNodes.current.get(edge.source);
                 const target = audioNodes.current.get(edge.target);
                 if (source && target) {
-                    const sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
+                    let sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
+
+                    // Handle multi-output nodes (like MidiInput)
+                    if (edge.sourceHandle && (source as any)[edge.sourceHandle]) {
+                        sourceNode = (source as any)[edge.sourceHandle];
+                    } else if (edge.sourceHandle === 'gate' && (source as any).gate) {
+                        // Explicit fallback for MidiInput if indexer didn't work or for safety
+                        sourceNode = (source as any).gate;
+                    } else if (edge.sourceHandle === 'velocity' && (source as any).velocity) {
+                        sourceNode = (source as any).velocity;
+                    }
+
 
                     const targetSkaldNode = (target as any)._skaldNode;
                     if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
@@ -184,6 +195,11 @@ export const useAudioEngine = (
                         const inputGain = mixerInstance.getInputGain(edge.targetHandle);
                         if (inputGain) {
                             disconnectNodes(sourceNode, inputGain, edge);
+                        }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SkaldOscillatorNode' && edge.targetHandle === 'input_freq') {
+                        const oscNode = targetSkaldNode as any;
+                        if (oscNode.input_freq) {
+                            disconnectNodes(sourceNode, oscNode.input_freq, edge);
                         }
                     } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
                         const fmInput = (target as any).modulatorInput;
@@ -195,6 +211,9 @@ export const useAudioEngine = (
                         if (adsrGate) {
                             disconnectNodes(sourceNode, adsrGate, edge);
                         }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'GainNodeWrapper' && (edge.targetHandle === 'input_gain' || edge.targetHandle === 'gain')) {
+                        const gainNode = target as GainNode;
+                        disconnectNodes(sourceNode, gainNode.gain, edge);
                     } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
                         disconnectNodes(sourceNode, target.gain, edge);
                     } else {
@@ -212,13 +231,29 @@ export const useAudioEngine = (
                 const source = audioNodes.current.get(edge.source);
                 const target = audioNodes.current.get(edge.target);
                 if (source && target) {
-                    const sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
+                    let sourceNode = source instanceof Instrument ? source.output : (source as any).output || source;
+
+                    // Handle multi-output nodes (like MidiInput)
+                    if (edge.sourceHandle && (source as any)[edge.sourceHandle]) {
+                        sourceNode = (source as any)[edge.sourceHandle];
+                    } else if (edge.sourceHandle === 'gate' && (source as any).gate) {
+                        // Explicit fallback for MidiInput if indexer didn't work or for safety
+                        sourceNode = (source as any).gate;
+                    } else if (edge.sourceHandle === 'velocity' && (source as any).velocity) {
+                        sourceNode = (source as any).velocity;
+                    }
+
 
                     const targetSkaldNode = (target as any)._skaldNode;
                     if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
                         const mixerInstance = targetSkaldNode as any;
                         const inputGain = mixerInstance.getOrCreateInputGain(edge.targetHandle);
                         connectNodes(sourceNode, inputGain, edge);
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SkaldOscillatorNode' && edge.targetHandle === 'input_freq') {
+                        const oscNode = targetSkaldNode as any;
+                        if (oscNode.input_freq) {
+                            connectNodes(sourceNode, oscNode.input_freq, edge);
+                        }
                     } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
                         const fmInput = (target as any).modulatorInput;
                         if (fmInput) {
@@ -229,7 +264,11 @@ export const useAudioEngine = (
                         if (adsrGate) {
                             connectNodes(sourceNode, adsrGate, edge);
                         }
+                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'GainNodeWrapper' && (edge.targetHandle === 'input_gain' || edge.targetHandle === 'gain')) {
+                        const gainNode = target as GainNode;
+                        connectNodes(sourceNode, gainNode.gain, edge);
                     } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
+                        // Fallback or other nodes
                         connectNodes(sourceNode, target.gain, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
@@ -250,6 +289,80 @@ export const useAudioEngine = (
     useEffect(() => {
         return () => { if (audioContext.current) handleStop(); };
     }, [handleStop]);
+
+    // === Global MIDI Listener for Top-Level Nodes ===
+    useEffect(() => {
+        let midiAccess: any = null;
+
+        const handleMidiMessage = (message: any) => {
+            if (!audioContext.current) return;
+            const [status, data1, data2] = message.data;
+            const command = status & 0xf0;
+            // const channel = status & 0x0f;
+            const now = audioContext.current.currentTime;
+
+            if (command === 0x90 && data2 > 0) { // Note On
+                const note = data1;
+                const velocity = data2 / 127;
+                const freq = 440 * Math.pow(2, (note - 69) / 12);
+
+                audioNodes.current.forEach((node, id) => {
+                    // Check if it's a MidiInput (has pitch, gate, velocity props)
+                    if (node.constructor.name === 'ConstantSourceNode' && (node as any).gate && (node as any).velocity) {
+                        const pitchNode = node as ConstantSourceNode;
+                        const gateNode = (node as any).gate as ConstantSourceNode;
+                        const velNode = (node as any).velocity as ConstantSourceNode;
+
+                        // TODO: Check node.data.device to filter by device
+
+                        pitchNode.offset.setValueAtTime(freq, now);
+                        velNode.offset.setValueAtTime(velocity, now);
+
+                        gateNode.offset.cancelScheduledValues(now);
+                        gateNode.offset.setValueAtTime(0, now);
+                        gateNode.offset.setValueAtTime(1, now + 0.005);
+                    }
+                });
+            } else if (command === 0x80 || (command === 0x90 && data2 === 0)) { // Note Off
+                audioNodes.current.forEach((node, id) => {
+                    if (node.constructor.name === 'ConstantSourceNode' && (node as any).gate && (node as any).velocity) {
+                        const gateNode = (node as any).gate as ConstantSourceNode;
+                        gateNode.offset.cancelScheduledValues(now);
+                        gateNode.offset.setValueAtTime(0, now);
+                    }
+                });
+            }
+        };
+
+        if (navigator.requestMIDIAccess) {
+            navigator.requestMIDIAccess().then(access => {
+                midiAccess = access;
+                const inputs = midiAccess.inputs.values();
+                for (let input of inputs) {
+                    input.onmidimessage = handleMidiMessage;
+                }
+
+                midiAccess.onstatechange = (e: any) => {
+                    // Re-bind if new devices plugged in
+                    const inputs = midiAccess?.inputs.values();
+                    if (inputs) {
+                        for (let input of inputs) {
+                            input.onmidimessage = handleMidiMessage;
+                        }
+                    }
+                };
+            });
+        }
+
+        return () => {
+            if (midiAccess) {
+                const inputs = midiAccess.inputs.values();
+                for (let input of inputs) {
+                    input.onmidimessage = null;
+                }
+            }
+        };
+    }, []); // Run once on mount (or when audioContext changes?) No, independent.
 
     return { isPlaying, handlePlay, handleStop };
 };

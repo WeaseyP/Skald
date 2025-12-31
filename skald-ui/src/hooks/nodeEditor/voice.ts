@@ -10,7 +10,9 @@ export class Voice {
     public output: GainNode;
     private subgraph: { nodes: Node[]; connections: Edge[] };
     public input: GainNode;
-    private gateSource: ConstantSourceNode;
+
+    // Track Midi Input Nodes specifically
+    private midiInputNodes: Map<string, AudioNode> = new Map();
 
     constructor(context: AudioContext, subgraph: { nodes: Node[]; connections: Edge[] }) {
         this.audioContext = context;
@@ -18,11 +20,9 @@ export class Voice {
         this.input = context.createGain();
         this.output = context.createGain();
 
-        // Create a central Gate signal for this voice
-        this.gateSource = context.createConstantSource();
-        this.gateSource.offset.value = 0;
-        this.gateSource.start();
+        this.output = context.createGain();
 
+        // No centralized gate source anymore, we check for 'midiInput' nodes in the graph
         this.buildSubgraph();
     }
 
@@ -42,16 +42,32 @@ export class Voice {
         });
 
         // Loop through all registered ADSR worklets and connect the Voice Gate to them
-        this.adsrData.forEach(({ worklet }) => {
-            // The ADSR Worklet expects the Gate signal on input 0.
-            // Since we connect the Gate Source (ConstantSource) to it, it drives the envelope.
-            this.gateSource.connect(worklet);
+        // Check for MidiInput nodes
+        this.subgraph.nodes.filter(n => n.type === 'midiInput').forEach(n => {
+            const node = this.internalNodes.get(n.id);
+            if (node) {
+                this.midiInputNodes.set(n.id, node);
+            }
         });
 
+        // ADSR Worklets no longer need manual connection to a central gate.
+        // They should be connected to the MidiInput node's 'gate' output via the graph.
+
         this.subgraph.connections.forEach(edge => {
-            const sourceNode = this.internalNodes.get(edge.source);
+            const source = this.internalNodes.get(edge.source);
             const targetNode = this.internalNodes.get(edge.target);
-            if (sourceNode && targetNode) {
+            if (source && targetNode) {
+                let sourceNode = source;
+
+                // Handle multi-output nodes (like MidiInput) inside Voice
+                if (edge.sourceHandle && (source as any)[edge.sourceHandle]) {
+                    sourceNode = (source as any)[edge.sourceHandle];
+                } else if (edge.sourceHandle === 'gate' && (source as any).gate) {
+                    sourceNode = (source as any).gate;
+                } else if (edge.sourceHandle === 'velocity' && (source as any).velocity) {
+                    sourceNode = (source as any).velocity;
+                }
+
                 connectNodes(sourceNode, targetNode, edge);
             }
         });
@@ -77,7 +93,7 @@ export class Voice {
             const freq = 440 * Math.pow(2, (note - 69) / 12);
 
             this.internalNodes.forEach(node => {
-                // Native Oscillator
+                // Native Oscillator - still useful for direct patches without MIDI node
                 if (node instanceof OscillatorNode) {
                     node.frequency.cancelScheduledValues(startTime);
                     node.frequency.setValueAtTime(freq, startTime);
@@ -91,43 +107,63 @@ export class Voice {
                     }
                 }
             });
+
+            // Update all MIDI Input Nodes
+            this.midiInputNodes.forEach(midiNode => {
+                // Pitch is the main node
+                const pitchNode = midiNode as ConstantSourceNode;
+                pitchNode.offset.cancelScheduledValues(startTime);
+                pitchNode.offset.setValueAtTime(freq, startTime);
+
+                // Gate is a property
+                const gateNode = (midiNode as any).gate as ConstantSourceNode;
+                if (gateNode) {
+                    gateNode.offset.cancelScheduledValues(startTime);
+                    gateNode.offset.setValueAtTime(0, startTime); // Reset for re-trigger
+                    gateNode.offset.setValueAtTime(1, startTime + 0.005);
+                }
+
+                // Velocity is a property
+                const velNode = (midiNode as any).velocity as ConstantSourceNode;
+                if (velNode) {
+                    velNode.offset.cancelScheduledValues(startTime);
+                    velNode.offset.setValueAtTime(velocity, startTime);
+                }
+            });
         }
 
-        // Open the Gate
-        // Force a reset to 0 to ensure a rising edge for re-triggering
-        this.gateSource.offset.cancelScheduledValues(startTime);
-        this.gateSource.offset.setValueAtTime(0, startTime);
-        this.gateSource.offset.setValueAtTime(1, startTime + 0.005);
+        // DEPRECATED: Central gate source
+        // this.gateSource.offset.cancelScheduledValues(startTime);
+        // this.gateSource.offset.setValueAtTime(0, startTime);
+        // this.gateSource.offset.setValueAtTime(1, startTime + 0.005);
 
-        // Also trigger via parameter for robustness
+        // Also trigger via parameter for robustness - KEEPING THIS AS FALLBACK/DIRECT PATCH SUPPORT
         this.adsrData.forEach(({ worklet }) => {
             const gateParam = worklet.parameters.get('gate');
             if (gateParam) {
+                // Only manual trigger if NOT connected? 
+                // Actually, if we connect MIDI Gate -> ADSR Gate, the ADSR Gate param is ignored or summed.
+                // Standard AudioParam behavior is summing.
+                // If we want MIDI signal to drive it, we shouldn't manually set the param here unless we want to support both.
+                // For now, let's supporting both is safer for backward compat.
                 gateParam.cancelScheduledValues(startTime);
                 gateParam.setValueAtTime(0, startTime);
                 gateParam.setValueAtTime(1, startTime + 0.005);
             }
-
-            // Velocity (if supported by ADSR via gain/amplitude, but standard ADSR usually outputs 0-1)
-            // Ideally we scale the ADSR output or Input Gain. 
-            // For now, let's look for an 'amplitude' or 'gain' param on oscillators?
-            // Or simpler: The Voice has an output GainNode?
-            // Yes, `this.output`. But `this.output` might be connected to Envelope.
-            // If we change `this.input` gain, it affects FM depth etc.
-            // Let's leave velocity for now or set it on `this.output`?
-            // If we set on `this.output`, it scales the whole voice.
-            // But ADSR controls volume usually.
-            // Let's ignore velocity for this exact step to keep it safe, or just log it.
-            // Phase 14.5 said "Edit Velocity".
         });
     }
 
     public release(startTime: number) {
-        // Close the Gate
-        this.gateSource.offset.cancelScheduledValues(startTime);
-        this.gateSource.offset.setValueAtTime(0, startTime);
+        // Update all MIDI Input Nodes - Gate Off
+        this.midiInputNodes.forEach(midiNode => {
+            const gateNode = (midiNode as any).gate as ConstantSourceNode;
+            if (gateNode) {
+                gateNode.offset.cancelScheduledValues(startTime);
+                gateNode.offset.setValueAtTime(0, startTime);
+            }
+        });
 
-        // Also release via parameter
+        // Also release via parameter - KEEPING AS FALLBACK
         this.adsrData.forEach(({ worklet }) => {
             const gateParam = worklet.parameters.get('gate');
             if (gateParam) {
@@ -143,8 +179,8 @@ export class Voice {
 
     public disconnect() {
         this.output.disconnect();
-        this.gateSource.stop();
-        this.gateSource.disconnect();
+        // this.gateSource.stop(); // Removed central gate
+        // this.gateSource.disconnect();
         this.internalNodes.forEach(node => {
             try { node.disconnect(); } catch (e) { /* ignore */ }
         });
