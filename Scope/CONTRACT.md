@@ -44,6 +44,14 @@ Represents a directed edge from one node's output port to another node's input p
 
 ### **Generators**
 
+#### **`MidiInput`**
+Serves as the primary control source for an instrument, providing Pitch, Gate, and Velocity signals from a MIDI device.
+* **Parameters**:
+    * `device` (string): The name or ID of the MIDI input device to listen to. (Default: `"All"`).
+    * `useMpe` (boolean): Whether to enable Multidimensional Polyphonic Expression support. (Default: `false`).
+* **Ports**:
+    * Outputs: `pitch`, `gate`, `velocity`
+
 #### **`Oscillator`**
 Generates a periodic waveform.
 * **Parameters**:

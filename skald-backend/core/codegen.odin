@@ -309,6 +309,20 @@ generate_gain_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\tnode_%d_out = (%s) * (%s);\n\n", node.id, input_str, gain_str)
 }
 
+generate_midi_input_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+	// MIDI Input Node outputs: Pitch (Hz), Gate (0.0 or 1.0), and Velocity (0.0 - 1.0)
+	// These values are derived directly from the voice state, which is populated by the note_on event.
+
+	fmt.sbprintf(sb, "\t\t// --- MIDI Input Node %d ---\n", node.id)
+	// Output 1: Pitch (mapped from voice.current_freq)
+	fmt.sbprintf(sb, "\t\tnode_%d_out_pitch = voice.current_freq;\n", node.id)
+	// Output 2: Gate (1.0 if voice is active/sustained, though voice lifecycle manages this. We'll just output 1.0 for now as 'active')\n")
+	// In a more complex ADSR setup, gate might go low during release, but for this simple model, 1.0 is fine while voice is active.
+	fmt.sbprintf(sb, "\t\tnode_%d_out_gate = 1.0;\n", node.id)
+	// Output 3: Velocity
+	fmt.sbprintf(sb, "\t\tnode_%d_out_velocity = voice.velocity;\n\n", node.id)
+}
+
 // Generates note_on and note_off procedures for the test harness.
 generate_note_on_off_code :: proc(sb: ^strings.Builder, subgraph_nodes: []Node, polyphony_str: string, has_adsr: bool, namespace_prefix: string) {
 	fmt.sbprintf(sb, "// --- Note On/Off Handlers (%s) ---\n", namespace_prefix)
@@ -317,12 +331,14 @@ generate_note_on_off_code :: proc(sb: ^strings.Builder, subgraph_nodes: []Node, 
 	fmt.sbprintf(sb, "note_on_%s :: proc(p: ^AudioProcessor_%s, note: u8, velocity: f32) {{\n", namespace_prefix, namespace_prefix)
 	fmt.sbprint(sb, "\t// Simple 'next available' voice stealing\n")
 	fmt.sbprintf(sb, "\tvoice := &p.voices[p.next_voice_index];\n")
+
 	fmt.sbprintf(sb, "\tp.next_voice_index = (p.next_voice_index + 1) %% %s;\n\n", polyphony_str)
 
 	fmt.sbprint(sb, "\tvoice.is_active = true;\n")
 	fmt.sbprint(sb, "\tvoice.note = note;\n")
 	fmt.sbprint(sb, "\tvoice.target_freq = 440.0 * math.pow(2.0, (f32(note) - 69.0) / 12.0);\n")
 	fmt.sbprint(sb, "\tvoice.time_active = 0.0;\n")
+	fmt.sbprint(sb, "\tvoice.velocity = velocity;\n")
 	fmt.sbprint(sb, "\tvoice.time_released = 0.0;\n\n")
 
 	if has_adsr {
@@ -444,7 +460,7 @@ generate_processor_code :: proc(graph: ^Graph, namespace_prefix: string) -> stri
 	fmt.sbprintf(&sb, "Voice_%s :: struct {{\n", namespace_prefix)
 	fmt.sbprint(&sb, "\tis_active: bool,\n")
 	fmt.sbprint(&sb, "\tnote: u8,\n\ttarget_freq: f32,\n\tcurrent_freq: f32, // For glide\n")
-	fmt.sbprint(&sb, "\ttime_active: f32,\n\ttime_released: f32,\n")
+	fmt.sbprint(&sb, "\ttime_active: f32,\n\ttime_released: f32,\n\tvelocity: f32, // Added for MIDI Node support\n")
 	fmt.sbprintf(&sb, "\tstate: Voice_State_%s,\n", namespace_prefix)
 	fmt.sbprint(&sb, "}\n\n")
 
@@ -535,6 +551,10 @@ generate_processor_code :: proc(graph: ^Graph, namespace_prefix: string) -> stri
 		if strings.to_lower(node.type) == "panner" {
 			fmt.sbprintf(&sb, "\tnode_%d_out_left: f32;\n", node.id)
 			fmt.sbprintf(&sb, "\tnode_%d_out_right: f32;\n", node.id)
+		} else if strings.to_lower(node.type) == "midiinput" {
+			fmt.sbprintf(&sb, "\tnode_%d_out_pitch: f32;\n", node.id)
+			fmt.sbprintf(&sb, "\tnode_%d_out_gate: f32;\n", node.id)
+			fmt.sbprintf(&sb, "\tnode_%d_out_velocity: f32;\n", node.id)
 		} else {
 			fmt.sbprintf(&sb, "\tnode_%d_out: f32;\n", node.id)
 		}
@@ -575,7 +595,10 @@ generate_processor_code :: proc(graph: ^Graph, namespace_prefix: string) -> stri
 			generate_panner_code(&sb, node, subgraph)
 		case "gain":
 			generate_gain_code(&sb, node, subgraph)
+		case "midiinput":
+			generate_midi_input_code(&sb, node, subgraph)
 		case "graphinput":
+			_ = node // dummy usage to prevent error if we don't call a function
 			input_name_val := get_string_param(node, "name", "gate")
 			if input_name_val == "gate" {
 				fmt.sbprintf(&sb, "\tnode_%d_out = 1.0; // Default for Gate GraphInput\n\n", node.id)

@@ -1,0 +1,296 @@
+{
+  "nodes": [
+    {
+      "id": "16",
+      "type": "instrument",
+      "position": {
+        "x": 2706.646053257762,
+        "y": 2889.2735269484597
+      },
+      "data": {
+        "name": "sax",
+        "label": "sax",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "mapper",
+              "position": {
+                "x": 2429.5657729198188,
+                "y": 2884.7313670322733
+              },
+              "data": {
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 400,
+                "outMax": 3000,
+                "label": "Mapper (Scale)"
+              },
+              "width": 158,
+              "height": 69,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2429.5657729198188,
+                "y": 2884.7313670322733
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "2",
+              "type": "oscillator",
+              "position": {
+                "x": 2398.3183079531022,
+                "y": 2711.017313706302
+              },
+              "data": {
+                "frequency": 440,
+                "waveform": "Sawtooth",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 182,
+              "height": 88,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2398.3183079531022,
+                "y": 2711.017313706302
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "3",
+              "type": "filter",
+              "position": {
+                "x": 2804.7267444711533,
+                "y": 2790.187788352676
+              },
+              "data": {
+                "type": "Lowpass",
+                "cutoff": 857.0970407948786,
+                "resonance": 1.9104520808904857,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ],
+                "label": "Filter"
+              },
+              "width": 182,
+              "height": 103,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2804.7267444711533,
+                "y": 2790.187788352676
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "4",
+              "type": "gain",
+              "position": {
+                "x": 3258.6374657770293,
+                "y": 2890.4703895714156
+              },
+              "data": {
+                "gain": 0,
+                "exposedParameters": [
+                  "gain"
+                ],
+                "label": "VCA"
+              },
+              "width": 182,
+              "height": 88,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 3258.6374657770293,
+                "y": 2890.4703895714156
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "5",
+              "type": "output",
+              "position": {
+                "x": 3659.767870651989,
+                "y": 2956.4457851100606
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 62,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 3659.767870651989,
+                "y": 2956.4457851100606
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "6",
+              "type": "midiInput",
+              "position": {
+                "x": 1991.9098714350507,
+                "y": 2914.221531965328
+              },
+              "data": {
+                "device": "All",
+                "useMpe": false,
+                "exposedParameters": [
+                  "device",
+                  "useMpe"
+                ],
+                "label": "MIDI Input"
+              },
+              "width": 122,
+              "height": 105,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 1991.9098714350507,
+                "y": 2914.221531965328
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "7",
+              "type": "adsr",
+              "position": {
+                "x": 2403.5963395961935,
+                "y": 3077.840512901167
+              },
+              "data": {
+                "attack": 0.05333333333333334,
+                "decay": 0.24,
+                "sustain": 0.81875,
+                "release": 0.21333333333333326,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "attackCurve": "linear",
+                "decayCurve": "linear",
+                "releaseCurve": "linear",
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 182,
+              "height": 73,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2403.5963395961935,
+                "y": 3077.840512901167
+              },
+              "dragging": false,
+              "zIndex": 1
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "4",
+              "to_port": "input"
+            },
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "6",
+              "from_port": "pitch",
+              "to_node": "2",
+              "to_port": "input_freq"
+            },
+            {
+              "from_node": "6",
+              "from_port": "gate",
+              "to_node": "7",
+              "to_port": "input"
+            },
+            {
+              "from_node": "7",
+              "from_port": "output",
+              "to_node": "4",
+              "to_port": "input_gain"
+            },
+            {
+              "from_node": "7",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "6",
+              "from_port": "velocity",
+              "to_node": "1",
+              "to_port": "input"
+            }
+          ]
+        }
+      },
+      "width": 174,
+      "height": 108,
+      "positionAbsolute": {
+        "x": 2706.646053257762,
+        "y": 2889.2735269484597
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": {
+    "x": -1206.6716326580845,
+    "y": -1296.3075642007145,
+    "zoom": 0.6597539553864472
+  },
+  "sequencerTracks": [
+    {
+      "id": "1xsj4ylki",
+      "targetNodeId": "16",
+      "name": "sax",
+      "color": "#007acc",
+      "steps": 16,
+      "notes": [],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ]
+}
