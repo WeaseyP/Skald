@@ -17,8 +17,7 @@ import {
 import { NODE_DEFINITIONS } from '../../definitions/node-definitions';
 import { NodeParams, InstrumentParams } from '../../definitions/types';
 
-let id = 0;
-const getId = () => ++id;
+const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 
 type UseNodeCompositionArgs = {
     nodes: Node<NodeParams>[];
@@ -48,7 +47,7 @@ export const useNodeComposition = ({
         if (!type || !NODE_DEFINITIONS[type]) return;
 
         const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        const newId = `${getId()}`;
+        const newId = `${generateId()}`;
         const definition = NODE_DEFINITIONS[type];
 
         const newNode: Node<NodeParams> = {
@@ -65,7 +64,7 @@ export const useNodeComposition = ({
     }, [screenToFlowPosition, setNodes]);
 
     const handleInstrumentNameSubmit = (instrumentName: string) => {
-        const newInstrumentId = `${getId()}`;
+        const newInstrumentId = `${generateId()}`;
         const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
 
         const oldIdToNewIdMap = new Map<string, string>();
@@ -180,7 +179,7 @@ export const useNodeComposition = ({
         saveStateForUndo();
 
         const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
-        const newGroupId = `group-${getId()}`;
+        const newGroupId = `group-${generateId()}`;
 
         const minX = Math.min(...selectedNodesForGrouping.map(n => n.position.x));
         const minY = Math.min(...selectedNodesForGrouping.map(n => n.position.y));
@@ -206,7 +205,7 @@ export const useNodeComposition = ({
                 return {
                     ...n,
                     parentNode: newGroupId,
-                    extent: 'parent',
+                    extent: 'parent' as const,
                     position: {
                         x: n.position.x - groupNodePosition.x,
                         y: n.position.y - groupNodePosition.y,
@@ -245,7 +244,7 @@ export const useNodeComposition = ({
                 return;
             }
 
-            const newId = `${getId()}`;
+            const newId = `${generateId()}`;
             internalToGlobalIdMap.set(subNode.id, newId);
 
             validNodes.push({

@@ -1,0 +1,230 @@
+{
+  "nodes": [
+    {
+      "id": "mjtex7czjezl1",
+      "type": "noise",
+      "position": {
+        "x": 1613.1248828395576,
+        "y": 1999.915862114806
+      },
+      "data": {
+        "type": "White",
+        "amplitude": 1,
+        "exposedParameters": [
+          "amplitude"
+        ],
+        "label": "Noise"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 1613.1248828395576,
+        "y": 1999.915862114806
+      }
+    },
+    {
+      "id": "mjtexc4pj1xxx",
+      "type": "mixer",
+      "position": {
+        "x": 1859.4671494250042,
+        "y": 2109.30559534213
+      },
+      "data": {
+        "inputCount": 4,
+        "levels": [
+          {
+            "id": 1,
+            "level": 0.75,
+            "pan": 0
+          },
+          {
+            "id": 2,
+            "level": 0.75,
+            "pan": 0
+          },
+          {
+            "id": 3,
+            "level": 0.75,
+            "pan": 0
+          },
+          {
+            "id": 4,
+            "level": 0.75,
+            "pan": 0
+          }
+        ],
+        "exposedParameters": [],
+        "label": "Mixer"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1859.4671494250042,
+        "y": 2109.30559534213
+      },
+      "dragging": false
+    },
+    {
+      "id": "mjtexl7r6y0oi",
+      "type": "oscillator",
+      "position": {
+        "x": 1607.9905381843464,
+        "y": 2141.7432932305323
+      },
+      "data": {
+        "frequency": 220,
+        "waveform": "Triangle",
+        "amplitude": 0.5,
+        "pulseWidth": 0.5,
+        "phase": 0,
+        "exposedParameters": [
+          "frequency",
+          "amplitude",
+          "pulseWidth",
+          "phase"
+        ],
+        "label": "Oscillator"
+      },
+      "width": 182,
+      "height": 88,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1607.9905381843464,
+        "y": 2141.7432932305323
+      },
+      "dragging": false
+    },
+    {
+      "id": "mjtexzj3p5jfu",
+      "type": "filter",
+      "position": {
+        "x": 2110.903692998456,
+        "y": 2083.8432714312926
+      },
+      "data": {
+        "type": "Bandpass",
+        "cutoff": 2449.232398530096,
+        "resonance": 0.5933709653149176,
+        "exposedParameters": [
+          "cutoff",
+          "resonance"
+        ],
+        "label": "Filter"
+      },
+      "width": 182,
+      "height": 103,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2110.903692998456,
+        "y": 2083.8432714312926
+      },
+      "dragging": false
+    },
+    {
+      "id": "mjtezqrfbu542",
+      "type": "adsr",
+      "position": {
+        "x": 2409.1158676999767,
+        "y": 2094.9388362188006
+      },
+      "data": {
+        "attack": 0.001,
+        "decay": 0.159,
+        "sustain": 0,
+        "release": 0.1333333333333333,
+        "depth": 1,
+        "velocitySensitivity": 0.5,
+        "attackCurve": "linear",
+        "decayCurve": "linear",
+        "releaseCurve": "linear",
+        "exposedParameters": [
+          "attack",
+          "decay",
+          "sustain",
+          "release",
+          "depth"
+        ],
+        "label": "ADSR"
+      },
+      "width": 182,
+      "height": 73,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2409.1158676999767,
+        "y": 2094.9388362188006
+      },
+      "dragging": false
+    },
+    {
+      "id": "mjtf048rnf07p",
+      "type": "output",
+      "position": {
+        "x": 2730.447779800181,
+        "y": 2091.9074030857796
+      },
+      "data": {
+        "exposedParameters": [],
+        "label": "Output"
+      },
+      "width": 150,
+      "height": 110,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2730.447779800181,
+        "y": 2091.9074030857796
+      },
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "mjtexl7r6y0oi",
+      "sourceHandle": "output",
+      "target": "mjtexc4pj1xxx",
+      "targetHandle": "input_2",
+      "id": "emjtexl7r6y0oi-mjtexc4pj1xxx",
+      "selected": false
+    },
+    {
+      "source": "mjtex7czjezl1",
+      "sourceHandle": "output",
+      "target": "mjtexc4pj1xxx",
+      "targetHandle": "input_1",
+      "id": "emjtex7czjezl1-mjtexc4pj1xxx",
+      "selected": false
+    },
+    {
+      "source": "mjtexc4pj1xxx",
+      "sourceHandle": "output",
+      "target": "mjtexzj3p5jfu",
+      "targetHandle": "input",
+      "id": "emjtexc4pj1xxx-mjtexzj3p5jfu",
+      "selected": false
+    },
+    {
+      "source": "mjtexzj3p5jfu",
+      "sourceHandle": "output",
+      "target": "mjtezqrfbu542",
+      "targetHandle": "input",
+      "id": "emjtexzj3p5jfu-mjtezqrfbu542",
+      "selected": false
+    },
+    {
+      "source": "mjtezqrfbu542",
+      "sourceHandle": "output",
+      "target": "mjtf048rnf07p",
+      "targetHandle": "input",
+      "id": "emjtezqrfbu542-mjtf048rnf07p",
+      "selected": false
+    }
+  ],
+  "viewport": {
+    "x": -747.4237226993118,
+    "y": -797.1441834880341,
+    "zoom": 0.659753955386447
+  },
+  "sequencerTracks": []
+}

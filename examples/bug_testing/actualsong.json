@@ -1,0 +1,636 @@
+{
+  "nodes": [
+    {
+      "id": "1",
+      "type": "midiInput",
+      "position": {
+        "x": 1088,
+        "y": 716
+      },
+      "data": {
+        "device": "All",
+        "useMpe": false,
+        "exposedParameters": [
+          "device",
+          "useMpe"
+        ],
+        "label": "MIDI Input"
+      },
+      "width": 122,
+      "height": 105,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1088,
+        "y": 716
+      },
+      "dragging": false
+    },
+    {
+      "id": "2",
+      "type": "oscillator",
+      "position": {
+        "x": 1311.7163255487842,
+        "y": 583.3439451054418
+      },
+      "data": {
+        "frequency": 440,
+        "waveform": "Sawtooth",
+        "amplitude": 0.608,
+        "pulseWidth": 0.5,
+        "phase": 0,
+        "exposedParameters": [
+          "frequency",
+          "amplitude",
+          "pulseWidth",
+          "phase"
+        ],
+        "label": "Oscillator"
+      },
+      "width": 182,
+      "height": 88,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1311.7163255487842,
+        "y": 583.3439451054418
+      },
+      "dragging": false
+    },
+    {
+      "id": "3",
+      "type": "adsr",
+      "position": {
+        "x": 1651.1272410615677,
+        "y": 901.8447779485234
+      },
+      "data": {
+        "attack": 0.04,
+        "decay": 0.21333333333333335,
+        "sustain": 0.3879807692307692,
+        "release": 0.29333333333333333,
+        "depth": 1,
+        "velocitySensitivity": 0.5,
+        "attackCurve": "linear",
+        "decayCurve": "linear",
+        "releaseCurve": "linear",
+        "exposedParameters": [
+          "attack",
+          "decay",
+          "sustain",
+          "release",
+          "depth"
+        ],
+        "label": "ADSR"
+      },
+      "width": 182,
+      "height": 73,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1651.1272410615677,
+        "y": 901.8447779485234
+      },
+      "dragging": false
+    },
+    {
+      "id": "4",
+      "type": "filter",
+      "position": {
+        "x": 1596.9020916131824,
+        "y": 617.394646816963
+      },
+      "data": {
+        "type": "Lowpass",
+        "cutoff": 833.7387669406708,
+        "resonance": 2.0225876983371234,
+        "exposedParameters": [
+          "cutoff",
+          "resonance"
+        ],
+        "label": "Filter"
+      },
+      "width": 182,
+      "height": 103,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1596.9020916131824,
+        "y": 617.394646816963
+      },
+      "dragging": false
+    },
+    {
+      "id": "5",
+      "type": "distortion",
+      "position": {
+        "x": 1860.19835745372,
+        "y": 692.2833369357769
+      },
+      "data": {
+        "drive": 25,
+        "tone": 3000,
+        "mix": 0.6,
+        "exposedParameters": [
+          "drive",
+          "tone",
+          "mix"
+        ],
+        "label": "Distortion"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1860.19835745372,
+        "y": 692.2833369357769
+      },
+      "dragging": false
+    },
+    {
+      "id": "6",
+      "type": "gain",
+      "position": {
+        "x": 2217.102779690143,
+        "y": 738.2954225482024
+      },
+      "data": {
+        "gain": 0.8,
+        "exposedParameters": [
+          "gain"
+        ],
+        "label": "VCA"
+      },
+      "width": 182,
+      "height": 88,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2217.102779690143,
+        "y": 738.2954225482024
+      },
+      "dragging": false
+    },
+    {
+      "id": "7",
+      "type": "output",
+      "position": {
+        "x": 2662.5954312262384,
+        "y": 742.2691457222904
+      },
+      "data": {
+        "exposedParameters": [],
+        "label": "Output"
+      },
+      "width": 150,
+      "height": 110,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2662.5954312262384,
+        "y": 742.2691457222904
+      },
+      "dragging": false
+    },
+    {
+      "id": "8",
+      "type": "midiInput",
+      "position": {
+        "x": 1322.2028823984413,
+        "y": 1592.4337230513322
+      },
+      "data": {
+        "device": "All",
+        "useMpe": false,
+        "exposedParameters": [
+          "device",
+          "useMpe"
+        ],
+        "label": "MIDI Input"
+      },
+      "width": 122,
+      "height": 105,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1322.2028823984413,
+        "y": 1592.4337230513322
+      },
+      "dragging": false
+    },
+    {
+      "id": "9",
+      "type": "oscillator",
+      "position": {
+        "x": 1510.5954312262384,
+        "y": 1502.2691457222904
+      },
+      "data": {
+        "frequency": 440,
+        "waveform": "Square",
+        "amplitude": 0.707,
+        "pulseWidth": 0.5,
+        "phase": 0,
+        "exposedParameters": [
+          "frequency",
+          "amplitude",
+          "pulseWidth",
+          "phase"
+        ],
+        "label": "Oscillator"
+      },
+      "width": 182,
+      "height": 88,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1510.5954312262384,
+        "y": 1502.2691457222904
+      },
+      "dragging": false
+    },
+    {
+      "id": "10",
+      "type": "adsr",
+      "position": {
+        "x": 1774.657282812872,
+        "y": 1701.006252312691
+      },
+      "data": {
+        "attack": 0.013333333333333334,
+        "decay": 0.1333333333333333,
+        "sustain": 1,
+        "release": 0.18666666666666665,
+        "depth": 1,
+        "velocitySensitivity": 0.5,
+        "attackCurve": "linear",
+        "decayCurve": "linear",
+        "releaseCurve": "linear",
+        "exposedParameters": [
+          "attack",
+          "decay",
+          "sustain",
+          "release",
+          "depth"
+        ],
+        "label": "ADSR"
+      },
+      "width": 182,
+      "height": 73,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1774.657282812872,
+        "y": 1701.006252312691
+      },
+      "dragging": false
+    },
+    {
+      "id": "11",
+      "type": "filter",
+      "position": {
+        "x": 1870.4741469652133,
+        "y": 1531.8520049553886
+      },
+      "data": {
+        "type": "Lowpass",
+        "cutoff": 363.94017172199665,
+        "resonance": 1.2815562149599806,
+        "exposedParameters": [
+          "cutoff",
+          "resonance"
+        ],
+        "label": "Filter"
+      },
+      "width": 182,
+      "height": 103,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1870.4741469652133,
+        "y": 1531.8520049553886
+      },
+      "dragging": false
+    },
+    {
+      "id": "12",
+      "type": "lfo",
+      "position": {
+        "x": 1631.1207251830936,
+        "y": 1620.1166038855577
+      },
+      "data": {
+        "waveform": "Sine",
+        "frequency": 4,
+        "amplitude": 0.8,
+        "bpmSync": false,
+        "syncRate": "1/4",
+        "exposedParameters": [
+          "frequency",
+          "amplitude"
+        ],
+        "label": "LFO"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1631.1207251830936,
+        "y": 1620.1166038855577
+      },
+      "dragging": false
+    },
+    {
+      "id": "13",
+      "type": "gain",
+      "position": {
+        "x": 2216.956886231581,
+        "y": 1569.5738762656877
+      },
+      "data": {
+        "gain": 0.75,
+        "exposedParameters": [
+          "gain"
+        ],
+        "label": "VCA"
+      },
+      "width": 182,
+      "height": 88,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2216.956886231581,
+        "y": 1569.5738762656877
+      },
+      "dragging": false
+    },
+    {
+      "id": "14",
+      "type": "output",
+      "position": {
+        "x": 2485.7523013008868,
+        "y": 1553.4920992957293
+      },
+      "data": {
+        "exposedParameters": [],
+        "label": "Output"
+      },
+      "width": 150,
+      "height": 110,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2485.7523013008868,
+        "y": 1553.4920992957293
+      },
+      "dragging": false
+    },
+    {
+      "id": "15",
+      "type": "noise",
+      "position": {
+        "x": 1194.5728344418515,
+        "y": 1199.1932475450765
+      },
+      "data": {
+        "type": "White",
+        "amplitude": 0.401,
+        "exposedParameters": [
+          "amplitude"
+        ],
+        "label": "Noise"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1194.5728344418515,
+        "y": 1199.1932475450765
+      },
+      "dragging": false
+    },
+    {
+      "id": "16",
+      "type": "filter",
+      "position": {
+        "x": 1487.983845707774,
+        "y": 1213.497472330106
+      },
+      "data": {
+        "type": "Lowpass",
+        "cutoff": 1531.193213822513,
+        "resonance": 0.8596846518846035,
+        "exposedParameters": [
+          "cutoff",
+          "resonance"
+        ],
+        "label": "Filter"
+      },
+      "width": 186,
+      "height": 107,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1487.983845707774,
+        "y": 1213.497472330106
+      },
+      "dragging": false
+    },
+    {
+      "id": "17",
+      "type": "delay",
+      "position": {
+        "x": 1867.081444964318,
+        "y": 1272.3396329677394
+      },
+      "data": {
+        "delayTime": 0.4,
+        "feedback": 0.6,
+        "mix": 0.5,
+        "bpmSync": false,
+        "syncRate": "1/8",
+        "exposedParameters": [
+          "delayTime",
+          "feedback",
+          "mix"
+        ],
+        "label": "Delay"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1867.081444964318,
+        "y": 1272.3396329677394
+      },
+      "dragging": false
+    },
+    {
+      "id": "18",
+      "type": "reverb",
+      "position": {
+        "x": 2211.690951463428,
+        "y": 1267.7448395477513
+      },
+      "data": {
+        "decay": 3,
+        "preDelay": 0.01,
+        "mix": 0.5,
+        "exposedParameters": [
+          "decay",
+          "mix"
+        ],
+        "label": "Reverb"
+      },
+      "width": 182,
+      "height": 43,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2211.690951463428,
+        "y": 1267.7448395477513
+      },
+      "dragging": false
+    },
+    {
+      "id": "19",
+      "type": "output",
+      "position": {
+        "x": 2517.0709096188634,
+        "y": 1241.4021527511738
+      },
+      "data": {
+        "exposedParameters": [],
+        "label": "Output"
+      },
+      "width": 150,
+      "height": 110,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2517.0709096188634,
+        "y": 1241.4021527511738
+      },
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "1",
+      "sourceHandle": "pitch",
+      "target": "2",
+      "targetHandle": "input_freq",
+      "id": "e1-2"
+    },
+    {
+      "source": "1",
+      "sourceHandle": "gate",
+      "target": "3",
+      "targetHandle": "input",
+      "id": "e1-3"
+    },
+    {
+      "source": "2",
+      "sourceHandle": "output",
+      "target": "4",
+      "targetHandle": "input_cutoff",
+      "id": "e2-4"
+    },
+    {
+      "source": "4",
+      "sourceHandle": "output",
+      "target": "5",
+      "targetHandle": "input",
+      "id": "e4-5"
+    },
+    {
+      "source": "5",
+      "sourceHandle": "output",
+      "target": "6",
+      "targetHandle": "input",
+      "id": "e5-6"
+    },
+    {
+      "source": "3",
+      "sourceHandle": "output",
+      "target": "6",
+      "targetHandle": "input_gain",
+      "id": "e3-6"
+    },
+    {
+      "source": "6",
+      "sourceHandle": "output",
+      "target": "7",
+      "targetHandle": "input",
+      "id": "e6-7"
+    },
+    {
+      "source": "8",
+      "sourceHandle": "pitch",
+      "target": "9",
+      "targetHandle": "input_freq",
+      "id": "e8-9"
+    },
+    {
+      "source": "8",
+      "sourceHandle": "gate",
+      "target": "10",
+      "targetHandle": "input",
+      "id": "e8-10"
+    },
+    {
+      "source": "9",
+      "sourceHandle": "output",
+      "target": "11",
+      "targetHandle": "input",
+      "id": "e9-11"
+    },
+    {
+      "source": "12",
+      "sourceHandle": "output",
+      "target": "11",
+      "targetHandle": "input_cutoff",
+      "id": "e12-11"
+    },
+    {
+      "source": "11",
+      "sourceHandle": "output",
+      "target": "13",
+      "targetHandle": "input",
+      "id": "e11-13"
+    },
+    {
+      "source": "10",
+      "sourceHandle": "output",
+      "target": "13",
+      "targetHandle": "input_gain",
+      "id": "e10-13"
+    },
+    {
+      "source": "13",
+      "sourceHandle": "output",
+      "target": "14",
+      "targetHandle": "input",
+      "id": "e13-14"
+    },
+    {
+      "source": "15",
+      "sourceHandle": "output",
+      "target": "16",
+      "targetHandle": "input",
+      "id": "e15-16"
+    },
+    {
+      "source": "16",
+      "sourceHandle": "output",
+      "target": "17",
+      "targetHandle": "input",
+      "id": "e16-17"
+    },
+    {
+      "source": "17",
+      "sourceHandle": "output",
+      "target": "18",
+      "targetHandle": "input",
+      "id": "e17-18"
+    },
+    {
+      "source": "18",
+      "sourceHandle": "output",
+      "target": "19",
+      "targetHandle": "input",
+      "id": "e18-19"
+    }
+  ],
+  "viewport": {
+    "x": -235.67760664504067,
+    "y": -166.9983053775262,
+    "zoom": 0.574349177498518
+  },
+  "sequencerTracks": []
+}

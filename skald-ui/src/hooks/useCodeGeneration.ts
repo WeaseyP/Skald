@@ -88,7 +88,11 @@ export const useCodeGeneration = () => {
         const audioGraph = {
             nodes: graphNodes,
             connections: graphConnections,
-            sequencer_tracks: formattedTracks
+            sequencer_tracks: formattedTracks,
+            master: {
+                volume: 0.8, // Default, will need to be dynamic later if we want to save it
+                effects: []
+            }
         };
 
         try {

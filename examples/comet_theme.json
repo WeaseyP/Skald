@@ -1,0 +1,576 @@
+{
+    "nodes": [
+        {
+            "id": "inst_sax",
+            "type": "instrument",
+            "position": {
+                "x": 100,
+                "y": 100
+            },
+            "data": {
+                "name": "Raspy Sax",
+                "label": "Raspy Sax",
+                "voiceCount": 4,
+                "subgraph": {
+                    "nodes": [
+                        {
+                            "id": "1",
+                            "type": "midiInput",
+                            "position": {
+                                "x": 0,
+                                "y": 0
+                            },
+                            "data": {
+                                "label": "MIDI"
+                            }
+                        },
+                        {
+                            "id": "2",
+                            "type": "oscillator",
+                            "position": {
+                                "x": 200,
+                                "y": 0
+                            },
+                            "data": {
+                                "waveform": "Sawtooth",
+                                "frequency": 440,
+                                "amplitude": 0.8,
+                                "label": "Osc"
+                            }
+                        },
+                        {
+                            "id": "3",
+                            "type": "filter",
+                            "position": {
+                                "x": 400,
+                                "y": 0
+                            },
+                            "data": {
+                                "type": "Lowpass",
+                                "cutoff": 500,
+                                "resonance": 5,
+                                "label": "Filter"
+                            }
+                        },
+                        {
+                            "id": "4",
+                            "type": "adsr",
+                            "position": {
+                                "x": 400,
+                                "y": 200
+                            },
+                            "data": {
+                                "attack": 0.05,
+                                "decay": 0.2,
+                                "sustain": 0.4,
+                                "release": 0.2,
+                                "depth": 2000,
+                                "label": "Filter Env"
+                            }
+                        },
+                        {
+                            "id": "5",
+                            "type": "distortion",
+                            "position": {
+                                "x": 600,
+                                "y": 0
+                            },
+                            "data": {
+                                "drive": 20,
+                                "mix": 0.7,
+                                "label": "Distortion"
+                            }
+                        },
+                        {
+                            "id": "6",
+                            "type": "gain",
+                            "position": {
+                                "x": 800,
+                                "y": 0
+                            },
+                            "data": {
+                                "gain": 0,
+                                "label": "VCA"
+                            }
+                        },
+                        {
+                            "id": "7",
+                            "type": "adsr",
+                            "position": {
+                                "x": 600,
+                                "y": 200
+                            },
+                            "data": {
+                                "attack": 0.05,
+                                "decay": 0.1,
+                                "sustain": 0.8,
+                                "release": 0.3,
+                                "label": "Amp Env"
+                            }
+                        },
+                        {
+                            "id": "8",
+                            "type": "output",
+                            "position": {
+                                "x": 1000,
+                                "y": 0
+                            },
+                            "data": {
+                                "label": "Out"
+                            }
+                        }
+                    ],
+                    "connections": [
+                        {
+                            "from_node": "1",
+                            "from_port": "pitch",
+                            "to_node": "2",
+                            "to_port": "input_freq"
+                        },
+                        {
+                            "from_node": "1",
+                            "from_port": "gate",
+                            "to_node": "4",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "1",
+                            "from_port": "gate",
+                            "to_node": "7",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "2",
+                            "from_port": "output",
+                            "to_node": "3",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "4",
+                            "from_port": "output",
+                            "to_node": "3",
+                            "to_port": "input_cutoff"
+                        },
+                        {
+                            "from_node": "3",
+                            "from_port": "output",
+                            "to_node": "5",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "5",
+                            "from_port": "output",
+                            "to_node": "6",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "7",
+                            "from_port": "output",
+                            "to_node": "6",
+                            "to_port": "input_gain"
+                        },
+                        {
+                            "from_node": "6",
+                            "from_port": "output",
+                            "to_node": "8",
+                            "to_port": "input"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "inst_space",
+            "type": "instrument",
+            "position": {
+                "x": 100,
+                "y": 400
+            },
+            "data": {
+                "name": "Space Keys",
+                "label": "Space Keys",
+                "voiceCount": 4,
+                "subgraph": {
+                    "nodes": [
+                        {
+                            "id": "1",
+                            "type": "midiInput",
+                            "position": {
+                                "x": 0,
+                                "y": 0
+                            },
+                            "data": {
+                                "label": "MIDI"
+                            }
+                        },
+                        {
+                            "id": "2",
+                            "type": "oscillator",
+                            "position": {
+                                "x": 200,
+                                "y": 0
+                            },
+                            "data": {
+                                "waveform": "Triangle",
+                                "frequency": 440,
+                                "amplitude": 0.6,
+                                "label": "Osc"
+                            }
+                        },
+                        {
+                            "id": "3",
+                            "type": "gain",
+                            "position": {
+                                "x": 400,
+                                "y": 0
+                            },
+                            "data": {
+                                "gain": 0,
+                                "label": "VCA"
+                            }
+                        },
+                        {
+                            "id": "4",
+                            "type": "adsr",
+                            "position": {
+                                "x": 200,
+                                "y": 200
+                            },
+                            "data": {
+                                "attack": 0.8,
+                                "decay": 0.5,
+                                "sustain": 0.8,
+                                "release": 2.0,
+                                "label": "Amp Env"
+                            }
+                        },
+                        {
+                            "id": "5",
+                            "type": "delay",
+                            "position": {
+                                "x": 600,
+                                "y": 0
+                            },
+                            "data": {
+                                "delayTime": 0.5,
+                                "feedback": 0.4,
+                                "mix": 0.4,
+                                "label": "Delay"
+                            }
+                        },
+                        {
+                            "id": "6",
+                            "type": "reverb",
+                            "position": {
+                                "x": 800,
+                                "y": 0
+                            },
+                            "data": {
+                                "decay": 4.0,
+                                "mix": 0.5,
+                                "label": "Reverb"
+                            }
+                        },
+                        {
+                            "id": "7",
+                            "type": "output",
+                            "position": {
+                                "x": 1000,
+                                "y": 0
+                            },
+                            "data": {
+                                "label": "Out"
+                            }
+                        }
+                    ],
+                    "connections": [
+                        {
+                            "from_node": "1",
+                            "from_port": "pitch",
+                            "to_node": "2",
+                            "to_port": "input_freq"
+                        },
+                        {
+                            "from_node": "1",
+                            "from_port": "gate",
+                            "to_node": "4",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "2",
+                            "from_port": "output",
+                            "to_node": "3",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "4",
+                            "from_port": "output",
+                            "to_node": "3",
+                            "to_port": "input_gain"
+                        },
+                        {
+                            "from_node": "3",
+                            "from_port": "output",
+                            "to_node": "5",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "5",
+                            "from_port": "output",
+                            "to_node": "6",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "6",
+                            "from_port": "output",
+                            "to_node": "7",
+                            "to_port": "input"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "inst_drum",
+            "type": "instrument",
+            "position": {
+                "x": 100,
+                "y": 700
+            },
+            "data": {
+                "name": "Kick",
+                "label": "Kick",
+                "voiceCount": 1,
+                "subgraph": {
+                    "nodes": [
+                        {
+                            "id": "1",
+                            "type": "midiInput",
+                            "position": {
+                                "x": 0,
+                                "y": 0
+                            },
+                            "data": {
+                                "label": "MIDI"
+                            }
+                        },
+                        {
+                            "id": "2",
+                            "type": "oscillator",
+                            "position": {
+                                "x": 200,
+                                "y": 0
+                            },
+                            "data": {
+                                "waveform": "Sine",
+                                "frequency": 50,
+                                "amplitude": 1.0,
+                                "label": "Osc"
+                            }
+                        },
+                        {
+                            "id": "3",
+                            "type": "adsr",
+                            "position": {
+                                "x": 200,
+                                "y": 200
+                            },
+                            "data": {
+                                "attack": 0.001,
+                                "decay": 0.1,
+                                "sustain": 0,
+                                "release": 0.1,
+                                "depth": 100,
+                                "label": "Pitch Env"
+                            }
+                        },
+                        {
+                            "id": "4",
+                            "type": "gain",
+                            "position": {
+                                "x": 400,
+                                "y": 0
+                            },
+                            "data": {
+                                "gain": 0,
+                                "label": "VCA"
+                            }
+                        },
+                        {
+                            "id": "5",
+                            "type": "adsr",
+                            "position": {
+                                "x": 400,
+                                "y": 200
+                            },
+                            "data": {
+                                "attack": 0.001,
+                                "decay": 0.2,
+                                "sustain": 0,
+                                "release": 0.1,
+                                "label": "Amp Env"
+                            }
+                        },
+                        {
+                            "id": "6",
+                            "type": "distortion",
+                            "position": {
+                                "x": 600,
+                                "y": 0
+                            },
+                            "data": {
+                                "drive": 5,
+                                "mix": 0.3,
+                                "label": "Dist"
+                            }
+                        },
+                        {
+                            "id": "7",
+                            "type": "output",
+                            "position": {
+                                "x": 800,
+                                "y": 0
+                            },
+                            "data": {
+                                "label": "Out"
+                            }
+                        }
+                    ],
+                    "connections": [
+                        {
+                            "from_node": "1",
+                            "from_port": "gate",
+                            "to_node": "3",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "1",
+                            "from_port": "gate",
+                            "to_node": "5",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "3",
+                            "from_port": "output",
+                            "to_node": "2",
+                            "to_port": "input_freq"
+                        },
+                        {
+                            "from_node": "2",
+                            "from_port": "output",
+                            "to_node": "4",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "5",
+                            "from_port": "output",
+                            "to_node": "4",
+                            "to_port": "input_gain"
+                        },
+                        {
+                            "from_node": "4",
+                            "from_port": "output",
+                            "to_node": "6",
+                            "to_port": "input"
+                        },
+                        {
+                            "from_node": "6",
+                            "from_port": "output",
+                            "to_node": "7",
+                            "to_port": "input"
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "sequencerTracks": [
+        {
+            "id": "track_sax",
+            "targetNodeId": "inst_sax",
+            "name": "Raspy Sax",
+            "color": "#e03131",
+            "steps": 16,
+            "notes": [
+                {
+                    "step": 0,
+                    "note": "C3",
+                    "velocity": 0.8,
+                    "duration": 4
+                },
+                {
+                    "step": 4,
+                    "note": "Eb3",
+                    "velocity": 0.9,
+                    "duration": 4
+                },
+                {
+                    "step": 8,
+                    "note": "G3",
+                    "velocity": 0.8,
+                    "duration": 4
+                },
+                {
+                    "step": 12,
+                    "note": "Bb3",
+                    "velocity": 1.0,
+                    "duration": 4
+                }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        },
+        {
+            "id": "track_space",
+            "targetNodeId": "inst_space",
+            "name": "Space Keys",
+            "color": "#74c0fc",
+            "steps": 16,
+            "notes": [
+                {
+                    "step": 0,
+                    "note": "C4",
+                    "velocity": 0.6,
+                    "duration": 16
+                }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        },
+        {
+            "id": "track_kick",
+            "targetNodeId": "inst_drum",
+            "name": "Kick",
+            "color": "#69db7c",
+            "steps": 16,
+            "notes": [
+                {
+                    "step": 0,
+                    "note": "C1",
+                    "velocity": 1.0,
+                    "duration": 1
+                },
+                {
+                    "step": 4,
+                    "note": "C1",
+                    "velocity": 1.0,
+                    "duration": 1
+                },
+                {
+                    "step": 8,
+                    "note": "C1",
+                    "velocity": 1.0,
+                    "duration": 1
+                },
+                {
+                    "step": 12,
+                    "note": "C1",
+                    "velocity": 1.0,
+                    "duration": 1
+                }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        }
+    ]
+}

@@ -7,7 +7,7 @@
 | from the hooks to the appropriate child components.                          |
 ================================================================================
 */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import ReactFlow, { Background, Controls, ReactFlowInstance, ReactFlowProvider, Node } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -123,7 +123,7 @@ const EditorLayout = () => {
     const sequencerStateHooks = useSequencerState();
     useInstrumentRegistry(nodes, sequencerStateHooks);
 
-    const { isPlaying, handlePlay, handleStop } = useAudioEngine(
+    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode } = useAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -132,7 +132,7 @@ const EditorLayout = () => {
         sequencerStateHooks.setCurrentStep
     );
 
-    const { handleSave, handleLoad } = useFileIO(
+    const { handleSave, handleLoad, handleImportGraph } = useFileIO(
         reactFlowInstance,
         setNodes,
         setEdges,
@@ -147,6 +147,100 @@ const EditorLayout = () => {
         currentStep: sequencerStateHooks.currentStep,
         tracks: sequencerStateHooks.tracks
     };
+
+    const handleFocusNode = useCallback((nodeId: string) => {
+        if (!reactFlowInstance) return;
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+            // Select the node
+            setNodes(nds => nds.map(n => ({
+                ...n,
+                selected: n.id === nodeId
+            })));
+
+            // Focus view
+            reactFlowInstance.fitView({ nodes: [node], duration: 800, padding: 1.5 });
+        }
+    }, [reactFlowInstance, nodes, setNodes]);
+
+    React.useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Check for valid targets (ignore inputs)
+            if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+
+            // Global Undo/Redo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    // Redo
+                    handleRedo();
+                    sequencerStateHooks.handleRedo();
+                } else {
+                    // Undo
+                    handleUndo();
+                    sequencerStateHooks.handleUndo();
+                }
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+                e.preventDefault();
+                // Redo
+                handleRedo();
+                sequencerStateHooks.handleRedo();
+                return;
+            }
+
+            // Cycle nodes with [ and ]
+            if (e.key === ']' || e.key === '[') {
+                const sortedNodes = [...nodes].sort((a, b) => {
+                    // Sort by position y, then x
+                    if (Math.abs(a.position.y - b.position.y) > 50) return a.position.y - b.position.y;
+                    return a.position.x - b.position.x;
+                });
+
+                if (sortedNodes.length === 0) return;
+
+                const selectedIndex = sortedNodes.findIndex(n => n.selected);
+                let nextIndex = 0;
+
+                if (selectedIndex !== -1) {
+                    if (e.key === ']') {
+                        nextIndex = (selectedIndex + 1) % sortedNodes.length;
+                    } else {
+                        nextIndex = (selectedIndex - 1 + sortedNodes.length) % sortedNodes.length;
+                    }
+                }
+
+                const nextNode = sortedNodes[nextIndex];
+                if (nextNode) {
+                    handleFocusNode(nextNode.id);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [nodes, handleFocusNode, handleUndo, handleRedo, sequencerStateHooks]);
+
+    // Inject AnalyserNode into Output Nodes for Visualizer
+    // Inject AnalyserNode into Output Nodes for Visualizer
+    useEffect(() => {
+        if (!analyserNode || !analyserNode.current) return;
+
+        // Only update if not already set preventing loop
+        const needsUpdate = nodes.some(n => n.type === 'output' && !n.data.analyser);
+        if (needsUpdate) {
+            setNodes(nds => nds.map(n => {
+                if (n.type === 'output' && !n.data.analyser) {
+                    return {
+                        ...n,
+                        data: { ...n.data, analyser: analyserNode.current }
+                    };
+                }
+                return n;
+            }));
+        }
+    }, [isPlaying, nodes, setNodes, analyserNode]);
 
     return (
         <div style={appContainerStyles}>
@@ -168,6 +262,7 @@ const EditorLayout = () => {
                         isPlaying={isPlaying}
                         onSave={handleSave}
                         onLoad={handleLoad}
+                        onImport={handleImportGraph}
                         onCreateInstrument={handleCreateInstrument}
                         onCreateGroup={handleCreateGroup}
                         canCreateInstrument={selectedNodesForGrouping.length > 0}
@@ -223,8 +318,15 @@ const EditorLayout = () => {
                 isLooping={isLooping}
                 onMuteToggle={sequencerStateHooks.toggleMute}
                 onSoloToggle={sequencerStateHooks.toggleSolo}
-                onFocusTrack={(id) => console.log('Focus track', id)}
+                onFocusTrack={(trackId) => {
+                    const track = sequencerStateHooks.tracks.find(t => t.id === trackId);
+                    if (track) handleFocusNode(track.targetNodeId);
+                }}
                 onToggleStep={sequencerStateHooks.toggleStep}
+                onUpdateNote={sequencerStateHooks.updateNote}
+                onUpdateSteps={sequencerStateHooks.updateTrackSteps}
+                analyserNode={analyserNode?.current || null}
+                masterGainNode={masterGainNode?.current || null}
             />
         </div>
     );

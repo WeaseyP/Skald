@@ -6,6 +6,7 @@ interface TrackListProps {
     onMuteToggle: (trackId: string) => void;
     onSoloToggle: (trackId: string) => void;
     onFocusTrack: (trackId: string) => void;
+    onUpdateSteps?: (trackId: string, steps: number) => void;
 }
 
 const listContainerStyles: React.CSSProperties = {
@@ -77,6 +78,17 @@ export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSo
                     >
                         S
                     </button>
+
+                    {/* Steps Input */}
+                    <input
+                        type="number"
+                        min="1"
+                        max="64"
+                        value={track.steps}
+                        onChange={(e) => onUpdateSteps && onUpdateSteps(track.id, parseInt(e.target.value))}
+                        style={{ width: '40px', marginLeft: '5px', backgroundColor: '#333', color: '#ccc', border: '1px solid #444', fontSize: '10px' }}
+                        title="Steps"
+                    />
                 </div>
             ))}
         </div>

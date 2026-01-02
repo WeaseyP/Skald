@@ -14,10 +14,13 @@ interface SequencerDockProps {
     onToggleLoop: () => void;
     isLooping: boolean;
     // Track Actions
+    // Track Actions
     onMuteToggle: (trackId: string) => void;
     onSoloToggle: (trackId: string) => void;
     onFocusTrack: (trackId: string) => void;
     onToggleStep: (trackId: string, step: number) => void;
+    onUpdateNote: (trackId: string, step: number, changes: Partial<any>) => void;
+    onUpdateSteps: (trackId: string, steps: number) => void;
 }
 
 const dockContainerStyles: React.CSSProperties = {
@@ -42,7 +45,9 @@ const contentAreaStyles: React.CSSProperties = {
     overflow: 'hidden'
 };
 
-export const SequencerDock: React.FC<SequencerDockProps> = ({
+import { AudioVisualizer } from '../Visualization/AudioVisualizer';
+
+export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: AnalyserNode | null; masterGainNode: GainNode | null }> = ({
     state,
     bpm,
     setBpm,
@@ -53,12 +58,25 @@ export const SequencerDock: React.FC<SequencerDockProps> = ({
     onMuteToggle,
     onSoloToggle,
     onFocusTrack,
-    onToggleStep
+    onToggleStep,
+    onUpdateNote,
+    onUpdateSteps,
+    analyserNode,
+    masterGainNode
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [masterVolume, setMasterVolume] = useState(0.8);
 
     // Height: 40px (Toolbar only) vs 300px (Expanded)
     const height = isCollapsed ? '40px' : '300px';
+
+    const handleMasterVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = parseFloat(e.target.value);
+        setMasterVolume(val);
+        if (masterGainNode) {
+            masterGainNode.gain.setTargetAtTime(val, masterGainNode.context.currentTime, 0.01);
+        }
+    };
 
     return (
         <div style={{ ...dockContainerStyles, height }}>
@@ -76,6 +94,31 @@ export const SequencerDock: React.FC<SequencerDockProps> = ({
 
             {!isCollapsed && (
                 <div style={contentAreaStyles}>
+                    {/* Master Section */}
+                    <div style={{ width: '120px', backgroundColor: '#202020', borderRight: '1px solid #333', padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', color: '#ccc' }}>MASTER</div>
+                        <AudioVisualizer
+                            analyser={analyserNode}
+                            width={100}
+                            height={60}
+                            showSpectrum={true}
+                            showOscilloscope={true}
+                        />
+                        <div style={{ marginTop: '10px', width: '100%', textAlign: 'center' }}>
+                            <label style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '2px' }}>Volume</label>
+                            <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value={masterVolume}
+                                onChange={handleMasterVolumeChange}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                                title={`Master Volume: ${Math.round(masterVolume * 100)}%`}
+                            />
+                        </div>
+                    </div>
+
                     <TrackList
                         tracks={state.tracks}
                         onMuteToggle={onMuteToggle}
@@ -87,6 +130,8 @@ export const SequencerDock: React.FC<SequencerDockProps> = ({
                         currentStep={state.currentStep}
                         steps={16}
                         onToggleStep={onToggleStep}
+                        onUpdateNote={onUpdateNote}
+                        bpm={bpm}
                     />
                 </div>
             )}

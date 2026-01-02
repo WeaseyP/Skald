@@ -38,6 +38,9 @@ export const useAudioEngine = (
     };
 
 
+    const analyserNode = useRef<AnalyserNode | null>(null);
+    const masterGainNode = useRef<GainNode | null>(null); // For future Master Bus
+
     const handlePlay = useCallback(async () => {
         logger.info('AudioEngine', 'Play requeted');
         if (isPlaying) return;
@@ -53,6 +56,18 @@ export const useAudioEngine = (
                 context.audioWorklet.addModule(URL.createObjectURL(wavetableBlob)),
                 context.audioWorklet.addModule(URL.createObjectURL(adsrBlob))
             ]);
+
+            // Setup Master Chain for SKALD-92/94
+            const analyser = context.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.connect(context.destination);
+            analyserNode.current = analyser;
+
+            // Optional: Master Gain
+            const masterGain = context.createGain();
+            masterGain.connect(analyser); // Future nodes will connect to masterGain instead of destination
+            masterGainNode.current = masterGain;
+
             logger.info('AudioEngine', 'AudioWorklets loaded. Starting playback.');
             setIsPlaying(true);
         } catch (e) {
@@ -71,6 +86,8 @@ export const useAudioEngine = (
             audioContext.current = null;
             audioNodes.current.clear();
             adsrNodes.current.clear();
+            analyserNode.current = null;
+            masterGainNode.current = null;
             prevGraphState.current = { nodes: [], edges: [] };
         });
     }, [isPlaying]);
@@ -112,7 +129,13 @@ export const useAudioEngine = (
                     handler.create(node);
                 } else {
                     let newAudioNode: AudioNode | Instrument | null = null;
-                    if (node.type === 'instrument') {
+
+                    // SKALD-94: Route Output to Master Bus
+                    if (node.type === 'output' && masterGainNode.current) {
+                        newAudioNode = masterGainNode.current;
+                        logger.debug('AudioEngine', `Routing Output node ${node.id} to Master Bus`);
+                    }
+                    else if (node.type === 'instrument') {
                         newAudioNode = new Instrument(context, node);
                     } else if (node.type && (nodeCreationMap as any)[node.type]) {
                         const creator = (nodeCreationMap as any)[node.type] as Function;
@@ -364,5 +387,5 @@ export const useAudioEngine = (
         };
     }, []); // Run once on mount (or when audioContext changes?) No, independent.
 
-    return { isPlaying, handlePlay, handleStop };
+    return { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode };
 };

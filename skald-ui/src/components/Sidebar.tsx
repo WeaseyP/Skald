@@ -104,6 +104,7 @@ interface SidebarProps {
     onLoopToggle: () => void;
     onExplodeInstrument: () => void;
     canExplodeInstrument: boolean;
+    onImport: () => void;
 }
 
 
@@ -125,6 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     onLoopToggle,
     onExplodeInstrument,
     canExplodeInstrument,
+    onImport,
 }) => {
 
     const onDragStart = (event: React.DragEvent, nodeType: string) => {
@@ -165,6 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button style={secondaryButtonStyles} onClick={onSave}>Save</button>
                 <button style={secondaryButtonStyles} onClick={onLoad}>Load</button>
+                <button style={secondaryButtonStyles} onClick={onImport}>Import Patch</button>
             </div>
 
             <div>

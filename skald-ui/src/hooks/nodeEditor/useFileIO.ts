@@ -60,23 +60,33 @@ export const useFileIO = (
         const importedEdges = flow.edges as Edge[] || [];
         const importedTracks = flow.sequencerTracks as SequencerTrack[] || [];
 
-        // 1. Calculate boundaries of current graph to offset imported nodes
-        const currentNodes = reactFlowInstance.getNodes();
-        const currentEdges = reactFlowInstance.getEdges();
+        // 1. Calculate boundaries of imported nodes
+        let impMinX = Infinity, impMaxX = -Infinity;
+        let impMinY = Infinity, impMaxY = -Infinity;
 
-        // Handle empty graph case
-        let maxX = 0;
-        let minY = 0;
-        if (currentNodes.length > 0) {
-            maxX = Math.max(...currentNodes.map(n => n.position.x + (n.width || 200)));
-            // Align Y with the top-most node roughly, or just 0
-            minY = Math.min(...currentNodes.map(n => n.position.y));
-        }
+        importedNodes.forEach(n => {
+            if (n.position.x < impMinX) impMinX = n.position.x;
+            if (n.position.x > impMaxX) impMaxX = n.position.x;
+            if (n.position.y < impMinY) impMinY = n.position.y;
+            if (n.position.y > impMaxY) impMaxY = n.position.y;
+        });
 
-        const X_OFFSET = 100; // Padding
-        const Y_OFFSET = 0; // Align top
+        const impWidth = impMaxX - impMinX;
+        const impHeight = impMaxY - impMinY;
+        const impCenterX = impMinX + impWidth / 2;
+        const impCenterY = impMinY + impHeight / 2;
 
-        // 2. Remap IDs to avoid collisions
+        // 2. Calculate Viewport Center in Graph Coordinates
+        const { x: vpX, y: vpY, zoom } = reactFlowInstance.getViewport();
+
+        // Canvas dimensions (Window - Sidebars)
+        const canvasWidth = window.innerWidth - 550; // Sidebars (200 + 350)
+        const canvasHeight = window.innerHeight - 300; // Estimate Sequencer height
+
+        const targetCenterX = (-vpX + canvasWidth / 2) / zoom;
+        const targetCenterY = (-vpY + canvasHeight / 2) / zoom;
+
+        // 3. Remap IDs to avoid collisions & Reposition
         const idMap = new Map<string, string>();
         const timestamp = Date.now();
 
@@ -84,14 +94,16 @@ export const useFileIO = (
             const newId = `${timestamp}-${index}`; // Use timestamp-index for uniqueness
             idMap.set(node.id, newId);
 
-            // Calculate new position
-            // Shift entire imported graph's origin to (maxX + offset, minY)
+            // Calculate new position relative to center
+            const offsetX = node.position.x - impCenterX;
+            const offsetY = node.position.y - impCenterY;
+
             return {
                 ...node,
                 id: newId,
                 position: {
-                    x: node.position.x + maxX + X_OFFSET,
-                    y: node.position.y // Keep original Y or offset if needed
+                    x: targetCenterX + offsetX,
+                    y: targetCenterY + offsetY
                 },
                 selected: true, // Auto-select imported nodes
                 data: {

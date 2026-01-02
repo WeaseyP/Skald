@@ -28,12 +28,13 @@ export const useSequencerEngine = (
         // 1/16th note = 0.25 of a beat
         nextNoteTime.current += 0.25 * secondsPerBeat;
 
+        const maxSteps = Math.max(16, ...sequencerTracks.map(t => t.steps || 16));
+
         current16thNote.current++;
-        if (current16thNote.current === 16) {
-            logger.info('SequencerEngine', 'Loop boundary reached', { isLooping });
+        if (current16thNote.current >= maxSteps) {
+            logger.info('SequencerEngine', 'Loop boundary reached', { isLooping, maxSteps });
             if (isLooping) {
                 current16thNote.current = 0;
-                logger.info('SequencerEngine', 'Looping back to 0');
             } else {
                 logger.info('SequencerEngine', 'Sequence complete. Stopping.');
                 // Stop playback
@@ -44,25 +45,10 @@ export const useSequencerEngine = (
                 onComplete();
             }
         }
-    }, [bpm, isLooping, onComplete]);
+    }, [bpm, isLooping, onComplete, sequencerTracks]);
 
     const scheduleNote = useCallback((stepNumber: number, time: number) => {
-        // Update UI (this might be jittery if done directly, usually we use requestAnimationFrame for UI
-        // but for now we just call the setter. To avoid React state spam, we might want to throttle or use a ref)
-        // For simplicity in Phase 14, we just set it. 
-        // Note: 'time' is in the future. We can't update UI in future. 
-        // We update UI "around" now. 
-        // A common trick is to use `draw` loop for UI. 
-        // Here we'll just set it.
-        // PERF WARNING: This runs in the audio lookahead loop.
-
-        // Actually, for UI sync, it's better to update it "now".
-        // Let's defer currentStep update? 
-        // Or just let it be slightly ahead/off?
-        // Let's use a specialized scheduler for UI or just accept it updates when scheduled.
-        // Ideally we sync UI to audio time in a rAF loop, but that requires checking context.currentTime.
-
-        // For now: Just update state. It will be slightly ahead (up to 100ms).
+        // Update UI logic...
         setCurrentStep(stepNumber);
 
         if (stepNumber === 0) {
@@ -76,44 +62,35 @@ export const useSequencerEngine = (
         sequencerTracks.forEach(track => {
             if (track.isMuted) return;
 
-            // Check for note at this step
-            const noteEvent = track.notes.find(n => n.step === stepNumber);
+            const trackSteps = track.steps || 16;
+            // Polyrhythm: wrap the global step number to the track's length
+            const localStep = stepNumber % trackSteps;
+
+            // Check for note at this LOCAL step
+            const noteEvent = track.notes.find(n => n.step === localStep);
+
             if (noteEvent) {
-                logger.debug('SequencerEngine', `Triggering note on ${track.name} at step ${stepNumber}`);
+                // logger.debug('SequencerEngine', `Triggering note on ${track.name} at step ${stepNumber} (local ${localStep})`);
                 const targetNode = audioNodesRef.current.get(track.targetNodeId);
                 if (targetNode && targetNode instanceof Instrument) {
                     // Calculate step duration
                     const secondsPerBeat = 60.0 / bpm;
                     const stepDuration = 0.25 * secondsPerBeat;
 
-                    // Tie Logic: Check if next step is active on this track
-                    // Note: We need to handle the loop wrap-around carefully. 
-                    // If we are at step 15, next is 0. If loop is enabled, we check 0.
-                    // If loop is NOT enabled, there is no next step after 15 (or max steps).
-                    // Assuming 16 steps for now based on context usage. 
-                    // Ideally we use track.steps if available, but for now hardcoded 16 or current wrap logic is 16.
-                    const MAX_STEPS = 16;
-                    const nextStep = (stepNumber + 1) % MAX_STEPS;
-
-                    // Only tie if we are not at end, or if we ARE looping and at end
-                    // Actually simple check: Is there a note at nextStep?
-                    let isTied = false;
-                    if (isLooping || stepNumber < MAX_STEPS - 1) {
-                        isTied = track.notes.some(n => n.step === nextStep);
-                    }
+                    // Tie Logic: Check if next step has a note
+                    // For polyrhythms, next local step
+                    const nextLocalStep = (localStep + 1) % trackSteps;
 
                     const voiceIndex = targetNode.trigger(time, noteEvent.note, noteEvent.velocity);
 
-                    if (!isTied) {
-                        // Schedule gate off at end of step
-                        // To allow small release tails without clicking, we might want exact time.
-                        targetNode.releaseVoice(voiceIndex, time + stepDuration);
-                    }
+                    // Schedule gate off at end of note duration
+                    const durationInSteps = noteEvent.duration || 1;
+                    targetNode.releaseVoice(voiceIndex, time + (stepDuration * durationInSteps));
                 }
             }
         });
 
-    }, [sequencerTracks, setCurrentStep]); // audioNodesRef is ref
+    }, [sequencerTracks, setCurrentStep, bpm]); // Added bpm dependency
 
     const scheduler = useCallback(() => {
         if (!audioContextRef.current) return;
