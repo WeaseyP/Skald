@@ -54,9 +54,10 @@ app.on('activate', () => {
   }
 });
 
-ipcMain.handle('invoke-codegen', async (_, graphJson: string) => {
+ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { packageName?: string, outputPath?: string } = {}) => {
   // --- DEBUG: Log the JSON received by the main process ---
-  console.log("Main process received from renderer:", graphJson);
+  console.log("Main process received from renderer:", graphJson.substring(0, 50) + "...");
+  console.log("Options:", options);
   // ---------------------------------------------------------
 
   // In dev mode, app.getAppPath() points to the project root.
@@ -64,7 +65,18 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string) => {
   const executablePath = path.join(app.getAppPath(), 'skald_codegen.exe');
 
   return new Promise((resolve, reject) => {
-    const child = spawn(executablePath);
+
+    const args: string[] = [];
+    if (options.packageName) {
+      args.push(`-package:${options.packageName}`);
+    }
+    if (options.outputPath) {
+      args.push(`-out:${options.outputPath}`);
+    }
+
+    // Spawn with arguments
+    // Use 'spawn' but we need to write to stdin.
+    const child = spawn(executablePath, args);
 
     let stdout = '';
     let stderr = '';
@@ -98,6 +110,17 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string) => {
     child.stdin.write(graphJson);
     child.stdin.end();
   });
+});
+
+// Handler for selecting output path
+ipcMain.handle('select-output-path', async () => {
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'Select Output File',
+    buttonLabel: 'Select',
+    defaultPath: 'generated_audio.odin',
+    filters: [{ name: 'Odin Source File', extensions: ['odin'] }],
+  });
+  return filePath || null;
 });
 
 

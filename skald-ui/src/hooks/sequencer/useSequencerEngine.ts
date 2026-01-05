@@ -12,7 +12,9 @@ export const useSequencerEngine = (
     audioNodesRef: React.MutableRefObject<AudioNodeMap>,
     setCurrentStep: (step: number) => void, // Callback to update UI
     isLooping: boolean,
-    onComplete: () => void
+    onComplete: () => void,
+    patternSteps: number,
+    nearestInScale: (note: number) => number
 ) => {
     // Scheduling constants
     const LOOKAHEAD_MS = 25.0; // How frequently to call scheduling function (in milliseconds)
@@ -28,7 +30,8 @@ export const useSequencerEngine = (
         // 1/16th note = 0.25 of a beat
         nextNoteTime.current += 0.25 * secondsPerBeat;
 
-        const maxSteps = Math.max(16, ...sequencerTracks.map(t => t.steps || 16));
+        // Loop boundary determined by Global Pattern Steps
+        const maxSteps = patternSteps;
 
         current16thNote.current++;
         if (current16thNote.current >= maxSteps) {
@@ -70,6 +73,10 @@ export const useSequencerEngine = (
             const noteEvent = track.notes.find(n => n.step === localStep);
 
             if (noteEvent) {
+                // Probability Check
+                const probability = noteEvent.probability ?? 1;
+                if (Math.random() > probability) return; // Skip note based on probability
+
                 // logger.debug('SequencerEngine', `Triggering note on ${track.name} at step ${stepNumber} (local ${localStep})`);
                 const targetNode = audioNodesRef.current.get(track.targetNodeId);
                 if (targetNode && targetNode instanceof Instrument) {
@@ -81,7 +88,12 @@ export const useSequencerEngine = (
                     // For polyrhythms, next local step
                     const nextLocalStep = (localStep + 1) % trackSteps;
 
-                    const voiceIndex = targetNode.trigger(time, noteEvent.note, noteEvent.velocity);
+                    // Real-time Quantization
+                    const quantizedNote = nearestInScale(noteEvent.note);
+
+                    logger.debug('SequencerEngine', `[QUANTIZE] Step ${stepNumber}: Original Check ${noteEvent.note} -> Quantized ${quantizedNote}`);
+
+                    const voiceIndex = targetNode.trigger(time, quantizedNote, noteEvent.velocity, noteEvent.patchOverrides);
 
                     // Schedule gate off at end of note duration
                     const durationInSteps = noteEvent.duration || 1;
@@ -90,7 +102,7 @@ export const useSequencerEngine = (
             }
         });
 
-    }, [sequencerTracks, setCurrentStep, bpm]); // Added bpm dependency
+    }, [sequencerTracks, setCurrentStep, bpm, nearestInScale]); // Added nearestInScale dependency
 
     const scheduler = useCallback(() => {
         if (!audioContextRef.current) return;

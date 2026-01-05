@@ -156,6 +156,14 @@ class SkaldOscillatorNode extends BaseSkaldNode {
         }
     }
 
+    public get frequency(): AudioParam | undefined {
+        return this.isPwm ? this.pwmOsc?.frequency : this.osc?.frequency;
+    }
+
+    public get detune(): AudioParam | undefined {
+        return this.isPwm ? this.pwmOsc?.detune : this.osc?.detune;
+    }
+
     public disconnect() {
         this.cleanup();
         this.output.disconnect();

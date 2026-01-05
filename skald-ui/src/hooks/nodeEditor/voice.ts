@@ -87,7 +87,7 @@ export class Voice {
         });
     }
 
-    public trigger(startTime: number, note?: number, velocity: number = 1.0) {
+    public trigger(startTime: number, note?: number, velocity: number = 1.0, overrides?: Record<string, number>) {
         // Frequency handling
         if (note !== undefined) {
             const freq = 440 * Math.pow(2, (note - 69) / 12);
@@ -128,6 +128,70 @@ export class Voice {
                 if (velNode) {
                     velNode.offset.cancelScheduledValues(startTime);
                     velNode.offset.setValueAtTime(velocity, startTime);
+                }
+            });
+        }
+
+        // Apply P-Locks (Overrides)
+        // Apply P-Locks (Overrides)
+        if (overrides) {
+            Object.entries(overrides).forEach(([key, value]) => {
+                const parts = key.split(':');
+                if (parts.length === 2) {
+                    const [nodeLabel, paramName] = parts;
+
+                    // Find Node ID by Label OR Type (Fallbacks)
+                    const targetGraphNode = this.subgraph.nodes.find(n => {
+                        const effectiveLabel = (n.data && n.data.label) || n.type;
+                        return effectiveLabel === nodeLabel;
+                    });
+
+                    if (targetGraphNode) {
+                        const targetAudioNode = this.internalNodes.get(targetGraphNode.id);
+                        if (targetAudioNode) {
+
+                            // Try to find the AudioParam
+                            let param: AudioParam | undefined;
+
+                            // Custom Skald Node Wrapper Check
+                            const skaldNode = (targetAudioNode as any)._skaldNode;
+                            if (skaldNode) {
+                                if (paramName === 'frequency') param = skaldNode.frequency;
+                                else if (paramName === 'detune') param = skaldNode.detune;
+                                else if (['attack', 'decay', 'sustain', 'release'].includes(paramName)) {
+                                    param = skaldNode[paramName];
+                                }
+                                // Filter specific handled by BiquadFilterNode check usually, but could add here if needed
+                            }
+
+                            if (!param) {
+                                if (targetAudioNode instanceof AudioWorkletNode) {
+                                    param = targetAudioNode.parameters.get(paramName);
+                                } else if (targetAudioNode instanceof BiquadFilterNode) {
+                                    if (paramName === 'frequency' || paramName === 'cutoff') param = targetAudioNode.frequency;
+                                    else if (paramName === 'Q' || paramName === 'resonance') param = targetAudioNode.Q;
+                                    else if (paramName === 'gain') param = targetAudioNode.gain;
+                                } else if (targetAudioNode instanceof GainNode) {
+                                    if (paramName === 'gain') param = targetAudioNode.gain;
+                                } else if (targetAudioNode instanceof OscillatorNode) {
+                                    if (paramName === 'frequency') param = targetAudioNode.frequency;
+                                    else if (paramName === 'detune') param = targetAudioNode.detune;
+                                }
+                            }
+
+                            // Apply automation
+                            if (param) {
+                                param.cancelScheduledValues(startTime);
+                                param.setValueAtTime(value, startTime);
+                            } else {
+                                console.warn(`[Voice] Could not find param '${paramName}' on node '${nodeLabel}' (ID: ${targetGraphNode.id})`);
+                            }
+                        } else {
+                            console.warn(`[Voice] Internal audio node not found for graph node ${targetGraphNode.id}`);
+                        }
+                    } else {
+                        console.warn(`[Voice] Could not find target node for override key: ${key}. Searched ${this.subgraph.nodes.length} nodes.`);
+                    }
                 }
             });
         }
@@ -187,6 +251,12 @@ export class Voice {
     }
 
     public updateNodeData(nodeId: string, data: any) {
+        // Update cached subgraph node data (critical for label lookups in P-Locks)
+        const cachedNode = this.subgraph.nodes.find(n => n.id === nodeId);
+        if (cachedNode) {
+            cachedNode.data = { ...cachedNode.data, ...data };
+        }
+
         const liveNode = this.internalNodes.get(nodeId);
 
         if (liveNode) {

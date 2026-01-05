@@ -1,44 +1,74 @@
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { NumberInput } from '../common/NumberInput';
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { commonNodeStyles, nodeHeaderStyles, handleContainerStyles, labelStyles, inputGroupStyles, numberInputStyles, NodeTheme } from './NodeStyles';
 
-const baseNodeStyles: React.CSSProperties = {
-  border: '1px solid #2f9e44',
-  borderRadius: '4px',
-  padding: '10px 15px',
-  width: 150,
-  textAlign: 'center'
-};
+const FilterNodeComponent = ({ id, data }: NodeProps) => {
+  const { setNodes } = useReactFlow();
 
-const filterNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#d0ebff' };
+  const updateParam = (param: string, value: number) => {
+    setNodes((nds) => nds.map((node) => {
+      if (node.id === id) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            [param]: value
+          }
+        };
+      }
+      return node;
+    }));
+  };
 
-const handleLabelStyles: React.CSSProperties = {
-  fontSize: '0.6em',
-  color: '#000',
-  position: 'absolute',
-  pointerEvents: 'none'
-};
-
-const FilterNodeComponent = ({ data }: NodeProps) => {
   return (
-    <div style={filterNodeStyles}>
-      <div style={{ position: 'relative', height: '10px' }}>
-        <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
-        <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>In</span>
-      </div>
-      <div style={{ position: 'relative', height: '10px', marginTop: '5px' }}>
-        <Handle type="target" position={Position.Left} id="input_cutoff" style={{ top: '50%' }} />
-        <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Cut</span>
-      </div>
-      <div style={{ position: 'relative', height: '10px', marginTop: '5px' }}>
-        <Handle type="target" position={Position.Left} id="input_res" style={{ top: '50%' }} />
-        <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Res</span>
+    <div style={commonNodeStyles}>
+      <div style={nodeHeaderStyles}>
+        {data.label || 'Filter'}
       </div>
 
-      <div style={{ margin: '5px 0' }}><strong>{data.label || 'Filter'}</strong></div>
+      <div style={handleContainerStyles}>
+        <Handle type="target" position={Position.Left} id="input" style={{ background: NodeTheme.colors.handleIn }} />
+        <span style={{ marginLeft: '12px', ...labelStyles }}>In</span>
+      </div>
+      <div style={handleContainerStyles}>
+        <Handle type="target" position={Position.Left} id="input_cutoff" style={{ background: NodeTheme.colors.handleIn }} />
+        <span style={{ marginLeft: '12px', ...labelStyles }}>Cut</span>
+      </div>
+      <div style={handleContainerStyles}>
+        <Handle type="target" position={Position.Left} id="input_res" style={{ background: NodeTheme.colors.handleIn }} />
+        <span style={{ marginLeft: '12px', ...labelStyles }}>Res</span>
+      </div>
 
-      <div style={{ position: 'relative', height: '10px' }}>
-        <span style={{ ...handleLabelStyles, right: '10px', top: '0px' }}>Out</span>
-        <Handle type="source" position={Position.Right} id="output" style={{ top: '50%' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', margin: '10px 0' }}>
+        <div style={inputGroupStyles}>
+          <label style={{ color: NodeTheme.colors.textMuted }}>Freq</label>
+          <NumberInput
+            min={20}
+            max={20000}
+            style={numberInputStyles}
+            value={data.cutoff ?? 800}
+            onChange={(val) => updateParam('cutoff', val)}
+            className="nodrag"
+          />
+        </div>
+        <div style={inputGroupStyles}>
+          <label style={{ color: NodeTheme.colors.textMuted }}>Res</label>
+          <NumberInput
+            step={0.1}
+            min={0}
+            max={20}
+            style={numberInputStyles}
+            value={data.resonance ?? 1}
+            onChange={(val) => updateParam('resonance', val)}
+            className="nodrag"
+          />
+        </div>
+      </div>
+
+      <div style={{ ...handleContainerStyles, justifyContent: 'flex-end' }}>
+        <span style={{ marginRight: '12px', ...labelStyles }}>Out</span>
+        <Handle type="source" position={Position.Right} id="output" style={{ background: NodeTheme.colors.handleOut }} />
       </div>
     </div>
   );

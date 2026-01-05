@@ -1,18 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { createMidiInputNode } from '../../hooks/nodeEditor/audioNodeFactory/createMidiInputNode';
+import { NODE_DEFINITIONS } from '../../definitions/node-definitions';
 
-describe('createMidiInputNode', () => {
-    it('should create a MIDI Input node with correct default values', () => {
-        const position = { x: 100, y: 200 };
-        const node = createMidiInputNode(position);
+describe('MidiInput Node Definition', () => {
+    it('should have correct default values in definition', () => {
+        const def = NODE_DEFINITIONS['midiInput'];
 
-        expect(node.type).toBe('midiInput');
-        expect(node.position).toEqual(position);
-        expect(node.data).toEqual(expect.objectContaining({
-            label: 'MIDI Input',
+        expect(def).toBeDefined();
+        expect(def.type).toBe('midiInput');
+        expect(def.label).toBe('MIDI Input');
+        expect(def.defaultParameters).toEqual(expect.objectContaining({
             device: 'All',
             useMpe: false,
         }));
-        expect(node.id).toBeDefined();
     });
 });

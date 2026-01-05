@@ -28,6 +28,8 @@ const rowStyles: React.CSSProperties = {
 
 const cellStyles: React.CSSProperties = {
     flex: '0 0 40px', // Fixed width per step
+    width: '40px',
+    height: '30px',
     borderRight: '1px solid #2A2A2A',
     cursor: 'pointer',
     position: 'relative',
@@ -73,7 +75,10 @@ const Playhead: React.FC<{ step: number; bpm: number }> = ({ step, bpm }) => {
     );
 };
 
-export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>) => void }> = ({ tracks, currentStep, steps = 16, onToggleStep, onUpdateNote, bpm }) => {
+export const StepGrid: React.FC<StepGridProps & {
+    onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>) => void;
+    onStepContext?: (trackId: string, step: number, x: number, y: number) => void;
+}> = ({ tracks, currentStep, steps = 16, onToggleStep, onUpdateNote, bpm, onStepContext }) => {
     // Calculate max steps based on tracks
     const maxSteps = Math.max(steps, ...tracks.map(t => t.steps || 16));
     const stepArray = Array.from({ length: maxSteps }, (_, i) => i);
@@ -81,7 +86,7 @@ export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: strin
     const isBeat = (step: number) => (step + 1) % 4 === 0;
 
     const [dragState, setDragState] = React.useState<{
-        type: 'duration' | 'velocity';
+        type: 'duration' | 'velocity' | 'probability';
         trackId: string;
         step: number;
         initialValue: number;
@@ -90,61 +95,77 @@ export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: strin
         currentValue: number;
     } | null>(null);
 
+    // Interaction State
+    const interactionRef = React.useRef<{
+        isPainting: boolean;
+        isErasing: boolean;
+        actionId: string; // Unique ID for this drag session to prevent multi-trigger
+    }>({ isPainting: false, isErasing: false, actionId: '' });
+
     React.useEffect(() => {
-        if (!dragState) return;
+        const handleGlobalMouseUp = () => {
+            interactionRef.current = { isPainting: false, isErasing: false, actionId: '' };
+        };
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+    }, []);
 
-        const handleMouseMove = (e: MouseEvent) => {
-            if (dragState.type === 'duration') {
-                const deltaX = e.clientX - dragState.startX;
-                const stepDelta = Math.round(deltaX / 40); // 40px per step
-                const newDuration = Math.max(1, dragState.initialValue + stepDelta);
-                setDragState(prev => prev ? { ...prev, currentValue: newDuration } : null);
-            } else if (dragState.type === 'velocity') {
-                const deltaY = dragState.startY - e.clientY; // Up is positive
-                const velDelta = deltaY / 200; // Sensitivity 
-                const newVelocity = Math.max(0, Math.min(1, dragState.initialValue + velDelta));
-                setDragState(prev => prev ? { ...prev, currentValue: newVelocity } : null);
+    const handleMouseDown = (e: React.MouseEvent, trackId: string, step: number, hasNote: boolean) => {
+        // 1. Modifiers check (Priority: Velocity/Duration/Prob Drag)
+        if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) {
+            // Let the Note's onMouseDown handle this if it exists.
+            // If we are clicking an empty cell with modifiers, do nothing or handle future empty-drag?
+            return;
+        }
+
+        // 2. Right Click (Erase)
+        if (e.button === 2) {
+            e.preventDefault();
+            interactionRef.current.isErasing = true;
+            if (hasNote) onToggleStep(trackId, step); // Delete
+            return;
+        }
+
+        // 3. Left Click (Paint / Select)
+        if (e.button === 0) {
+            e.preventDefault();
+            interactionRef.current.isPainting = true;
+
+            if (hasNote) {
+                // Select existing
+                if (onStepContext) onStepContext(trackId, step, e.clientX, e.clientY);
+            } else {
+                // Place new
+                onToggleStep(trackId, step);
+                // Also Select it? Typically yes.
+                if (onStepContext) onStepContext(trackId, step, e.clientX, e.clientY);
             }
-        };
-
-        const handleMouseUp = () => {
-            if (onUpdateNote) {
-                if (dragState.type === 'duration') {
-                    if (dragState.currentValue !== dragState.initialValue) {
-                        onUpdateNote(dragState.trackId, dragState.step, { duration: dragState.currentValue });
-                    }
-                } else {
-                    if (dragState.currentValue !== dragState.initialValue) {
-                        onUpdateNote(dragState.trackId, dragState.step, { velocity: dragState.currentValue });
-                    }
-                }
-            }
-            setDragState(null);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [dragState, onUpdateNote]);
-
-    const handleCellClick = (e: React.MouseEvent, trackId: string, step: number, hasNote: boolean, note?: NoteEvent) => {
-        e.preventDefault();
-        onToggleStep(trackId, step);
+        }
     };
 
-    const [modifiers, setModifiers] = React.useState({ ctrl: false, shift: false });
+    const handleMouseEnter = (e: React.MouseEvent, trackId: string, step: number, hasNote: boolean) => {
+        if (interactionRef.current.isErasing) {
+            if (hasNote) onToggleStep(trackId, step);
+        } else if (interactionRef.current.isPainting) {
+            if (!hasNote) {
+                onToggleStep(trackId, step);
+                // Auto-select newly painted nodes? Maybe too spammy for parameter panel updates.
+            }
+        }
+    };
+
+    const [modifiers, setModifiers] = React.useState({ ctrl: false, shift: false, alt: false });
 
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Control' || e.key === 'Meta') setModifiers(prev => ({ ...prev, ctrl: true }));
             if (e.key === 'Shift') setModifiers(prev => ({ ...prev, shift: true }));
+            if (e.key === 'Alt') setModifiers(prev => ({ ...prev, alt: true }));
         };
         const handleKeyUp = (e: KeyboardEvent) => {
             if (e.key === 'Control' || e.key === 'Meta') setModifiers(prev => ({ ...prev, ctrl: false }));
             if (e.key === 'Shift') setModifiers(prev => ({ ...prev, shift: false }));
+            if (e.key === 'Alt') setModifiers(prev => ({ ...prev, alt: false }));
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -155,42 +176,38 @@ export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: strin
         };
     }, []);
 
-    // ... (dragState effect omitted/unchanged) 
-
     const handleNoteMouseDown = (e: React.MouseEvent, trackId: string, step: number, note: NoteEvent) => {
         // Only start drag if Modifier is held
-        if (e.ctrlKey || e.metaKey) {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
             e.stopPropagation();
             e.preventDefault();
-            // Velocity Drag
+
+            let type: 'velocity' | 'duration' | 'probability' = 'velocity';
+            let initialValue = note.velocity;
+
+            if (e.shiftKey) {
+                type = 'duration';
+                initialValue = note.duration || 1;
+            } else if (e.altKey) {
+                type = 'probability';
+                initialValue = note.probability ?? 1;
+            }
+
             setDragState({
-                type: 'velocity',
+                type,
                 trackId,
                 step,
-                initialValue: note.velocity,
+                initialValue,
                 startX: e.clientX,
                 startY: e.clientY,
-                currentValue: note.velocity
-            });
-        } else if (e.shiftKey) {
-            e.stopPropagation();
-            e.preventDefault();
-            // Duration Drag
-            setDragState({
-                type: 'duration',
-                trackId,
-                step,
-                initialValue: note.duration || 1,
-                startX: e.clientX,
-                startY: e.clientY,
-                currentValue: note.duration || 1
+                currentValue: initialValue
             });
         }
-        // If no modifier, do nothing here. Event bubbles to Cell -> Click -> Toggle (Delete)
+        // If no modifier, let event bubble to Cell's handleMouseDown for Select/Context logic
     };
 
     return (
-        <div style={gridContainerStyles}>
+        <div style={gridContainerStyles} onContextMenu={(e) => e.preventDefault()}>
             <Playhead step={currentStep} bpm={bpm} />
 
             {tracks.map(track => (
@@ -208,6 +225,7 @@ export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: strin
                         // Use preview values if dragging, else actual
                         const duration = isDragging && dragState.type === 'duration' ? dragState.currentValue : (note?.duration || 1);
                         const velocity = isDragging && dragState.type === 'velocity' ? dragState.currentValue : (note?.velocity || 1);
+                        const probability = isDragging && dragState.type === 'probability' ? dragState.currentValue : (note?.probability ?? 1);
 
                         // Base style
                         let currentCellStyle = isBeat(step) ? beatMarkerStyle : cellStyles;
@@ -216,9 +234,11 @@ export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: strin
                         if (isDisabled) {
                             currentCellStyle = {
                                 ...currentCellStyle,
-                                backgroundColor: '#111',
-                                cursor: 'not-allowed',
-                                opacity: 0.3
+                                ...{
+                                    backgroundColor: '#111',
+                                    cursor: 'not-allowed',
+                                    opacity: 0.3
+                                }
                             };
                         }
 
@@ -230,9 +250,10 @@ export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: strin
                             <div
                                 key={step}
                                 style={currentCellStyle}
-                                onClick={(e) => !isDisabled && handleCellClick(e, track.id, step, hasNote, note)}
-                                onContextMenu={(e) => { e.preventDefault(); }}
-                                title={isDisabled ? 'Disabled Step' : (hasNote ? `Step ${step}: Dur ${duration} (Drag: Ext/Vel)` : `Step ${step}`)}
+                                onMouseDown={(e) => !isDisabled && handleMouseDown(e, track.id, step, hasNote)}
+                                onMouseEnter={(e) => !isDisabled && handleMouseEnter(e, track.id, step, hasNote)}
+                                title={isDisabled ? 'Disabled Step' : (hasNote ? `Step ${step}: Dur ${duration} Vel ${Math.round(velocity * 100)}% Prob ${Math.round(probability * 100)}% (Drag: Shift=Dur, Ctrl=Vel, Alt=Prob)` : `Step ${step}`)}
+                                data-testid={`step-${track.id}-${step}`}
                             >
                                 {hasNote && !isDisabled && (
                                     <div
@@ -241,26 +262,25 @@ export const StepGrid: React.FC<StepGridProps & { onUpdateNote?: (trackId: strin
                                             width: `${duration * 40 - 4}px`,
                                             backgroundColor: track.color || '#007acc',
                                             opacity: finalOpacity,
-                                            cursor: modifiers.ctrl ? 'ns-resize' : (modifiers.shift ? 'ew-resize' : 'pointer'), // Visual cue
-                                            border: isDragging ? '1px solid white' : (modifiers.shift || modifiers.ctrl ? '1px dashed rgba(255,255,255,0.5)' : 'none')
+                                            cursor: modifiers.ctrl ? 'ns-resize' : (modifiers.shift ? 'ew-resize' : (modifiers.alt ? 'help' : 'pointer')), // Visual cue
+                                            border: isDragging ? '1px solid white' : (modifiers.shift || modifiers.ctrl || modifiers.alt ? '1px dashed rgba(255,255,255,0.5)' : 'none'),
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'flex-end'
                                         }}
                                         onMouseDown={(e) => handleNoteMouseDown(e, track.id, step, note!)}
-                                        onClick={(e) => {
-                                            // Handle click to delete/toggle only if NOT dragging
-                                            // onMouseDown handles propagation if modifier is held (drag)
-                                            // If no modifier, propagation continues, toggling the step off.
-                                            // No explicit action needed here except checking if we just handled a drag?
-                                            // If modifier was held, onMouseDown called stopProp, so onClick won't fire here? 
-                                            // Wait, onClick fires on MouseUp. MouseDown stopProp prevents PARENT onClick? Yes.
-                                            // So if modifier held: MouseDown stops prop. Parent cell onClick does NOT fire.
-                                            // If no modifier: MouseDown passes. Parent cell onClick fires. Note onClick also fires.
-                                            // Note onClick bubbles to Parent unless stopped.
-                                            // So we should NOT stop prop here unless we want to block the toggle.
-                                            // We WANT to toggle if no drag.
-                                            // So no stopPropagation by default.
-                                            // But if we DID drag (dragState was active), we rely on MouseUp cleanup.
-                                        }}
-                                    />
+                                    >
+                                        {/* Probability Bar */}
+                                        {probability < 1 && (
+                                            <div style={{
+                                                height: '3px',
+                                                width: `${probability * 100}%`,
+                                                backgroundColor: 'yellow',
+                                                opacity: 0.8,
+                                                marginBottom: '1px'
+                                            }} />
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         );

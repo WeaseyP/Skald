@@ -71,16 +71,22 @@ export const useSequencerState = () => {
         ));
     }, [tracks, saveHistory]);
 
-    const toggleStep = useCallback((trackId: string, step: number) => {
+    const toggleStep = useCallback((trackId: string, step: number, note?: number) => {
         // Toggle always changes state if track exists
         const track = tracks.find(t => t.id === trackId);
         if (!track) return;
+        console.log('[useSequencerState] toggleStep', { trackId, step, note });
 
         saveHistory();
         setTracks(prev => prev.map(t => {
             if (t.id !== trackId) return t;
 
-            const existingNoteIndex = t.notes.findIndex(n => n.step === step);
+            // If note is provided, we look for that specific note.
+            // If not provided (StepGrid behavior), we look for ANY note at this step.
+            const existingNoteIndex = t.notes.findIndex(n =>
+                n.step === step && (note === undefined || n.note === note)
+            );
+
             if (existingNoteIndex >= 0) {
                 return {
                     ...t,
@@ -89,7 +95,7 @@ export const useSequencerState = () => {
             } else {
                 const newNote: NoteEvent = {
                     step,
-                    note: 60,
+                    note: note || 60,
                     velocity: 1.0,
                     duration: 1
                 };

@@ -51,5 +51,41 @@ build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
 		}
 		graph.nodes[raw_node.id] = node
 	}
+
 	return graph
+}
+
+build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
+	project: Project
+	project.bpm = project_raw.project.bpm
+	project.master_volume = project_raw.project.master_volume
+	project.instruments = make([]Project_Instrument, len(project_raw.project.instruments))
+
+	for raw_inst, i in project_raw.project.instruments {
+		// Use named loop variable 'raw_inst' and 'i'
+		// Iterate using index to avoid copying large structs if possible, though 'raw_inst' is a copy here.
+		// Odin's `for x in` copies. If Graph_Raw is large, this is inefficient but fine for codegen.
+		
+		// We need to pass a POINTER to build_graph_from_raw
+		// Since 'raw_inst' is a copy, we should access by reference if we can.
+		// Alternatively, just take address of the copy, which is fine since build_graph reads it.
+		// Wait, Graph_Raw inside Project_Instrument_Raw might contain pointers or slices.
+		// Actually, let's just make a mutable copy of the underlying graph raw to pass pointer.
+		raw_graph_copy := raw_inst.audio_graph
+		
+		project.instruments[i] = Project_Instrument {
+			id = raw_inst.id,
+			name = raw_inst.name,
+			mute = raw_inst.mute,
+			solo = raw_inst.solo,
+			voice_count = raw_inst.voice_count,
+			glide = raw_inst.glide,
+			unison = raw_inst.unison,
+			detune = raw_inst.detune,
+			midi_config = raw_inst.midi_config,
+			graph = build_graph_from_raw(&raw_graph_copy),
+		}
+	}
+
+	return project
 }

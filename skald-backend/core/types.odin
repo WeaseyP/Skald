@@ -54,3 +54,51 @@ Graph_Raw :: struct {
 	events:           []Note_Event,
 	sequencer_tracks: []Sequencer_Track,
 }
+
+// --- Project Level Structures (New for UI Integration) ---
+Midi_Config :: struct {
+	device:  string,
+	channel: int,
+}
+
+Project_Instrument_Raw :: struct {
+	id:          string,
+	name:        string,
+	mute:        bool,
+	solo:        bool,
+	voice_count: int,
+	glide:       f32,
+	unison:      int,
+	detune:      f32,
+	midi_config: Midi_Config,
+	audio_graph: Graph_Raw,
+}
+
+Project_Data_Raw :: struct {
+	bpm:           f32,
+	master_volume: f32,
+	instruments:   []Project_Instrument_Raw,
+}
+
+Project_Raw :: struct {
+	project: Project_Data_Raw,
+}
+
+Project_Instrument :: struct {
+	id:          string,
+	name:        string,
+	mute:        bool,
+	solo:        bool,
+	voice_count: int,
+	glide:       f32,
+	unison:      int,
+	detune:      f32,
+	midi_config: Midi_Config,
+	graph:       Graph,
+}
+
+Project :: struct {
+	bpm:           f32,
+	master_volume: f32,
+	instruments:   []Project_Instrument,
+}

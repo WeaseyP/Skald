@@ -1,36 +1,57 @@
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { NumberInput } from '../common/NumberInput';
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { commonNodeStyles, nodeHeaderStyles, handleContainerStyles, labelStyles, inputGroupStyles, numberInputStyles, NodeTheme } from './NodeStyles';
 
-const baseNodeStyles: React.CSSProperties = {
-    border: '1px solid #2f9e44',
-    borderRadius: '4px',
-    padding: '10px 15px',
-    width: 150,
-    textAlign: 'center'
-};
+const ADSRNodeComponent = ({ id, data }: NodeProps) => {
+    const { setNodes } = useReactFlow();
 
-const adsrNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#fff3bf', borderColor: '#fcc419' };
+    const updateParam = (param: string, value: number) => {
+        setNodes((nds) => nds.map((node) => {
+            if (node.id === id) {
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        [param]: value
+                    }
+                };
+            }
+            return node;
+        }));
+    };
 
-const handleLabelStyles: React.CSSProperties = {
-    fontSize: '0.6em',
-    color: '#000',
-    position: 'absolute',
-    pointerEvents: 'none'
-};
-
-const ADSRNodeComponent = ({ data }: NodeProps) => {
     return (
-        <div style={adsrNodeStyles}>
-            <div style={{ position: 'relative', height: '10px' }}>
-                <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
-                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Gate</span>
+        <div style={commonNodeStyles}>
+            <div style={nodeHeaderStyles}>
+                {data.label || 'ADSR'}
             </div>
 
-            <div style={{ margin: '5px 0' }}><strong>{data.label || 'ADSR'}</strong></div>
+            <div style={handleContainerStyles}>
+                <Handle type="target" position={Position.Left} id="input" style={{ background: NodeTheme.colors.handleIn }} />
+                <span style={{ marginLeft: '12px', ...labelStyles }}>Gate</span>
+            </div>
 
-            <div style={{ position: 'relative', height: '10px' }}>
-                <span style={{ ...handleLabelStyles, right: '10px', top: '0px' }}>Env</span>
-                <Handle type="source" position={Position.Right} id="output" style={{ top: '50%' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', margin: '10px 0' }}>
+                {['attack', 'decay', 'sustain', 'release'].map((param) => (
+                    <div key={param} style={inputGroupStyles}>
+                        <label style={{ color: NodeTheme.colors.textMuted }}>{param.charAt(0).toUpperCase()}</label>
+                        <NumberInput
+                            step={0.1}
+                            min={0}
+                            max={param === 'sustain' ? 1 : 10}
+                            style={numberInputStyles}
+                            value={data[param] ?? 0}
+                            onChange={(val) => updateParam(param, val)}
+                            className="nodrag" // Important so it can be focused
+                        />
+                    </div>
+                ))}
+            </div>
+
+            <div style={{ ...handleContainerStyles, justifyContent: 'flex-end' }}>
+                <span style={{ marginRight: '12px', ...labelStyles }}>Env</span>
+                <Handle type="source" position={Position.Right} id="output" style={{ background: NodeTheme.colors.handleOut }} />
             </div>
         </div>
     );

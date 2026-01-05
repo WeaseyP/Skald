@@ -1,4 +1,5 @@
 import React from 'react';
+import { NumberInput } from '../common/NumberInput';
 
 interface SequencerToolbarProps {
     isPlaying: boolean;
@@ -7,6 +8,8 @@ interface SequencerToolbarProps {
     onPlay: () => void;
     onStop: () => void;
     onBpmChange: (bpm: number) => void;
+    patternSteps: number;
+    onPatternStepsChange: (steps: number) => void;
     onLoopToggle: () => void;
     isCollapsed: boolean;
     onToggleCollapse: () => void;
@@ -52,6 +55,8 @@ const inputStyles: React.CSSProperties = {
     textAlign: 'center'
 };
 
+import { useScale, NOTES, SCALES, NoteName, ScaleName } from '../../contexts/ScaleContext';
+
 export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
     isPlaying,
     bpm,
@@ -59,10 +64,14 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
     onPlay,
     onStop,
     onBpmChange,
+    patternSteps,
+    onPatternStepsChange,
     onLoopToggle,
     isCollapsed,
     onToggleCollapse
 }) => {
+    const { rootNote, setRootNote, scaleName, setScaleName } = useScale();
+
     return (
         <div style={toolbarStyles}>
             <button
@@ -85,12 +94,64 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <label>BPM:</label>
-                <input
-                    type="number"
+                <NumberInput
                     value={bpm}
-                    onChange={(e) => onBpmChange(Math.max(20, Math.min(300, parseInt(e.target.value) || 120)))}
+                    onChange={(val) => onBpmChange(Math.max(20, Math.min(300, val)))}
                     style={inputStyles}
+                    min={20}
+                    max={300}
                 />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <label>Steps:</label>
+                <NumberInput
+                    value={patternSteps}
+                    onChange={(val) => onPatternStepsChange(Math.max(1, Math.min(64, val)))}
+                    style={inputStyles}
+                    min={1}
+                    max={64}
+                    title="Global Pattern Length"
+                />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <label>Key:</label>
+                <select
+                    value={rootNote}
+                    onChange={(e) => setRootNote(e.target.value as NoteName)}
+                    style={
+                        {
+                            backgroundColor: '#222',
+                            color: 'white',
+                            border: '1px solid #444',
+                            borderRadius: '3px',
+                            padding: '2px'
+                        }
+                    }
+                >
+                    {NOTES.map(note => (
+                        <option key={note} value={note}>{note}</option>
+                    ))}
+                </select>
+                <select
+                    value={scaleName}
+                    onChange={(e) => setScaleName(e.target.value as ScaleName)}
+                    style={
+                        {
+                            backgroundColor: '#222',
+                            color: 'white',
+                            border: '1px solid #444',
+                            borderRadius: '3px',
+                            padding: '2px',
+                            width: '80px'
+                        }
+                    }
+                >
+                    {Object.keys(SCALES).map(scale => (
+                        <option key={scale} value={scale}>{scale}</option>
+                    ))}
+                </select>
             </div>
 
             <button

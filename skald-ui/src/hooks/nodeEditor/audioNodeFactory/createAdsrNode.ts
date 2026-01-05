@@ -24,6 +24,11 @@ class ADSRNode extends BaseSkaldNode {
         this.output.parameters.get('depth')?.setValueAtTime(data.depth ?? 1.0, this.context.currentTime);
         this.output.parameters.get('loop')?.setValueAtTime(data.loop ? 1 : 0, this.context.currentTime);
     }
+
+    public get attack(): AudioParam | undefined { return this.output.parameters.get('attack'); }
+    public get decay(): AudioParam | undefined { return this.output.parameters.get('decay'); }
+    public get sustain(): AudioParam | undefined { return this.output.parameters.get('sustain'); }
+    public get release(): AudioParam | undefined { return this.output.parameters.get('release'); }
 }
 
 export const createAdsrNode = (context: AudioContext, node: Node, adsrDataMap: AdsrDataMap): AudioNode => {

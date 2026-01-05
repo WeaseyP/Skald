@@ -67,12 +67,30 @@ export const useNodeComposition = ({
         const newInstrumentId = `${generateId()}`;
         const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
 
+        const avgPosition = selectedNodesForGrouping.reduce(
+            (acc, node) => ({ x: acc.x + node.position.x, y: acc.y + node.position.y }), { x: 0, y: 0 }
+        );
+        if (selectedNodesForGrouping.length > 0) {
+            avgPosition.x /= selectedNodesForGrouping.length;
+            avgPosition.y /= selectedNodesForGrouping.length;
+        }
+
         const oldIdToNewIdMap = new Map<string, string>();
         let subGraphNodeIdCounter = 1;
+
+        // Store nodes relative to the center of the instrument
         const subgraphNodes: Node[] = selectedNodesForGrouping.map(node => {
             const newId = `${subGraphNodeIdCounter++}`;
             oldIdToNewIdMap.set(node.id, newId);
-            return { ...node, id: newId, data: JSON.parse(JSON.stringify(node.data)), position: { ...node.position } };
+            return {
+                ...node,
+                id: newId,
+                data: JSON.parse(JSON.stringify(node.data)),
+                position: {
+                    x: node.position.x - avgPosition.x,
+                    y: node.position.y - avgPosition.y
+                }
+            };
         });
 
         const internalConnections = edges.filter(edge => selectedIds.has(edge.source) && selectedIds.has(edge.target));
@@ -98,7 +116,7 @@ export const useNodeComposition = ({
                     subgraphNodes.push({
                         id: newInputNodeId,
                         type: 'InstrumentInput',
-                        position: { x: 50, y: (inputPorts.size + 1) * 70 },
+                        position: { x: -200, y: (inputPorts.size + 1) * 70 - 100 }, // Relative pos
                         data: { label: `In: ${portName}`, name: portName },
                     });
                 }
@@ -118,7 +136,7 @@ export const useNodeComposition = ({
                     subgraphNodes.push({
                         id: newOutputNodeId,
                         type: 'InstrumentOutput',
-                        position: { x: 400, y: (outputPorts.size + 1) * 70 },
+                        position: { x: 200, y: (outputPorts.size + 1) * 70 - 100 }, // Relative pos
                         data: { label: `Out: ${portName}`, name: portName },
                     });
                 }
@@ -131,14 +149,6 @@ export const useNodeComposition = ({
                 newMainGraphEdges.push({ ...edge, id: `e${newInstrumentId}-${edge.target}`, source: newInstrumentId, sourceHandle: portName });
             }
         });
-
-        const avgPosition = selectedNodesForGrouping.reduce(
-            (acc, node) => ({ x: acc.x + node.position.x, y: acc.y + node.position.y }), { x: 0, y: 0 }
-        );
-        if (selectedNodesForGrouping.length > 0) {
-            avgPosition.x /= selectedNodesForGrouping.length;
-            avgPosition.y /= selectedNodesForGrouping.length;
-        }
 
         const newInstrumentNode: Node = {
             id: newInstrumentId,
@@ -235,12 +245,85 @@ export const useNodeComposition = ({
         const validNodes: Node[] = [];
 
         // 1. Restore Nodes
+        // Calculate Centroid of the Subgraph to align it with the Instrument Node
+        const subgraphNodesList = subgraph.nodes.filter((n: any) => n.type !== 'InstrumentInput' && n.type !== 'InstrumentOutput');
+
+        let centroid = { x: 0, y: 0 };
+        let boundingWidth = 200;
+        let boundingHeight = 200;
+
+        if (subgraphNodesList.length > 0) {
+            const sum = subgraphNodesList.reduce((acc: any, n: any) => ({ x: acc.x + n.position.x, y: acc.y + n.position.y }), { x: 0, y: 0 });
+            centroid = { x: sum.x / subgraphNodesList.length, y: sum.y / subgraphNodesList.length };
+
+            // rough size logic
+            const minX = Math.min(...subgraphNodesList.map((n: any) => n.position.x));
+            const maxX = Math.max(...subgraphNodesList.map((n: any) => n.position.x + (n.width || 150)));
+            const minY = Math.min(...subgraphNodesList.map((n: any) => n.position.y));
+            const maxY = Math.max(...subgraphNodesList.map((n: any) => n.position.y + (n.height || 50)));
+
+            boundingWidth = maxX - minX;
+            boundingHeight = maxY - minY;
+        }
+
+        // Spiral Search for valid position
+        const checkCollision = (pos: { x: number, y: number }, w: number, h: number, existingNodes: Node[]) => {
+            const padding = 20;
+            const newRect = {
+                left: pos.x - w / 2 - padding,
+                right: pos.x + w / 2 + padding,
+                top: pos.y - h / 2 - padding,
+                bottom: pos.y + h / 2 + padding
+            };
+
+            return existingNodes.some(node => {
+                if (node.id === instrumentNode.id) return false; // Ignore self (being replaced)
+                const nw = node.width || 150;
+                const nh = node.height || 50;
+                const nodeRect = {
+                    left: node.position.x,
+                    right: node.position.x + nw,
+                    top: node.position.y,
+                    bottom: node.position.y + nh
+                };
+
+                return !(newRect.right < nodeRect.left ||
+                    newRect.left > nodeRect.right ||
+                    newRect.bottom < nodeRect.top ||
+                    newRect.top > nodeRect.bottom);
+            });
+        };
+
+        let validPosition = { ...instrumentPos };
+        // If the instrument position itself is occupied (unlikely if we just removed it, but other nodes might invade), search out
+        // Actually, we want to find NEAREST space that fits the bounding box.
+        // Since we are replacing an instrument, start at instrument pos.
+
+        // Simple Spiral
+        let angle = 0;
+        let radius = 0;
+        let spacing = 50; // Step size
+        let step = 0;
+        const maxSteps = 100;
+
+        while (checkCollision(validPosition, boundingWidth, boundingHeight, nodes) && step < maxSteps) {
+            angle += 0.5;
+            radius = 50 + (step * 5); // Grow radius
+            validPosition = {
+                x: instrumentPos.x + radius * Math.cos(angle),
+                y: instrumentPos.y + radius * Math.sin(angle)
+            };
+            step++;
+        }
+
+        const offset = {
+            x: validPosition.x - centroid.x, // Align centroid to valid position
+            y: validPosition.y - centroid.y
+        };
+
         subgraph.nodes.forEach((subNode: any) => {
             // Skip IO nodes, they are just ports
             if (subNode.type === 'InstrumentInput' || subNode.type === 'InstrumentOutput') {
-                // We map them purely for edge resolution, but don't create nodes
-                // internalToGlobalIdMap.set(subNode.id, 'IO-' + subNode.data.name); 
-                // Actually we can't map them 1:1 to a global ID easily. We handle edges separately.
                 return;
             }
 
@@ -251,11 +334,11 @@ export const useNodeComposition = ({
                 ...subNode,
                 id: newId,
                 position: {
-                    x: instrumentPos.x + subNode.position.x,
-                    y: instrumentPos.y + subNode.position.y,
+                    x: subNode.position.x + offset.x,
+                    y: subNode.position.y + offset.y,
                 },
                 zIndex: (instrumentNode.zIndex || 0) + 1, // Ensure they sit on top if needed
-                selected: false, // Explicitly deselect to prevent inherited 'selected: true' from subgraph
+                selected: true, // Select them so user can immediately move them if needed
             });
         });
 

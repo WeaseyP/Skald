@@ -10,6 +10,7 @@ main :: proc() {
 	name := "Default"
 	input_file := ""
 	output_file := ""
+	package_name := "generated_audio"
 
 	for arg in os.args {
 		if len(arg) > 6 && arg[0:6] == "-name:" {
@@ -20,6 +21,9 @@ main :: proc() {
 		}
 		if len(arg) > 5 && arg[0:5] == "-out:" {
 			output_file = arg[5:]
+		}
+		if len(arg) > 9 && arg[0:9] == "-package:" {
+			package_name = arg[9:]
 		}
 	}
 
@@ -40,24 +44,30 @@ main :: proc() {
 	}
 	defer delete(input_bytes)
 
-	graph_raw: core.Graph_Raw
-	parse_err := json.unmarshal(input_bytes, &graph_raw)
+	project_raw: core.Project_Raw
+	parse_err := json.unmarshal(input_bytes, &project_raw)
 	if parse_err != nil {
-		fmt.eprintf("Error parsing JSON: %v\n", parse_err)
+		fmt.eprintf("Error parsing JSON as Project: %v\n", parse_err)
+        // Fallback or exit? For now exit.
 		os.exit(1)
 	} 
 
-	graph := core.build_graph_from_raw(&graph_raw)
+	project := core.build_project_from_raw(&project_raw)
 
-	generated_code := core.generate_processor_code(&graph, name)
+	generated_code := core.generate_project_code(&project, name, package_name)
 
-	if output_file != "" {
-		write_bool := os.write_entire_file(output_file, transmute([]byte)generated_code)
-		if !write_bool {
-			fmt.eprintf("Error writing output file: %s\n", output_file)
-			os.exit(1)
-		}
-	} else {
-		fmt.print(generated_code)
+	// Always write to file. If output_file is empty, default to "generated_audio.odin"
+	target_file := output_file
+	if target_file == "" {
+		target_file = "generated_audio.odin"
 	}
+
+	write_bool := os.write_entire_file(target_file, transmute([]byte)generated_code)
+	if !write_bool {
+		fmt.eprintf("Error writing output file: %s\n", target_file)
+		os.exit(1)
+	}
+
+	// Always print success message to stdout, NEVER the code
+	fmt.print("Package generated audio")
 }

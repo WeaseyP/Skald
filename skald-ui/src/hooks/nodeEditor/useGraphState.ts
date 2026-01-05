@@ -23,6 +23,8 @@ import {
 import { NodeParams } from '../../definitions/types';
 import { useNodeComposition } from './useNodeComposition';
 
+const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+
 const initialNodes: Node<NodeParams>[] = [];
 const initialEdges: Edge[] = [];
 
@@ -51,7 +53,10 @@ export const useGraphState = () => {
 
     const saveStateForUndo = useCallback(() => {
         if (isRestoring.current) return;
-        setHistory(prev => [...prev, { nodes, edges }]);
+        setHistory(prev => {
+            const newHistory = [...prev, { nodes, edges }];
+            return newHistory.slice(-10); // Keep only the last 10 actions
+        });
         setFuture([]);
     }, [nodes, edges]);
 
@@ -96,6 +101,65 @@ export const useGraphState = () => {
         setSelectedNode(params.nodes.length === 1 ? params.nodes[0] : null);
         setSelectedNodesForGrouping(params.nodes);
     }, []);
+
+    const [clipboard, setClipboard] = useState<{ nodes: Node<NodeParams>[]; edges: Edge[] } | null>(null);
+
+    const handleCopy = useCallback(() => {
+        const selected = nodes.filter(n => n.selected);
+        if (selected.length === 0) return;
+
+        const selectedIds = new Set(selected.map(n => n.id));
+        const internalEdges = edges.filter(e => selectedIds.has(e.source) && selectedIds.has(e.target));
+
+        // Deep clone to prevent reference issues
+        setClipboard({
+            nodes: JSON.parse(JSON.stringify(selected)),
+            edges: JSON.parse(JSON.stringify(internalEdges))
+        });
+    }, [nodes, edges]);
+
+    const handlePaste = useCallback(() => {
+        if (!clipboard) return;
+
+        saveStateForUndo();
+
+        const idMap = new Map<string, string>();
+        const newNodes: Node<NodeParams>[] = [];
+
+        // 1. Create new Nodes with new IDs
+        clipboard.nodes.forEach(node => {
+            const newId = `${generateId()}`; // Ensure generateId is accessible or use Date.now variant
+            idMap.set(node.id, newId);
+
+            newNodes.push({
+                ...node,
+                id: newId,
+                position: {
+                    x: node.position.x + 50,
+                    y: node.position.y + 50
+                },
+                selected: true,
+                data: { ...node.data } // Ensure deep copy of data if needed, though JSON parse above handled it
+            });
+        });
+
+        // 2. Create new Edges
+        const newEdges = clipboard.edges.map(edge => ({
+            ...edge,
+            id: `e${idMap.get(edge.source)}-${idMap.get(edge.target)}-${Math.random()}`,
+            source: idMap.get(edge.source)!,
+            target: idMap.get(edge.target)!,
+            selected: true
+        }));
+
+        // 3. Deselect old nodes
+        const deseplectedOldNodes = nodes.map(n => ({ ...n, selected: false }));
+        const deseplectedOldEdges = edges.map(e => ({ ...e, selected: false }));
+
+        setNodes([...deseplectedOldNodes, ...newNodes]);
+        setEdges([...deseplectedOldEdges, ...newEdges]);
+
+    }, [clipboard, nodes, edges, saveStateForUndo]);
 
     const handleUndo = useCallback(() => {
         if (history.length === 0) return;
@@ -152,6 +216,8 @@ export const useGraphState = () => {
         onSelectionChange,
         handleUndo,
         handleRedo,
+        handleCopy,
+        handlePaste,
         handleCreateInstrument,
         handleInstrumentNameSubmit,
         handleCreateGroup,

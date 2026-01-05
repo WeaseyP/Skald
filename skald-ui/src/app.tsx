@@ -16,29 +16,28 @@ import Sidebar from './components/Sidebar';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
 import NamePromptModal from './components/NamePromptModal';
-import {
-    OscillatorNode, FilterNode, GraphOutputNode, NoiseNode, ADSRNode,
-    MixerNode, PannerNode, GroupNode, FmOperatorNode, WavetableNode, MidiInputNode, VisualGainNode, MapperNode,
-    LFONode, SampleHoldNode, DelayNode, ReverbNode, DistortionNode
-} from './components/Nodes';
-import InstrumentNode from './components/InstrumentNode';
-
+import { nodeTypes } from './definitions/nodeTypes';
 
 // Import your new hooks
 import { useGraphState } from './hooks/nodeEditor/useGraphState';
 import { useAudioEngine } from './hooks/nodeEditor/useAudioEngine';
 import { useFileIO } from './hooks/nodeEditor/useFileIO';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
-import { NODE_DEFINITIONS } from './definitions/node-definitions';
+// import { NODE_DEFINITIONS } from './definitions/node-definitions'; // Unused
 import { SequencerDock } from './components/Sequencer/SequencerDock';
 import { useSequencerState } from './hooks/sequencer/useSequencerState';
 import { useInstrumentRegistry } from './hooks/sequencer/useInstrumentRegistry';
+import { useScale } from './contexts/ScaleContext';
+import { ScaleProvider } from './contexts/ScaleContext';
+
 
 const workspaceContainerStyles: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'row',
-    flexGrow: 1,
-    overflow: 'hidden', // Ensure content doesn't spill out
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
+    overflow: 'hidden',
 };
 
 const appContainerStyles: React.CSSProperties = {
@@ -47,17 +46,20 @@ const appContainerStyles: React.CSSProperties = {
     width: '100vw',
     height: '100vh',
     backgroundColor: '#1E1E1E',
+    position: 'relative', // Context for absolute children
 };
 
 const sidebarPanelStyles: React.CSSProperties = {
     width: '200px',
     backgroundColor: '#252526',
     borderRight: '1px solid #333',
+    height: '100%',
 };
 
 const mainCanvasStyles: React.CSSProperties = {
-    flexGrow: 1,
+    flex: 1,
     height: '100%',
+    position: 'relative',
 };
 
 const parameterPanelStyles: React.CSSProperties = {
@@ -66,34 +68,25 @@ const parameterPanelStyles: React.CSSProperties = {
     borderLeft: '1px solid #333',
 };
 
-// Define nodeTypes outside the component to prevent re-creation on every render.
-const nodeTypes = {
-    oscillator: OscillatorNode,
-    filter: FilterNode,
-    output: GraphOutputNode,
-    noise: NoiseNode,
-    adsr: ADSRNode,
-    lfo: LFONode,
-    instrument: InstrumentNode,
-    sampleHold: SampleHoldNode,
-    delay: DelayNode,
-    reverb: ReverbNode,
-    distortion: DistortionNode,
-    mixer: MixerNode,
-    panner: PannerNode,
-    group: GroupNode,
-    fmOperator: FmOperatorNode,
-    wavetable: WavetableNode,
-    midiInput: MidiInputNode,
-    gain: VisualGainNode,
-    mapper: MapperNode,
-};
-
 const EditorLayout = () => {
     const reactFlowWrapper = useRef(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
     const [bpm, setBpm] = useState(120);
     const [isLooping, setIsLooping] = useState(false);
+    const [patternSteps, setPatternSteps] = useState(16);
+    const [selectedStep, setSelectedStep] = useState<{ trackId: string, step: number } | null>(null);
+
+
+    const [packageName, setPackageName] = useState("generated_audio");
+    const [outputPath, setOutputPath] = useState("");
+
+    const handleSelectOutputPath = async () => {
+        const path = await (window as any).electron.selectOutputPath();
+        if (path) setOutputPath(path);
+    };
+
+    // Memoize the imported nodeTypes to ensure referential stability across HMR updates
+    const memoizedNodeTypes = useMemo(() => nodeTypes, []);
 
     const {
         nodes,
@@ -116,12 +109,22 @@ const EditorLayout = () => {
         handleInstrumentNameSubmit,
         handleCreateGroup,
         handleExplodeInstrument,
+        handleCopy,
+        handlePaste,
     } = useGraphState();
+
+    // Sync node selection to clear step selection
+    React.useEffect(() => {
+        if (selectedNode) {
+            setSelectedStep(null);
+        }
+    }, [selectedNode]);
 
     const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration();
 
     const sequencerStateHooks = useSequencerState();
     useInstrumentRegistry(nodes, sequencerStateHooks);
+    const { nearestInScale } = useScale();
 
     const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode } = useAudioEngine(
         nodes,
@@ -129,7 +132,9 @@ const EditorLayout = () => {
         isLooping,
         bpm,
         sequencerStateHooks.tracks,
-        sequencerStateHooks.setCurrentStep
+        sequencerStateHooks.setCurrentStep,
+        patternSteps,
+        nearestInScale
     );
 
     const { handleSave, handleLoad, handleImportGraph } = useFileIO(
@@ -190,6 +195,18 @@ const EditorLayout = () => {
                 return;
             }
 
+            // Copy / Paste
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                e.preventDefault();
+                handleCopy();
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                e.preventDefault();
+                handlePaste();
+                return;
+            }
+
             // Cycle nodes with [ and ]
             if (e.key === ']' || e.key === '[') {
                 const sortedNodes = [...nodes].sort((a, b) => {
@@ -220,18 +237,17 @@ const EditorLayout = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [nodes, handleFocusNode, handleUndo, handleRedo, sequencerStateHooks]);
+    }, [nodes, handleFocusNode, handleUndo, handleRedo, handleCopy, handlePaste, sequencerStateHooks]);
 
-    // Inject AnalyserNode into Output Nodes for Visualizer
     // Inject AnalyserNode into Output Nodes for Visualizer
     useEffect(() => {
         if (!analyserNode || !analyserNode.current) return;
 
         // Only update if not already set preventing loop
-        const needsUpdate = nodes.some(n => n.type === 'output' && !n.data.analyser);
+        const needsUpdate = nodes.some(n => (n.type === 'output' || n.type === 'GraphOutput' || n.type === 'InstrumentOutput') && !n.data.analyser);
         if (needsUpdate) {
             setNodes(nds => nds.map(n => {
-                if (n.type === 'output' && !n.data.analyser) {
+                if ((n.type === 'output' || n.type === 'GraphOutput' || n.type === 'InstrumentOutput') && !n.data.analyser) {
                     return {
                         ...n,
                         data: { ...n.data, analyser: analyserNode.current }
@@ -241,6 +257,55 @@ const EditorLayout = () => {
             }));
         }
     }, [isPlaying, nodes, setNodes, analyserNode]);
+
+    const handleExportStep = (trackId: string, step: number) => {
+        const track = sequencerStateHooks.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const note = track.notes.find(n => n.step === step);
+        if (!note) return;
+
+        const sourceNode = nodes.find(n => n.id === track.targetNodeId);
+        if (!sourceNode) return;
+
+        // Clone
+        const newNode = JSON.parse(JSON.stringify(sourceNode));
+        const generateSimpleId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        newNode.id = generateSimpleId();
+
+        // Offset
+        newNode.position.x += 250;
+        newNode.position.y += 0;
+        newNode.selected = true;
+
+        const label = sourceNode.data.label || sourceNode.type;
+        newNode.data.label = `${label} (Step ${step})`;
+
+        // Apply Overrides
+        if (note.patchOverrides) {
+            Object.entries(note.patchOverrides).forEach(([key, val]) => {
+                const [targetLabel, paramName] = key.split(':');
+
+                if (newNode.type === 'instrument' && newNode.data.subgraph) {
+                    const internalNode = newNode.data.subgraph.nodes.find((n: any) => (n.data.label || n.type) === targetLabel);
+                    if (internalNode) {
+                        internalNode.data[paramName] = val;
+                    }
+                } else {
+                    // Simple node matches label
+                    if (targetLabel === label) {
+                        newNode.data[paramName] = val;
+                    }
+                }
+            });
+        }
+
+        // Deselect others
+        const updatedNodes = nodes.map(n => ({ ...n, selected: false }));
+        setNodes([...updatedNodes, newNode]);
+
+        // Focus new node?
+        handleFocusNode(newNode.id);
+    };
 
     return (
         <div style={appContainerStyles}>
@@ -253,88 +318,118 @@ const EditorLayout = () => {
                 />
             )}
 
-            <div style={workspaceContainerStyles}>
-                <div style={sidebarPanelStyles}>
-                    <Sidebar
-                        onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks)}
-                        onPlay={handlePlay}
-                        onStop={handleStop}
-                        isPlaying={isPlaying}
-                        onSave={handleSave}
-                        onLoad={handleLoad}
-                        onImport={handleImportGraph}
-                        onCreateInstrument={handleCreateInstrument}
-                        onCreateGroup={handleCreateGroup}
-                        canCreateInstrument={selectedNodesForGrouping.length > 0}
-                        bpm={bpm}
-                        onBpmChange={setBpm}
-                        isLooping={isLooping}
-                        onLoopToggle={() => setIsLooping(!isLooping)}
-                        onExplodeInstrument={handleExplodeInstrument}
-                        canExplodeInstrument={selectedNodesForGrouping.length === 1 && selectedNodesForGrouping[0].type === 'instrument'}
-                    />
-                </div>
-                <div style={mainCanvasStyles} ref={reactFlowWrapper}>
-                    <ReactFlow
-                        nodes={nodes}
-                        edges={edges}
-                        nodeTypes={nodeTypes}
-                        onNodesChange={onNodesChange}
-                        onEdgesChange={onEdgesChange}
-                        onConnect={onConnect}
-                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                        onDrop={onDrop}
-                        onSelectionChange={onSelectionChange}
-                        onInit={setReactFlowInstance}
-                        multiSelectionKeyCode={['Shift', 'Control']}
-                        fitView
-                    >
-                        <Background />
-                        <Controls />
-                    </ReactFlow>
-                </div>
-                <div style={parameterPanelStyles}>
-                    {generatedCode ? (
-                        <CodePreviewPanel code={generatedCode} onClose={() => setGeneratedCode(null)} />
-                    ) : (
-                        <ParameterPanel
-                            selectedNode={selectedNode}
-                            onUpdateNode={updateNodeData}
-                            allNodes={nodes}
-                            allEdges={edges}
+            <div style={{
+                flex: 1,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+            }}>
+                <div style={workspaceContainerStyles}>
+                    <div style={sidebarPanelStyles}>
+                        <Sidebar
+                            onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks, bpm, masterGainNode?.current?.gain.value || 0.8, packageName, outputPath)}
+                            onPlay={handlePlay}
+                            onStop={handleStop}
+                            isPlaying={isPlaying}
+                            onSave={handleSave}
+                            onLoad={handleLoad}
+                            onImport={handleImportGraph}
+                            onCreateInstrument={handleCreateInstrument}
+                            onCreateGroup={handleCreateGroup}
+                            canCreateInstrument={selectedNodesForGrouping.length > 0}
                             bpm={bpm}
+                            onBpmChange={setBpm}
+                            isLooping={isLooping}
+                            onLoopToggle={() => setIsLooping(!isLooping)}
+                            onExplodeInstrument={handleExplodeInstrument}
+                            canExplodeInstrument={selectedNodesForGrouping.length === 1 && selectedNodesForGrouping[0].type === 'instrument'}
+                            packageName={packageName}
+                            onPackageNameChange={setPackageName}
+                            outputPath={outputPath}
+                            onSelectOutputPath={handleSelectOutputPath}
                         />
-                    )}
-                </div>
-            </div>
+                    </div>
+                    <div style={mainCanvasStyles} ref={reactFlowWrapper}>
+                        <ReactFlow
+                            nodes={nodes}
+                            edges={edges}
+                            nodeTypes={memoizedNodeTypes}
+                            onNodesChange={onNodesChange}
+                            onEdgesChange={onEdgesChange}
+                            onConnect={onConnect}
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                            onDrop={onDrop}
+                            onSelectionChange={onSelectionChange}
+                            onInit={setReactFlowInstance}
+                            multiSelectionKeyCode={['Shift', 'Control']}
+                            fitView
+                            style={{ width: '100%', height: '100%' }}
+                        >
+                            <Background />
+                            <Controls />
+                        </ReactFlow>
+                    </div>
 
-            <SequencerDock
-                state={sequencerState}
-                bpm={bpm}
-                setBpm={setBpm}
-                onPlay={handlePlay}
-                onStop={handleStop}
-                onToggleLoop={() => setIsLooping(!isLooping)}
-                isLooping={isLooping}
-                onMuteToggle={sequencerStateHooks.toggleMute}
-                onSoloToggle={sequencerStateHooks.toggleSolo}
-                onFocusTrack={(trackId) => {
-                    const track = sequencerStateHooks.tracks.find(t => t.id === trackId);
-                    if (track) handleFocusNode(track.targetNodeId);
-                }}
-                onToggleStep={sequencerStateHooks.toggleStep}
-                onUpdateNote={sequencerStateHooks.updateNote}
-                onUpdateSteps={sequencerStateHooks.updateTrackSteps}
-                analyserNode={analyserNode?.current || null}
-                masterGainNode={masterGainNode?.current || null}
-            />
+
+                    <div style={parameterPanelStyles}>
+                        {generatedCode ? (
+                            <CodePreviewPanel code={generatedCode} onClose={() => setGeneratedCode(null)} />
+                        ) : (
+                            <ParameterPanel
+                                selectedNode={selectedNode}
+                                onUpdateNode={updateNodeData}
+                                allNodes={nodes}
+                                allEdges={edges}
+                                bpm={bpm}
+                                selectedStep={selectedStep}
+                                tracks={sequencerStateHooks.tracks}
+                                onUpdateNote={sequencerStateHooks.updateNote}
+                                onExportStep={handleExportStep}
+                            />
+                        )}
+                    </div>
+                </div>
+
+                <SequencerDock
+                    state={sequencerState}
+                    bpm={bpm}
+                    setBpm={setBpm}
+                    patternSteps={patternSteps}
+                    setPatternSteps={setPatternSteps}
+                    onPlay={handlePlay}
+                    onStop={handleStop}
+                    onToggleLoop={() => setIsLooping(!isLooping)}
+                    isLooping={isLooping}
+                    onMuteToggle={sequencerStateHooks.toggleMute}
+                    onSoloToggle={sequencerStateHooks.toggleSolo}
+                    onFocusTrack={(trackId) => {
+                        const track = sequencerStateHooks.tracks.find(t => t.id === trackId);
+                        if (track) handleFocusNode(track.targetNodeId);
+                        setSelectedStep(null);
+                    }}
+                    onToggleStep={sequencerStateHooks.toggleStep}
+                    onUpdateNote={sequencerStateHooks.updateNote}
+                    onUpdateSteps={sequencerStateHooks.updateTrackSteps}
+                    analyserNode={analyserNode?.current || null}
+                    masterGainNode={masterGainNode?.current || null}
+                    onStepSelect={(trackId, step) => {
+                        // Deselect nodes
+                        setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+                        setSelectedStep({ trackId, step });
+                    }}
+                />
+            </div>
         </div>
     );
 }
 
 const App = () => (
     <ReactFlowProvider>
-        <EditorLayout />
+        <ScaleProvider>
+            <EditorLayout />
+        </ScaleProvider>
     </ReactFlowProvider>
 );
 

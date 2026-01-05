@@ -36,11 +36,11 @@ export class Instrument {
         }
     }
 
-    public trigger(time: number, note: number, velocity: number): number {
+    public trigger(time: number, note: number, velocity: number, overrides?: Record<string, number>): number {
         const index = this.nextVoiceIndex;
         const voice = this.voices[index];
         if (voice) {
-            voice.trigger(time, note, velocity);
+            voice.trigger(time, note, velocity, overrides);
         }
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
         return index;

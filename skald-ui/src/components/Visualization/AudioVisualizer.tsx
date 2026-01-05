@@ -25,6 +25,11 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
+        if (typeof analyser.getByteTimeDomainData !== 'function') {
+            // Invalid analyser prop (likely during init or HMR), just return silently
+            return;
+        }
+
         // Data Arrays
         const bufferLength = analyser.frequencyBinCount; // 1024 if fftSize is 2048
         const dataArrayTime = new Uint8Array(bufferLength);

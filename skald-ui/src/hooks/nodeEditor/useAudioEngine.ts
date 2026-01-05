@@ -20,7 +20,9 @@ export const useAudioEngine = (
     isLooping: boolean,
     bpm: number,
     sequencerTracks: SequencerTrack[],
-    setCurrentStep: (step: number) => void
+    setCurrentStep: (step: number) => void,
+    patternSteps: number,
+    nearestInScale: (note: number) => number
 ) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [graphVersion, setGraphVersion] = useState(0);
@@ -28,6 +30,10 @@ export const useAudioEngine = (
     const audioNodes = useRef<AudioNodeMap>(new Map());
     const adsrNodes = useRef<AdsrDataMap>(new Map());
     const prevGraphState = useRef<{ nodes: Node[], edges: Edge[] }>({ nodes: [], edges: [] });
+
+    // Exposed State for UI
+    const [analyserState, setAnalyserState] = useState<AnalyserNode | null>(null);
+    const [masterGainState, setMasterGainState] = useState<GainNode | null>(null);
 
     const oscillatorHandler = useOscillatorHandler({ audioContextRef: audioContext, audioNodes });
     const adsrHandler = useAdsrHandler({ audioContextRef: audioContext, audioNodes, adsrNodes });
@@ -62,11 +68,13 @@ export const useAudioEngine = (
             analyser.fftSize = 2048;
             analyser.connect(context.destination);
             analyserNode.current = analyser;
+            setAnalyserState(analyser); // Trigger re-render
 
             // Optional: Master Gain
             const masterGain = context.createGain();
             masterGain.connect(analyser); // Future nodes will connect to masterGain instead of destination
             masterGainNode.current = masterGain;
+            setMasterGainState(masterGain); // Trigger re-render
 
             logger.info('AudioEngine', 'AudioWorklets loaded. Starting playback.');
             setIsPlaying(true);
@@ -88,11 +96,13 @@ export const useAudioEngine = (
             adsrNodes.current.clear();
             analyserNode.current = null;
             masterGainNode.current = null;
+            setAnalyserState(null);
+            setMasterGainState(null);
             prevGraphState.current = { nodes: [], edges: [] };
         });
     }, [isPlaying]);
 
-    useSequencerEngine(isPlaying, bpm, sequencerTracks, audioContext, audioNodes, setCurrentStep, isLooping, handleStop);
+    useSequencerEngine(isPlaying, bpm, sequencerTracks, audioContext, audioNodes, setCurrentStep, isLooping, handleStop, patternSteps, nearestInScale);
 
     useDeepCompareEffect(() => {
         if (!isPlaying || !audioContext.current) return;
@@ -129,22 +139,52 @@ export const useAudioEngine = (
                     handler.create(node);
                 } else {
                     let newAudioNode: AudioNode | Instrument | null = null;
+                    logger.debug('AudioEngine', `[TRACE] Processing Node ${node.id} Type: "${node.type}"`);
 
-                    // SKALD-94: Route Output to Master Bus
-                    if (node.type === 'output' && masterGainNode.current) {
-                        newAudioNode = masterGainNode.current;
-                        logger.debug('AudioEngine', `Routing Output node ${node.id} to Master Bus`);
+                    if (node.type === 'output' || node.type === 'GraphOutput') {
+                        // Defensive Recovery for SKALD-94/102
+                        if (!masterGainNode.current && context) {
+                            logger.warn('AudioEngine', 'Master Gain missing during Output creation. Recreating chain.');
+                            const gain = context.createGain();
+
+                            if (!analyserNode.current) {
+                                const ana = context.createAnalyser();
+                                ana.fftSize = 2048;
+                                ana.connect(context.destination);
+                                analyserNode.current = ana;
+                                setAnalyserState(ana);
+                            }
+
+                            gain.connect(analyserNode.current);
+                            masterGainNode.current = gain;
+                            setMasterGainState(gain);
+                        }
+
+                        if (masterGainNode.current) {
+                            newAudioNode = masterGainNode.current;
+                            logger.info('AudioEngine', `[SUCCESS] Output Node ${node.id} routed to Master Bus Gain ID: ${(masterGainNode.current as any).id || 'N/A'}`);
+                        } else {
+                            logger.error('AudioEngine', `CRITICAL: Recovery failed. Master Gain is null for node ${node.id}`);
+                        }
                     }
                     else if (node.type === 'instrument') {
+                        logger.debug('AudioEngine', `Creating Instrument Node ${node.id}`);
                         newAudioNode = new Instrument(context, node);
                     } else if (node.type && (nodeCreationMap as any)[node.type]) {
+                        logger.debug('AudioEngine', `Creating Standard Node ${node.id} via Factory`);
                         const creator = (nodeCreationMap as any)[node.type] as Function;
                         newAudioNode = creator(context, node, adsrNodes.current);
                     } else {
+                        logger.debug('AudioEngine', `Creating Default Node ${node.id}`);
                         const creator = nodeCreationMap['default'] as Function;
                         newAudioNode = creator(context, node, adsrNodes.current);
                     }
-                    if (newAudioNode) audioNodes.current.set(node.id, newAudioNode);
+
+                    if (newAudioNode) {
+                        audioNodes.current.set(node.id, newAudioNode);
+                    } else {
+                        logger.warn('AudioEngine', `Node ${node.id} resulted in NULL AudioNode`);
+                    }
                 }
             } else {
                 if (handler && prevNode) {
@@ -325,8 +365,12 @@ export const useAudioEngine = (
             const now = audioContext.current.currentTime;
 
             if (command === 0x90 && data2 > 0) { // Note On
-                const note = data1;
+                const rawNote = data1;
+                const note = nearestInScale(rawNote); // Apply Scale Quantization
                 const velocity = data2 / 127;
+
+                logger.debug('AudioEngine', `[MIDI In] Raw: ${rawNote} -> Quantized: ${note}`);
+
                 const freq = 440 * Math.pow(2, (note - 69) / 12);
 
                 audioNodes.current.forEach((node, id) => {
@@ -347,6 +391,7 @@ export const useAudioEngine = (
                     }
                 });
             } else if (command === 0x80 || (command === 0x90 && data2 === 0)) { // Note Off
+                // Note Off doesn't need quantization as it just closes the gate
                 audioNodes.current.forEach((node, id) => {
                     if (node.constructor.name === 'ConstantSourceNode' && (node as any).gate && (node as any).velocity) {
                         const gateNode = (node as any).gate as ConstantSourceNode;
@@ -385,7 +430,13 @@ export const useAudioEngine = (
                 }
             }
         };
-    }, []); // Run once on mount (or when audioContext changes?) No, independent.
+    }, [nearestInScale]);
 
-    return { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode };
+    return {
+        isPlaying,
+        handlePlay,
+        handleStop,
+        analyserNode: { current: analyserState },
+        masterGainNode: { current: masterGainState }
+    };
 };

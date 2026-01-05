@@ -1,40 +1,44 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-
-const baseNodeStyles: React.CSSProperties = {
-    border: '1px solid #2f9e44',
-    borderRadius: '4px',
-    padding: '10px 15px',
-    width: 150,
-    textAlign: 'center'
-};
-
-const oscillatorNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#e6fcf5', borderColor: '#2f9e44' };
-
-const handleLabelStyles: React.CSSProperties = {
-    fontSize: '0.6em',
-    color: '#000',
-    position: 'absolute',
-    pointerEvents: 'none'
-};
+import { commonNodeStyles, nodeHeaderStyles, handleContainerStyles, labelStyles, NodeTheme } from './NodeStyles';
 
 const OscillatorNodeComponent: React.FC<NodeProps> = ({ data }) => {
     return (
-        <div style={oscillatorNodeStyles}>
-            <div style={{ position: 'relative', height: '10px' }}>
-                <Handle type="target" position={Position.Left} id="input_freq" style={{ top: '50%' }} />
-                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Freq</span>
-            </div>
-            <div style={{ position: 'relative', height: '10px', marginTop: '5px' }}>
-                <Handle type="target" position={Position.Left} id="input_amp" style={{ top: '50%' }} />
-                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Amp</span>
+        <div style={commonNodeStyles}>
+            <div style={nodeHeaderStyles}>
+                {data.label || 'Oscillator'}
             </div>
 
-            <div style={{ margin: '5px 0' }}><strong>{data.label || 'Oscillator'}</strong></div>
+            <div style={handleContainerStyles}>
+                <Handle
+                    type="target"
+                    position={Position.Left}
+                    id="input_freq"
+                    style={{ background: NodeTheme.colors.handleIn }}
+                />
+                <span style={{ marginLeft: '12px', ...labelStyles }}>Freq</span>
+            </div>
+            <div style={handleContainerStyles}>
+                <Handle
+                    type="target"
+                    position={Position.Left}
+                    id="input_amp"
+                    style={{ background: NodeTheme.colors.handleIn }}
+                />
+                <span style={{ marginLeft: '12px', ...labelStyles }}>Amp</span>
+            </div>
 
-            <div style={{ position: 'relative', height: '10px' }}>
-                <span style={{ ...handleLabelStyles, right: '10px', top: '0px' }}>Out</span>
-                <Handle type="source" position={Position.Right} id="output" style={{ top: '50%' }} />
+            {/* Spacer */}
+            <div style={{ height: '10px' }}></div>
+
+            <div style={{ ...handleContainerStyles, justifyContent: 'flex-end' }}>
+                <span style={{ marginRight: '12px', ...labelStyles }}>Out</span>
+                <Handle
+                    type="source"
+                    position={Position.Right}
+                    id="output"
+                    style={{ background: NodeTheme.colors.handleOut }}
+                />
             </div>
         </div>
     );

@@ -4,7 +4,10 @@ import { CustomSlider } from './controls/CustomSlider';
 import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
-import { GainParams } from '../../definitions/types';
+import { GainParams } from '../definitions/types';
+import { StepPropertiesEditor } from './Sequencer/StepPropertiesEditor';
+import { SequencerTrack, NoteEvent } from '../definitions/types';
+import { NodeParameterControls } from './NodeParameterControls';
 
 // --- STYLES ---
 const panelStyles: React.CSSProperties = {
@@ -86,7 +89,6 @@ const LinkIcon: React.FC<{ isExposed: boolean }> = ({ isExposed }) => (
     </svg>
 );
 
-
 // --- PROPS INTERFACE ---
 
 interface ParameterPanelProps {
@@ -95,15 +97,58 @@ interface ParameterPanelProps {
     allNodes: Node[];
     allEdges: Edge[];
     bpm: number;
+    // Step Editing
+    selectedStep?: { trackId: string, step: number } | null;
+    tracks?: SequencerTrack[];
+    onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>) => void;
+    onExportStep?: (trackId: string, step: number) => void;
 }
 
 
 // --- MAIN COMPONENT ---
 
-const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm }) => {
+const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm, selectedStep, tracks, onUpdateNote, onExportStep }) => {
+
+    if (selectedStep && tracks && onUpdateNote) {
+        const track = tracks.find(t => t.id === selectedStep.trackId);
+        const instrumentNode = track ? allNodes.find(n => n.id === track.targetNodeId) : null;
+
+        return (
+            <div style={panelStyles}>
+                <div style={headerStyles}>
+                    <h3>Edit Step {selectedStep.step}</h3>
+                    <div style={{ fontSize: '0.8em', color: '#888' }}>{track?.name || 'Unknown Track'}</div>
+                    {onExportStep && (
+                        <button
+                            onClick={() => onExportStep(selectedStep.trackId, selectedStep.step)}
+                            style={{
+                                marginTop: '10px',
+                                padding: '6px 12px',
+                                background: '#e8590c',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white',
+                                cursor: 'pointer',
+                                fontSize: '0.9em'
+                            }}
+                        >
+                            Export Step to Instrument
+                        </button>
+                    )}
+                </div>
+                <StepPropertiesEditor
+                    trackId={selectedStep.trackId}
+                    step={selectedStep.step}
+                    track={track}
+                    onUpdateNote={onUpdateNote}
+                    instrumentNode={instrumentNode}
+                />
+            </div>
+        );
+    }
 
     if (!selectedNode) {
-        return <div style={panelStyles}><p>Select a node to edit its parameters.</p></div>;
+        return <div style={panelStyles}><p>Select a node or sequencer step to edit parameters.</p></div>;
     }
 
     // --- EVENT HANDLERS ---
@@ -114,7 +159,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             : { [paramName]: value };
 
         if (subNodeId) {
-            const subNode = allNodes.find(n => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find(n => n.id === subNodeId);
+            const subNode = allNodes.find((n: Node) => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find((n: Node) => n.id === subNodeId);
             if (!subNode) return;
             const newData = { ...subNode.data, ...dataToUpdate };
             onUpdateNode(selectedNode.id, newData, subNodeId);
@@ -127,13 +172,13 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
     const handleMixerChange = (channelId: number, newLevel: number, subNodeId?: string) => {
         const nodeToUpdate = subNodeId
-            ? (allNodes.find(n => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find(n => n.id === subNodeId))
+            ? (allNodes.find((n: Node) => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find((n: Node) => n.id === subNodeId))
             : selectedNode;
 
         if (!nodeToUpdate || nodeToUpdate.type !== 'mixer') return;
 
         const currentLevels = nodeToUpdate.data.levels || [];
-        const newLevels = currentLevels.map(ch =>
+        const newLevels = currentLevels.map((ch: any) =>
             ch.id === channelId ? { ...ch, level: newLevel } : ch
         );
 
@@ -154,7 +199,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
     const toggleParameterExposure = (paramKey: string, subNodeId?: string) => {
         const nodeIdToUpdate = subNodeId || selectedNode.id;
-        const nodeToUpdate = allNodes.find(n => n.id === nodeIdToUpdate) || selectedNode.data.subgraph?.nodes.find(n => n.id === nodeIdToUpdate);
+        const nodeToUpdate = allNodes.find((n: Node) => n.id === nodeIdToUpdate) || selectedNode.data.subgraph?.nodes.find((n: Node) => n.id === nodeIdToUpdate);
         if (!nodeToUpdate) return;
 
         const currentExposed: string[] = nodeToUpdate.data.exposedParameters || [];
@@ -232,339 +277,116 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
     const renderNodeParameters = (node: Node, subNodeId?: string) => {
         const { type, data } = node;
 
-        const createControl = (paramKey: string, label: string, children: React.ReactNode, isExposable: boolean = true) => {
-            const isExposed = data.exposedParameters?.includes(paramKey) || false;
-            return renderParameterControl(paramKey, label, children, isExposable, isExposed, () => toggleParameterExposure(paramKey, subNodeId || node.id));
+        const handleControlChange = (paramKey: string, value: any) => {
+            handleParameterChange(paramKey, value, subNodeId || node.id);
         };
 
-        const createSelect = (paramKey: string, options: string[]) => (
-            <select name={paramKey} value={data[paramKey]} onChange={(e) => handleGenericChange(e, subNodeId || node.id)} style={inputStyles}>
-                {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-            </select>
-        );
+        const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable: boolean = true) => {
+            const isExposed = data.exposedParameters?.includes(paramKey) || false;
+            return renderParameterControl(
+                paramKey,
+                label,
+                children,
+                isExposable,
+                isExposed,
+                () => toggleParameterExposure(paramKey, subNodeId || node.id)
+            );
+        };
 
-        switch (type) {
-            case 'adsr':
-                return (<>
-                    <AdsrEnvelopeEditor
-                        value={{ attack: data.attack, decay: data.decay, sustain: data.sustain, release: data.release }}
-                        onChange={(newAdsr) => handleParameterChange('adsr', newAdsr, subNodeId || node.id)}
+        // Special handling for container types that iterate children
+        if (type === 'instrument' || type === 'group') {
+            const childNodes = type === 'instrument'
+                ? data.subgraph?.nodes
+                : allNodes.filter(n => n.parentNode === node.id);
+
+            return (
+                <>
+                    {/* Render generic controls (name, polyphony etc) via shared component */}
+                    <NodeParameterControls
+                        node={node}
+                        onChange={handleControlChange}
+                        renderControlWrapper={wrapper}
                     />
-                    {createControl('depth', 'Depth',
-                        <CustomSlider min={0} max={1} value={data.depth ?? 1} onChange={val => handleParameterChange('depth', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('velocitySensitivity', 'Velocity Sens.',
-                        <CustomSlider min={0} max={1} value={data.velocitySensitivity ?? 0.5} onChange={val => handleParameterChange('velocitySensitivity', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'filter':
-                return (<>
-                    {createControl('type', 'Filter Type', createSelect('type', ['Lowpass', 'Highpass', 'Bandpass', 'Notch']), false)}
-                    <XYPad
-                        xValue={data.cutoff}
-                        yValue={data.resonance}
-                        minX={20}
-                        maxX={20000}
-                        minY={0.1}
-                        maxY={30}
-                        onChange={({ x, y }) => handleParameterChange('filter', { cutoff: x, resonance: y }, subNodeId || node.id)}
-                        xScale="log"
-                        yScale="log"
-                    />
-                    <div>Cutoff: {(data.cutoff ?? 1000).toFixed(2)} Hz</div>
-                    <div>Resonance: {(data.resonance ?? 1).toFixed(2)}</div>
-                </>);
-            case 'lfo':
-                return (<>
-                    {createControl('waveform', 'Waveform', createSelect('waveform', ['Sine', 'Sawtooth', 'Triangle', 'Square']), false)}
 
-                    {data.bpmSync
-                        ? createControl('syncRate', 'Sync Rate',
-                            <BpmSyncControl value={data.syncRate ?? '1/4'} onChange={val => handleParameterChange('syncRate', val, subNodeId || node.id)} />
-                        )
-                        : createControl('frequency', 'Frequency (Hz)',
-                            <CustomSlider min={0.1} max={50} value={data.frequency ?? 5} onChange={val => handleParameterChange('frequency', val, subNodeId || node.id)} scale="log" />
-                        )
-                    }
-
-                    {createControl('amplitude', 'Amplitude (Depth)',
-                        <CustomSlider min={0} max={1} value={data.amplitude ?? 1} onChange={val => handleParameterChange('amplitude', val, subNodeId || node.id)} />
-                    )}
-                    {renderBpmSyncToggle(node, subNodeId)}
-                </>);
-            case 'delay':
-                return (<>
-                    {data.bpmSync
-                        ? createControl('syncRate', 'Sync Rate',
-                            <BpmSyncControl value={data.syncRate ?? '1/8'} onChange={val => handleParameterChange('syncRate', val, subNodeId || node.id)} />
-                        )
-                        : createControl('delayTime', 'Delay Time (s)',
-                            <CustomSlider min={0.001} max={5} value={data.delayTime ?? 0.5} onChange={val => handleParameterChange('delayTime', val, subNodeId || node.id)} />
-                        )
-                    }
-
-                    {createControl('feedback', 'Feedback',
-                        <CustomSlider min={0} max={1} value={data.feedback ?? 0.5} onChange={val => handleParameterChange('feedback', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('mix', 'Wet/Dry Mix',
-                        <CustomSlider min={0} max={1} value={data.mix ?? 0.5} onChange={val => handleParameterChange('mix', val, subNodeId || node.id)} />
-                    )}
-                    {renderBpmSyncToggle(node, subNodeId)}
-                </>);
-            case 'sampleHold':
-                return (<>
-                    {data.bpmSync
-                        ? createControl('syncRate', 'Sync Rate',
-                            <BpmSyncControl value={data.syncRate ?? '1/8'} onChange={val => handleParameterChange('syncRate', val, subNodeId || node.id)} />
-                        )
-                        : createControl('rate', 'Rate (Hz)',
-                            <CustomSlider min={0.1} max={50} value={data.rate ?? 10} onChange={val => handleParameterChange('rate', val, subNodeId || node.id)} scale="log" />
-                        )
-                    }
-                    {createControl('amplitude', 'Amplitude (Depth)',
-                        <CustomSlider min={0} max={1} value={data.amplitude ?? 1} onChange={val => handleParameterChange('amplitude', val, subNodeId || node.id)} />
-                    )}
-                    {renderBpmSyncToggle(node, subNodeId)}
-                </>);
-            case 'fmOperator':
-                return (<>
-                    {createControl('frequency', 'Carrier Freq (Hz)',
-                        <CustomSlider min={20} max={20000} value={data.frequency ?? 440} onChange={val => handleParameterChange('frequency', val, subNodeId || node.id)} scale="log" />
-                    )}
-                    {createControl('modIndex', 'Modulation Index',
-                        <CustomSlider min={0} max={1000} value={data.modIndex ?? 100} onChange={val => handleParameterChange('modIndex', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'wavetable':
-                return (<>
-                    {createControl('tableName', 'Table', createSelect('tableName', ['Sine', 'Triangle', 'Sawtooth', 'Square']), false)}
-                    {createControl('frequency', 'Frequency (Hz)',
-                        <CustomSlider min={20} max={20000} value={data.frequency ?? 440} onChange={val => handleParameterChange('frequency', val, subNodeId || node.id)} scale="log" />
-                    )}
-                    {createControl('position', 'Table Position',
-                        <CustomSlider min={0} max={3} value={data.position ?? 0} onChange={val => handleParameterChange('position', val, subNodeId || node.id)} step={0.01} />
-                    )}
-                </>);
-            case 'oscillator':
-                return (<>
-                    {createControl('waveform', 'Waveform', createSelect('waveform', ['Sawtooth', 'Sine', 'Triangle', 'Square']), false)}
-                    {createControl('frequency', 'Frequency (Hz)',
-                        <CustomSlider min={20} max={20000} value={data.frequency ?? 440} onChange={val => handleParameterChange('frequency', val, subNodeId || node.id)} scale="log" />
-                    )}
-                    {createControl('amplitude', 'Amplitude',
-                        <CustomSlider min={0} max={1} value={data.amplitude ?? 0.5} onChange={val => handleParameterChange('amplitude', val, subNodeId || node.id)} />
-                    )}
-                    {data.waveform === 'Square' && createControl('pulseWidth', 'Pulse Width',
-                        <CustomSlider min={0.01} max={0.99} value={data.pulseWidth ?? 0.5} onChange={val => handleParameterChange('pulseWidth', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('phase', 'Phase',
-                        <CustomSlider min={0} max={360} value={data.phase ?? 0} onChange={val => handleParameterChange('phase', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'noise':
-                return (<>
-                    {createControl('type', 'Noise Type', createSelect('type', ['White', 'Pink']), false)}
-                    {createControl('amplitude', 'Amplitude',
-                        <CustomSlider min={0} max={1} value={data.amplitude ?? 1} onChange={val => handleParameterChange('amplitude', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'reverb':
-                return (<>
-                    {createControl('decay', 'Decay (s)',
-                        <CustomSlider min={0.1} max={10} value={data.decay ?? 3} onChange={val => handleParameterChange('decay', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('preDelay', 'Pre-Delay (s)',
-                        <CustomSlider min={0} max={1} value={data.preDelay ?? 0.01} onChange={val => handleParameterChange('preDelay', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('mix', 'Wet/Dry Mix',
-                        <CustomSlider min={0} max={1} value={data.mix ?? 0.5} onChange={val => handleParameterChange('mix', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'distortion':
-                return (<>
-                    {createControl('drive', 'Drive',
-                        <CustomSlider min={1} max={100} value={data.drive ?? 20} onChange={val => handleParameterChange('drive', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('tone', 'Tone (Hz)',
-                        <CustomSlider min={100} max={10000} value={data.tone ?? 4000} onChange={val => handleParameterChange('tone', val, subNodeId || node.id)} scale="log" />
-                    )}
-                    {createControl('mix', 'Wet/Dry Mix',
-                        <CustomSlider min={0} max={1} value={data.mix ?? 0.5} onChange={val => handleParameterChange('mix', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'mixer':
-                return (
-                    <>
-                        {(data.levels || []).map(channel =>
-                            createControl(`level${channel.id}`, `Input ${channel.id} Level`,
-                                <CustomSlider min={0} max={1} value={channel.level} onChange={val => handleMixerChange(channel.id, val, subNodeId || node.id)} />
-                                , true)
-                        )}
-                    </>
-                );
-            case 'panner':
-                return (<>
-                    {createControl('pan', 'Pan',
-                        <CustomSlider min={-1} max={1} value={data.pan ?? 0} onChange={val => handleParameterChange('pan', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'gain':
-                return (<>
-                    {createControl('gain', 'Gain',
-                        <CustomSlider min={0} max={1} value={data.gain ?? 0.75} onChange={val => handleParameterChange('gain', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'VisualGainNode':
-                return (<>
-                    {createControl('gain', 'Gain',
-                        <CustomSlider min={0} max={1} value={data.gain ?? 0.75} onChange={val => handleParameterChange('gain', val, subNodeId || node.id)} />
-                    )}
-                </>);
-            case 'instrument':
-                return (<>
-                    {createControl('name', 'Instrument Name',
-                        <input type="text" name="name" value={data.name} onChange={(e) => handleGenericChange(e, subNodeId || node.id)} style={inputStyles} />, false
-                    )}
-                    <h4 style={subHeaderStyles}>Polyphony</h4>
-                    {createControl('voiceCount', 'Voice Count',
-                        <CustomSlider min={1} max={32} step={1} value={data.voiceCount ?? 8} onChange={val => handleParameterChange('voiceCount', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('glide', 'Glide (s)',
-                        <CustomSlider min={0} max={2} value={data.glide ?? 0.05} onChange={val => handleParameterChange('glide', val, subNodeId || node.id)} />
-                    )}
-                    <h4 style={subHeaderStyles}>Unison</h4>
-                    {createControl('unison', 'Unison Voices',
-                        <CustomSlider min={1} max={16} step={1} value={data.unison ?? 1} onChange={val => handleParameterChange('unison', val, subNodeId || node.id)} />
-                    )}
-                    {createControl('detune', 'Detune (cents)',
-                        <CustomSlider min={0} max={100} value={data.detune ?? 5} onChange={val => handleParameterChange('detune', val, subNodeId || node.id)} />
-                    )}
-                    <h4 style={subHeaderStyles}>Internal Nodes</h4>
-                    {data.subgraph?.nodes.map((subNode: Node) => (
+                    {/* Sub-Node Rendering (Specific to Panel) */}
+                    {type === 'instrument' && <h4 style={subHeaderStyles}>Internal Nodes</h4>}
+                    {childNodes?.map((subNode: Node) => (
                         <div key={subNode.id}>
                             <h4 style={subHeaderStyles}>{subNode.data.label || subNode.type}</h4>
                             {renderNodeParameters(subNode, subNode.id)}
                         </div>
                     ))}
-                </>);
-            case 'group':
-                const childNodes = allNodes.filter(n => n.parentNode === node.id);
-                return (
-                    <>
-                        {createControl('label', 'Group Name',
-                            <input type="text" name="label" value={data.label} onChange={(e) => handleGenericChange(e, subNodeId || node.id)} style={inputStyles} />, false
-                        )}
-                        {childNodes.map((subNode: Node) => (
-                            <div key={subNode.id}>
-                                <h4 style={subHeaderStyles}>{subNode.data.label || subNode.type}</h4>
-                                {renderNodeParameters(subNode, subNode.id)}
-                            </div>
-                        ))}
-                    </>
-                );
-            case 'InstrumentInput':
-                return <p>Instrument input port.</p>;
-            case 'InstrumentOutput':
-            case 'output':
-                return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <p>{type === 'output' ? 'Main Audio Output' : 'Instrument Output Port'}</p>
-                        <button
-                            onClick={() => handleParameterChange('lastTrigger', Date.now(), subNodeId || node.id)}
-                            style={{
-                                ...inputStyles,
-                                cursor: 'pointer',
-                            }}
-                        >
-                            Test Audio
-                        </button>
-                    </div>
-                );
-            case 'VisualGainNode':
-            case 'gain':
-                return (
-                    <>
-                        <div style={{ marginBottom: 15 }}>
-                            <label style={labelStyles}>Gain</label>
-                            <CustomSlider
-                                min={0}
-                                max={2}
-                                value={data.gain ?? 1}
-                                onChange={(val) => handleParameterChange('gain', val, subNodeId || node.id)}
-                            />
-                        </div>
-                    </>
-                );
-            case 'mapper':
-                return (
-                    <>
-                        <div style={{ marginBottom: 15 }}>
-                            <label style={labelStyles}>Input Min</label>
-                            <CustomSlider
-                                min={-100}
-                                max={100}
-                                value={data.inMin ?? 0}
-                                onChange={(val) => handleParameterChange('inMin', val, subNodeId || node.id)}
-                            />
-                        </div>
-                        <div style={{ marginBottom: 15 }}>
-                            <label style={labelStyles}>Input Max</label>
-                            <CustomSlider
-                                min={-100}
-                                max={100}
-                                value={data.inMax ?? 1}
-                                onChange={(val) => handleParameterChange('inMax', val, subNodeId || node.id)}
-                            />
-                        </div>
-                        <div style={{ marginBottom: 15 }}>
-                            <label style={labelStyles}>Output Min</label>
-                            <CustomSlider
-                                min={-10000}
-                                max={10000}
-                                value={data.outMin ?? 0}
-                                onChange={(val) => handleParameterChange('outMin', val, subNodeId || node.id)}
-                            />
-                        </div>
-                        <div style={{ marginBottom: 15 }}>
-                            <label style={labelStyles}>Output Max</label>
-                            <CustomSlider
-                                min={-10000}
-                                max={10000}
-                                value={data.outMax ?? 1}
-                                onChange={(val) => handleParameterChange('outMax', val, subNodeId || node.id)}
-                            />
-                        </div>
-                    </>
-                );
-            case 'midiInput':
-                return (
-                    <>
-                        {createControl('device', 'MIDI Device',
-                            <select
-                                name="device"
-                                value={data.device ?? 'All'}
-                                onChange={(e) => handleGenericChange(e, subNodeId || node.id)}
-                                style={inputStyles}
-                            >
-                                <option value="All">All Devices</option>
-                                <option value="Device A">Device A (Mock)</option>
-                                <option value="Device B">Device B (Mock)</option>
-                            </select>,
-                            false
-                        )}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                            <label style={labelStyles}>Enable MPE</label>
-                            <input
-                                type="checkbox"
-                                name="useMpe"
-                                checked={data.useMpe ?? false}
-                                onChange={(e) => handleGenericChange(e, subNodeId || node.id)}
-                                style={{ height: '18px', width: '18px', cursor: 'pointer' }}
-                            />
-                        </div>
-                    </>
-                );
+                </>
+            );
         }
+
+        // Special handling for Output/Input/Mixer/Mapper/MIDI (Not yet extracted or complex)
+        // Ideally extract these too, but for now fallback or implement
+        if (type === 'output' || type === 'InstrumentOutput') {
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <p>{type === 'output' ? 'Main Audio Output' : 'Instrument Output Port'}</p>
+                    <button
+                        onClick={() => handleParameterChange('lastTrigger', Date.now(), subNodeId || node.id)}
+                        style={{ ...inputStyles, cursor: 'pointer' }}
+                    >
+                        Test Audio
+                    </button>
+                </div>
+            );
+        }
+        if (type === 'InstrumentInput') return <p>Instrument input port.</p>;
+
+        if (type === 'mixer') {
+            return (
+                <>
+                    {(data.levels || []).map((channel: any) =>
+                        wrapper(`level${channel.id}`, `Input ${channel.id} Level`,
+                            <CustomSlider min={0} max={1} value={channel.level} onChange={val => handleMixerChange(channel.id, val, subNodeId || node.id)} />
+                            , true)
+                    )}
+                </>
+            );
+        }
+        if (type === 'mapper') {
+            return (
+                <>
+                    {wrapper('inMin', 'Input Min', <CustomSlider min={-100} max={100} value={data.inMin ?? 0} onChange={val => handleControlChange('inMin', val)} />)}
+                    {wrapper('inMax', 'Input Max', <CustomSlider min={-100} max={100} value={data.inMax ?? 1} onChange={val => handleControlChange('inMax', val)} />)}
+                    {wrapper('outMin', 'Output Min', <CustomSlider min={-10000} max={10000} value={data.outMin ?? 0} onChange={val => handleControlChange('outMin', val)} />)}
+                    {wrapper('outMax', 'Output Max', <CustomSlider min={-10000} max={10000} value={data.outMax ?? 1} onChange={val => handleControlChange('outMax', val)} />)}
+                </>
+            );
+        }
+        if (type === 'midiInput') {
+            // ... handle midi input locally for now as it uses local select logic
+            return (
+                <>
+                    {wrapper('device', 'MIDI Device',
+                        <select name="device" value={data.device ?? 'All'} onChange={(e) => handleGenericChange(e, subNodeId || node.id)} style={inputStyles}>
+                            <option value="All">All Devices</option>
+                            <option value="Device A">Device A (Mock)</option>
+                            <option value="Device B">Device B (Mock)</option>
+                        </select>,
+                        false
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                        <label style={labelStyles}>Enable MPE</label>
+                        <input type="checkbox" name="useMpe" checked={data.useMpe ?? false} onChange={(e) => handleGenericChange(e, subNodeId || node.id)} style={{ height: '18px', width: '18px', cursor: 'pointer' }} />
+                    </div>
+                </>
+            );
+        }
+
+
+        // Default: Use Shared Component
+        return (
+            <NodeParameterControls
+                node={node}
+                onChange={handleControlChange}
+                renderControlWrapper={wrapper}
+            />
+        );
     };
 
     return (

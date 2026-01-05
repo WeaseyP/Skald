@@ -105,6 +105,10 @@ interface SidebarProps {
     onExplodeInstrument: () => void;
     canExplodeInstrument: boolean;
     onImport: () => void;
+    packageName: string;
+    onPackageNameChange: (name: string) => void;
+    outputPath: string;
+    onSelectOutputPath: () => void;
 }
 
 
@@ -127,6 +131,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     onExplodeInstrument,
     canExplodeInstrument,
     onImport,
+    packageName,
+    onPackageNameChange,
+    outputPath,
+    onSelectOutputPath,
 }) => {
 
     const onDragStart = (event: React.DragEvent, nodeType: string) => {
@@ -152,8 +160,27 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div>
+                <h2 style={sectionTitleStyles}>Generation</h2>
+                <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '0.8em', color: '#ccc', marginBottom: '2px' }}>Package Name</label>
+                    <input
+                        type="text"
+                        value={packageName}
+                        onChange={(e) => onPackageNameChange(e.target.value)}
+                        style={{ ...bpmInputStyles, fontSize: '0.9em', width: '100%' }}
+                        placeholder="generated_audio"
+                    />
+                </div>
+                <div style={{ marginBottom: '10px' }}>
+                    <button style={{ ...secondaryButtonStyles, fontSize: '0.8em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={onSelectOutputPath} title={outputPath}>
+                        {outputPath ? (outputPath.split(/[\\/]/).pop() || 'Output File Selected') : 'Select Output File'}
+                    </button>
+                </div>
+                <button style={primaryButtonStyles} onClick={onGenerate}>Generate Code</button>
+            </div>
+
+            <div>
                 <h2 style={sectionTitleStyles}>Graph Actions</h2>
-                <button style={primaryButtonStyles} onClick={onGenerate}>Generate</button>
                 {!isPlaying ? (
                     <button style={secondaryButtonStyles} onClick={onPlay}>Play</button>
                 ) : (

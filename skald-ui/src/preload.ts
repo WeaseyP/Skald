@@ -2,12 +2,15 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
-    invokeCodegen: (graphJson: string): Promise<string> => 
-        ipcRenderer.invoke('invoke-codegen', graphJson),
-    
+    invokeCodegen: (graphJson: string, options?: { packageName?: string, outputPath?: string }): Promise<string> =>
+        ipcRenderer.invoke('invoke-codegen', graphJson, options),
+
     saveGraph: (graphJson: string): Promise<void> =>
         ipcRenderer.invoke('save-graph', graphJson),
-        
+
     loadGraph: (): Promise<string | null> =>
         ipcRenderer.invoke('load-graph'),
+
+    selectOutputPath: (): Promise<string | null> =>
+        ipcRenderer.invoke('select-output-path'),
 });

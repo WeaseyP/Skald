@@ -1,4 +1,5 @@
 import React from 'react';
+import { NumberInput } from '../common/NumberInput';
 import { SequencerTrack } from '../../definitions/types';
 
 interface TrackListProps {
@@ -7,10 +8,11 @@ interface TrackListProps {
     onSoloToggle: (trackId: string) => void;
     onFocusTrack: (trackId: string) => void;
     onUpdateSteps?: (trackId: string, steps: number) => void;
+    onOpenPianoRoll?: (trackId: string) => void;
 }
 
 const listContainerStyles: React.CSSProperties = {
-    width: '200px',
+    width: '260px',
     backgroundColor: '#1E1E1E',
     borderRight: '1px solid #333',
     display: 'flex',
@@ -46,7 +48,7 @@ const iconBtnStyles: React.CSSProperties = {
 const activeMuteStyle: React.CSSProperties = { ...iconBtnStyles, backgroundColor: '#d9534f', color: 'white', borderColor: '#d9534f' };
 const activeSoloStyle: React.CSSProperties = { ...iconBtnStyles, backgroundColor: '#f0ad4e', color: 'black', borderColor: '#f0ad4e' };
 
-export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSoloToggle, onFocusTrack }) => {
+export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSoloToggle, onFocusTrack, onUpdateSteps, onOpenPianoRoll }) => {
     return (
         <div style={listContainerStyles}>
             {tracks.map(track => (
@@ -62,6 +64,15 @@ export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSo
                     >
                         {track.name}
                     </span>
+
+                    {/* Piano Roll Button */}
+                    <button
+                        style={{ ...iconBtnStyles, width: 'auto', padding: '0 4px', fontSize: '9px' }}
+                        onClick={() => onOpenPianoRoll && onOpenPianoRoll(track.id)}
+                        title="Open Piano Roll"
+                    >
+                        Edit
+                    </button>
 
                     {/* Mute/Solo */}
                     <button
@@ -80,15 +91,21 @@ export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSo
                     </button>
 
                     {/* Steps Input */}
-                    <input
-                        type="number"
-                        min="1"
-                        max="64"
-                        value={track.steps}
-                        onChange={(e) => onUpdateSteps && onUpdateSteps(track.id, parseInt(e.target.value))}
-                        style={{ width: '40px', marginLeft: '5px', backgroundColor: '#333', color: '#ccc', border: '1px solid #444', fontSize: '10px' }}
-                        title="Steps"
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', marginLeft: '5px' }}>
+                        <label style={{ fontSize: '9px', color: '#666', marginRight: '2px' }}>Len</label>
+                        <NumberInput
+                            min={1}
+                            max={64}
+                            value={track.steps || 16}
+                            onChange={(val) => {
+                                if (onUpdateSteps) {
+                                    onUpdateSteps(track.id, val);
+                                }
+                            }}
+                            style={{ width: '35px', backgroundColor: '#333', color: '#ccc', border: '1px solid #444', fontSize: '10px', textAlign: 'center' }}
+                            title="Track Length (Steps)"
+                        />
+                    </div>
                 </div>
             ))}
         </div>

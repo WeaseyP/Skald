@@ -19,6 +19,7 @@
 export interface BaseNodeParams {
   label?: string;
   exposedParameters?: string[];
+  analyser?: any; // AnalyserNode instance for visualization
 }
 
 /**
@@ -230,6 +231,8 @@ export interface NoteEvent {
   note: number;       // MIDI Note Number (e.g., 60 for C4)
   velocity: number;   // 0.0 to 1.0
   duration: number;   // In steps (defaults to 1)
+  probability?: number; // 0.0 to 1.0, chance to play. Default 1.0 (100%)
+  patchOverrides?: Record<string, number>; // Parameter Name -> Value Overrides
 }
 
 /**
