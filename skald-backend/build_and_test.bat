@@ -9,7 +9,7 @@ echo.
 echo [SKALD] Building test harness...
 
 :: Build the 'tester' directory. Odin will find the manually placed audio.odin file.
-odin build tester -file -out:test_harness.exe
+odin build tester -file -out:test_harness.exe -define:SKALD_TEST_HARNESS=true
 set BUILD_ERROR=%errorlevel%
 
 if %BUILD_ERROR% neq 0 (

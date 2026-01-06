@@ -44,10 +44,26 @@ topological_sort :: proc(graph: ^Graph) -> (sorted_nodes: []Node, is_dag: bool) 
 	return sorted[:], len(sorted) == len(graph.nodes)
 }
 
-find_input_for_port :: proc(graph: ^Graph, target_node_id: int, target_port: string) -> (id: int, ok: bool) {
-	if graph == nil do return -1, false
+find_input_for_port :: proc(graph: ^Graph, target_node_id: int, target_port: string) -> (id: int, port: string, ok: bool) {
+	if graph == nil do return -1, "", false
 	for conn in graph.connections {
-		if conn.to_node == target_node_id && conn.to_port == target_port do return conn.from_node, true
+		if conn.to_node == target_node_id && conn.to_port == target_port do return conn.from_node, conn.from_port, true
 	}
-	return -1, false
+	return -1, "", false
+}
+
+Connection_Source :: struct {
+    id: int,
+    port: string,
+}
+
+find_inputs_for_port :: proc(graph: ^Graph, target_node_id: int, target_port: string) -> [dynamic]Connection_Source {
+    sources := make([dynamic]Connection_Source)
+    if graph == nil do return sources
+    for conn in graph.connections {
+        if conn.to_node == target_node_id && conn.to_port == target_port {
+            append(&sources, Connection_Source{conn.from_node, conn.from_port})
+        }
+    }
+    return sources
 }

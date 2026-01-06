@@ -129,26 +129,26 @@ Kick_process :: proc(p: ^Kick_Processor) -> f32 {
 				envelope = 0.0;
 			case .Attack:
 				if (0.001) > 0 do envelope = voice.age / (0.001); else do envelope = 1.0;
-				voice.adsr_2_level_at_release = envelope;
+				voice.adsr_2_release_level = envelope;
 				if voice.age >= (0.001) {
 					voice.adsr_2_stage = .Decay;
 				}
 			case .Decay:
 				time_in_decay := voice.age - (0.001);
 				if (0.052) > 0 do envelope = 1.0 - (time_in_decay / (0.052)) * (1.0 - (0.000)); else do envelope = (0.000);
-				voice.adsr_2_level_at_release = envelope;
+				voice.adsr_2_release_level = envelope;
 				if time_in_decay >= (0.052) {
 					voice.adsr_2_stage = .Sustain;
 				}
 			case .Sustain:
 				envelope = (0.000);
-				voice.adsr_2_level_at_release = envelope;
+				voice.adsr_2_release_level = envelope;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
-				if (0.001) > 0 do envelope = voice.adsr_2_level_at_release * (1.0 - (time_in_release / (0.001))); else do envelope = 0.0;
+				if (0.001) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / (0.001))); else do envelope = 0.0;
 				if envelope <= 0 {
 					envelope = 0;
-					voice.active = false;
+					voice.adsr_2_stage = .Idle;
 				}
 			}
 			node_2_out = (1.0) * envelope * (1.000);
@@ -161,7 +161,7 @@ Kick_process :: proc(p: ^Kick_Processor) -> f32 {
 			for i in 0..<unison_count {
 				detune_amount: f32 = 0.0;
 				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (5.000);
-				detuned_freq := ((121.350) + (node_2_out)) * math.pow(2.0, detune_amount / 1200.0);
+				detuned_freq := ((121.350) * math.pow(2.0, node_2_out)) * math.pow(2.0, detune_amount / 1200.0);
 				phase_rads := f32(0.000) * (f32(math.PI) / 180.0);
 				voice.osc_1_phase[i] = math.mod(voice.osc_1_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));
 				final_phase := voice.osc_1_phase[i] + phase_rads;
@@ -187,35 +187,38 @@ Kick_process :: proc(p: ^Kick_Processor) -> f32 {
 				envelope = 0.0;
 			case .Attack:
 				if (0.001) > 0 do envelope = voice.age / (0.001); else do envelope = 1.0;
-				voice.adsr_3_level_at_release = envelope;
+				voice.adsr_3_release_level = envelope;
 				if voice.age >= (0.001) {
 					voice.adsr_3_stage = .Decay;
 				}
 			case .Decay:
 				time_in_decay := voice.age - (0.001);
 				if (0.052) > 0 do envelope = 1.0 - (time_in_decay / (0.052)) * (1.0 - (0.011)); else do envelope = (0.011);
-				voice.adsr_3_level_at_release = envelope;
+				voice.adsr_3_release_level = envelope;
 				if time_in_decay >= (0.052) {
 					voice.adsr_3_stage = .Sustain;
 				}
 			case .Sustain:
 				envelope = (0.011);
-				voice.adsr_3_level_at_release = envelope;
+				voice.adsr_3_release_level = envelope;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
-				if (0.133) > 0 do envelope = voice.adsr_3_level_at_release * (1.0 - (time_in_release / (0.133))); else do envelope = 0.0;
+				if (0.133) > 0 do envelope = voice.adsr_3_release_level * (1.0 - (time_in_release / (0.133))); else do envelope = 0.0;
 				if envelope <= 0 {
 					envelope = 0;
-					voice.active = false;
+					voice.adsr_3_stage = .Idle;
 				}
 			}
-			node_3_out = (node_1_out) * envelope * (1.000);
+			node_3_out = ((node_1_out)) * envelope * (1.000);
 		}
 
 		// --- Distortion Node 4 ---
 		node_4_out = math.tanh((node_3_out) * (5.000));
 
 		output += node_4_out
+		if voice.adsr_3_stage != .Idle do voice_busy = true
+		if voice.adsr_2_stage != .Idle do voice_busy = true
+		if !voice_busy do voice.active = false
 	}
 	return output
 }
@@ -228,14 +231,14 @@ Snare_Drum_Voice_State :: struct {
 	current_freq: f32,
 	target_freq: f32,
 	glide_time: f32,
-	filter_4_low: f32,
-	filter_4_band: f32,
+	osc_3_phase: [1]f32,
+	noise_1_rng: PRNG_State,
 	adsr_5_stage: ADSR_Stage,
 	adsr_5_time: f32,
 	adsr_5_value: f32,
 	adsr_5_release_level: f32,
-	osc_3_phase: [1]f32,
-	noise_1_rng: PRNG_State,
+	filter_4_low: f32,
+	filter_4_band: f32,
 }
 
 Snare_Drum_Processor :: struct {
@@ -298,12 +301,15 @@ Snare_Drum_process :: proc(p: ^Snare_Drum_Processor) -> f32 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
 
-		node_6_out: f32 = 0.0
-		node_4_out: f32 = 0.0
-		node_5_out: f32 = 0.0
-		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
+		node_2_out: f32 = 0.0
 		node_1_out: f32 = 0.0
+		node_6_out: f32 = 0.0
+		node_5_out: f32 = 0.0
+		node_4_out: f32 = 0.0
+
+		// --- Noise Node 1 ---
+		node_1_out = next_float32(&voice.noise_1_rng) * (1.000);
 
 		// --- Oscillator Node 3 (Unison/Detune) ---
 		{
@@ -330,9 +336,6 @@ Snare_Drum_process :: proc(p: ^Snare_Drum_Processor) -> f32 {
 			if unison_count > 0 do node_3_out = (unison_out / f32(unison_count)) * (0.500);
 		}
 
-		// --- Noise Node 1 ---
-		node_1_out = next_float32(&voice.noise_1_rng) * (1.000);
-
 		// --- Filter Node 4 (SVF) ---
 		{
 			f_4 := f32(2.0 * math.sin(f32(math.PI) * (2449.232) / sample_rate));
@@ -351,32 +354,34 @@ Snare_Drum_process :: proc(p: ^Snare_Drum_Processor) -> f32 {
 				envelope = 0.0;
 			case .Attack:
 				if (0.001) > 0 do envelope = voice.age / (0.001); else do envelope = 1.0;
-				voice.adsr_5_level_at_release = envelope;
+				voice.adsr_5_release_level = envelope;
 				if voice.age >= (0.001) {
 					voice.adsr_5_stage = .Decay;
 				}
 			case .Decay:
 				time_in_decay := voice.age - (0.001);
 				if (0.159) > 0 do envelope = 1.0 - (time_in_decay / (0.159)) * (1.0 - (0.000)); else do envelope = (0.000);
-				voice.adsr_5_level_at_release = envelope;
+				voice.adsr_5_release_level = envelope;
 				if time_in_decay >= (0.159) {
 					voice.adsr_5_stage = .Sustain;
 				}
 			case .Sustain:
 				envelope = (0.000);
-				voice.adsr_5_level_at_release = envelope;
+				voice.adsr_5_release_level = envelope;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
-				if (0.133) > 0 do envelope = voice.adsr_5_level_at_release * (1.0 - (time_in_release / (0.133))); else do envelope = 0.0;
+				if (0.133) > 0 do envelope = voice.adsr_5_release_level * (1.0 - (time_in_release / (0.133))); else do envelope = 0.0;
 				if envelope <= 0 {
 					envelope = 0;
-					voice.active = false;
+					voice.adsr_5_stage = .Idle;
 				}
 			}
-			node_5_out = (node_4_out) * envelope * (1.000);
+			node_5_out = ((node_4_out)) * envelope * (1.000);
 		}
 
 		output += node_5_out
+		if voice.adsr_5_stage != .Idle do voice_busy = true
+		if !voice_busy do voice.active = false
 	}
 	return output
 }
@@ -389,13 +394,13 @@ sax_Voice_State :: struct {
 	current_freq: f32,
 	target_freq: f32,
 	glide_time: f32,
-	filter_3_low: f32,
-	filter_3_band: f32,
-	osc_2_phase: [1]f32,
 	adsr_7_stage: ADSR_Stage,
 	adsr_7_time: f32,
 	adsr_7_value: f32,
 	adsr_7_release_level: f32,
+	osc_2_phase: [1]f32,
+	filter_3_low: f32,
+	filter_3_band: f32,
 }
 
 sax_Processor :: struct {
@@ -458,16 +463,18 @@ sax_process :: proc(p: ^sax_Processor) -> f32 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
 
-		node_1_out: f32 = 0.0
-		node_3_out: f32 = 0.0
-		node_2_out: f32 = 0.0
-		node_5_out: f32 = 0.0
 		node_4_out: f32 = 0.0
-		node_7_out: f32 = 0.0
+		node_5_out: f32 = 0.0
 		node_6_out: f32 = 0.0
+		node_7_out: f32 = 0.0
+		node_1_out: f32 = 0.0
+		node_2_out: f32 = 0.0
+		node_3_out: f32 = 0.0
 
-		// Midi Input Node 6
-		node_6_out = voice.velocity
+		// --- MIDI Input Node 6 ---
+		node_6_out_pitch := (f32(voice.note) - 69.0) / 12.0
+		node_6_out_gate := f32(1.0)
+		node_6_out_velocity := voice.velocity
 
 		// --- Oscillator Node 2 (Unison/Detune) ---
 		{
@@ -476,7 +483,7 @@ sax_process :: proc(p: ^sax_Processor) -> f32 {
 			for i in 0..<unison_count {
 				detune_amount: f32 = 0.0;
 				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (5.000);
-				detuned_freq := ((440.000) + (node_6_out)) * math.pow(2.0, detune_amount / 1200.0);
+				detuned_freq := ((440.000) * math.pow(2.0, node_6_out_pitch)) * math.pow(2.0, detune_amount / 1200.0);
 				phase_rads := f32(0.000) * (f32(math.PI) / 180.0);
 				voice.osc_2_phase[i] = math.mod(voice.osc_2_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));
 				final_phase := voice.osc_2_phase[i] + phase_rads;
@@ -502,37 +509,37 @@ sax_process :: proc(p: ^sax_Processor) -> f32 {
 				envelope = 0.0;
 			case .Attack:
 				if (0.053) > 0 do envelope = voice.age / (0.053); else do envelope = 1.0;
-				voice.adsr_7_level_at_release = envelope;
+				voice.adsr_7_release_level = envelope;
 				if voice.age >= (0.053) {
 					voice.adsr_7_stage = .Decay;
 				}
 			case .Decay:
 				time_in_decay := voice.age - (0.053);
 				if (0.240) > 0 do envelope = 1.0 - (time_in_decay / (0.240)) * (1.0 - (0.819)); else do envelope = (0.819);
-				voice.adsr_7_level_at_release = envelope;
+				voice.adsr_7_release_level = envelope;
 				if time_in_decay >= (0.240) {
 					voice.adsr_7_stage = .Sustain;
 				}
 			case .Sustain:
 				envelope = (0.819);
-				voice.adsr_7_level_at_release = envelope;
+				voice.adsr_7_release_level = envelope;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
-				if (0.213) > 0 do envelope = voice.adsr_7_level_at_release * (1.0 - (time_in_release / (0.213))); else do envelope = 0.0;
+				if (0.213) > 0 do envelope = voice.adsr_7_release_level * (1.0 - (time_in_release / (0.213))); else do envelope = 0.0;
 				if envelope <= 0 {
 					envelope = 0;
-					voice.active = false;
+					voice.adsr_7_stage = .Idle;
 				}
 			}
-			node_7_out = (node_6_out) * envelope * (1.000);
+			node_7_out = ((node_6_out_gate)) * envelope * (1.000);
 		}
 
 		// --- Mapper Node 1 ---
-		node_1_out = math.lerp(f32(400.000), f32(3000.000), math.clamp(((node_6_out) - (0.000)) / ((1.000) - (0.000)), 0.0, 1.0));
+		node_1_out = math.lerp(f32(400.000), f32(3000.000), math.clamp(((node_6_out_velocity) - (0.000)) / ((1.000) - (0.000)), 0.0, 1.0));
 
 		// --- Filter Node 3 (SVF) ---
 		{
-			f_3 := f32(2.0 * math.sin(f32(math.PI) * ((857.097) + (node_7_out)) / sample_rate));
+			f_3 := f32(2.0 * math.sin(f32(math.PI) * ((857.097) + (node_7_out) + (node_1_out)) / sample_rate));
 			q_3 := f32(1.0 / (1.910));
 			voice.filter_3_low += f_3 * voice.filter_3_band;
 			high_3 := f32((node_2_out) - voice.filter_3_low - q_3 * voice.filter_3_band);
@@ -544,6 +551,8 @@ sax_process :: proc(p: ^sax_Processor) -> f32 {
 		node_4_out = (node_3_out) * ((0.000) + (node_7_out));
 
 		output += node_4_out
+		if voice.adsr_7_stage != .Idle do voice_busy = true
+		if !voice_busy do voice.active = false
 	}
 	return output
 }

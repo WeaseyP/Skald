@@ -3,8 +3,7 @@ package generated_audio
 import "core:math"
 import "core:math/rand"
 
-SKALD_TEST_HARNESS :: #config(SKALD_TEST_HARNESS, false)
-when !SKALD_TEST_HARNESS {
+when !defined(SKALD_TEST_HARNESS) {
 	PRNG_State :: struct {
 		state: u32,
 	}
@@ -115,11 +114,11 @@ Kick_process :: proc(p: ^Kick_Processor) -> f32 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
 
-		node_5_out: f32 = 0.0
-		node_4_out: f32 = 0.0
 		node_1_out: f32 = 0.0
 		node_3_out: f32 = 0.0
 		node_2_out: f32 = 0.0
+		node_5_out: f32 = 0.0
+		node_4_out: f32 = 0.0
 
 		// --- ADSR Node 2 ---
 		{
@@ -228,14 +227,11 @@ Snare_Drum_Voice_State :: struct {
 	current_freq: f32,
 	target_freq: f32,
 	glide_time: f32,
-	filter_4_low: f32,
-	filter_4_band: f32,
+	osc_3_phase: [1]f32,
 	adsr_5_stage: ADSR_Stage,
 	adsr_5_time: f32,
 	adsr_5_value: f32,
 	adsr_5_release_level: f32,
-	osc_3_phase: [1]f32,
-	noise_1_rng: PRNG_State,
 }
 
 Snare_Drum_Processor :: struct {
@@ -298,12 +294,15 @@ Snare_Drum_process :: proc(p: ^Snare_Drum_Processor) -> f32 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
 
-		node_6_out: f32 = 0.0
-		node_4_out: f32 = 0.0
-		node_5_out: f32 = 0.0
-		node_2_out: f32 = 0.0
-		node_3_out: f32 = 0.0
 		node_1_out: f32 = 0.0
+		node_3_out: f32 = 0.0
+		node_2_out: f32 = 0.0
+		node_5_out: f32 = 0.0
+		node_4_out: f32 = 0.0
+		node_6_out: f32 = 0.0
+
+		// --- Noise Node 1 ---
+		node_1_out = next_float32(&voice.noise_1_rng) * (1.000);
 
 		// --- Oscillator Node 3 (Unison/Detune) ---
 		{
@@ -329,9 +328,6 @@ Snare_Drum_process :: proc(p: ^Snare_Drum_Processor) -> f32 {
 			}
 			if unison_count > 0 do node_3_out = (unison_out / f32(unison_count)) * (0.500);
 		}
-
-		// --- Noise Node 1 ---
-		node_1_out = next_float32(&voice.noise_1_rng) * (1.000);
 
 		// --- Filter Node 4 (SVF) ---
 		{
@@ -389,8 +385,6 @@ sax_Voice_State :: struct {
 	current_freq: f32,
 	target_freq: f32,
 	glide_time: f32,
-	filter_3_low: f32,
-	filter_3_band: f32,
 	osc_2_phase: [1]f32,
 	adsr_7_stage: ADSR_Stage,
 	adsr_7_time: f32,
@@ -528,7 +522,7 @@ sax_process :: proc(p: ^sax_Processor) -> f32 {
 		}
 
 		// --- Mapper Node 1 ---
-		node_1_out = math.lerp(f32(400.000), f32(3000.000), math.clamp(((node_6_out) - (0.000)) / ((1.000) - (0.000)), 0.0, 1.0));
+		node_1_out = math.lerp(400.000, 3000.000, math.clamp(((node_6_out) - (0.000)) / ((1.000) - (0.000)), 0.0, 1.0));
 
 		// --- Filter Node 3 (SVF) ---
 		{
