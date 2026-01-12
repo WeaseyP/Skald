@@ -1,85 +1,76 @@
-# Skald: A CodeGen Audio Tool for Odin
+# Skald
 
-Skald is a visual, node-based development tool designed to accelerate the creation of complex audio processing graphs for the Odin programming language. Users can visually construct signal chains, manipulate parameters, and instantly generate high-performance, boilerplate-free Odin audio code.
+**Visual Audio Programming Language & Code Generator for Odin**
 
-This repository is a **monorepo** containing the complete Skald application, which consists of two main parts: a frontend user interface and a backend code generation engine.
+Skald is a hybrid development tool that combines a modern visual editor with a high-performance code generation engine. Users construct audio processing graphs visually, and Skald compiles them into pure, dependency-free **Odin** source code, ready to be dropped into games or audio applications.
 
----
-
-## Architecture
-
-The project is architected as a decoupled system with two primary components that live in this repository:
-
-* `skald-ui/`: A modern desktop application built with **Electron**, **TypeScript**, and **React**. This provides the visual node graph editor, parameter panels, and all other user-facing elements.
-* `skald-backend/`: A headless, command-line **Odin** application (`skald_codegen`) that functions as a pure code generation engine.
-
-[cite_start]The two components communicate via a simple contract [cite: 1, 3][cite_start]: the frontend UI serializes the visual graph into a specific JSON format and passes it to the backend's standard input (`stdin`)[cite: 1, 4, 9, 76]. [cite_start]The backend then parses this JSON, generates the corresponding Odin code, and prints it to standard output (`stdout`), which the frontend captures and displays[cite: 1, 4, 79].
-
----
-
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
-To build and run this project, you will need both **Node.js** for the UI and the **Odin Compiler** for the backend.
+*   **Node.js**: Required to run the user interface.
+*   **Odin Compiler**: Required to build the backend generator. Ensure `odin` is in your system `PATH`.
 
-1.  **Node.js**: [Install Node.js](httpss://nodejs.org/en) (which includes `npm`).
-2.  [cite_start]**Odin Compiler**: [Install Odin](httpss://odin-lang.org/docs/install/) and ensure it is available in your system's `PATH`[cite: 6].
-
-### Installation & Setup
-
-The development workflow is managed through the UI project's `package.json`. The setup process compiles the backend automatically.
+### Installation
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/WeaseyP/Skald.git
-cd skald
-
-# 2. Navigate into the UI directory
-cd skald-ui
-
-# 3. Install the UI's dependencies
+cd skald/skald-ui
 npm install
 ```
 
----
+### Running the App
 
-## Development Workflow
-
-### Running the Application
-
-The entire application is launched from the `skald-ui` directory. The `prestart` script will automatically build the latest version of the Odin backend before launching the Electron app.
+All development operations are driven from the `skald-ui` directory.
 
 ```bash
-# From within the skald-ui/ directory:
+# Inside skald-ui/
 npm start
 ```
 
-This command will:
-1.  Automatically compile the Odin CLI in `skald-backend/`.
-2.  Place the `skald_codegen.exe` into the `skald-ui/` folder where Electron can find it.
-3.  Launch the Skald UI application in development mode with hot-reloading.
+This command automatically:
+1.  Compiles the Odin backend (`skald-backend/`).
+2.  Copies the resulting executable to the UI folder.
+3.  Launches the Electron application.
 
-### Testing the Backend
+## 🎛️ Available Audio Nodes
 
-If you want to run the backend's audio test harness separately, you can use the dedicated test script. This script requires you to have first generated code from the UI and copied it to `skald-backend/tester/generated_audio/audio.odin`.
+Skald supports a robust set of audio building blocks. These are the nodes currently available in the engine:
+
+| Node Type | Parameters | Description |
+| :--- | :--- | :--- |
+| **Oscillator** | Frequency, Waveform (Sine, Saw, Square, Triangle), PulseWidth, Phase | The primary sound source. Supports Unison and Detune at the Instrument level. |
+| **FM Operator** | Ratio, ModIndex | Designed for Frequency Modulation synthesis. Frequency acts as a ratio of the base pitch. |
+| **Wavetable** | Frequency, Position | Wavetable oscillator. |
+| **Noise** | Amplitude, Type (White) | Noise generator useful for percussion or textures. |
+| **LFO** | Frequency, Amplitude, Waveform | Low Frequency Oscillator for modulating other parameters. |
+| **Sample & Hold**| Rate, Amplitude | Generates random stepped values at a specific rate. |
+| **ADSR** | Attack, Decay, Sustain, Release, Depth | Standard Envelope Generator for shaping amplitude or modulation. |
+| **Filter** | Cutoff, Resonance, Type (LowPass, HighPass, BandPass, Notch) | Chamberlin State Variable Filter (SVF). |
+| **Delay** | Time, Feedback, Mix | Delay line effect. |
+| **Reverb** | Decay, Mix | Simple Feedback Delay Network (FDN) reverb. |
+| **Distortion** | Drive, Shape (SoftClip, HardClip) | Waveshaping distortion for adding grit or saturation. |
+| **Mixer** | Gain (per channel) | Simple utility to sum multiple signals. |
+| **Panner** | Pan | Stereo panning control. |
+| **Gain** | Gain | Volume control / VCA. |
+| **Mapper** | InMin, InMax, OutMin, OutMax | Math utility to re-map a signal from one range to another. |
+| **MIDI Input** | - | Interface for incoming Note On/Off events. Outputs Pitch (V/Oct), Gate, and Velocity. |
+
+## 🏗️ Architecture
+
+*   **Frontend (`skald-ui/`)**: A **React + TypeScript** application wrapped in **Electron**. It manages the visual node graph (via React Flow) and user interaction.
+*   **Backend (`skald-backend/`)**: A headless CLI tool written in **Odin**. It accepts a JSON representation of the audio graph via `stdin` and outputs optimized Odin source code via `stdout`.
+
+## 🛠️ Testing Generated Code
+
+To verify the audio engine without the UI:
+
+1.  Generate code using the Skald UI.
+2.  Copy the output to `skald-backend/tester/generated_audio/audio.odin`.
+3.  Run the test harness:
 
 ```bash
-# From within the skald-backend/ directory:
-# On Windows
+cd skald-backend
+# Windows
 .\build_and_test.bat
-
-# On Linux/macOS
-# ./build_and_test.sh  (Note: you would need to create this script)
-```
-
-## Project Structure
-
-The monorepo is organized as follows:
-
-```
-/
-├── skald-backend/      # The Odin command-line code generation engine.
-├── skald-ui/           # The Electron/React frontend application.
-└── Scope/              # Project planning and contract documents.
 ```
