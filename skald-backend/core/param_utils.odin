@@ -7,25 +7,42 @@ import json "core:encoding/json"
 // =================================================================================
 // SECTION C: Type-Safe Parameter Fetching System
 // =================================================================================
-get_output_var :: proc(node_id: int, port_name: string = "") -> string {
-    if port_name == "pitch" do return fmt.tprintf("node_%d_out_pitch", node_id)
-    if port_name == "gate" do return fmt.tprintf("node_%d_out_gate", node_id)
-    if port_name == "velocity" do return fmt.tprintf("node_%d_out_velocity", node_id)
-    if port_name == "output_left" do return fmt.tprintf("node_%d_out_left", node_id)
-    if port_name == "output_right" do return fmt.tprintf("node_%d_out_right", node_id)
-	return fmt.tprintf("node_%d_out", node_id)
+get_output_var :: proc(node_id: string, port_name: string = "") -> string {
+    if port_name == "pitch" do return fmt.tprintf("node_%s_out_pitch", node_id)
+    if port_name == "gate" do return fmt.tprintf("node_%s_out_gate", node_id)
+    if port_name == "velocity" do return fmt.tprintf("node_%s_out_velocity", node_id)
+    if port_name == "output_left" do return fmt.tprintf("node_%s_out_left", node_id)
+    if port_name == "output_right" do return fmt.tprintf("node_%s_out_right", node_id)
+	return fmt.tprintf("node_%s_out", node_id)
 }
 
 get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: f32) -> string {
-	base_str := fmt.tprintf("%f", default_val)
-	if val, ok := node.parameters[param_name]; ok {
-        #partial switch v in val {
-        case json.Float:
-            base_str = fmt.tprintf("%f", v)
-		case json.Integer:
-            base_str = fmt.tprintf("%f", f64(v))
+    base_str := fmt.tprintf("%f", default_val)
+    
+    // Check if this parameter is exposed
+    is_exposed := false
+    if exposed_val, ok := node.parameters["exposedParameters"]; ok {
+        if exposed_arr, is_arr := exposed_val.(json.Array); is_arr {
+            for v in exposed_arr {
+                if s, is_str := v.(json.String); is_str && s == param_name {
+                    is_exposed = true
+                    base_str = fmt.tprintf("p.%s", param_name)
+                    break
+                }
+            }
         }
-	}
+    }
+
+    if !is_exposed {
+        if val, ok := node.parameters[param_name]; ok {
+            #partial switch v in val {
+            case json.Float:
+                base_str = fmt.tprintf("%f", v)
+            case json.Integer:
+                base_str = fmt.tprintf("%f", f64(v))
+            }
+        }
+    }
 
 	if graph != nil {
 		sources := find_inputs_for_port(graph, node.id, input_port)

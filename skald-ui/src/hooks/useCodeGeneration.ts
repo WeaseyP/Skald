@@ -131,25 +131,14 @@ export const useCodeGeneration = () => {
             // Inject Sequencer Track for this instrument
             if (subgraph && track) {
                 subgraph.sequencer_tracks = [{
-                    target_node_id: parseInt(track.targetNodeId, 10) || 0, // Backend might expect int, but we use string UUIDs now? 
-                    // Wait, backend `Sequencer_Track` has `target_node_id: int`.
-                    // And `Node` has `id: int`.
-                    // But in the new system `Project_Instrument` has `id: string`.
-                    // The `target_node_id` in `Sequencer_Track` is used to match... what?
-                    // In `codegen.odin`, `track.target_node_id` is just printed in a comment.
-                    // The EVENTS themselves are generated.
-                    // The `instrument` is implicit because we are iterating `project.instruments`.
-                    // So we don't strictly need `target_node_id` logic to FIND the instrument anymore, 
-                    // because the track is *inside* the instrument's graph.
-                    // however, `Graph` definition in correct `types.odin` has `sequencer_tracks`.
-                    // So let's just populate it.
-
+                    target_node_id: track.targetNodeId,
                     name: track.name,
                     mute: track.isMuted,
                     solo: track.isSolo,
                     events: track.notes.map(n => ({
                         note: n.note,
                         velocity: n.velocity,
+                        step: n.step,
                         start_time: (n.step * 0.25), // Step 0 = 0.0, Step 1 = 0.25 (16th notes?) 
                         // TODO: Verify timing. Skald sequencer steps are likely 16th notes.
                         // Backend expects seconds? Or beats?
@@ -164,7 +153,7 @@ export const useCodeGeneration = () => {
                         // So we MUST calculate seconds here.
 
                         // duration: n.duration...?
-                        duration: 0.1 // placeholder
+                        duration: n.duration || 0.1
                     }))
                 }];
             } else if (subgraph) {

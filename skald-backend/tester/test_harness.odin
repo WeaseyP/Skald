@@ -20,11 +20,7 @@ Ring_Buffer :: struct {
 }
 
 App_State :: struct {
-	p1:              ^ga.AudioProcessor_Enemy1,
-	p2:              ^ga.AudioProcessor_Enemy2,
-	p3:              ^ga.AudioProcessor_Enemy3,
-	p4:              ^ga.AudioProcessor_Enemy4,
-	p_ambient:       ^ga.AudioProcessor_Ambient,
+	project:         ga.Project_State,
 
 	device:          ma.device,
 	ring_buffer:     Ring_Buffer,
@@ -48,18 +44,8 @@ sample_generator_thread_proc :: proc(data: rawptr) {
 		}
 
 		if samples_in_buffer < len(app_state.ring_buffer.data) - 2 {
-            // Mix 5 tracks
-			l1, r1 := ga.process_Enemy1(app_state.p1, f32(app_state.device.sampleRate), app_state.time_in_samples)
-			l2, r2 := ga.process_Enemy2(app_state.p2, f32(app_state.device.sampleRate), app_state.time_in_samples)
-			l3, r3 := ga.process_Enemy3(app_state.p3, f32(app_state.device.sampleRate), app_state.time_in_samples)
-			l4, r4 := ga.process_Enemy4(app_state.p4, f32(app_state.device.sampleRate), app_state.time_in_samples)
-			la, ra := ga.process_Ambient(app_state.p_ambient, f32(app_state.device.sampleRate), app_state.time_in_samples)
-
-            // Normalize/Mix (Simple Summation with headroom)
-            // Divide by ~2.5 to avoid clipping with 5 loud sources
-            gain := f32(0.4) 
-            left  := (l1 + l2 + l3 + l4 + la) * gain
-            right := (r1 + r2 + r3 + r4 + ra) * gain
+            // Process entire project (mix happens inside)
+            left, right := ga.project_process(&app_state.project)
 
 			app_state.time_in_samples += 1
 
@@ -102,24 +88,9 @@ main :: proc() {
 	app_state: App_State
 	app_state.is_running = true
     
-    // Initialize Processors
-	app_state.p1 = new(ga.AudioProcessor_Enemy1)
-	app_state.p2 = new(ga.AudioProcessor_Enemy2)
-	app_state.p3 = new(ga.AudioProcessor_Enemy3)
-	app_state.p4 = new(ga.AudioProcessor_Enemy4)
-	app_state.p_ambient = new(ga.AudioProcessor_Ambient)
-
-	defer free(app_state.p1)
-	defer free(app_state.p2)
-	defer free(app_state.p3)
-	defer free(app_state.p4)
-	defer free(app_state.p_ambient)
-
-	ga.init_Enemy1(app_state.p1)
-	ga.init_Enemy2(app_state.p2)
-	ga.init_Enemy3(app_state.p3)
-	ga.init_Enemy4(app_state.p4)
-	ga.init_Ambient(app_state.p_ambient)
+    // Initialize Project (Generic)
+    ga.project_init(&app_state.project, 48000)
+    defer ga.project_destroy(&app_state.project)
 
     // Note: No manual 'note_on' calls needed here anymore, the sequencer inside 'process' handles it!
     
@@ -143,7 +114,7 @@ main :: proc() {
 	}
 	defer ma.device_uninit(&app_state.device)
 	fmt.printf("Audio device initialized: %s\n", app_state.device.playback.name)
-    fmt.println("Starting playback of 5 synchronized tracks...")
+    fmt.println("Starting playback of 3 tracks (Kick, Snare, Sax)...")
 
 	thread.run_with_data(&app_state, sample_generator_thread_proc)
 

@@ -44,15 +44,31 @@ main :: proc() {
 	}
 	defer delete(input_bytes)
 
+    // Try parsing as Project first
 	project_raw: core.Project_Raw
 	parse_err := json.unmarshal(input_bytes, &project_raw)
-	if parse_err != nil {
-		fmt.eprintf("Error parsing JSON as Project: %v\n", parse_err)
-        // Fallback or exit? For now exit.
-		os.exit(1)
-	} 
+    
+    project: core.Project
+    is_project := false
 
-	project := core.build_project_from_raw(&project_raw)
+    if parse_err == nil && len(project_raw.project.instruments) > 0 {
+        is_project = true
+		project = core.build_project_from_raw(&project_raw)
+    }
+
+    if !is_project {
+        // Try parsing as Graph (single instrument/test setup)
+        graph_raw: core.Graph_Raw
+        parse_err_g := json.unmarshal(input_bytes, &graph_raw)
+        
+        if parse_err_g == nil && len(graph_raw.nodes) > 0 {
+             main_graph := core.build_graph_from_raw(&graph_raw)
+             project = core.build_project_from_graph(&main_graph)
+        } else {
+             fmt.eprintf("Error: Input JSON must be valid Project or Graph.\nProject Error: %v\nGraph Error: %v\n", parse_err, parse_err_g)
+             os.exit(1)
+        }
+    }
 
 	generated_code := core.generate_project_code(&project, name, package_name)
 

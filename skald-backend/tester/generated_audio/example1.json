@@ -1,0 +1,897 @@
+{
+  "nodes": [
+    {
+      "id": "mjtewcvhr6k8y",
+      "type": "instrument",
+      "position": {
+        "x": 1632.8169662143541,
+        "y": 1136.608277722002
+      },
+      "data": {
+        "name": "Kick",
+        "label": "Kick",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "oscillator",
+              "position": {
+                "x": 1653.8667325226754,
+                "y": 2118.3501182826594
+              },
+              "data": {
+                "frequency": 121.35,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 182,
+              "height": 88,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 1653.8667325226754,
+                "y": 2118.3501182826594
+              },
+              "dragging": false
+            },
+            {
+              "id": "2",
+              "type": "adsr",
+              "position": {
+                "x": 1342.0900359024522,
+                "y": 2043.3501182826594
+              },
+              "data": {
+                "attack": 0.001,
+                "decay": 0.052333333333333336,
+                "sustain": 0,
+                "release": 0.001,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "attackCurve": "linear",
+                "decayCurve": "linear",
+                "releaseCurve": "linear",
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 182,
+              "height": 73,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 1342.0900359024522,
+                "y": 2043.3501182826594
+              },
+              "dragging": false
+            },
+            {
+              "id": "3",
+              "type": "adsr",
+              "position": {
+                "x": 1986.6078336492676,
+                "y": 2244.0912194092516
+              },
+              "data": {
+                "attack": 0.001,
+                "decay": 0.052333333333333336,
+                "sustain": 0.011057692307692268,
+                "release": 0.1333333333333333,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "attackCurve": "linear",
+                "decayCurve": "linear",
+                "releaseCurve": "linear",
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 182,
+              "height": 73,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 1986.6078336492676,
+                "y": 2244.0912194092516
+              },
+              "dragging": false
+            },
+            {
+              "id": "4",
+              "type": "distortion",
+              "position": {
+                "x": 2353.887822811987,
+                "y": 2271.8394821094125
+              },
+              "data": {
+                "drive": 5,
+                "tone": 4000,
+                "mix": 0.5,
+                "exposedParameters": [
+                  "drive",
+                  "tone",
+                  "mix"
+                ],
+                "label": "Distortion"
+              },
+              "width": 182,
+              "height": 43,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 2353.887822811987,
+                "y": 2271.8394821094125
+              }
+            },
+            {
+              "id": "5",
+              "type": "output",
+              "position": {
+                "x": 2747.376677421835,
+                "y": 2297.955999008296
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 110,
+              "positionAbsolute": {
+                "x": 2747.376677421835,
+                "y": 2297.955999008296
+              },
+              "selected": true
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "4",
+              "to_port": "input"
+            },
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "1",
+              "to_port": "input_freq"
+            }
+          ]
+        }
+      },
+      "width": 174,
+      "height": 108,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1632.8169662143541,
+        "y": 1136.608277722002
+      },
+      "dragging": false
+    },
+    {
+      "id": "mjtf42lp1mbtn",
+      "type": "instrument",
+      "position": {
+        "x": 1556.115333684592,
+        "y": 1334.39109366874
+      },
+      "data": {
+        "name": "Snare Drum",
+        "label": "Snare Drum",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "noise",
+              "position": {
+                "x": 2251.6550485395055,
+                "y": 1426.8327934558408
+              },
+              "data": {
+                "type": "White",
+                "amplitude": 1,
+                "exposedParameters": [
+                  "amplitude"
+                ],
+                "label": "Noise"
+              },
+              "width": 186,
+              "height": 47,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 2251.6550485395055,
+                "y": 1426.8327934558408
+              }
+            },
+            {
+              "id": "2",
+              "type": "mixer",
+              "position": {
+                "x": 2497.997315124952,
+                "y": 1536.2225266831647
+              },
+              "data": {
+                "inputCount": 4,
+                "levels": [
+                  {
+                    "id": 1,
+                    "level": 0.75,
+                    "pan": 0
+                  },
+                  {
+                    "id": 2,
+                    "level": 0.75,
+                    "pan": 0
+                  },
+                  {
+                    "id": 3,
+                    "level": 0.75,
+                    "pan": 0
+                  },
+                  {
+                    "id": 4,
+                    "level": 0.75,
+                    "pan": 0
+                  }
+                ],
+                "exposedParameters": [],
+                "label": "Mixer"
+              },
+              "width": 186,
+              "height": 47,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2497.997315124952,
+                "y": 1536.2225266831647
+              },
+              "dragging": false
+            },
+            {
+              "id": "3",
+              "type": "oscillator",
+              "position": {
+                "x": 2246.520703884294,
+                "y": 1568.6602245715671
+              },
+              "data": {
+                "frequency": 220,
+                "waveform": "Triangle",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 186,
+              "height": 92,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2246.520703884294,
+                "y": 1568.6602245715671
+              },
+              "dragging": false
+            },
+            {
+              "id": "4",
+              "type": "filter",
+              "position": {
+                "x": 2749.4338586984036,
+                "y": 1510.7602027723274
+              },
+              "data": {
+                "type": "Bandpass",
+                "cutoff": 2449.232398530096,
+                "resonance": 0.5933709653149176,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ],
+                "label": "Filter"
+              },
+              "width": 186,
+              "height": 107,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2749.4338586984036,
+                "y": 1510.7602027723274
+              },
+              "dragging": false
+            },
+            {
+              "id": "5",
+              "type": "adsr",
+              "position": {
+                "x": 3047.6460333999244,
+                "y": 1521.8557675598354
+              },
+              "data": {
+                "attack": 0.001,
+                "decay": 0.159,
+                "sustain": 0,
+                "release": 0.1333333333333333,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "attackCurve": "linear",
+                "decayCurve": "linear",
+                "releaseCurve": "linear",
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 186,
+              "height": 77,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 3047.6460333999244,
+                "y": 1521.8557675598354
+              },
+              "dragging": false
+            },
+            {
+              "id": "6",
+              "type": "output",
+              "position": {
+                "x": 3368.9779455001285,
+                "y": 1518.8243344268144
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 110,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 3368.9779455001285,
+                "y": 1518.8243344268144
+              },
+              "dragging": false
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input_2"
+            },
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input_1"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "4",
+              "to_port": "input"
+            },
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "5",
+              "from_port": "output",
+              "to_node": "6",
+              "to_port": "input"
+            }
+          ]
+        }
+      },
+      "width": 174,
+      "height": 108,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1556.115333684592,
+        "y": 1334.39109366874
+      },
+      "dragging": false
+    },
+    {
+      "id": "1767577587190-0",
+      "type": "instrument",
+      "position": {
+        "x": 1478.8086030028787,
+        "y": 1531.5242236250347
+      },
+      "data": {
+        "name": "sax",
+        "label": "sax",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "mapper",
+              "position": {
+                "x": 2429.5657729198188,
+                "y": 2884.7313670322733
+              },
+              "data": {
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 400,
+                "outMax": 3000,
+                "label": "Mapper (Scale)"
+              },
+              "width": 158,
+              "height": 69,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2429.5657729198188,
+                "y": 2884.7313670322733
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "2",
+              "type": "oscillator",
+              "position": {
+                "x": 2398.3183079531022,
+                "y": 2711.017313706302
+              },
+              "data": {
+                "frequency": 440,
+                "waveform": "Sawtooth",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 182,
+              "height": 88,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2398.3183079531022,
+                "y": 2711.017313706302
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "3",
+              "type": "filter",
+              "position": {
+                "x": 2804.7267444711533,
+                "y": 2790.187788352676
+              },
+              "data": {
+                "type": "Lowpass",
+                "cutoff": 857.0970407948786,
+                "resonance": 1.9104520808904857,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ],
+                "label": "Filter"
+              },
+              "width": 182,
+              "height": 103,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2804.7267444711533,
+                "y": 2790.187788352676
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "4",
+              "type": "gain",
+              "position": {
+                "x": 3258.6374657770293,
+                "y": 2890.4703895714156
+              },
+              "data": {
+                "gain": 0,
+                "exposedParameters": [
+                  "gain"
+                ],
+                "label": "VCA"
+              },
+              "width": 182,
+              "height": 88,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 3258.6374657770293,
+                "y": 2890.4703895714156
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "5",
+              "type": "output",
+              "position": {
+                "x": 3659.767870651989,
+                "y": 2956.4457851100606
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 62,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 3659.767870651989,
+                "y": 2956.4457851100606
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "6",
+              "type": "midiInput",
+              "position": {
+                "x": 1991.9098714350507,
+                "y": 2914.221531965328
+              },
+              "data": {
+                "device": "All",
+                "useMpe": false,
+                "exposedParameters": [
+                  "device",
+                  "useMpe"
+                ],
+                "label": "MIDI Input"
+              },
+              "width": 122,
+              "height": 105,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 1991.9098714350507,
+                "y": 2914.221531965328
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "7",
+              "type": "adsr",
+              "position": {
+                "x": 2403.5963395961935,
+                "y": 3077.840512901167
+              },
+              "data": {
+                "attack": 0.05333333333333334,
+                "decay": 0.24,
+                "sustain": 0.81875,
+                "release": 0.21333333333333326,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "attackCurve": "linear",
+                "decayCurve": "linear",
+                "releaseCurve": "linear",
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 182,
+              "height": 73,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 2403.5963395961935,
+                "y": 3077.840512901167
+              },
+              "dragging": false,
+              "zIndex": 1
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "4",
+              "to_port": "input"
+            },
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "6",
+              "from_port": "pitch",
+              "to_node": "2",
+              "to_port": "input_freq"
+            },
+            {
+              "from_node": "6",
+              "from_port": "gate",
+              "to_node": "7",
+              "to_port": "input"
+            },
+            {
+              "from_node": "7",
+              "from_port": "output",
+              "to_node": "4",
+              "to_port": "input_gain"
+            },
+            {
+              "from_node": "7",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "6",
+              "from_port": "velocity",
+              "to_node": "1",
+              "to_port": "input"
+            }
+          ]
+        }
+      },
+      "width": 174,
+      "height": 108,
+      "positionAbsolute": {
+        "x": 1478.8086030028787,
+        "y": 1531.5242236250347
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [],
+  "viewport": {
+    "x": -845.2062481866869,
+    "y": -983.710177617525,
+    "zoom": 1.072477609084787
+  },
+  "sequencerTracks": [
+    {
+      "id": "ewmt63spc",
+      "targetNodeId": "mjtewcvhr6k8y",
+      "name": "Kick",
+      "color": "#007acc",
+      "steps": 32,
+      "notes": [
+        {
+          "step": 17,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 18,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 19,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 22,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 21,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 23,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 25,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 27,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 29,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 30,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 31,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "14124m7rj",
+      "targetNodeId": "mjtf42lp1mbtn",
+      "name": "Snare Drum",
+      "color": "#007acc",
+      "steps": 32,
+      "notes": [
+        {
+          "step": 20,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 24,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 26,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 28,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "1767577587190-1xsj4ylki",
+      "targetNodeId": "1767577587190-0",
+      "name": "sax",
+      "color": "#007acc",
+      "steps": 32,
+      "notes": [
+        {
+          "step": 16,
+          "note": 60,
+          "velocity": 1,
+          "duration": 3
+        },
+        {
+          "step": 20,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 21,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 22,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 24,
+          "note": 60,
+          "velocity": 1,
+          "duration": 3
+        },
+        {
+          "step": 27,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 28,
+          "note": 60,
+          "velocity": 1,
+          "duration": 3
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ]
+}

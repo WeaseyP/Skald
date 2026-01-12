@@ -5,7 +5,7 @@ package skald_core
 // =================================================================================
 topological_sort :: proc(graph: ^Graph) -> (sorted_nodes: []Node, is_dag: bool) {
 	if graph == nil do return nil, true
-	in_degree := make(map[int]int)
+	in_degree := make(map[string]int)
 	defer delete(in_degree)
 	for _, node in graph.nodes {
 		in_degree[node.id] = 0
@@ -15,7 +15,7 @@ topological_sort :: proc(graph: ^Graph) -> (sorted_nodes: []Node, is_dag: bool) 
 			in_degree[conn.to_node] += 1
 		}
 	}
-	queue := make([dynamic]int)
+	queue := make([dynamic]string)
 	defer delete(queue)
 	for id, degree in in_degree {
 		if degree == 0 do append(&queue, id)
@@ -44,20 +44,20 @@ topological_sort :: proc(graph: ^Graph) -> (sorted_nodes: []Node, is_dag: bool) 
 	return sorted[:], len(sorted) == len(graph.nodes)
 }
 
-find_input_for_port :: proc(graph: ^Graph, target_node_id: int, target_port: string) -> (id: int, port: string, ok: bool) {
-	if graph == nil do return -1, "", false
+find_input_for_port :: proc(graph: ^Graph, target_node_id: string, target_port: string) -> (id: string, port: string, ok: bool) {
+	if graph == nil do return "", "", false
 	for conn in graph.connections {
 		if conn.to_node == target_node_id && conn.to_port == target_port do return conn.from_node, conn.from_port, true
 	}
-	return -1, "", false
+	return "", "", false
 }
 
 Connection_Source :: struct {
-    id: int,
+    id: string,
     port: string,
 }
 
-find_inputs_for_port :: proc(graph: ^Graph, target_node_id: int, target_port: string) -> [dynamic]Connection_Source {
+find_inputs_for_port :: proc(graph: ^Graph, target_node_id: string, target_port: string) -> [dynamic]Connection_Source {
     sources := make([dynamic]Connection_Source)
     if graph == nil do return sources
     for conn in graph.connections {

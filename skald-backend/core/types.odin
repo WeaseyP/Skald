@@ -8,33 +8,34 @@ import json "core:encoding/json"
 Note_Event :: struct {
 	note:       u8,
 	velocity:   f32,
-	start_time: f32,
+	start_time: f32, // Kept for compatibility, might be unused if step is used
+    step:       int,
 	duration:   f32,
 }
 
 Node :: struct {
-	id:         int,
+	id:         string,
 	type:       string,
 	parameters: json.Object,
 	subgraph:   ^Graph,
 }
 
 Node_Raw :: struct {
-	id:         int,
+	id:         string,
 	type:       string,
 	parameters: json.Object,
 	subgraph:   json.Object,
 }
 
 Connection :: struct {
-	from_node: int,
+	from_node: string,
 	from_port: string,
-	to_node:   int,
+	to_node:   string,
 	to_port:   string,
 }
 
 Sequencer_Track :: struct {
-	target_node_id: int,
+	target_node_id: string,
 	name:           string,
 	events:         []Note_Event,
 	mute:           bool,
@@ -42,7 +43,7 @@ Sequencer_Track :: struct {
 }
 
 Graph :: struct {
-	nodes:            map[int]Node,
+	nodes:            map[string]Node,
 	connections:      []Connection,
 	events:           []Note_Event,
 	sequencer_tracks: []Sequencer_Track,
@@ -101,4 +102,5 @@ Project :: struct {
 	bpm:           f32,
 	master_volume: f32,
 	instruments:   []Project_Instrument,
+	sequencer_tracks: []Sequencer_Track,
 }

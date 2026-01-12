@@ -8,7 +8,7 @@ main
 *.obj
 *.dll
 *.so
-*.pdb
+*.pdbe
 
 # Scripts/Data
 *.csv
