@@ -752,7 +752,9 @@ generate_sequencer_logic :: proc(sb: ^strings.Builder, instrument: ^Project_Inst
         fmt.sbprint(sb, "\tif current_step * samples_per_step == p.total_samples {\n")
         
         // Generate switch for steps
-        fmt.sbprint(sb, "\t\tstep_idx := current_step % 16\n")
+        steps := current_track.num_steps
+        if steps <= 0 do steps = 16
+        fmt.sbprintf(sb, "\t\tstep_idx := current_step %% %d\n", steps)
         fmt.sbprint(sb, "\t\tswitch step_idx {\n")
         
         for event in current_track.events {

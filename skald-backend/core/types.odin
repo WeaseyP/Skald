@@ -40,6 +40,7 @@ Sequencer_Track :: struct {
 	events:         []Note_Event,
 	mute:           bool,
 	solo:           bool,
+	num_steps:      int,
 }
 
 Graph :: struct {

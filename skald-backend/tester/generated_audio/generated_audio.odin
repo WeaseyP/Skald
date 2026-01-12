@@ -35,15 +35,15 @@ Kick_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	adsr_2_stage: ADSR_Stage,
-	adsr_2_time: f32,
-	adsr_2_value: f32,
-	adsr_2_release_level: f32,
 	osc_1_phase: [1]f32,
 	adsr_3_stage: ADSR_Stage,
 	adsr_3_time: f32,
 	adsr_3_value: f32,
 	adsr_3_release_level: f32,
+	adsr_2_stage: ADSR_Stage,
+	adsr_2_time: f32,
+	adsr_2_value: f32,
+	adsr_2_release_level: f32,
 }
 
 Kick_Processor :: struct {
@@ -52,35 +52,35 @@ Kick_Processor :: struct {
 	next_voice_idx: int,
 	prng: PRNG_State,
 	total_samples: u64,
-	pulseWidth: f32,
+	phase: f32,
+	tone: f32,
+	amplitude: f32,
+	depth: f32,
+	mix: f32,
 	attack: f32,
 	decay: f32,
-	frequency: f32,
-	tone: f32,
-	release: f32,
-	depth: f32,
-	amplitude: f32,
-	mix: f32,
-	phase: f32,
-	drive: f32,
 	sustain: f32,
+	release: f32,
+	frequency: f32,
+	pulseWidth: f32,
+	drive: f32,
 }
 
 Kick_init :: proc(p: ^Kick_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.prng.state = 12345
-	p.pulseWidth = 0.500
+	p.phase = 0.000
+	p.tone = 4000.000
+	p.amplitude = 0.500
+	p.depth = 1.000
+	p.mix = 0.500
 	p.attack = 0.001
 	p.decay = 0.052
+	p.sustain = 0.000
+	p.release = 0.001
 	p.frequency = 121.350
-	p.tone = 4000.000
-	p.release = 0.133
-	p.depth = 1.000
-	p.amplitude = 0.500
-	p.mix = 0.500
-	p.phase = 0.000
+	p.pulseWidth = 0.500
 	p.drive = 5.000
-	p.sustain = 0.011
 }
 
 Kick_note_on :: proc(p: ^Kick_Processor, note: u8, velocity: f32, duration: f32) {
@@ -106,12 +106,12 @@ Kick_note_on :: proc(p: ^Kick_Processor, note: u8, velocity: f32, duration: f32)
 	v.current_freq = freq
 	v.glide_time = 0.050
 	v.duration = duration
-	v.adsr_2_stage = .Attack
-	v.adsr_2_time = 0.0
-	v.adsr_2_value = 0.0
 	v.adsr_3_stage = .Attack
 	v.adsr_3_time = 0.0
 	v.adsr_3_value = 0.0
+	v.adsr_2_stage = .Attack
+	v.adsr_2_time = 0.0
+	v.adsr_2_value = 0.0
 }
 
 Kick_note_off :: proc(p: ^Kick_Processor, note: u8) {
@@ -119,13 +119,13 @@ Kick_note_off :: proc(p: ^Kick_Processor, note: u8) {
 		if p.voices[i].active && p.voices[i].note == note {
 			releasing := false
 			p.voices[i].time_released = p.voices[i].age
-			p.voices[i].adsr_2_stage = .Release
-			p.voices[i].adsr_2_release_level = p.voices[i].adsr_2_value
-			p.voices[i].adsr_2_time = 0.0
-			releasing = true
 			p.voices[i].adsr_3_stage = .Release
 			p.voices[i].adsr_3_release_level = p.voices[i].adsr_3_value
 			p.voices[i].adsr_3_time = 0.0
+			releasing = true
+			p.voices[i].adsr_2_stage = .Release
+			p.voices[i].adsr_2_release_level = p.voices[i].adsr_2_value
+			p.voices[i].adsr_2_time = 0.0
 			releasing = true
 			if !releasing do p.voices[i].active = false
 		}
@@ -144,23 +144,23 @@ Kick_process :: proc(p: ^Kick_Processor) -> f32 {
 
 		voice.age += 1.0 / sample_rate;
 		if voice.age >= voice.duration && voice.duration > 0.0 {
-			if voice.adsr_2_stage != .Release && voice.adsr_2_stage != .Idle {
-				voice.adsr_2_stage = .Release
-				voice.adsr_2_release_level = voice.adsr_2_value
-				voice.adsr_2_time = 0.0
-			}
 			if voice.adsr_3_stage != .Release && voice.adsr_3_stage != .Idle {
 				voice.adsr_3_stage = .Release
 				voice.adsr_3_release_level = voice.adsr_3_value
 				voice.adsr_3_time = 0.0
 			}
+			if voice.adsr_2_stage != .Release && voice.adsr_2_stage != .Idle {
+				voice.adsr_2_stage = .Release
+				voice.adsr_2_release_level = voice.adsr_2_value
+				voice.adsr_2_time = 0.0
+			}
 		}
 		voice_busy := false
+		node_4_out: f32 = 0.0
+		node_1_out: f32 = 0.0
+		node_3_out: f32 = 0.0
 		node_5_out: f32 = 0.0
 		node_2_out: f32 = 0.0
-		node_1_out: f32 = 0.0
-		node_4_out: f32 = 0.0
-		node_3_out: f32 = 0.0
 
 		// --- ADSR Node 2 ---
 		{
@@ -257,8 +257,8 @@ Kick_process :: proc(p: ^Kick_Processor) -> f32 {
 		node_4_out = math.tanh((node_3_out) * (p.drive));
 
 		output += node_4_out
-		if voice.adsr_2_stage != .Idle do voice_busy = true
 		if voice.adsr_3_stage != .Idle do voice_busy = true
+		if voice.adsr_2_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
 	return output
@@ -267,7 +267,7 @@ Kick_process_sequence :: proc(p: ^Kick_Processor) {
 	samples_per_step := u64(5512)
 	current_step := p.total_samples / samples_per_step
 	if current_step * samples_per_step == p.total_samples {
-		step_idx := current_step % 16
+		step_idx := current_step % 32
 		switch step_idx {
 		case 17:
 			Kick_note_on(p, 60, 1.000, 0.125)
@@ -305,14 +305,14 @@ Snare_Drum_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
+	osc_3_phase: [1]f32,
 	noise_1_rng: PRNG_State,
+	filter_4_low: f32,
+	filter_4_band: f32,
 	adsr_5_stage: ADSR_Stage,
 	adsr_5_time: f32,
 	adsr_5_value: f32,
 	adsr_5_release_level: f32,
-	osc_3_phase: [1]f32,
-	filter_4_low: f32,
-	filter_4_band: f32,
 }
 
 Snare_Drum_Processor :: struct {
@@ -321,33 +321,33 @@ Snare_Drum_Processor :: struct {
 	next_voice_idx: int,
 	prng: PRNG_State,
 	total_samples: u64,
-	resonance: f32,
-	depth: f32,
-	cutoff: f32,
-	decay: f32,
-	phase: f32,
 	sustain: f32,
-	pulseWidth: f32,
+	depth: f32,
 	attack: f32,
-	release: f32,
-	amplitude: f32,
+	resonance: f32,
 	frequency: f32,
+	decay: f32,
+	release: f32,
+	phase: f32,
+	cutoff: f32,
+	pulseWidth: f32,
+	amplitude: f32,
 }
 
 Snare_Drum_init :: proc(p: ^Snare_Drum_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.prng.state = 12345
-	p.resonance = 0.593
-	p.depth = 1.000
-	p.cutoff = 2449.232
-	p.decay = 0.159
-	p.phase = 0.000
 	p.sustain = 0.000
-	p.pulseWidth = 0.500
+	p.depth = 1.000
 	p.attack = 0.001
-	p.release = 0.133
-	p.amplitude = 0.500
+	p.resonance = 0.593
 	p.frequency = 220.000
+	p.decay = 0.159
+	p.release = 0.133
+	p.phase = 0.000
+	p.cutoff = 2449.232
+	p.pulseWidth = 0.500
+	p.amplitude = 1.000
 }
 
 Snare_Drum_note_on :: proc(p: ^Snare_Drum_Processor, note: u8, velocity: f32, duration: f32) {
@@ -411,15 +411,12 @@ Snare_Drum_process :: proc(p: ^Snare_Drum_Processor) -> f32 {
 			}
 		}
 		voice_busy := false
+		node_3_out: f32 = 0.0
+		node_6_out: f32 = 0.0
 		node_1_out: f32 = 0.0
+		node_4_out: f32 = 0.0
 		node_2_out: f32 = 0.0
 		node_5_out: f32 = 0.0
-		node_6_out: f32 = 0.0
-		node_3_out: f32 = 0.0
-		node_4_out: f32 = 0.0
-
-		// --- Noise Node 1 ---
-		node_1_out = next_float32(&voice.noise_1_rng) * (p.amplitude);
 
 		// --- Oscillator Node 3 (Unison/Detune) ---
 		{
@@ -445,6 +442,9 @@ Snare_Drum_process :: proc(p: ^Snare_Drum_Processor) -> f32 {
 			}
 			if unison_count > 0 do node_3_out = (unison_out / f32(unison_count)) * (p.amplitude);
 		}
+
+		// --- Noise Node 1 ---
+		node_1_out = next_float32(&voice.noise_1_rng) * (p.amplitude);
 
 		// --- Mixer Node 2 ---
 		{
@@ -507,7 +507,7 @@ Snare_Drum_process_sequence :: proc(p: ^Snare_Drum_Processor) {
 	samples_per_step := u64(5512)
 	current_step := p.total_samples / samples_per_step
 	if current_step * samples_per_step == p.total_samples {
-		step_idx := current_step % 16
+		step_idx := current_step % 32
 		switch step_idx {
 		case 20:
 			Snare_Drum_note_on(p, 60, 1.000, 0.125)
@@ -516,6 +516,8 @@ Snare_Drum_process_sequence :: proc(p: ^Snare_Drum_Processor) {
 		case 26:
 			Snare_Drum_note_on(p, 60, 1.000, 0.125)
 		case 28:
+			Snare_Drum_note_on(p, 60, 1.000, 0.125)
+		case 5:
 			Snare_Drum_note_on(p, 60, 1.000, 0.125)
 		}
 	}
@@ -531,13 +533,13 @@ sax_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	filter_3_low: f32,
-	filter_3_band: f32,
-	osc_2_phase: [1]f32,
 	adsr_7_stage: ADSR_Stage,
 	adsr_7_time: f32,
 	adsr_7_value: f32,
 	adsr_7_release_level: f32,
+	osc_2_phase: [1]f32,
+	filter_3_low: f32,
+	filter_3_band: f32,
 }
 
 sax_Processor :: struct {
@@ -546,39 +548,39 @@ sax_Processor :: struct {
 	next_voice_idx: int,
 	prng: PRNG_State,
 	total_samples: u64,
-	attack: f32,
-	sustain: f32,
-	amplitude: f32,
-	device: f32,
-	gain: f32,
-	cutoff: f32,
-	depth: f32,
-	frequency: f32,
-	pulseWidth: f32,
 	resonance: f32,
-	useMpe: f32,
 	decay: f32,
+	cutoff: f32,
+	useMpe: f32,
+	device: f32,
+	frequency: f32,
+	depth: f32,
 	phase: f32,
 	release: f32,
+	sustain: f32,
+	amplitude: f32,
+	pulseWidth: f32,
+	attack: f32,
+	gain: f32,
 }
 
 sax_init :: proc(p: ^sax_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.prng.state = 12345
-	p.attack = 0.053
-	p.sustain = 0.819
-	p.amplitude = 0.500
-	p.device = 0.000
-	p.gain = 0.000
-	p.cutoff = 857.097
-	p.depth = 1.000
-	p.frequency = 440.000
-	p.pulseWidth = 0.500
 	p.resonance = 1.910
-	p.useMpe = 0.000
 	p.decay = 0.240
+	p.cutoff = 857.097
+	p.useMpe = 0.000
+	p.device = 0.000
+	p.frequency = 440.000
+	p.depth = 1.000
 	p.phase = 0.000
 	p.release = 0.213
+	p.sustain = 0.819
+	p.amplitude = 0.500
+	p.pulseWidth = 0.500
+	p.attack = 0.053
+	p.gain = 0.000
 }
 
 sax_note_on :: proc(p: ^sax_Processor, note: u8, velocity: f32, duration: f32) {
@@ -642,13 +644,13 @@ sax_process :: proc(p: ^sax_Processor) -> f32 {
 			}
 		}
 		voice_busy := false
-		node_4_out: f32 = 0.0
-		node_3_out: f32 = 0.0
-		node_2_out: f32 = 0.0
 		node_7_out: f32 = 0.0
 		node_1_out: f32 = 0.0
-		node_6_out: f32 = 0.0
+		node_4_out: f32 = 0.0
+		node_2_out: f32 = 0.0
 		node_5_out: f32 = 0.0
+		node_3_out: f32 = 0.0
+		node_6_out: f32 = 0.0
 
 		// --- MIDI Input Node 6 ---
 		node_6_out_pitch := (f32(voice.note) - 69.0) / 12.0
@@ -739,7 +741,7 @@ sax_process_sequence :: proc(p: ^sax_Processor) {
 	samples_per_step := u64(5512)
 	current_step := p.total_samples / samples_per_step
 	if current_step * samples_per_step == p.total_samples {
-		step_idx := current_step % 16
+		step_idx := current_step % 32
 		switch step_idx {
 		case 16:
 			sax_note_on(p, 60, 1.000, 0.375)

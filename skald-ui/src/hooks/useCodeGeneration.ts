@@ -135,6 +135,7 @@ export const useCodeGeneration = () => {
                     name: track.name,
                     mute: track.isMuted,
                     solo: track.isSolo,
+                    num_steps: track.steps,
                     events: track.notes.map(n => ({
                         note: n.note,
                         velocity: n.velocity,
