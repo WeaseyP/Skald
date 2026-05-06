@@ -406,7 +406,7 @@ export const useAudioEngine = (
             navigator.requestMIDIAccess().then(access => {
                 midiAccess = access;
                 const inputs = midiAccess.inputs.values();
-                for (let input of inputs) {
+                for (const input of inputs) {
                     input.onmidimessage = handleMidiMessage;
                 }
 
@@ -414,7 +414,7 @@ export const useAudioEngine = (
                     // Re-bind if new devices plugged in
                     const inputs = midiAccess?.inputs.values();
                     if (inputs) {
-                        for (let input of inputs) {
+                        for (const input of inputs) {
                             input.onmidimessage = handleMidiMessage;
                         }
                     }
@@ -425,7 +425,7 @@ export const useAudioEngine = (
         return () => {
             if (midiAccess) {
                 const inputs = midiAccess.inputs.values();
-                for (let input of inputs) {
+                for (const input of inputs) {
                     input.onmidimessage = null;
                 }
             }

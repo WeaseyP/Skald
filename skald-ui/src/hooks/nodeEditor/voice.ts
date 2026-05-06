@@ -87,7 +87,7 @@ export class Voice {
         });
     }
 
-    public trigger(startTime: number, note?: number, velocity: number = 1.0, overrides?: Record<string, number>) {
+    public trigger(startTime: number, note?: number, velocity = 1.0, overrides?: Record<string, number>) {
         // Frequency handling
         if (note !== undefined) {
             const freq = 440 * Math.pow(2, (note - 69) / 12);

@@ -50,17 +50,15 @@ export const useCodeGeneration = () => {
             // Note: Instruments are handled at the top level, but if nested (Group?), we recurse.
             // For now, Instruments contain subgraphs, but are not usually inside subgraphs.
 
+            // BUG-TWO-IDS-IN-JSON: removed `id_raw` (duplicate of `id` —
+            // backend never reads it) and the top-level `exposed_parameters`
+            // (snake_case — also dead; the backend reads
+            // `parameters.exposedParameters` carried by the spread above).
             const result: any = {
-                id: node.id, // Keep ID as string or int? Backend likely expects int if possible, but UUIDs are strings.
-                // Previous code parsed int. Let's try to keep strings if backend supports them, 
-                // OR hash them. For now, sticking to string for flexibility unless strictly typed as int.
-                // WARNING: Old code parsed int. If backend requires int, we might need a mapping table.
-                // Let's assume ID can be string for now to support UUIDs.
-                id_raw: node.id,
+                id: node.id,
                 type: typeName,
                 position: node.position,
                 parameters: parameters,
-                exposed_parameters: node.data.exposedParameters || []
             };
 
             return result;

@@ -64,6 +64,21 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { package
   // In production, it would point to the app's resource directory.
   const executablePath = path.join(app.getAppPath(), 'skald_codegen.exe');
 
+  // Capture the Project JSON next to the output .odin so the acceptance
+  // harness can re-feed it as a fixture. Writing UTF-8 explicitly so the
+  // file never picks up a BOM or UTF-16 envelope.
+  if (options.outputPath) {
+    const inputJsonPath = options.outputPath.replace(/\.odin$/i, '.json');
+    if (inputJsonPath !== options.outputPath) {
+      try {
+        fs.writeFileSync(inputJsonPath, graphJson, { encoding: 'utf8' });
+        console.log(`[Skald] Wrote codegen input JSON to ${inputJsonPath}`);
+      } catch (err) {
+        console.error(`[Skald] Failed to write input JSON to ${inputJsonPath}: ${err}`);
+      }
+    }
+  }
+
   return new Promise((resolve, reject) => {
 
     const args: string[] = [];
@@ -95,6 +110,20 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { package
     child.on('close', (code) => {
       if (code === 0) {
         console.log("Codegen successful.");
+        // BUG-CODE-PREVIEW-WRONG: stdout is just a "Package generated audio"
+        // success line. The actual generated code lives at outputPath. Read
+        // it back so the renderer's CodePreviewPanel shows the real .odin
+        // output instead of the literal status string.
+        if (options.outputPath) {
+          try {
+            const generatedCode = fs.readFileSync(options.outputPath, { encoding: 'utf8' });
+            resolve(generatedCode);
+            return;
+          } catch (err) {
+            console.error(`Failed to read generated code from ${options.outputPath}: ${err}`);
+            // fall through to stdout so the user gets *something* useful
+          }
+        }
         resolve(stdout);
       } else {
         console.error(`Codegen failed with code ${code}: ${stderr}`);

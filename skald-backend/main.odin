@@ -70,6 +70,17 @@ main :: proc() {
         }
     }
 
+	// BUG-EMPTY-PROJECT-SILENT: a graph that lacks any instrument-typed
+	// nodes silently produced an empty Project_State + no-op project_process
+	// and exited 0. Make this a hard error — game devs need to notice when
+	// their patch isn't being codegen'd.
+	if len(project.instruments) == 0 {
+		fmt.eprintf(
+			"Error: input contains no instruments. Wrap nodes in an Instrument (Sidebar → Create Instrument) before generating.\n",
+		)
+		os.exit(1)
+	}
+
 	generated_code := core.generate_project_code(&project, name, package_name)
 
 	// Always write to file. If output_file is empty, default to "generated_audio.odin"
@@ -84,6 +95,10 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	// Always print success message to stdout, NEVER the code
-	fmt.print("Package generated audio")
+	// Stdout used to carry just the literal "Package generated audio" status
+	// line, which the Electron renderer was treating as the displayed code
+	// preview (BUG-CODE-PREVIEW-WRONG). The renderer is now patched to read
+	// the output file directly; this status line is kept for shell scripts
+	// piping codegen output.
+	fmt.printf("Codegen OK: %d instrument(s) -> %s\n", len(project.instruments), target_file)
 }

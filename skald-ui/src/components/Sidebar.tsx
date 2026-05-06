@@ -232,7 +232,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'lfo')} draggable>LFO</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'sampleHold')} draggable>S & H</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'fmOperator')} draggable>FM Operator</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'wavetable')} draggable>Wavetable</div>
+                {/* BUG-WAVETABLE-PLACEHOLDER: hidden until codegen emits a real
+                    wavetable lookup instead of a sine. The Wavetable node code
+                    + node-definitions entry stay so saved patches still load.
+                    Re-add this entry when generate_wavetable_code is fleshed out. */}
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'adsr')} draggable>ADSR</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'filter')} draggable>Filter</div>
                 <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'delay')} draggable>Delay</div>

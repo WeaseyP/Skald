@@ -1,0 +1,314 @@
+{
+    "nodes": [
+        {
+            "id": "inst_lead",
+            "type": "instrument",
+            "position": { "x": 100, "y": 100 },
+            "data": {
+                "name": "Lead",
+                "label": "Lead",
+                "voiceCount": 4,
+                "subgraph": {
+                    "nodes": [
+                        { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
+                        { "id": "2", "type": "oscillator", "position": { "x": 200, "y": 0 }, "data": { "waveform": "Sawtooth", "frequency": 440, "amplitude": 0.55, "label": "Osc" } },
+                        { "id": "3", "type": "filter", "position": { "x": 400, "y": 0 }, "data": { "type": "Lowpass", "cutoff": 600, "resonance": 4, "label": "Filter" } },
+                        { "id": "4", "type": "adsr", "position": { "x": 400, "y": 200 }, "data": { "attack": 0.01, "decay": 0.25, "sustain": 0.3, "release": 0.2, "depth": 2200, "label": "Filter Env" } },
+                        { "id": "5", "type": "distortion", "position": { "x": 600, "y": 0 }, "data": { "drive": 8, "mix": 0.35, "label": "Drive" } },
+                        { "id": "6", "type": "gain", "position": { "x": 800, "y": 0 }, "data": { "gain": 0, "label": "VCA" } },
+                        { "id": "7", "type": "adsr", "position": { "x": 600, "y": 200 }, "data": { "attack": 0.02, "decay": 0.15, "sustain": 0.7, "release": 0.25, "label": "Amp Env" } },
+                        { "id": "8", "type": "output", "position": { "x": 1000, "y": 0 }, "data": { "label": "Out" } }
+                    ],
+                    "connections": [
+                        { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
+                        { "from_node": "1", "from_port": "gate", "to_node": "4", "to_port": "input" },
+                        { "from_node": "1", "from_port": "gate", "to_node": "7", "to_port": "input" },
+                        { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+                        { "from_node": "4", "from_port": "output", "to_node": "3", "to_port": "input_cutoff" },
+                        { "from_node": "3", "from_port": "output", "to_node": "5", "to_port": "input" },
+                        { "from_node": "5", "from_port": "output", "to_node": "6", "to_port": "input" },
+                        { "from_node": "7", "from_port": "output", "to_node": "6", "to_port": "input_gain" },
+                        { "from_node": "6", "from_port": "output", "to_node": "8", "to_port": "input" }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "inst_pad",
+            "type": "instrument",
+            "position": { "x": 100, "y": 400 },
+            "data": {
+                "name": "Pad",
+                "label": "Pad",
+                "voiceCount": 6,
+                "subgraph": {
+                    "nodes": [
+                        { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
+                        { "id": "2", "type": "oscillator", "position": { "x": 200, "y": 0 }, "data": { "waveform": "Triangle", "frequency": 440, "amplitude": 0.45, "label": "Osc" } },
+                        { "id": "3", "type": "filter", "position": { "x": 400, "y": 0 }, "data": { "type": "Lowpass", "cutoff": 1200, "resonance": 1, "label": "Filter" } },
+                        { "id": "4", "type": "gain", "position": { "x": 600, "y": 0 }, "data": { "gain": 0, "label": "VCA" } },
+                        { "id": "5", "type": "adsr", "position": { "x": 400, "y": 200 }, "data": { "attack": 1.2, "decay": 0.8, "sustain": 0.85, "release": 2.5, "label": "Amp Env" } },
+                        { "id": "6", "type": "delay", "position": { "x": 800, "y": 0 }, "data": { "delayTime": 0.375, "feedback": 0.3, "mix": 0.25, "label": "Delay" } },
+                        { "id": "7", "type": "reverb", "position": { "x": 1000, "y": 0 }, "data": { "decay": 5.0, "mix": 0.5, "label": "Reverb" } },
+                        { "id": "8", "type": "output", "position": { "x": 1200, "y": 0 }, "data": { "label": "Out" } }
+                    ],
+                    "connections": [
+                        { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
+                        { "from_node": "1", "from_port": "gate", "to_node": "5", "to_port": "input" },
+                        { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+                        { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" },
+                        { "from_node": "5", "from_port": "output", "to_node": "4", "to_port": "input_gain" },
+                        { "from_node": "4", "from_port": "output", "to_node": "6", "to_port": "input" },
+                        { "from_node": "6", "from_port": "output", "to_node": "7", "to_port": "input" },
+                        { "from_node": "7", "from_port": "output", "to_node": "8", "to_port": "input" }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "inst_bass",
+            "type": "instrument",
+            "position": { "x": 100, "y": 700 },
+            "data": {
+                "name": "Bass",
+                "label": "Bass",
+                "voiceCount": 2,
+                "subgraph": {
+                    "nodes": [
+                        { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
+                        { "id": "2", "type": "oscillator", "position": { "x": 200, "y": 0 }, "data": { "waveform": "Sawtooth", "frequency": 110, "amplitude": 0.7, "label": "Osc" } },
+                        { "id": "3", "type": "filter", "position": { "x": 400, "y": 0 }, "data": { "type": "Lowpass", "cutoff": 350, "resonance": 3, "label": "Filter" } },
+                        { "id": "4", "type": "adsr", "position": { "x": 400, "y": 200 }, "data": { "attack": 0.005, "decay": 0.18, "sustain": 0.2, "release": 0.1, "depth": 900, "label": "Filter Env" } },
+                        { "id": "5", "type": "gain", "position": { "x": 600, "y": 0 }, "data": { "gain": 0, "label": "VCA" } },
+                        { "id": "6", "type": "adsr", "position": { "x": 600, "y": 200 }, "data": { "attack": 0.005, "decay": 0.2, "sustain": 0.6, "release": 0.15, "label": "Amp Env" } },
+                        { "id": "7", "type": "output", "position": { "x": 800, "y": 0 }, "data": { "label": "Out" } }
+                    ],
+                    "connections": [
+                        { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
+                        { "from_node": "1", "from_port": "gate", "to_node": "4", "to_port": "input" },
+                        { "from_node": "1", "from_port": "gate", "to_node": "6", "to_port": "input" },
+                        { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+                        { "from_node": "4", "from_port": "output", "to_node": "3", "to_port": "input_cutoff" },
+                        { "from_node": "3", "from_port": "output", "to_node": "5", "to_port": "input" },
+                        { "from_node": "6", "from_port": "output", "to_node": "5", "to_port": "input_gain" },
+                        { "from_node": "5", "from_port": "output", "to_node": "7", "to_port": "input" }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "inst_kick",
+            "type": "instrument",
+            "position": { "x": 100, "y": 1000 },
+            "data": {
+                "name": "Kick",
+                "label": "Kick",
+                "voiceCount": 1,
+                "subgraph": {
+                    "nodes": [
+                        { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
+                        { "id": "2", "type": "oscillator", "position": { "x": 200, "y": 0 }, "data": { "waveform": "Sine", "frequency": 50, "amplitude": 1.0, "label": "Osc" } },
+                        { "id": "3", "type": "adsr", "position": { "x": 200, "y": 200 }, "data": { "attack": 0.001, "decay": 0.08, "sustain": 0, "release": 0.05, "depth": 120, "label": "Pitch Env" } },
+                        { "id": "4", "type": "gain", "position": { "x": 400, "y": 0 }, "data": { "gain": 0, "label": "VCA" } },
+                        { "id": "5", "type": "adsr", "position": { "x": 400, "y": 200 }, "data": { "attack": 0.001, "decay": 0.18, "sustain": 0, "release": 0.1, "label": "Amp Env" } },
+                        { "id": "6", "type": "distortion", "position": { "x": 600, "y": 0 }, "data": { "drive": 4, "mix": 0.3, "label": "Dist" } },
+                        { "id": "7", "type": "output", "position": { "x": 800, "y": 0 }, "data": { "label": "Out" } }
+                    ],
+                    "connections": [
+                        { "from_node": "1", "from_port": "gate", "to_node": "3", "to_port": "input" },
+                        { "from_node": "1", "from_port": "gate", "to_node": "5", "to_port": "input" },
+                        { "from_node": "3", "from_port": "output", "to_node": "2", "to_port": "input_freq" },
+                        { "from_node": "2", "from_port": "output", "to_node": "4", "to_port": "input" },
+                        { "from_node": "5", "from_port": "output", "to_node": "4", "to_port": "input_gain" },
+                        { "from_node": "4", "from_port": "output", "to_node": "6", "to_port": "input" },
+                        { "from_node": "6", "from_port": "output", "to_node": "7", "to_port": "input" }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "inst_hat",
+            "type": "instrument",
+            "position": { "x": 100, "y": 1300 },
+            "data": {
+                "name": "HiHat",
+                "label": "HiHat",
+                "voiceCount": 2,
+                "subgraph": {
+                    "nodes": [
+                        { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
+                        { "id": "2", "type": "noise", "position": { "x": 200, "y": 0 }, "data": { "type": "White", "amplitude": 0.6, "label": "Noise" } },
+                        { "id": "3", "type": "filter", "position": { "x": 400, "y": 0 }, "data": { "type": "Highpass", "cutoff": 7000, "resonance": 1, "label": "HPF" } },
+                        { "id": "4", "type": "gain", "position": { "x": 600, "y": 0 }, "data": { "gain": 0, "label": "VCA" } },
+                        { "id": "5", "type": "adsr", "position": { "x": 400, "y": 200 }, "data": { "attack": 0.001, "decay": 0.05, "sustain": 0, "release": 0.03, "label": "Amp Env" } },
+                        { "id": "6", "type": "output", "position": { "x": 800, "y": 0 }, "data": { "label": "Out" } }
+                    ],
+                    "connections": [
+                        { "from_node": "1", "from_port": "gate", "to_node": "5", "to_port": "input" },
+                        { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+                        { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" },
+                        { "from_node": "5", "from_port": "output", "to_node": "4", "to_port": "input_gain" },
+                        { "from_node": "4", "from_port": "output", "to_node": "6", "to_port": "input" }
+                    ]
+                }
+            }
+        }
+    ],
+    "sequencerTracks": [
+        {
+            "id": "track_lead",
+            "targetNodeId": "inst_lead",
+            "name": "Lead",
+            "color": "#e8590c",
+            "steps": 64,
+            "notes": [
+                { "step": 0,  "note": 67, "velocity": 0.85, "duration": 4 },
+                { "step": 4,  "note": 75, "velocity": 0.9,  "duration": 2 },
+                { "step": 6,  "note": 74, "velocity": 0.8,  "duration": 2 },
+                { "step": 8,  "note": 72, "velocity": 0.9,  "duration": 4 },
+                { "step": 12, "note": 67, "velocity": 0.75, "duration": 4 },
+
+                { "step": 16, "note": 68, "velocity": 0.85, "duration": 4 },
+                { "step": 20, "note": 72, "velocity": 0.8,  "duration": 2 },
+                { "step": 22, "note": 75, "velocity": 0.85, "duration": 2 },
+                { "step": 24, "note": 77, "velocity": 0.95, "duration": 4 },
+                { "step": 28, "note": 75, "velocity": 0.8,  "duration": 4 },
+
+                { "step": 32, "note": 79, "velocity": 1.0,  "duration": 4 },
+                { "step": 36, "note": 77, "velocity": 0.85, "duration": 2 },
+                { "step": 38, "note": 75, "velocity": 0.85, "duration": 2 },
+                { "step": 40, "note": 74, "velocity": 0.85, "duration": 4 },
+                { "step": 44, "note": 70, "velocity": 0.8,  "duration": 4 },
+
+                { "step": 48, "note": 74, "velocity": 0.8,  "duration": 4 },
+                { "step": 52, "note": 77, "velocity": 0.85, "duration": 4 },
+                { "step": 56, "note": 79, "velocity": 0.95, "duration": 4 },
+                { "step": 60, "note": 71, "velocity": 0.9,  "duration": 4 }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        },
+        {
+            "id": "track_pad_root",
+            "targetNodeId": "inst_pad",
+            "name": "Pad Root",
+            "color": "#74c0fc",
+            "steps": 64,
+            "notes": [
+                { "step": 0,  "note": 48, "velocity": 0.55, "duration": 16 },
+                { "step": 16, "note": 44, "velocity": 0.55, "duration": 16 },
+                { "step": 32, "note": 51, "velocity": 0.55, "duration": 16 },
+                { "step": 48, "note": 43, "velocity": 0.55, "duration": 16 }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        },
+        {
+            "id": "track_pad_third",
+            "targetNodeId": "inst_pad",
+            "name": "Pad Third",
+            "color": "#4dabf7",
+            "steps": 64,
+            "notes": [
+                { "step": 0,  "note": 51, "velocity": 0.5, "duration": 16 },
+                { "step": 16, "note": 48, "velocity": 0.5, "duration": 16 },
+                { "step": 32, "note": 55, "velocity": 0.5, "duration": 16 },
+                { "step": 48, "note": 47, "velocity": 0.5, "duration": 16 }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        },
+        {
+            "id": "track_bass",
+            "targetNodeId": "inst_bass",
+            "name": "Bass",
+            "color": "#9775fa",
+            "steps": 64,
+            "notes": [
+                { "step": 0,  "note": 36, "velocity": 0.9, "duration": 4 },
+                { "step": 4,  "note": 43, "velocity": 0.7, "duration": 2 },
+                { "step": 6,  "note": 39, "velocity": 0.7, "duration": 2 },
+                { "step": 8,  "note": 36, "velocity": 0.85, "duration": 4 },
+                { "step": 12, "note": 43, "velocity": 0.75, "duration": 4 },
+
+                { "step": 16, "note": 32, "velocity": 0.9, "duration": 4 },
+                { "step": 20, "note": 39, "velocity": 0.7, "duration": 2 },
+                { "step": 22, "note": 36, "velocity": 0.7, "duration": 2 },
+                { "step": 24, "note": 32, "velocity": 0.85, "duration": 4 },
+                { "step": 28, "note": 39, "velocity": 0.75, "duration": 4 },
+
+                { "step": 32, "note": 39, "velocity": 0.9, "duration": 4 },
+                { "step": 36, "note": 46, "velocity": 0.7, "duration": 2 },
+                { "step": 38, "note": 43, "velocity": 0.7, "duration": 2 },
+                { "step": 40, "note": 39, "velocity": 0.85, "duration": 4 },
+                { "step": 44, "note": 46, "velocity": 0.75, "duration": 4 },
+
+                { "step": 48, "note": 31, "velocity": 0.9, "duration": 4 },
+                { "step": 52, "note": 38, "velocity": 0.7, "duration": 2 },
+                { "step": 54, "note": 35, "velocity": 0.7, "duration": 2 },
+                { "step": 56, "note": 31, "velocity": 0.85, "duration": 4 },
+                { "step": 60, "note": 38, "velocity": 0.8, "duration": 4 }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        },
+        {
+            "id": "track_kick",
+            "targetNodeId": "inst_kick",
+            "name": "Kick",
+            "color": "#69db7c",
+            "steps": 64,
+            "notes": [
+                { "step": 0,  "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 4,  "note": 24, "velocity": 0.9, "duration": 1 },
+                { "step": 8,  "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 12, "note": 24, "velocity": 0.9, "duration": 1 },
+                { "step": 16, "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 20, "note": 24, "velocity": 0.9, "duration": 1 },
+                { "step": 24, "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 28, "note": 24, "velocity": 0.9, "duration": 1 },
+                { "step": 32, "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 36, "note": 24, "velocity": 0.9, "duration": 1 },
+                { "step": 40, "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 44, "note": 24, "velocity": 0.9, "duration": 1 },
+                { "step": 48, "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 52, "note": 24, "velocity": 0.9, "duration": 1 },
+                { "step": 56, "note": 24, "velocity": 1.0, "duration": 1 },
+                { "step": 62, "note": 24, "velocity": 0.85, "duration": 1 }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        },
+        {
+            "id": "track_hat",
+            "targetNodeId": "inst_hat",
+            "name": "HiHat",
+            "color": "#ffd43b",
+            "steps": 64,
+            "notes": [
+                { "step": 2,  "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 6,  "note": 60, "velocity": 0.7,  "duration": 1 },
+                { "step": 10, "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 14, "note": 60, "velocity": 0.7,  "duration": 1 },
+                { "step": 15, "note": 60, "velocity": 0.5,  "duration": 1 },
+                { "step": 18, "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 22, "note": 60, "velocity": 0.7,  "duration": 1 },
+                { "step": 26, "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 30, "note": 60, "velocity": 0.7,  "duration": 1 },
+                { "step": 31, "note": 60, "velocity": 0.5,  "duration": 1 },
+                { "step": 34, "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 38, "note": 60, "velocity": 0.7,  "duration": 1 },
+                { "step": 42, "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 46, "note": 60, "velocity": 0.7,  "duration": 1 },
+                { "step": 47, "note": 60, "velocity": 0.5,  "duration": 1 },
+                { "step": 50, "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 54, "note": 60, "velocity": 0.7,  "duration": 1 },
+                { "step": 58, "note": 60, "velocity": 0.55, "duration": 1 },
+                { "step": 61, "note": 60, "velocity": 0.6,  "duration": 1 },
+                { "step": 63, "note": 60, "velocity": 0.7,  "duration": 1 }
+            ],
+            "isMuted": false,
+            "isSolo": false
+        }
+    ]
+}

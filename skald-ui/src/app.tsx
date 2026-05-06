@@ -27,8 +27,8 @@ import { useCodeGeneration } from './hooks/useCodeGeneration';
 import { SequencerDock } from './components/Sequencer/SequencerDock';
 import { useSequencerState } from './hooks/sequencer/useSequencerState';
 import { useInstrumentRegistry } from './hooks/sequencer/useInstrumentRegistry';
-import { useScale } from './contexts/ScaleContext';
-import { ScaleProvider } from './contexts/ScaleContext';
+import { useScale , ScaleProvider } from './contexts/ScaleContext';
+
 
 
 const workspaceContainerStyles: React.CSSProperties = {

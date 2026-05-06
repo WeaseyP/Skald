@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { SequencerToolbar } from './SequencerToolbar';
 import { TrackList } from './TrackList';
 import { StepGrid } from './StepGrid';
-import { SequencerTrack, SequencerState } from '../../definitions/types';
+import { SequencerTrack, SequencerState , NoteEvent } from '../../definitions/types';
 
 interface SequencerDockProps {
     state: SequencerState;
@@ -53,7 +53,7 @@ const contentAreaStyles: React.CSSProperties = {
 import { AudioVisualizer } from '../Visualization/AudioVisualizer';
 import { PianoRoll } from './PianoRoll';
 import { NumberInput } from '../common/NumberInput';
-import { NoteEvent } from '../../definitions/types';
+
 
 
 

@@ -4,9 +4,9 @@ import { CustomSlider } from './controls/CustomSlider';
 import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
-import { GainParams } from '../definitions/types';
+import { GainParams , SequencerTrack, NoteEvent } from '../definitions/types';
 import { StepPropertiesEditor } from './Sequencer/StepPropertiesEditor';
-import { SequencerTrack, NoteEvent } from '../definitions/types';
+
 import { NodeParameterControls } from './NodeParameterControls';
 
 // --- STYLES ---
@@ -220,8 +220,8 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         paramKey: string,
         label: string,
         children: React.ReactNode,
-        isExposable: boolean = true,
-        isExposed: boolean = false,
+        isExposable = true,
+        isExposed = false,
         onToggle: () => void
     ) => {
         return (
@@ -281,7 +281,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             handleParameterChange(paramKey, value, subNodeId || node.id);
         };
 
-        const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable: boolean = true) => {
+        const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable = true) => {
             const isExposed = data.exposedParameters?.includes(paramKey) || false;
             return renderParameterControl(
                 paramKey,

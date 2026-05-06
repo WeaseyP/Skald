@@ -302,7 +302,7 @@ export const useNodeComposition = ({
         // Simple Spiral
         let angle = 0;
         let radius = 0;
-        let spacing = 50; // Step size
+        const spacing = 50; // Step size
         let step = 0;
         const maxSteps = 100;
 

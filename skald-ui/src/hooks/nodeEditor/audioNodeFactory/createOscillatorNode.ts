@@ -14,7 +14,7 @@ class SkaldOscillatorNode extends BaseSkaldNode {
     private pwmOsc: OscillatorNode | null = null;
     private dcOffset: ConstantSourceNode | null = null;
     private shaper: WaveShaperNode | null = null;
-    private isPwm: boolean = false;
+    private isPwm = false;
 
     // Parameter inputs
     public input_freq: GainNode;

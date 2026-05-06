@@ -1,4 +1,4 @@
-package generated_audio
+package Asset
 
 import "core:math"
 import "core:math/rand"
@@ -35,11 +35,11 @@ Asset_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	osc_1_phase: [1]f32,
 	adsr_2_stage: ADSR_Stage,
 	adsr_2_time: f32,
 	adsr_2_value: f32,
 	adsr_2_release_level: f32,
+	osc_1_phase: [1]f32,
 }
 
 Asset_Processor :: struct {
@@ -48,29 +48,29 @@ Asset_Processor :: struct {
 	next_voice_idx: int,
 	prng: PRNG_State,
 	total_samples: u64,
-	sustain: f32,
-	pulseWidth: f32,
-	attack: f32,
-	amplitude: f32,
-	release: f32,
-	frequency: f32,
 	depth: f32,
 	decay: f32,
 	phase: f32,
+	sustain: f32,
+	pulseWidth: f32,
+	attack: f32,
+	release: f32,
+	amplitude: f32,
+	frequency: f32,
 }
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.prng.state = 12345
-	p.sustain = 0.900
-	p.pulseWidth = 0.500
-	p.attack = 0.050
-	p.amplitude = 0.500
-	p.release = 0.500
-	p.frequency = 440.000
 	p.depth = 1.000
 	p.decay = 0.050
 	p.phase = 0.000
+	p.sustain = 0.900
+	p.pulseWidth = 0.500
+	p.attack = 0.050
+	p.release = 0.500
+	p.amplitude = 0.500
+	p.frequency = 440.000
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -134,9 +134,9 @@ Asset_process :: proc(p: ^Asset_Processor) -> f32 {
 			}
 		}
 		voice_busy := false
-		node_1_out: f32 = 0.0
-		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
+		node_2_out: f32 = 0.0
+		node_1_out: f32 = 0.0
 
 		// --- Oscillator Node 1 (Unison/Detune) ---
 		{

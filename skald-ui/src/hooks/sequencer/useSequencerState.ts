@@ -37,7 +37,7 @@ export const useSequencerState = () => {
         });
     }, [tracks]);
 
-    const addTrack = useCallback((targetNodeId: string, name: string, color: string = '#007acc') => {
+    const addTrack = useCallback((targetNodeId: string, name: string, color = '#007acc') => {
         if (tracks.find(t => t.targetNodeId === targetNodeId)) return;
         saveHistory();
         setTracks(prev => {

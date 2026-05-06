@@ -2,7 +2,6 @@ package skald_core
 
 import "core:encoding/json"
 import "core:fmt"
-import "core:strings"
 
 // =================================================================================
 // SECTION F: Main Execution & JSON Parsing (Refactored for correctness)
@@ -96,7 +95,10 @@ build_project_from_graph :: proc(graph: ^Graph) -> Project {
     // Count instruments
     inst_count := 0
     for _, node in graph.nodes {
-        if strings.to_lower(node.type) == "instrument" {
+        // BUG-TYPE-CASE-MISMATCH: JSON contract is PascalCase per useCodeGeneration's
+        // codegenType mapping. Match the on-the-wire spelling exactly so a future
+        // case drift becomes a loud bug instead of silent data loss.
+        if node.type == "Instrument" || node.type == "instrument" {
             inst_count += 1
         }
     }
@@ -104,7 +106,10 @@ build_project_from_graph :: proc(graph: ^Graph) -> Project {
 
     idx := 0
     for _, node in graph.nodes {
-        if strings.to_lower(node.type) == "instrument" {
+        // BUG-TYPE-CASE-MISMATCH: JSON contract is PascalCase per useCodeGeneration's
+        // codegenType mapping. Match the on-the-wire spelling exactly so a future
+        // case drift becomes a loud bug instead of silent data loss.
+        if node.type == "Instrument" || node.type == "instrument" {
             
             // Extract Instrument parameters from Node Data
             name := get_string_param(node, "name", "Untitled")

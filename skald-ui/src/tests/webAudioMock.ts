@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 
 export class AudioParamMock {
-    value: number = 0;
+    value = 0;
     setValueAtTime = vi.fn();
     linearRampToValueAtTime = vi.fn();
     exponentialRampToValueAtTime = vi.fn();
@@ -11,9 +11,9 @@ export class AudioParamMock {
 
 export class AudioNodeMock {
     context: BaseAudioContext;
-    numberOfInputs: number = 1;
-    numberOfOutputs: number = 1;
-    channelCount: number = 2;
+    numberOfInputs = 1;
+    numberOfOutputs = 1;
+    channelCount = 2;
     channelCountMode: ChannelCountMode = 'max';
     channelInterpretation: ChannelInterpretation = 'speakers';
 
@@ -92,7 +92,7 @@ export class WaveShaperNodeMock extends AudioNodeMock {
 
 export class ConvolverNodeMock extends AudioNodeMock {
     buffer: AudioBuffer | null = null;
-    normalize: boolean = true;
+    normalize = true;
 }
 
 export class AudioWorkletNodeMock extends AudioNodeMock {
@@ -119,8 +119,8 @@ export class AudioWorkletNodeMock extends AudioNodeMock {
 }
 
 export class AudioContextMock {
-    currentTime: number = 0;
-    sampleRate: number = 44100;
+    currentTime = 0;
+    sampleRate = 44100;
     state: AudioContextState = 'suspended';
 
     createGain = vi.fn(() => new GainNodeMock(this as any));

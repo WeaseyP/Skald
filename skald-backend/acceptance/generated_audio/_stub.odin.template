@@ -1,0 +1,52 @@
+package generated_audio
+
+// =====================================================================
+// STUB TEMPLATE. Copied to generated_audio.odin by run_acceptance.bat
+// before the FFT self-test, so a previous run's broken codegen output
+// can't permanently brick the harness.
+//
+// Exposes the public API surface for an asset named "Asset" as no-ops.
+// All seed fixtures must name their single instrument "Asset" so the
+// acceptance program's static `Asset_*` references resolve once the
+// codegen overwrites this file per fixture.
+// =====================================================================
+
+Skald_Param_Info :: struct {
+	name:    string,
+	min:     f32,
+	max:     f32,
+	default: f32,
+	unit:    string,
+}
+
+Asset_Processor :: struct {
+	sample_rate:  f32,
+	playing:      bool,
+	voice_active: bool,
+}
+
+Asset_PARAMS := []Skald_Param_Info{}
+
+Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
+	p.sample_rate = sr
+}
+
+Asset_trigger :: proc(p: ^Asset_Processor, note: u8 = 60, velocity: f32 = 1.0, duration: f32 = 0.0) {
+	p.voice_active = true
+}
+
+Asset_start :: proc(p: ^Asset_Processor) {
+	p.playing = true
+}
+
+Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
+	return 0, 0
+}
+
+Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
+	return false
+}
+
+Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
+	return 0.0, false
+}

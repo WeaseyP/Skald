@@ -43,11 +43,30 @@ Sequencer_Track :: struct {
 	num_steps:      int,
 }
 
+// Per-instrument exposed-parameter resolution computed at codegen time.
+// `field_name` is the resolved name on the processor struct (collision-free,
+// possibly node-label-prefixed). `param_name` is the original UI-side name.
+Exposed_Resolution :: struct {
+	field_name: string,
+	param_name: string,
+	node_id:    string,
+	default:    f32,
+	range_min:  f32,
+	range_max:  f32,
+	unit:       string,
+}
+
 Graph :: struct {
 	nodes:            map[string]Node,
 	connections:      []Connection,
 	events:           []Note_Event,
 	sequencer_tracks: []Sequencer_Track,
+	// In-memory only; populated by the codegen, not parsed from JSON.
+	// Flat lookup keyed by `<node_id>::<param_name>` -> resolution. Flat
+	// because Odin maps don't allow nested-map element assignment, and the
+	// codegen needs a fast lookup from (node_id, param_name) pairs. Build
+	// keys via `fmt.tprintf("%s::%s", node_id, param_name)` consistently.
+	exposed_resolutions: map[string]Exposed_Resolution,
 }
 
 Graph_Raw :: struct {
@@ -105,3 +124,12 @@ Project :: struct {
 	instruments:   []Project_Instrument,
 	sequencer_tracks: []Sequencer_Track,
 }
+
+// SFX = one-shot, fired explicitly via <Foo>_trigger.
+// Music_Layer = looping pattern, started via <Foo>_start, sequencer auto-fires notes.
+// Detection: an instrument with a sequencer track attached is a Music_Layer; without, SFX.
+Asset_Type :: enum {
+	SFX,
+	Music_Layer,
+}
+

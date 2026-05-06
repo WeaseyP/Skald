@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useCodeGeneration } from '../../hooks/useCodeGeneration';
 import { Node, Edge } from 'reactflow';
 import { SequencerTrack } from '../../definitions/types';
@@ -103,5 +103,52 @@ describe('useCodeGeneration', () => {
         const gainNode = inst.audio_graph.nodes.find((n: any) => n.type === 'Gain');
         expect(gainNode).toBeDefined();
         expect(gainNode.parameters.gain).toBe(0.8);
+    });
+
+    it('should store the resolved IPC value (real .odin code) in generatedCode state — BUG-CODE-PREVIEW-WRONG regression', async () => {
+        // The previous bug: main.ts resolved invokeCodegen with stdout, which
+        // is just "Package generated audio" — a status line, not the code.
+        // Phase 4 fix makes main.ts read the output file and resolve with its
+        // contents. This test pins the renderer side: whatever invokeCodegen
+        // resolves with (real .odin code now) must end up in generatedCode.
+        const realisticCode = [
+            'package generated_audio',
+            '',
+            'import "core:math"',
+            '',
+            'Asset_Processor :: struct {',
+            '\tsample_rate: f32,',
+            '}',
+            ''
+        ].join('\n');
+        invokeCodegenMock.mockResolvedValue(realisticCode);
+
+        const { result } = renderHook(() => useCodeGeneration());
+
+        const nodes: Node[] = [
+            {
+                id: 'inst-1',
+                type: 'instrument',
+                position: { x: 0, y: 0 },
+                data: {
+                    name: 'Asset',
+                    voiceCount: 1,
+                    subgraph: {
+                        nodes: [
+                            { id: 'out-1', type: 'InstrumentOutput', position: { x: 0, y: 0 }, data: {} }
+                        ],
+                        connections: []
+                    }
+                }
+            }
+        ];
+
+        await act(async () => {
+            await result.current.handleGenerate(nodes, [], [], 120, 1.0);
+        });
+
+        expect(result.current.generatedCode).toBe(realisticCode);
+        expect(result.current.generatedCode).not.toBe('Package generated audio');
+        expect(result.current.generatedCode).toContain('package generated_audio');
     });
 });

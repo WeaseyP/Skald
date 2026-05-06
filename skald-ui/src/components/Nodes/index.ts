@@ -11,7 +11,7 @@ export * from './DistortionNode';
 export * from './MixerNode';
 export * from './PannerNode';
 export * from './GroupNode';
-export * from './FmOperatorNode';
+export * from './FMOperatorNode';
 export * from './WavetableNode';
 export { default as MidiInputNode } from './MidiInputNode';
 export { VisualGainNode } from './GainNode';
