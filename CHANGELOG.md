@@ -1,5 +1,33 @@
 # Skald Changelog
 
+## Test harness generalization (2026-07-04)
+
+- ✅ **Acceptance: 8/8 fixtures green + FFT self-test** (honest baseline
+  re-run; the "2/2" claim below was from when only two fixtures existed).
+- ✅ **New reusable "sound changes" primitive** in `acceptance/soundchange.odin`:
+  `assert_sound_changes` renders two buffers from the same generated Asset
+  under different inputs (MIDI note / `Asset_set_param` / start-vs-trigger),
+  extracts `[RMS, peak_freq, spectral_centroid]`, and asserts the vectors
+  differ beyond a relative threshold plus optional per-feature direction.
+  Wired into `param_modulation` (cutoff 200→4000 must raise centroid) and
+  `kick_loop_120bpm` (trigger-vs-start must raise RMS).
+- ✅ **Cross-fixture pitch direction check**: fixtures dump feature vectors
+  (`-dump:<path>`), and the runner compares `sine_220` → `sine_440` with
+  `acceptance.exe __compare_features__ -expect-peak:raise`. Cross-fixture
+  because the seed fixtures bake oscillator pitch in as a constant —
+  trigger note cannot change their pitch in-process (see finding below).
+- ✅ **WAV export** (`-wav:<path>`): dependency-free 16-bit PCM stereo RIFF
+  writer in `acceptance/wav.odin`, for future model-based (CLAP) judging.
+- 🧹 Removed the dead `fm_bell` switch case (no `fm_bell.json` exists) and
+  its `assert_fm_has_sidebands` helper; recover from git if the fixture is
+  ever captured from the UI.
+- 🔎 **Finding (not fixed, codegen untouched by design)**: when an
+  Oscillator node has a `frequency` parameter (the UI always serializes
+  one), codegen inlines it as a constant, so `Asset_trigger`'s MIDI note
+  never affects pitch; `velocity` is likewise stored on the voice but
+  never read (ADSR `velocitySensitivity` is dropped). All current
+  fixtures therefore ignore note and velocity.
+
 ## Overnight progress (2026-05-02)
 
 **TL;DR for the morning**:

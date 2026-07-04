@@ -137,3 +137,4 @@ yarn-error.log*
 # electron
 .electron/
 *.env
+review-checkpoints/

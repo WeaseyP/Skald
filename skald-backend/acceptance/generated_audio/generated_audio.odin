@@ -60,11 +60,11 @@ Asset_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	osc_1_phase: [1]f32,
 	adsr_2_stage: ADSR_Stage,
 	adsr_2_time: f32,
 	adsr_2_value: f32,
 	adsr_2_release_level: f32,
+	osc_1_phase: [1]f32,
 }
 
 Asset_Processor :: struct {
@@ -78,15 +78,15 @@ Asset_Processor :: struct {
 	loop: bool,
 	current_step: u64,
 	samples_until_next_step: u64,
-	depth: f32,
-	amplitude: f32,
-	attack: f32,
-	pulseWidth: f32,
 	decay: f32,
+	amplitude: f32,
 	frequency: f32,
+	depth: f32,
+	pulseWidth: f32,
 	sustain: f32,
-	release: f32,
 	phase: f32,
+	release: f32,
+	attack: f32,
 }
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
@@ -94,15 +94,15 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.bpm = 120.000
 	p.prng.state = 12345
 	p.loop = true
-	p.depth = 1.000
-	p.amplitude = 0.500
-	p.attack = 0.050
-	p.pulseWidth = 0.500
 	p.decay = 0.050
+	p.amplitude = 0.500
 	p.frequency = 440.000
+	p.depth = 1.000
+	p.pulseWidth = 0.500
 	p.sustain = 0.900
-	p.release = 0.500
 	p.phase = 0.000
+	p.release = 0.500
+	p.attack = 0.050
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -173,11 +173,11 @@ Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	return false
 }
 
-Asset_set_depth :: proc(p: ^Asset_Processor, value: f32) {
+Asset_set_decay :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.000 do v = 0.000
-	if v > 1.000 do v = 1.000
-	p.depth = v
+	if v < 0.001 do v = 0.001
+	if v > 10.000 do v = 10.000
+	p.decay = v
 }
 
 Asset_set_amplitude :: proc(p: ^Asset_Processor, value: f32) {
@@ -187,11 +187,18 @@ Asset_set_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 	p.amplitude = v
 }
 
-Asset_set_attack :: proc(p: ^Asset_Processor, value: f32) {
+Asset_set_frequency :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001 do v = 0.001
-	if v > 10.000 do v = 10.000
-	p.attack = v
+	if v < 20.000 do v = 20.000
+	if v > 20000.000 do v = 20000.000
+	p.frequency = v
+}
+
+Asset_set_depth :: proc(p: ^Asset_Processor, value: f32) {
+	v := value
+	if v < 0.000 do v = 0.000
+	if v > 1.000 do v = 1.000
+	p.depth = v
 }
 
 Asset_set_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
@@ -201,32 +208,11 @@ Asset_set_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
 	p.pulseWidth = v
 }
 
-Asset_set_decay :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.001 do v = 0.001
-	if v > 10.000 do v = 10.000
-	p.decay = v
-}
-
-Asset_set_frequency :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 20.000 do v = 20.000
-	if v > 20000.000 do v = 20000.000
-	p.frequency = v
-}
-
 Asset_set_sustain :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
 	if v < 0.000 do v = 0.000
 	if v > 1.000 do v = 1.000
 	p.sustain = v
-}
-
-Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.001 do v = 0.001
-	if v > 10.000 do v = 10.000
-	p.release = v
 }
 
 Asset_set_phase :: proc(p: ^Asset_Processor, value: f32) {
@@ -236,46 +222,60 @@ Asset_set_phase :: proc(p: ^Asset_Processor, value: f32) {
 	p.phase = v
 }
 
+Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
+	v := value
+	if v < 0.001 do v = 0.001
+	if v > 10.000 do v = 10.000
+	p.release = v
+}
+
+Asset_set_attack :: proc(p: ^Asset_Processor, value: f32) {
+	v := value
+	if v < 0.001 do v = 0.001
+	if v > 10.000 do v = 10.000
+	p.attack = v
+}
+
 Asset_PARAMS := []Skald_Param_Info{
-	{"depth", 0.000, 1.000, 1.000, ""},
-	{"amplitude", 0.000, 1.000, 0.500, ""},
-	{"attack", 0.001, 10.000, 0.050, "s"},
-	{"pulseWidth", 0.000, 1.000, 0.500, ""},
 	{"decay", 0.001, 10.000, 0.050, "s"},
+	{"amplitude", 0.000, 1.000, 0.500, ""},
 	{"frequency", 20.000, 20000.000, 440.000, "Hz"},
+	{"depth", 0.000, 1.000, 1.000, ""},
+	{"pulseWidth", 0.000, 1.000, 0.500, ""},
 	{"sustain", 0.000, 1.000, 0.900, ""},
-	{"release", 0.001, 10.000, 0.500, "s"},
 	{"phase", 0.000, 360.000, 0.000, "deg"},
+	{"release", 0.001, 10.000, 0.500, "s"},
+	{"attack", 0.001, 10.000, 0.050, "s"},
 }
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	switch name {
-	case "depth":
-		Asset_set_depth(p, value)
+	case "decay":
+		Asset_set_decay(p, value)
 		return true
 	case "amplitude":
 		Asset_set_amplitude(p, value)
 		return true
-	case "attack":
-		Asset_set_attack(p, value)
+	case "frequency":
+		Asset_set_frequency(p, value)
+		return true
+	case "depth":
+		Asset_set_depth(p, value)
 		return true
 	case "pulseWidth":
 		Asset_set_pulseWidth(p, value)
 		return true
-	case "decay":
-		Asset_set_decay(p, value)
-		return true
-	case "frequency":
-		Asset_set_frequency(p, value)
-		return true
 	case "sustain":
 		Asset_set_sustain(p, value)
+		return true
+	case "phase":
+		Asset_set_phase(p, value)
 		return true
 	case "release":
 		Asset_set_release(p, value)
 		return true
-	case "phase":
-		Asset_set_phase(p, value)
+	case "attack":
+		Asset_set_attack(p, value)
 		return true
 	}
 	return false
@@ -283,24 +283,24 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 	switch name {
-	case "depth":
-		return p.depth, true
-	case "amplitude":
-		return p.amplitude, true
-	case "attack":
-		return p.attack, true
-	case "pulseWidth":
-		return p.pulseWidth, true
 	case "decay":
 		return p.decay, true
+	case "amplitude":
+		return p.amplitude, true
 	case "frequency":
 		return p.frequency, true
+	case "depth":
+		return p.depth, true
+	case "pulseWidth":
+		return p.pulseWidth, true
 	case "sustain":
 		return p.sustain, true
-	case "release":
-		return p.release, true
 	case "phase":
 		return p.phase, true
+	case "release":
+		return p.release, true
+	case "attack":
+		return p.attack, true
 	}
 	return 0.0, false
 }
@@ -324,9 +324,9 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			}
 		}
 		voice_busy := false
-		node_1_out: f32 = 0.0
 		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
+		node_1_out: f32 = 0.0
 
 		// --- Oscillator Node 1 (Unison/Detune) ---
 		{
