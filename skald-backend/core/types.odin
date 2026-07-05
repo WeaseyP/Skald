@@ -11,6 +11,12 @@ Note_Event :: struct {
 	start_time: f32, // Kept for compatibility, might be unused if step is used
     step:       int,
 	duration:   f32,
+	// 0..1 chance the step fires each loop; <=0 (absent in old fixtures)
+	// means "always" — the UI serializes explicit values from 0.001 up.
+	probability: f32,
+	// Per-step parameter changes (P-locks): exposed-param name -> value,
+	// applied via set_param just before the step's note_on.
+	patch_overrides: map[string]f32,
 }
 
 Node :: struct {
@@ -98,6 +104,9 @@ Project_Instrument_Raw :: struct {
 Project_Data_Raw :: struct {
 	bpm:           f32,
 	master_volume: f32,
+	// Global loop length in steps (the UI's Pattern Steps control). Tracks
+	// shorter than this wrap polyrhythmically. 0 = fall back to track length.
+	pattern_steps: int,
 	instruments:   []Project_Instrument_Raw,
 }
 
@@ -121,6 +130,7 @@ Project_Instrument :: struct {
 Project :: struct {
 	bpm:           f32,
 	master_volume: f32,
+	pattern_steps: int,
 	instruments:   []Project_Instrument,
 	sequencer_tracks: []Sequencer_Track,
 }

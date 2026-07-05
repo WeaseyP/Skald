@@ -99,6 +99,7 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 	project: Project
 	project.bpm = project_raw.project.bpm
 	project.master_volume = project_raw.project.master_volume
+	project.pattern_steps = project_raw.project.pattern_steps
 	project.instruments = make([]Project_Instrument, len(project_raw.project.instruments))
 
 	for raw_inst, i in project_raw.project.instruments {

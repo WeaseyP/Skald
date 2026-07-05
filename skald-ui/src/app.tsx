@@ -329,7 +329,7 @@ const EditorLayout = () => {
                 <div style={workspaceContainerStyles}>
                     <div style={sidebarPanelStyles}>
                         <Sidebar
-                            onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks, bpm, masterGainNode?.current?.gain.value || 0.8, packageName, outputPath)}
+                            onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks, bpm, masterGainNode?.current?.gain.value || 0.8, packageName, outputPath, patternSteps, nearestInScale)}
                             onPlay={handlePlay}
                             onStop={handleStop}
                             isPlaying={isPlaying}

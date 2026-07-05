@@ -3,9 +3,42 @@ package skald_core
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:strconv"
 import "core:math"
 import rand "core:math/rand"
 import json "core:encoding/json"
+
+// BPM-sync resolution: when a node has bpmSync=true, its time base comes
+// from the musical division in syncRate ("1/8", "1/4t", ... "1/1"; trailing
+// 't' = triplet) instead of its free-run frequency/time param. Returns an
+// Odin expression for SECONDS per cycle using the runtime p.bpm, so tempo
+// changes keep synced nodes locked. These params serialized fine but were
+// ignored by both preview and codegen — a synced LFO exported at whatever
+// stale frequency the knob last held.
+bpm_sync_seconds_expr :: proc(node: Node) -> (string, bool) {
+	synced := false
+	if v, ok := node.parameters["bpmSync"]; ok {
+		if b, is_b := v.(json.Boolean); is_b do synced = bool(b)
+	}
+	if !synced do return "", false
+
+	rate := get_string_param(node, "syncRate", "1/4")
+	triplet := strings.has_suffix(rate, "t")
+	core_str := rate
+	if triplet do core_str = rate[:len(rate)-1]
+
+	denom := 4
+	if strings.has_prefix(core_str, "1/") {
+		if n, ok := strconv.parse_int(core_str[2:]); ok && n > 0 {
+			denom = n
+		}
+	} else if core_str == "1" {
+		denom = 1
+	}
+	beats := 4.0 / f64(denom) // whole note = 4 beats
+	if triplet do beats *= 2.0 / 3.0
+	return fmt.tprintf("((60.0 / p.bpm) * %f)", beats), true
+}
 
 // Node types whose generated code reads per-voice context (pitch, envelope
 // stage, note velocity). They can never run in the bus domain (after the
@@ -284,6 +317,9 @@ generate_filter_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp
 
 generate_lfo_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp: string) {
 	freq_str := get_f32_param(graph, node, "frequency", "", 5.0)
+	if sec_expr, synced := bpm_sync_seconds_expr(node); synced {
+		freq_str = fmt.tprintf("(1.0 / %s)", sec_expr)
+	}
 	amp_str  := get_f32_param(graph, node, "amplitude", "", 1.0)
 	waveform := get_string_param(node, "waveform", "Sine")
 
@@ -307,6 +343,9 @@ generate_lfo_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp: s
 
 generate_sample_hold_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp: string) {
 	rate_str := get_f32_param(graph, node, "rate", "", 10.0)
+	if sec_expr, synced := bpm_sync_seconds_expr(node); synced {
+		rate_str = fmt.tprintf("(1.0 / %s)", sec_expr)
+	}
 	amp_str  := get_f32_param(graph, node, "amplitude", "", 1.0)
 	fmt.sbprintf(sb, "\t\t// --- Sample & Hold Node %s ---\n", node.id)
 	fmt.sbprintf(sb, "\t\t%ssh_%s_counter += 1;\n", sp, node.id)
@@ -394,6 +433,9 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph)
 generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	input_str := sum_port_inputs(graph, node.id, "input", "0.0")
 	time_str    := get_f32_param(graph, node, "delayTime", "", 0.5)
+	if sec_expr, synced := bpm_sync_seconds_expr(node); synced {
+		time_str = sec_expr
+	}
 	fdbk_str    := get_f32_param(graph, node, "feedback", "", 0.5)
 	// The UI serializes this as `mix`; `wetDryMix` is the legacy key. Read
 	// both (mix wins) — the UI's wet/dry slider was silently ignored and
@@ -614,7 +656,9 @@ generate_midi_input_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 // an SFX into a Music Layer.
 detect_asset_type :: proc(instrument: ^Project_Instrument, project: ^Project) -> Asset_Type {
 	track := find_sequencer_track(instrument, project)
-	if track != nil && len(track.events) > 0 {
+	// A muted track exports as SFX: no auto-start, no sequence. It used to
+	// export as an audible auto-starting Music Layer despite the mute flag.
+	if track != nil && len(track.events) > 0 && !track.mute {
 		return .Music_Layer
 	}
 	return .SFX
@@ -1515,9 +1559,17 @@ generate_sequencer_logic :: proc(
 		return
 	}
 
-	steps := track.num_steps
-	if steps <= 0 {
-		steps = 16
+	// Track length drives WHICH step's notes fire; the global pattern
+	// length drives the loop boundary (shorter tracks wrap polyrhythmically
+	// inside it — same semantics as the UI engine). pattern_steps was never
+	// serialized before, so every loop silently reverted to 16.
+	track_steps := track.num_steps
+	if track_steps <= 0 {
+		track_steps = 16
+	}
+	global_steps := project.pattern_steps
+	if global_steps <= 0 {
+		global_steps = track_steps
 	}
 
 	fmt.sbprint(sb, "\tif !p.playing do return\n")
@@ -1537,7 +1589,7 @@ generate_sequencer_logic :: proc(
 	// _start sets samples_until_next_step=0 so step 0 fires on the first
 	// process call after start.
 	fmt.sbprint(sb, "\tif p.samples_until_next_step == 0 {\n")
-	fmt.sbprintf(sb, "\t\tswitch p.current_step %% %d {{\n", steps)
+	fmt.sbprintf(sb, "\t\tswitch p.current_step %% %d {{\n", track_steps)
 
 	// Group events by step before emitting: two notes on the same step (a
 	// chord) must share ONE `case` — duplicate switch cases don't compile.
@@ -1557,26 +1609,51 @@ generate_sequencer_logic :: proc(
 			if duration_val <= 0.0 {
 				duration_val = 1.0 // Default to 1 step
 			}
+			// Probability: <=0 means the field was absent (old fixtures) —
+			// play always. Values in (0,1) gate the step on the processor
+			// PRNG each loop.
+			indent := "\t\t\t"
+			has_prob := event.probability > 0.0 && event.probability < 1.0
+			if has_prob {
+				fmt.sbprintf(sb, "\t\t\tif next_float32(&p.prng) <= %f {{\n", event.probability)
+				indent = "\t\t\t\t"
+			}
+			// P-locks: apply this step's parameter overrides through the
+			// string-keyed setter before firing the note. (Divergence note:
+			// the preview scopes overrides to the triggered voice; here they
+			// persist until the next override — Elektron-style.)
+			for key, val in event.patch_overrides {
+				fmt.sbprintf(
+					sb,
+					"%s%s_set_param(p, \"%s\", %f)\n",
+					indent,
+					namespace_prefix,
+					key,
+					val,
+				)
+			}
 			// duration is in steps; convert to seconds at runtime using p.bpm.
-			// The generated code computes this from the runtime BPM/sample-rate
-			// rather than baking it in. duration_seconds = duration_steps * seconds_per_step.
 			fmt.sbprintf(
 				sb,
-				"\t\t\t%s_note_on(p, %d, %f, f32(%f) * (60.0 / p.bpm / 4.0))\n",
+				"%s%s_note_on(p, %d, %f, f32(%f) * (60.0 / p.bpm / 4.0))\n",
+				indent,
 				namespace_prefix,
 				event.note,
 				event.velocity,
 				duration_val,
 			)
+			if has_prob {
+				fmt.sbprint(sb, "\t\t\t}\n")
+			}
 		}
 	}
 
 	fmt.sbprint(sb, "\t\t}\n")
 
-	// Advance step. Honor `loop`: if loop is false and we just finished the
-	// last step, halt the layer.
+	// Advance step. The loop boundary is the GLOBAL pattern length; honor
+	// `loop`: if false and we just finished the last step, halt the layer.
 	fmt.sbprint(sb, "\t\tp.current_step += 1\n")
-	fmt.sbprintf(sb, "\t\tif p.current_step >= %d {{\n", steps)
+	fmt.sbprintf(sb, "\t\tif p.current_step >= %d {{\n", global_steps)
 	fmt.sbprint(sb, "\t\t\tif p.loop {\n")
 	fmt.sbprint(sb, "\t\t\t\tp.current_step = 0\n")
 	fmt.sbprint(sb, "\t\t\t} else {\n")

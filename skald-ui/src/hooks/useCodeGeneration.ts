@@ -18,6 +18,7 @@ interface ProjectStructure {
     project: {
         bpm: number;
         master_volume: number;
+        pattern_steps: number;
         instruments: any[];
     }
 }
@@ -86,7 +87,14 @@ export const useCodeGeneration = () => {
         bpm: number,
         masterVolume: number,
         packageName: string,
-        outputPath: string
+        outputPath: string,
+        // Global pattern length: the loop boundary the preview engine uses.
+        // Without it the generated loop silently reverted to 16 steps.
+        patternSteps: number = 16,
+        // Scale quantizer from ScaleContext: the preview quantizes at
+        // schedule time, so exported notes must be quantized too or the
+        // generated code plays the raw (out-of-key) pitches.
+        nearestInScale?: (note: number) => number
     ) => {
         if (nodes.length === 0) {
             console.warn("Graph is empty.");
@@ -98,6 +106,7 @@ export const useCodeGeneration = () => {
             project: {
                 bpm: bpm,
                 master_volume: masterVolume,
+                pattern_steps: patternSteps,
                 instruments: []
             }
         };
@@ -135,24 +144,24 @@ export const useCodeGeneration = () => {
                     solo: track.isSolo,
                     num_steps: track.steps,
                     events: track.notes.map(n => ({
-                        note: n.note,
+                        // Quantize at export with the same function the
+                        // preview uses at schedule time — what you hear in
+                        // the browser is what ships.
+                        note: nearestInScale ? nearestInScale(n.note) : n.note,
                         velocity: n.velocity,
                         step: n.step,
-                        start_time: (n.step * 0.25), // Step 0 = 0.0, Step 1 = 0.25 (16th notes?) 
-                        // TODO: Verify timing. Skald sequencer steps are likely 16th notes.
-                        // Backend expects seconds? Or beats?
-                        // `codegen.odin`: `event_start_sample := u64(event.start_time * sample_rate)`
-                        // So `start_time` is in SECONDS.
-                        // We need to convert Steps -> Seconds based on BPM.
-                        // `event.start_time = (step / 4.0) * (60.0 / bpm)` ??? 
-                        // New `codegen.odin` loops events.
-                        // Actually, let's keep it simple.
-                        // If `Project` receives `bpm`, maybe backend handles conversion?
-                        // `codegen.odin`: `event_start_sample := u64(event.start_time * sample_rate)` implies RAW TIME.
-                        // So we MUST calculate seconds here.
-
-                        // duration: n.duration...?
-                        duration: n.duration || 0.1
+                        // Seconds, BPM-derived (16th-note steps). The old
+                        // value hardcoded 0.25s/step regardless of tempo.
+                        start_time: n.step * (60.0 / bpm / 4.0),
+                        // Duration is in STEPS; the preview defaults a
+                        // missing/zero duration to 1 step, not 0.1.
+                        duration: n.duration || 1,
+                        // Chance the step fires each loop. Clamped away
+                        // from 0 because the backend treats <=0 as
+                        // "field absent — play always".
+                        probability: Math.max(n.probability ?? 1, 0.001),
+                        // P-locks: per-step parameter overrides.
+                        patch_overrides: n.patchOverrides ?? {}
                     }))
                 }];
             } else if (subgraph) {
