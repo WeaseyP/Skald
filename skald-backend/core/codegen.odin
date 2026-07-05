@@ -42,8 +42,10 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
     }
     
     if input_sum_str != "0.0" {
-		// Base * 2^(SumInput)
-		freq_str = fmt.tprintf("(%s) * math.pow(2.0, %s)", base_freq_str, input_sum_str)
+		// Base * 2^(SumInput), exponent clamped to ±10 octaves: an over-hot
+		// modulation sum used to overflow f32 in pow(), latch the phase
+		// state to NaN, and permanently silence the voice.
+		freq_str = fmt.tprintf("(%s) * math.pow(2.0, math.clamp(f32(%s), -10.0, 10.0))", base_freq_str, input_sum_str)
 	} else {
 		freq_str = base_freq_str
 	}
@@ -182,16 +184,18 @@ generate_filter_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\t// --- Filter Node %s (SVF) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
 	// Algorithm: Chamberlin SVF
-	// f = 2 * sin(pi * cutoff / fs)
-	// q = 1.0 / res
-	// low = low + f * band
-	// high = input - low - q*band
-	// band = band + f * high
-	fmt.sbprintf(sb, "\t\t\tf_%s := f32(2.0 * math.sin(f32(math.PI) * (%s) / sample_rate));\n", node.id, cutoff_str)
-	// max() at runtime: a literal resonance of 0 would otherwise emit
-	// `1.0 / (0.000000)` — a constant division by zero, which Odin
-	// rejects at compile time. 0.1 matches the param-range table minimum.
-	fmt.sbprintf(sb, "\t\t\tq_%s := f32(1.0 / math.max(f32(%s), 0.1));\n", node.id, res_str)
+	//   f = 2 * sin(pi * cutoff / fs), damping q = 1/res
+	//   low += f*band; high = input - low - q*band; band += f*high
+	// Stability requires BOTH clamps, at point of use (cutoff and resonance
+	// can be driven by graph modulation to any value):
+	//   - cutoff <= ~fs/6: beyond it the integrator diverges to ±Inf
+	//     (reproduced at cutoff=20000 @ 44.1k/48k).
+	//   - damping q <= ~(1.9 - f): res < 1 (fully legal in the UI) blows up
+	//     at cutoffs as low as 1.5 kHz otherwise. Low floor 0.05 keeps high
+	//     resonance ringing but bounded.
+	fmt.sbprintf(sb, "\t\t\tcutoff_c_%s := math.clamp(f32(%s), 10.0, sample_rate * 0.16);\n", node.id, cutoff_str)
+	fmt.sbprintf(sb, "\t\t\tf_%s := f32(2.0 * math.sin(f32(math.PI) * cutoff_c_%s / sample_rate));\n", node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\tq_%s := math.clamp(1.0 / math.max(f32(%s), 0.1), 0.05, 1.9 - f_%s);\n", node.id, res_str, node.id)
 	
 	fmt.sbprintf(sb, "\t\t\tvoice.filter_%s_low += f_%s * voice.filter_%s_band;\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\thigh_%s := f32((%s) - voice.filter_%s_low - q_%s * voice.filter_%s_band);\n", node.id, input_str, node.id, node.id, node.id)
@@ -299,7 +303,7 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph)
 				if i == 0 do fmt.sbprint(&sb_sum, v)
 				else do fmt.sbprintf(&sb_sum, " + %s", v)
 			}
-			freq_str = fmt.tprintf("voice.current_freq * math.pow(2.0, %s)", strings.to_string(sb_sum))
+			freq_str = fmt.tprintf("voice.current_freq * math.pow(2.0, math.clamp(f32(%s), -10.0, 10.0))", strings.to_string(sb_sum))
 		}
 	}
 	fmt.sbprintf(sb, "\t\t// --- Wavetable Node %s (Placeholder waveform; pitch is real) ---\n", node.id)
@@ -316,10 +320,15 @@ generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 
 	fmt.sbprintf(sb, "\t\t// --- Delay Node %s ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%s) * sample_rate, 0, %d-1));\n", node.id, time_str, 96000)
+	// Min 1 sample: delayTime=0 made read_index == write_index, which reads
+	// the slot from one full buffer wrap ago — a 2-second delay, not 0ms.
+	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%s) * sample_rate, 1, %d-1));\n", node.id, time_str, 96000)
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = (%s) + delayed_sample_%s * (%s);\n", node.id, node.id, input_str, node.id, fdbk_str)
+	// Feedback clamped below 1 at point of use — literal or modulated
+	// feedback >= 1 diverges geometrically (and the buffer NaN-latches the
+	// whole processor, not just one voice).
+	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = (%s) + delayed_sample_%s * math.clamp(f32(%s), 0.0, 0.95);\n", node.id, node.id, input_str, node.id, fdbk_str)
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_write_index = (p.delay_%s_write_index + 1) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * (1.0 - (%s)) + delayed_sample_%s * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)
 	fmt.sbprint(sb, "\t\t}\n\n")
@@ -342,7 +351,11 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%f) * sample_rate, 0, %d-1));\n", node.id, delay_time, 96000)
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = (%s) + delayed_sample_%s * (%s);\n", node.id, node.id, input_str, node.id, decay_str)
+	// decay is a TIME in the UI (seconds) but a feedback GAIN here; the UI
+	// default of 3.0 diverged exponentially. Map RT60-style: gain such that
+	// the 75ms tap decays 60dB over `decay` seconds, hard-capped below 1.
+	fmt.sbprintf(sb, "\t\t\tdecay_gain_%s := math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(%s), 0.01)), 0.0, 0.95);\n", node.id, decay_str)
+	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = (%s) + delayed_sample_%s * decay_gain_%s;\n", node.id, node.id, input_str, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_write_index = (p.delay_%s_write_index + 1) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * (1.0 - (%s)) + delayed_sample_%s * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)
 	fmt.sbprint(sb, "\t\t}\n\n")
@@ -404,7 +417,9 @@ generate_panner_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	pan_str := get_f32_param(graph, node, "pan", "input_pan", 0.0)
 	fmt.sbprintf(sb, "\t\t// --- Panner Node %s ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tpan_angle_%s := ((%s) * 0.5 + 0.5) * f32(math.PI) / 2.0;\n", node.id, pan_str)
+	// Pan clamped: modulation past ±1 rotates the angle out of [0, π/2] and
+	// leaks a polarity-inverted copy into the opposite channel.
+	fmt.sbprintf(sb, "\t\t\tpan_angle_%s := (math.clamp(f32(%s), -1.0, 1.0) * 0.5 + 0.5) * f32(math.PI) / 2.0;\n", node.id, pan_str)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out_left = (%s) * math.cos(pan_angle_%s);\n", node.id, input_str, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out_right = (%s) * math.sin(pan_angle_%s);\n", node.id, input_str, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
@@ -794,11 +809,23 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\t}\n")
     fmt.sbprint(&sb, "\tv.duration = duration\n")
 
-    // Reset Envelopes
+    // Reset per-voice DSP state. Filter state carried over between notes on
+    // voice reuse — worse, a single NaN blowup latched the voice silent
+    // forever. Phases reset too so retriggers are deterministic.
 	for _, node in graph.nodes {
-		if node.type == "ADSR" {
+		switch node.type {
+		case "ADSR":
 			fmt.sbprintf(&sb, "\tv.adsr_%s_stage = .Attack\n", node.id)
 			fmt.sbprintf(&sb, "\tv.adsr_%s_release_level = 0.0\n", node.id)
+		case "Filter":
+			fmt.sbprintf(&sb, "\tv.filter_%s_low = 0.0\n", node.id)
+			fmt.sbprintf(&sb, "\tv.filter_%s_band = 0.0\n", node.id)
+		case "Oscillator":
+			fmt.sbprintf(&sb, "\tv.osc_%s_phase = {{}}\n", node.id)
+		case "FmOperator":
+			fmt.sbprintf(&sb, "\tv.fm_%s_phase = 0.0\n", node.id)
+		case "Wavetable":
+			fmt.sbprintf(&sb, "\tv.wavetable_%s_phase = 0.0\n", node.id)
 		}
 	}
 	fmt.sbprint(&sb, "}\n\n")

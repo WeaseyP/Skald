@@ -372,6 +372,41 @@ main :: proc() {
 			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.760, 0.870, 523.25, 15.0)
 		}
 
+	case "hostile_modulation":
+		// Stability gate: ±8 octave LFO into the oscillator's exponential
+		// FM input, ±30kHz into cutoff, ±40 into resonance, reverb at the
+		// UI-default decay=3.0, unison 3 — every historical NaN/blowup
+		// trigger at once. The bar: every sample finite, and it's audible
+		// (NaN latching silences the whole asset — silence here IS failure).
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		{
+			finite := true
+			for s, i in buf {
+				if !is_finite(s.l) || !is_finite(s.r) {
+					fmt.eprintfln(
+						"FAIL hostile_modulation: non-finite sample at %d (l=%v r=%v)",
+						i, s.l, s.r,
+					)
+					finite = false
+					break
+				}
+			}
+			all_pass &= finite
+		}
+		all_pass &= assert_audible(buf, .Left)
+		// Second half must still be audible: a mid-render NaN latch leaves
+		// permanent silence even if early samples were fine.
+		{
+			tail_rms := compute_rms(buf[len(buf)/2:], .Both)
+			if tail_rms < 0.005 {
+				fmt.eprintfln(
+					"FAIL hostile_modulation: second-half RMS %.6f — voice latched silent mid-render",
+					tail_rms,
+				)
+				all_pass = false
+			}
+		}
+
 	case "sfx_oneshot":
 		// SFX with ADSR but no sequencer track. Trigger once with finite
 		// duration, then assert silence after release ends.
