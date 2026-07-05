@@ -20,7 +20,7 @@ const gridContainerStyles: React.CSSProperties = {
 };
 
 const rowStyles: React.CSSProperties = {
-    height: '30px', // Matches TrackList header height
+    height: '34px', // Matches TrackList header height
     display: 'flex',
     borderBottom: '1px solid #2A2A2A',
     boxSizing: 'border-box'
@@ -29,7 +29,7 @@ const rowStyles: React.CSSProperties = {
 const cellStyles: React.CSSProperties = {
     flex: '0 0 40px', // Fixed width per step
     width: '40px',
-    height: '30px',
+    height: '34px',
     borderRight: '1px solid #2A2A2A',
     cursor: 'pointer',
     position: 'relative',

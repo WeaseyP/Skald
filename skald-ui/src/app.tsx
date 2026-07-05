@@ -13,6 +13,7 @@ import 'reactflow/dist/style.css';
 
 // Import your components
 import Sidebar from './components/Sidebar';
+import { ShortcutLegend } from './components/ShortcutLegend';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
 import NamePromptModal from './components/NamePromptModal';
@@ -367,12 +368,14 @@ const EditorLayout = () => {
                             onSelectionChange={onSelectionChange}
                             onInit={setReactFlowInstance}
                             multiSelectionKeyCode={['Shift', 'Control']}
+                            deleteKeyCode={['Backspace', 'Delete']}
                             fitView
                             style={{ width: '100%', height: '100%' }}
                         >
                             <Background />
                             <Controls />
                         </ReactFlow>
+                        <ShortcutLegend />
                     </div>
 
 

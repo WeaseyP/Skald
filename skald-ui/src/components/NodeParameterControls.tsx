@@ -48,6 +48,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             onChange={val => onChange(param, val)}
             scale={scale}
             step={step}
+            defaultValue={def}
         />
     );
 

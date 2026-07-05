@@ -143,22 +143,25 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         }
     };
 
-    const handleDoubleClick = (e: React.MouseEvent) => {
-        if (e.ctrlKey || e.metaKey) {
-            setLocalValue(defaultValue);
-            setTextValue(defaultValue.toString());
-            onReset();
-        }
+    // Plain double-click resets — the DAW convention. (The old version
+    // demanded Ctrl/Cmd AND never propagated the reset value through
+    // onChange, so even when triggered it didn't actually reset the param.)
+    const handleDoubleClick = () => {
+        setLocalValue(defaultValue);
+        setTextValue(defaultValue.toString());
+        onChange(defaultValue);
+        onReset();
     };
 
     return (
-        <div style={containerStyles} onDoubleClick={handleDoubleClick} title="Ctrl/Cmd + Double Click to Reset">
+        <div style={containerStyles} title="Double-click to reset">
             <input
                 type="range"
                 min="0"
                 max="100"
                 value={getSliderPosition()}
                 onChange={handleSliderChange}
+                onDoubleClick={handleDoubleClick}
                 style={sliderStyles}
                 step="0.1" // Finer control on the range input itself
             />
