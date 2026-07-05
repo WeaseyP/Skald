@@ -232,6 +232,58 @@ export const useAudioEngine = (
         });
 
         // ... (Edge handling) ...
+        // Resolve where an edge's signal should land on the target node.
+        // Dispatch is on `_skaldNode.skaldType` (a stable literal) — the old
+        // `constructor.name` checks broke under minified production builds,
+        // which silently killed every modulation wire in the packaged app.
+        // Returns the AudioNode/AudioParam destination, or null for "use the
+        // default input".
+        const resolveEdgeTarget = (target: any, edge: any, create: boolean): any => {
+            const targetSkaldNode = (target as any)._skaldNode;
+            const handle = edge.targetHandle;
+            const t = targetSkaldNode?.skaldType;
+
+            if (t === 'MixerNode' && handle) {
+                return create
+                    ? (targetSkaldNode as any).getOrCreateInputGain(handle)
+                    : (targetSkaldNode as any).getInputGain(handle);
+            }
+            if (t === 'SkaldOscillatorNode' && handle === 'input_freq') {
+                return (targetSkaldNode as any).input_freq ?? null;
+            }
+            if (t === 'FmOperatorNode' && handle === 'input_mod') {
+                return (target as any).modulatorInput ?? null;
+            }
+            if (t === 'ADSRNode' && handle === 'input_gate') {
+                return (target as any).gate ?? null;
+            }
+            if (t === 'GainNodeWrapper' && (handle === 'input_gain' || handle === 'gain')) {
+                return (target as GainNode).gain;
+            }
+            // Filter modulation: these handles existed in the editor but the
+            // engine silently dropped the wires (codegen honors them).
+            if (t === 'FilterNode' && handle === 'input_cutoff') {
+                return (target as BiquadFilterNode).frequency;
+            }
+            if (t === 'FilterNode' && handle === 'input_res') {
+                return (target as BiquadFilterNode).Q;
+            }
+            if (t === 'PannerNode' && handle === 'input_pan') {
+                return (target as StereoPannerNode).pan;
+            }
+            // Wavetable worklet params exposed by its factory.
+            if (handle === 'input_pos' && (target as any).position) {
+                return (target as any).position;
+            }
+            if ((handle === 'input_amplitude' || handle === 'input_amp' || handle === 'input_gain') && target instanceof GainNode) {
+                // Driving the gain AudioParam makes amplitude modulation
+                // multiplicative (base + mod scales the signal), matching
+                // codegen — instead of summing the modulator into the audio.
+                return target.gain;
+            }
+            return null;
+        };
+
         // Handle edge deletions
         prevEdges.forEach(edge => {
             if (!edges.find(e => e.id === edge.id)) {
@@ -252,33 +304,9 @@ export const useAudioEngine = (
                     }
 
 
-                    const targetSkaldNode = (target as any)._skaldNode;
-                    if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
-                        const mixerInstance = targetSkaldNode as any;
-                        const inputGain = mixerInstance.getInputGain(edge.targetHandle);
-                        if (inputGain) {
-                            disconnectNodes(sourceNode, inputGain, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SkaldOscillatorNode' && edge.targetHandle === 'input_freq') {
-                        const oscNode = targetSkaldNode as any;
-                        if (oscNode.input_freq) {
-                            disconnectNodes(sourceNode, oscNode.input_freq, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
-                        const fmInput = (target as any).modulatorInput;
-                        if (fmInput) {
-                            disconnectNodes(sourceNode, fmInput, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'ADSRNode' && edge.targetHandle === 'input_gate') {
-                        const adsrGate = (target as any).gate;
-                        if (adsrGate) {
-                            disconnectNodes(sourceNode, adsrGate, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'GainNodeWrapper' && (edge.targetHandle === 'input_gain' || edge.targetHandle === 'gain')) {
-                        const gainNode = target as GainNode;
-                        disconnectNodes(sourceNode, gainNode.gain, edge);
-                    } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
-                        disconnectNodes(sourceNode, target.gain, edge);
+                    const resolved = resolveEdgeTarget(target, edge, false);
+                    if (resolved) {
+                        disconnectNodes(sourceNode, resolved, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         disconnectNodes(sourceNode, targetNode, edge);
@@ -307,32 +335,9 @@ export const useAudioEngine = (
                     }
 
 
-                    const targetSkaldNode = (target as any)._skaldNode;
-                    if (targetSkaldNode && targetSkaldNode.constructor.name === 'MixerNode' && edge.targetHandle) {
-                        const mixerInstance = targetSkaldNode as any;
-                        const inputGain = mixerInstance.getOrCreateInputGain(edge.targetHandle);
-                        connectNodes(sourceNode, inputGain, edge);
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'SkaldOscillatorNode' && edge.targetHandle === 'input_freq') {
-                        const oscNode = targetSkaldNode as any;
-                        if (oscNode.input_freq) {
-                            connectNodes(sourceNode, oscNode.input_freq, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'FmOperatorNode' && edge.targetHandle === 'input_mod') {
-                        const fmInput = (target as any).modulatorInput;
-                        if (fmInput) {
-                            connectNodes(sourceNode, fmInput, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'ADSRNode' && edge.targetHandle === 'input_gate') {
-                        const adsrGate = (target as any).gate;
-                        if (adsrGate) {
-                            connectNodes(sourceNode, adsrGate, edge);
-                        }
-                    } else if (targetSkaldNode && targetSkaldNode.constructor.name === 'GainNodeWrapper' && (edge.targetHandle === 'input_gain' || edge.targetHandle === 'gain')) {
-                        const gainNode = target as GainNode;
-                        connectNodes(sourceNode, gainNode.gain, edge);
-                    } else if ((edge.targetHandle === 'input_amplitude' || edge.targetHandle === 'input_gain') && target instanceof GainNode) {
-                        // Fallback or other nodes
-                        connectNodes(sourceNode, target.gain, edge);
+                    const resolved = resolveEdgeTarget(target, edge, true);
+                    if (resolved) {
+                        connectNodes(sourceNode, resolved, edge);
                     } else {
                         const targetNode = target instanceof Instrument ? target.input : target;
                         connectNodes(sourceNode, targetNode, edge);
@@ -371,18 +376,18 @@ export const useAudioEngine = (
 
                 logger.debug('AudioEngine', `[MIDI In] Raw: ${rawNote} -> Quantized: ${note}`);
 
-                const freq = 440 * Math.pow(2, (note - 69) / 12);
-
                 audioNodes.current.forEach((node, id) => {
                     // Check if it's a MidiInput (has pitch, gate, velocity props)
-                    if (node.constructor.name === 'ConstantSourceNode' && (node as any).gate && (node as any).velocity) {
+                    if (node instanceof ConstantSourceNode && (node as any).gate && (node as any).velocity) {
                         const pitchNode = node as ConstantSourceNode;
                         const gateNode = (node as any).gate as ConstantSourceNode;
                         const velNode = (node as any).velocity as ConstantSourceNode;
 
                         // TODO: Check node.data.device to filter by device
 
-                        pitchNode.offset.setValueAtTime(freq, now);
+                        // V/Oct relative to A4 — same unit the generated code
+                        // emits for the pitch output (was raw Hz).
+                        pitchNode.offset.setValueAtTime((note - 69) / 12, now);
                         velNode.offset.setValueAtTime(velocity, now);
 
                         gateNode.offset.cancelScheduledValues(now);
@@ -393,7 +398,7 @@ export const useAudioEngine = (
             } else if (command === 0x80 || (command === 0x90 && data2 === 0)) { // Note Off
                 // Note Off doesn't need quantization as it just closes the gate
                 audioNodes.current.forEach((node, id) => {
-                    if (node.constructor.name === 'ConstantSourceNode' && (node as any).gate && (node as any).velocity) {
+                    if (node instanceof ConstantSourceNode && (node as any).gate && (node as any).velocity) {
                         const gateNode = (node as any).gate as ConstantSourceNode;
                         gateNode.offset.cancelScheduledValues(now);
                         gateNode.offset.setValueAtTime(0, now);

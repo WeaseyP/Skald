@@ -4,6 +4,7 @@ import { AdsrParams } from '../../../definitions/types';
 import { AdsrDataMap } from '../types';
 
 class ADSRNode extends BaseSkaldNode {
+    public readonly skaldType = 'ADSRNode';
     public output: AudioWorkletNode;
     private context: AudioContext;
 

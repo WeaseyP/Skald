@@ -2,6 +2,7 @@ import { Node } from 'reactflow';
 import { BaseSkaldNode } from './BaseSkaldNode';
 
 class ReverbNode extends BaseSkaldNode {
+    public readonly skaldType = 'ReverbNode';
     public input: GainNode;
     public output: GainNode;
     private convolver: ConvolverNode;
@@ -21,7 +22,9 @@ class ReverbNode extends BaseSkaldNode {
         this.dry = context.createGain();
         this.preDelay = context.createDelay(1.0); // Max pre-delay of 1s
 
-        const { mix = 0.5, preDelay = 0.0, decay = 2.0 } = data;
+        // decay default matches the node-definitions schema (3.0) — the old
+        // 2.0 fallback diverged from what the sidebar showed.
+        const { mix = 0.5, preDelay = 0.0, decay = 3.0 } = data;
 
         this.wet.gain.setValueAtTime(mix, context.currentTime);
         this.dry.gain.setValueAtTime(1.0 - mix, context.currentTime);

@@ -3,6 +3,7 @@ import { BaseSkaldNode } from './BaseSkaldNode';
 import { OscillatorParams } from '../../../definitions/types';
 
 class SkaldOscillatorNode extends BaseSkaldNode {
+    public readonly skaldType = 'SkaldOscillatorNode';
     public output: GainNode;
     private context: AudioContext;
 
@@ -25,8 +26,13 @@ class SkaldOscillatorNode extends BaseSkaldNode {
         this.output = context.createGain();
         this.phaseDelay = context.createDelay(1.0); // Max delay 1s
 
+        // Frequency modulation is exponential V/Oct — the golden-path
+        // (codegen) semantic: an input of 1.0 = +1 octave. Web Audio's
+        // detune param is in cents, so scale by 1200 and drive detune
+        // instead of adding linear Hz into osc.frequency (which made the
+        // same patch sound wildly different in the exported code).
         this.input_freq = context.createGain();
-        this.input_freq.gain.value = 1.0; // Pass through signal
+        this.input_freq.gain.value = 1200.0; // octaves -> cents
 
 
         this.output.gain.cancelScheduledValues(this.context.currentTime);
@@ -42,7 +48,9 @@ class SkaldOscillatorNode extends BaseSkaldNode {
     private setupWaveform(data: OscillatorParams) {
         this.cleanup(); // Disconnect previous nodes if any
 
-        const waveform = (data.waveform || 'sawtooth').toLowerCase();
+        // Sine is the schema default (node-definitions) — the old
+        // 'sawtooth' fallback diverged from codegen for missing params.
+        const waveform = (data.waveform || 'sine').toLowerCase();
         const frequency = data.frequency || 440;
 
         if (waveform === 'square') {
@@ -62,6 +70,10 @@ class SkaldOscillatorNode extends BaseSkaldNode {
             const summer = this.context.createGain();
             summer.gain.value = 1000; // Amplify for a sharp transition
 
+            // Pitch modulation reaches PWM squares too — this path used to
+            // drop input_freq entirely.
+            this.input_freq.connect(this.pwmOsc.detune);
+
             this.pwmOsc.connect(summer);
             this.dcOffset.connect(summer);
             summer.connect(this.shaper);
@@ -76,8 +88,8 @@ class SkaldOscillatorNode extends BaseSkaldNode {
             this.osc.frequency.cancelScheduledValues(this.context.currentTime);
             this.osc.frequency.setTargetAtTime(frequency, this.context.currentTime, this.smoothingTimeConstant);
 
-            // Connect modulation input
-            this.input_freq.connect(this.osc.frequency);
+            // Connect modulation input (V/Oct via detune, see constructor)
+            this.input_freq.connect(this.osc.detune);
 
             this.osc.connect(this.phaseDelay);
             this.osc.start();

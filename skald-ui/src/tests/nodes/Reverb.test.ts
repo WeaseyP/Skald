@@ -11,16 +11,26 @@ describe('ReverbNode Factory', () => {
         context = new AudioContext();
     });
 
-    it('creates convolver reverb', () => {
-        const nodeData = { id: 'reverb-1', data: { seconds: 2 } };
+    it('creates convolver reverb honoring the real decay param', () => {
+        // The old version of this test passed a non-existent `seconds` key
+        // and asserted the DEFAULT buffer length by coincidence. Use the
+        // actual schema param.
+        const nodeData = { id: 'reverb-1', data: { decay: 2 } };
         const audioNode = createReverbNode(context, nodeData as any);
         const instance = (audioNode as any)._skaldNode;
 
         expect(instance.convolver).toBeDefined();
         expect(instance.convolver.buffer).toBeDefined();
         // Buffer length = sampleRate * decayTime = 44100 * 2
-        // Note: Mock implementation of createBuffer returns length
         expect(instance.convolver.buffer!.length).toBe(88200);
+    });
+
+    it('defaults decay to the schema value (3.0)', () => {
+        const nodeData = { id: 'reverb-3', data: {} };
+        const audioNode = createReverbNode(context, nodeData as any);
+        const instance = (audioNode as any)._skaldNode;
+
+        expect(instance.convolver.buffer!.length).toBe(44100 * 3);
     });
 
     it('updates mix and pre-delay', () => {

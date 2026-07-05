@@ -2,6 +2,7 @@ import { Node } from 'reactflow';
 import { BaseSkaldNode } from './BaseSkaldNode';
 
 class MixerNode extends BaseSkaldNode {
+    public readonly skaldType = 'MixerNode';
     public output: GainNode;
     private inputGains: Map<string, GainNode>;
     private context: AudioContext;

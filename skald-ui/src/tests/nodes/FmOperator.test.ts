@@ -23,18 +23,43 @@ describe('FmOperatorNode Factory', () => {
         expect(instance.carrier.connect).toHaveBeenCalledWith(instance.output);
     });
 
-    it('updates frequency and mod index', () => {
-        const nodeData = { id: 'fm-2', data: { frequency: 220, modulationIndex: 100 } };
+    it('treats frequency as a note ratio and reads the schema modIndex key', () => {
+        // Golden-path semantics: `frequency` is a ratio of the played note
+        // (default note base 440 until a note arrives), clamped to [0.01,32].
+        // `modIndex` is the serialized key — the legacy `modulationIndex`
+        // read made the Modulation Index knob a silent no-op.
+        const nodeData = { id: 'fm-2', data: { frequency: 2, modIndex: 100 } };
         const audioNode = createFmOperatorNode(context, nodeData as any);
         const instance = (audioNode as any)._skaldNode;
 
-        // Initial values check
-        expect(instance.carrier.frequency.setValueAtTime).toHaveBeenCalledWith(220, expect.any(Number));
+        // Initial values: carrier = noteFreq(440) * ratio(2)
+        expect(instance.carrier.frequency.setValueAtTime).toHaveBeenCalledWith(880, expect.any(Number));
         expect(instance.modulatorInput.gain.setValueAtTime).toHaveBeenCalledWith(100, expect.any(Number));
 
-        // Update
-        instance.update({ frequency: 880, modulationIndex: 1000 });
-        expect(instance.carrier.frequency.setValueAtTime).toHaveBeenCalledWith(880, expect.any(Number));
+        // Update ratio + modIndex
+        instance.update({ frequency: 4, modIndex: 1000 });
+        expect(instance.carrier.frequency.setValueAtTime).toHaveBeenCalledWith(1760, expect.any(Number));
         expect(instance.modulatorInput.gain.setValueAtTime).toHaveBeenCalledWith(1000, expect.any(Number));
+
+        // Legacy key still accepted
+        instance.update({ modulationIndex: 50 });
+        expect(instance.modulatorInput.gain.setValueAtTime).toHaveBeenCalledWith(50, expect.any(Number));
+    });
+
+    it('tracks the played note like the generated code (carrier = note * ratio)', () => {
+        const nodeData = { id: 'fm-3', data: { frequency: 3.5 } };
+        const audioNode = createFmOperatorNode(context, nodeData as any);
+        const instance = (audioNode as any)._skaldNode;
+
+        instance.setNoteFrequency(220);
+        expect(instance.carrier.frequency.setValueAtTime).toHaveBeenCalledWith(770, expect.any(Number));
+    });
+
+    it('clamps legacy absolute-Hz saves (frequency 440 as ratio) to 32', () => {
+        const nodeData = { id: 'fm-4', data: { frequency: 440 } };
+        const audioNode = createFmOperatorNode(context, nodeData as any);
+        const instance = (audioNode as any)._skaldNode;
+
+        expect(instance.ratio).toBe(32);
     });
 });

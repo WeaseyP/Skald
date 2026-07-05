@@ -17,9 +17,10 @@ describe('OscillatorNode Factory', () => {
         const instance = (audioNode as any)._skaldNode;
 
         expect(instance).toBeDefined();
-        // Default waveform is sawtooth if not specified (or whatever implementation defaults to)
-        // Checking implementation: "const waveform = (data.waveform || 'sawtooth').toLowerCase();"
-        expect(instance.osc?.type).toBe('sawtooth');
+        // Default waveform is SINE — the node-definitions schema default,
+        // which codegen also uses. (The old 'sawtooth' fallback made a
+        // param-less patch sound different in preview vs export.)
+        expect(instance.osc?.type).toBe('sine');
         expect(instance.output.gain.setTargetAtTime).toHaveBeenCalledWith(0.5, expect.any(Number), expect.any(Number));
     });
 

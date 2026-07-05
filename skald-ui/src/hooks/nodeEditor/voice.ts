@@ -106,14 +106,29 @@ export class Voice {
                         freqParam.setValueAtTime(freq, startTime);
                     }
                 }
+                // Skald wrapper nodes: oscillators expose a `frequency`
+                // AudioParam getter; FM operators track the note as a ratio
+                // via setNoteFrequency (golden-path semantics).
+                const skald = (node as any)._skaldNode;
+                if (skald) {
+                    if (typeof skald.setNoteFrequency === 'function') {
+                        skald.setNoteFrequency(freq, startTime);
+                    } else if (skald.frequency instanceof AudioParam) {
+                        skald.frequency.cancelScheduledValues(startTime);
+                        skald.frequency.setValueAtTime(freq, startTime);
+                    }
+                }
             });
 
             // Update all MIDI Input Nodes
             this.midiInputNodes.forEach(midiNode => {
-                // Pitch is the main node
+                // Pitch is V/Oct relative to A4 — (note - 69) / 12, the unit
+                // the generated code emits. It used to be raw Hz, which made
+                // the same Pitch->Freq wire transpose by kilohertz in the
+                // preview but by octaves in the export.
                 const pitchNode = midiNode as ConstantSourceNode;
                 pitchNode.offset.cancelScheduledValues(startTime);
-                pitchNode.offset.setValueAtTime(freq, startTime);
+                pitchNode.offset.setValueAtTime((note - 69) / 12, startTime);
 
                 // Gate is a property
                 const gateNode = (midiNode as any).gate as ConstantSourceNode;

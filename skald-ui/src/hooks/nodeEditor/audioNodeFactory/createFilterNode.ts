@@ -2,6 +2,7 @@ import { Node } from 'reactflow';
 import { BaseSkaldNode } from './BaseSkaldNode';
 
 class FilterNode extends BaseSkaldNode {
+    public readonly skaldType = 'FilterNode';
     public node: BiquadFilterNode;
     private context: AudioContext;
 

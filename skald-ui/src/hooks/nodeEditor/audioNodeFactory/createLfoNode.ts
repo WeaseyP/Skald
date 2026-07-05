@@ -2,6 +2,7 @@ import { Node } from 'reactflow';
 import { BaseSkaldNode } from './BaseSkaldNode';
 
 class LfoNode extends BaseSkaldNode {
+    public readonly skaldType = 'LfoNode';
     public output: GainNode;
     private lfo: OscillatorNode;
     private context: AudioContext;
@@ -14,8 +15,9 @@ class LfoNode extends BaseSkaldNode {
         this.output = context.createGain();
 
         this.lfo.type = (data.waveform || 'sine').toLowerCase() as OscillatorType;
-        this.lfo.frequency.setValueAtTime(data.frequency || 5.0, context.currentTime);
-        this.output.gain.setValueAtTime(data.amplitude || 1.0, context.currentTime);
+        // ?? not ||: an explicit 0 was silently coerced back to the default.
+        this.lfo.frequency.setValueAtTime(data.frequency ?? 5.0, context.currentTime);
+        this.output.gain.setValueAtTime(data.amplitude ?? 1.0, context.currentTime);
         
         this.lfo.connect(this.output);
         this.lfo.start();

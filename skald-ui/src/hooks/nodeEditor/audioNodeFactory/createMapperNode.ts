@@ -10,35 +10,43 @@ import { BaseSkaldNode } from './BaseSkaldNode';
 // Offset (Bias)      = outMin - (inMin * Scale Factor)
 
 class MapperNode extends BaseSkaldNode {
+    public readonly skaldType = 'MapperNode';
     public input: GainNode;
     public output: GainNode;
-    private biasNode: ConstantSourceNode;
-    private scaleNode: GainNode;
+    private inBias: ConstantSourceNode; // subtracts the input-range center
+    private normGain: GainNode;         // normalizes input range to [-1, 1]
+    private clampShaper: WaveShaperNode; // identity curve => clamps outside [-1, 1]
+    private outGain: GainNode;          // expands to the output range
+    private outBias: ConstantSourceNode; // re-centers on the output range
     private context: AudioContext;
 
     constructor(context: AudioContext, data: any) {
         super();
         this.context = context;
 
-        // Input receives the signal
+        // Chain: (input + inBias) -> normGain -> clampShaper -> outGain (+ outBias)
+        // The WaveShaper's identity curve clamps anything outside [-1,1],
+        // which after normalization means "clamp to [inMin,inMax]". The old
+        // scale+bias implementation extrapolated linearly, so modulation
+        // outside the input range overshot the output range — codegen
+        // clamps, and tuning by ear against an unclamped preview lied.
         this.input = context.createGain();
-
-        // Scale Node (Gain)
-        this.scaleNode = context.createGain();
-
-        // Bias Node (Offset)
-        this.biasNode = context.createConstantSource();
-        this.biasNode.start();
-
-        // Output sums them up
+        this.inBias = context.createConstantSource();
+        this.inBias.start();
+        this.normGain = context.createGain();
+        this.clampShaper = context.createWaveShaper();
+        this.clampShaper.curve = new Float32Array([-1, 1]); // identity with clamping
+        this.outGain = context.createGain();
+        this.outBias = context.createConstantSource();
+        this.outBias.start();
         this.output = context.createGain();
 
-        // Connect: Input -> Scale -> Output
-        this.input.connect(this.scaleNode);
-        this.scaleNode.connect(this.output);
-
-        // Connect: Bias -> Output
-        this.biasNode.connect(this.output);
+        this.input.connect(this.normGain);
+        this.inBias.connect(this.normGain);
+        this.normGain.connect(this.clampShaper);
+        this.clampShaper.connect(this.outGain);
+        this.outGain.connect(this.output);
+        this.outBias.connect(this.output);
 
         this.update(data);
     }
@@ -49,31 +57,27 @@ class MapperNode extends BaseSkaldNode {
         const outMin = data.outMin ?? 0;
         const outMax = data.outMax ?? 1;
 
-        // Prevent division by zero
-        const rangeIn = (inMax - inMin) === 0 ? 0.0001 : (inMax - inMin);
+        const inHalf = (inMax - inMin) === 0 ? 0.0001 : (inMax - inMin) / 2;
+        const inCenter = (inMax + inMin) / 2;
+        const outHalf = (outMax - outMin) / 2;
+        const outCenter = (outMax + outMin) / 2;
 
-        // Calculate Gain (Scale)
-        const scale = (outMax - outMin) / rangeIn;
-
-        // Calculate Bias (Offset)
-        // Formula derivation:
-        // y = m(x - x1) + y1
-        // y = mx - mx1 + y1
-        // Bias = y1 - mx1
-        // Bias = outMin - (scale * inMin)
-        const bias = outMin - (scale * inMin);
-
-        // Apply
         const now = this.context.currentTime;
-        this.scaleNode.gain.setTargetAtTime(scale, now, 0.01);
-        this.biasNode.offset.setTargetAtTime(bias, now, 0.01);
+        this.inBias.offset.setTargetAtTime(-inCenter, now, 0.01);
+        this.normGain.gain.setTargetAtTime(1 / inHalf, now, 0.01);
+        this.outGain.gain.setTargetAtTime(outHalf, now, 0.01);
+        this.outBias.offset.setTargetAtTime(outCenter, now, 0.01);
     }
 
     disconnect() {
         this.input.disconnect();
-        this.scaleNode.disconnect();
-        this.biasNode.stop();
-        this.biasNode.disconnect();
+        this.inBias.stop();
+        this.inBias.disconnect();
+        this.normGain.disconnect();
+        this.clampShaper.disconnect();
+        this.outGain.disconnect();
+        this.outBias.stop();
+        this.outBias.disconnect();
         this.output.disconnect();
     }
 }

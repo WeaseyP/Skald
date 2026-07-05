@@ -2,6 +2,7 @@ import { Node } from 'reactflow';
 import { BaseSkaldNode } from './BaseSkaldNode';
 
 class GainNodeWrapper extends BaseSkaldNode {
+    public readonly skaldType = 'GainNodeWrapper';
     public node: GainNode;
     private context: AudioContext;
 
