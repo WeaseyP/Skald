@@ -53,7 +53,10 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 
 	amp_str  := get_f32_param(graph, node, "amplitude", "input_amp", 0.5)
 	pw_str   := get_f32_param(graph, node, "pulseWidth", "input_pulseWidth", 0.5)
-	phase_str:= get_f32_param(nil, node, "phase", "", 0.0)
+	// graph (not nil) so an exposed `phase` resolves through the collision
+	// map — two oscillators both exposing phase used to emit `p.phase`
+	// against renamed struct fields and fail to compile.
+	phase_str:= get_f32_param(graph, node, "phase", "", 0.0)
 	waveform := get_string_param(node, "waveform", "Sine")
 
 	unison_count := instrument.unison
@@ -112,7 +115,7 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
         }
     }
 
-	depth_str := get_f32_param(nil, node, "depth", "", 1.0)
+	depth_str := get_f32_param(graph, node, "depth", "", 1.0)
     
     // Fetch ADSR parameters
     attack_str  := get_f32_param(graph, node, "attack", "input_attack", 0.01)
@@ -127,14 +130,17 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprint(sb, "\t\t\tcase .Idle:\n")
 	fmt.sbprint(sb, "\t\t\t\tenvelope = 0.0;\n")
 	fmt.sbprint(sb, "\t\t\tcase .Attack:\n")
-	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.age / (%s); else do envelope = 1.0;\n", attack_str, attack_str)
+	// Denominators wrapped in math.max: a literal 0 for attack/decay/release
+	// would emit a constant division by zero (compile error) even though the
+	// `> 0` branch guards it at runtime.
+	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.age / math.max(f32(%s), 0.000001); else do envelope = 1.0;\n", attack_str, attack_str)
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
 	fmt.sbprintf(sb, "\t\t\t\tif voice.age >= (%s) {{\n", attack_str)
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Decay;\n", node.id)
 	fmt.sbprint(sb, "\t\t\t\t}\n")
 	fmt.sbprint(sb, "\t\t\tcase .Decay:\n")
 	fmt.sbprintf(sb, "\t\t\t\ttime_in_decay := voice.age - (%s);\n", attack_str)
-	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = 1.0 - (time_in_decay / (%s)) * (1.0 - (%s)); else do envelope = (%s);\n", decay_str, decay_str, sustain_str, sustain_str)
+	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(%s), 0.000001)) * (1.0 - (%s)); else do envelope = (%s);\n", decay_str, decay_str, sustain_str, sustain_str)
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
 	fmt.sbprintf(sb, "\t\t\t\tif time_in_decay >= (%s) {{\n", decay_str)
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Sustain;\n", node.id)
@@ -144,7 +150,7 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
 	fmt.sbprint(sb, "\t\t\tcase .Release:\n")
 	fmt.sbprint(sb, "\t\t\t\ttime_in_release := voice.age - voice.time_released;\n")
-	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_release_level * (1.0 - (time_in_release / (%s))); else do envelope = 0.0;\n", release_str, node.id, release_str)
+	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_release_level * (1.0 - (time_in_release / math.max(f32(%s), 0.000001))); else do envelope = 0.0;\n", release_str, node.id, release_str)
 	fmt.sbprint(sb, "\t\t\t\tif envelope <= 0 {\n")
 	fmt.sbprint(sb, "\t\t\t\t\tenvelope = 0;\n")
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Idle;\n", node.id)
@@ -177,7 +183,10 @@ generate_filter_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// high = input - low - q*band
 	// band = band + f * high
 	fmt.sbprintf(sb, "\t\t\tf_%s := f32(2.0 * math.sin(f32(math.PI) * (%s) / sample_rate));\n", node.id, cutoff_str)
-	fmt.sbprintf(sb, "\t\t\tq_%s := f32(1.0 / (%s));\n", node.id, res_str)
+	// max() at runtime: a literal resonance of 0 would otherwise emit
+	// `1.0 / (0.000000)` — a constant division by zero, which Odin
+	// rejects at compile time. 0.1 matches the param-range table minimum.
+	fmt.sbprintf(sb, "\t\t\tq_%s := f32(1.0 / math.max(f32(%s), 0.1));\n", node.id, res_str)
 	
 	fmt.sbprintf(sb, "\t\t\tvoice.filter_%s_low += f_%s * voice.filter_%s_band;\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\thigh_%s := f32((%s) - voice.filter_%s_low - q_%s * voice.filter_%s_band);\n", node.id, input_str, node.id, node.id, node.id)
@@ -221,7 +230,9 @@ generate_sample_hold_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 	amp_str  := get_f32_param(graph, node, "amplitude", "", 1.0)
 	fmt.sbprintf(sb, "\t\t// --- Sample & Hold Node %s ---\n", node.id)
 	fmt.sbprintf(sb, "\t\tvoice.sh_%s_counter += 1;\n", node.id)
-	fmt.sbprintf(sb, "\t\tupdate_interval_%s := u64(sample_rate / (%s));\n", node.id, rate_str)
+	// max(): rate=0 emitted a constant division by zero (compile error);
+	// negative rates cast to a bogus u64. Clamp to the param-range minimum.
+	fmt.sbprintf(sb, "\t\tupdate_interval_%s := u64(sample_rate / math.max(f32(%s), 0.1));\n", node.id, rate_str)
 	fmt.sbprintf(sb, "\t\tif voice.sh_%s_counter >= update_interval_%s {{\n", node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tvoice.sh_%s_current_value = next_float32(&voice.sh_%s_rng) * 2.0 - 1.0;\n", node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tvoice.sh_%s_counter = 0;\n", node.id)
@@ -252,9 +263,9 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 
 	// Parameters from the node itself.
 	// The UI sends 'frequency' which we will treat as the carrier-to-modulator frequency ratio.
-	ratio_str := get_f32_param(nil, node, "frequency", "", 1.0)
+	ratio_str := get_f32_param(graph, node, "frequency", "", 1.0)
 	// The UI sends 'modIndex', which is the modulation depth.
-	mod_index_str := get_f32_param(nil, node, "modIndex", "", 100.0)
+	mod_index_str := get_f32_param(graph, node, "modIndex", "", 100.0)
 
 	fmt.sbprintf(sb, "\t\t// --- FM Operator Node %s ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
@@ -296,8 +307,11 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	input_str := "0.0"
 	if id, port, ok := find_input_for_port(graph, node.id, "input"); ok do input_str = get_output_var(id, port)
 	
-	decay_str := get_f32_param(nil, node, "decay", "", 0.5)
-	mix_str   := get_f32_param(nil, node, "mix", "", 0.5)
+	// graph (not nil): the UI's DEFAULT exposure set has both ADSR and
+	// Reverb exposing "decay" — the nil path emitted `p.decay` against the
+	// collision-renamed fields and the generated package didn't compile.
+	decay_str := get_f32_param(graph, node, "decay", "", 0.5)
+	mix_str   := get_f32_param(graph, node, "mix", "", 0.5)
 	
 	delay_time := 0.075 
 
@@ -384,7 +398,14 @@ generate_mapper_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	outMax := get_f32_param(graph, node, "outMax", "", 1.0)
 
 	fmt.sbprintf(sb, "\t\t// --- Mapper Node %s ---\n", node.id)
-	fmt.sbprintf(sb, "\t\tnode_%s_out = math.lerp(f32(%s), f32(%s), math.clamp(((%s) - (%s)) / ((%s) - (%s)), 0.0, 1.0));\n\n", node.id, outMin, outMax, input_str, inMin, inMax, inMin)
+	fmt.sbprint(sb, "\t\t{\n")
+	// Runtime guard: inMax == inMin (trivially reachable from the UI) would
+	// emit a constant division by zero when both are literals, and NaN when
+	// modulated. Degenerate range maps everything to outMin.
+	fmt.sbprintf(sb, "\t\t\tin_range_%s := (%s) - (%s);\n", node.id, inMax, inMin)
+	fmt.sbprintf(sb, "\t\t\tif in_range_%s == 0.0 do in_range_%s = 1.0;\n", node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = math.lerp(f32(%s), f32(%s), math.clamp(((%s) - (%s)) / in_range_%s, 0.0, 1.0));\n", node.id, outMin, outMax, input_str, inMin, node.id)
+	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
 
@@ -453,12 +474,14 @@ find_sequencer_track :: proc(
 }
 
 // Sanitize an instrument name into a valid Odin identifier prefix.
+// Full sanitization, not just spaces: "808 Kick!" must become "n808_Kick_"
+// (leading digit prefixed, punctuation replaced), or every emitted proc
+// name is a syntax error.
 clean_instrument_name :: proc(inst: ^Project_Instrument) -> string {
-	out, _ := strings.replace_all(inst.name, " ", "_")
-	if len(out) == 0 {
-		out = fmt.tprintf("Instrument_%s", inst.id)
+	if len(inst.name) == 0 {
+		return fmt.tprintf("Instrument_%s", sanitize_identifier(inst.id, true))
 	}
-	return out
+	return sanitize_identifier(inst.name)
 }
 
 // generate_processor_code generates the Odin source code for the audio processor logic.
@@ -575,6 +598,11 @@ generate_processor_code :: proc(
         }
 
         // Pass 2: build resolutions with collision-aware field names.
+        // used_fields guarantees global uniqueness: two nodes with the SAME
+        // label (or two unlabeled nodes whose ids sanitize identically)
+        // exposing the same param would otherwise silently share one field.
+        used_fields := make(map[string]bool)
+        defer delete(used_fields)
         for _, node in graph.nodes {
             if params_val, ok := node.parameters["exposedParameters"]; ok {
                 if arr, is_arr := params_val.(json.Array); is_arr {
@@ -593,12 +621,22 @@ generate_processor_code :: proc(
 
                         field_name := p_name
                         if counts[p_name] > 1 {
-                            // Collision: prefix with sanitized node label.
-                            label := get_string_param(node, "label", node.id)
-                            label, _ = strings.replace_all(label, " ", "_")
-                            label, _ = strings.replace_all(label, "-", "_")
+                            // Collision: prefix with the sanitized node label
+                            // (falls back to node id — sanitize handles the
+                            // digit-leading case, `2_pulseWidth` is not a
+                            // legal Odin identifier).
+                            label := sanitize_identifier(get_string_param(node, "label", node.id))
                             field_name = fmt.tprintf("%s_%s", label, p_name)
                         }
+                        if used_fields[field_name] {
+                            base := field_name
+                            n := 2
+                            for used_fields[field_name] {
+                                field_name = fmt.tprintf("%s_%d", base, n)
+                                n += 1
+                            }
+                        }
+                        used_fields[field_name] = true
 
                         key := fmt.aprintf("%s::%s", node.id, p_name)
                         resolutions[key] = Exposed_Resolution{
@@ -1106,23 +1144,36 @@ generate_sequencer_logic :: proc(
 	fmt.sbprint(sb, "\tif p.samples_until_next_step == 0 {\n")
 	fmt.sbprintf(sb, "\t\tswitch p.current_step %% %d {{\n", steps)
 
+	// Group events by step before emitting: two notes on the same step (a
+	// chord) must share ONE `case` — duplicate switch cases don't compile.
+	max_step := 0
 	for event in track.events {
-		fmt.sbprintf(sb, "\t\tcase %d:\n", event.step)
-		duration_val := event.duration
-		if duration_val <= 0.0 {
-			duration_val = 1.0 // Default to 1 step
+		if event.step > max_step do max_step = event.step
+	}
+	for s in 0 ..= max_step {
+		first := true
+		for event in track.events {
+			if event.step != s do continue
+			if first {
+				fmt.sbprintf(sb, "\t\tcase %d:\n", s)
+				first = false
+			}
+			duration_val := event.duration
+			if duration_val <= 0.0 {
+				duration_val = 1.0 // Default to 1 step
+			}
+			// duration is in steps; convert to seconds at runtime using p.bpm.
+			// The generated code computes this from the runtime BPM/sample-rate
+			// rather than baking it in. duration_seconds = duration_steps * seconds_per_step.
+			fmt.sbprintf(
+				sb,
+				"\t\t\t%s_note_on(p, %d, %f, f32(%f) * (60.0 / p.bpm / 4.0))\n",
+				namespace_prefix,
+				event.note,
+				event.velocity,
+				duration_val,
+			)
 		}
-		// duration is in steps; convert to seconds at runtime using p.bpm.
-		// The generated code computes this from the runtime BPM/sample-rate
-		// rather than baking it in. duration_seconds = duration_steps * seconds_per_step.
-		fmt.sbprintf(
-			sb,
-			"\t\t\t%s_note_on(p, %d, %f, f32(%f) * (60.0 / p.bpm / 4.0))\n",
-			namespace_prefix,
-			event.note,
-			event.velocity,
-			duration_val,
-		)
 	}
 
 	fmt.sbprint(sb, "\t\t}\n")

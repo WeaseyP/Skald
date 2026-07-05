@@ -7,6 +7,34 @@ import json "core:encoding/json"
 // =================================================================================
 // SECTION C: Type-Safe Parameter Fetching System
 // =================================================================================
+
+// Map an arbitrary string (node id, label, instrument name — all user- or
+// UI-controlled) onto a chunk that is safe to embed in an Odin identifier.
+// Every non [A-Za-z0-9_] byte becomes '_'. When the result would start with
+// a digit and the caller embeds it at the START of an identifier
+// (allow_leading_digit=false), it gets an 'n' prefix — `2_pulseWidth` is a
+// syntax error, `n2_pulseWidth` is not. Empty input yields "n".
+sanitize_identifier :: proc(s: string, allow_leading_digit := false) -> string {
+	sb := strings.builder_make()
+	for i in 0 ..< len(s) {
+		c := s[i]
+		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+		if ok {
+			strings.write_byte(&sb, c)
+		} else {
+			strings.write_byte(&sb, '_')
+		}
+	}
+	out := strings.to_string(sb)
+	if len(out) == 0 {
+		return "n"
+	}
+	if !allow_leading_digit && out[0] >= '0' && out[0] <= '9' {
+		return fmt.tprintf("n%s", out)
+	}
+	return out
+}
+
 get_output_var :: proc(node_id: string, port_name: string = "") -> string {
     if port_name == "pitch" do return fmt.tprintf("node_%s_out_pitch", node_id)
     if port_name == "gate" do return fmt.tprintf("node_%s_out_gate", node_id)
@@ -30,12 +58,10 @@ get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port:
         }
     }
 
-    // Fallback for callers that pass `nil` for graph (a couple of node
-    // generators do this for params that can't be modulated by an input
-    // wire). They never hit the resolution path, so just check the raw
-    // exposedParameters list and use the bare name — harmless because
-    // collision detection only fires when ≥ 2 nodes expose the same name,
-    // and in that case the resolver will have rewritten the field anyway.
+    // Fallback for callers that pass `nil` for graph. No node generator
+    // does this anymore (they must not: the bare name breaks the moment
+    // the collision resolver renames the struct field), but keep the path
+    // as defense-in-depth for future call sites.
     if !is_exposed && graph == nil {
         if exposed_val, ok := node.parameters["exposedParameters"]; ok {
             if exposed_arr, is_arr := exposed_val.(json.Array); is_arr {
@@ -61,7 +87,11 @@ get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port:
         }
     }
 
-	if graph != nil {
+	// input_port == "" means "this param has no modulation port". Skipping
+	// the lookup matters: a connection whose to_port is empty (corrupt or
+	// hand-edited JSON) would otherwise match EVERY such param and get
+	// summed into all of them (the mixer ring-mod bug).
+	if graph != nil && input_port != "" {
 		sources := find_inputs_for_port(graph, node.id, input_port)
         defer delete(sources)
         if len(sources) > 0 {

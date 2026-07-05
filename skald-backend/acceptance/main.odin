@@ -279,6 +279,64 @@ main :: proc() {
 			)
 		}
 
+	// --- P0 compile-regression fixtures ---
+	// Each of these graph shapes used to generate Odin that failed to build
+	// (exposed-param collisions, digit-leading identifiers, duplicate chord
+	// switch cases). The load-bearing assertion is that codegen + build
+	// succeeded at all; the audibility check proves the signal path works.
+
+	case "dual_osc":
+		// Two oscillators, both exposing the UI-default param set (phase
+		// collision → renamed struct fields) into a 2-channel mixer.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "fm_patch":
+		// FM operator (exposed frequency=ratio colliding with the carrier's
+		// exposed frequency) modulating an oscillator's input_freq.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "reverb_adsr_exposure":
+		// ADSR and Reverb both exposing "decay" — the UI's default exposure
+		// set for that node pair.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.5)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "chord_step":
+		// Music Layer with a three-note chord on step 0 (used to emit
+		// duplicate switch cases) plus a single note on step 4.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_onset_at(buf, sample_rate, 0.000, 0.060)
+			all_pass &= assert_onset_at(buf, sample_rate, 0.500, 0.060)
+		}
+
+	case "numeric_ids":
+		// Unlabeled numeric-id nodes exposing the same params — the
+		// collision field names used to come out digit-leading (`2_pulseWidth`).
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
 	case "sfx_oneshot":
 		// SFX with ADSR but no sequencer track. Trigger once with finite
 		// duration, then assert silence after release ends.

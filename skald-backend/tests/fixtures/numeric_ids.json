@@ -1,0 +1,75 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "numericidsfixture",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 8,
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 330,
+                "waveform": "Square",
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["pulseWidth", "amplitude"]
+              }
+            },
+            {
+              "id": "2",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 495,
+                "waveform": "Square",
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["pulseWidth", "amplitude"]
+              }
+            },
+            {
+              "id": "3",
+              "type": "Mixer",
+              "parameters": { "inputCount": 2 }
+            },
+            {
+              "id": "4",
+              "type": "ADSR",
+              "parameters": {
+                "attack": 0.05,
+                "decay": 0.05,
+                "sustain": 0.9,
+                "release": 0.3,
+                "depth": 1
+              }
+            },
+            {
+              "id": "5",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "3", "to_port": "input_1" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input_2" },
+            { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" },
+            { "from_node": "4", "from_port": "output", "to_node": "5", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}
