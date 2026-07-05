@@ -565,6 +565,14 @@ generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 			#partial switch v in levels[i-1] {
 			case json.Float:   default_gain = f32(v)
 			case json.Integer: default_gain = f32(v)
+			case json.Object:
+				// The UI serializes levels as [{id, level}, ...]
+				if lv, ok := v["level"]; ok {
+					#partial switch l in lv {
+					case json.Float:   default_gain = f32(l)
+					case json.Integer: default_gain = f32(l)
+					}
+				}
 			}
 		}
 		gain_param := fmt.tprintf("level%d", i)

@@ -113,13 +113,19 @@ export const useFileIO = (
             };
         });
 
-        const remappedEdges = importedEdges.map(edge => ({
-            ...edge,
-            id: `e${idMap.get(edge.source)}-${idMap.get(edge.target)}`, // New edge ID
-            source: idMap.get(edge.source) || edge.source,
-            target: idMap.get(edge.target) || edge.target,
-            selected: true
-        }));
+        // Only keep edges whose BOTH endpoints were imported — falling back
+        // to the original id left dangling edges pointing at nodes that
+        // don't exist in this graph. Handles + index keep ids unique for
+        // multi-port targets.
+        const remappedEdges = importedEdges
+            .filter(edge => idMap.has(edge.source) && idMap.has(edge.target))
+            .map((edge, index) => ({
+                ...edge,
+                id: `e${idMap.get(edge.source)}${edge.sourceHandle ?? ''}-${idMap.get(edge.target)}${edge.targetHandle ?? ''}-${timestamp}-${index}`,
+                source: idMap.get(edge.source)!,
+                target: idMap.get(edge.target)!,
+                selected: true
+            }));
 
         // 3. Remap Sequencer Tracks
         const remappedTracks = importedTracks.map(track => ({

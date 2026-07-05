@@ -36,11 +36,16 @@ export class Instrument {
         }
     }
 
+    // Which note each voice slot is currently sounding — lets noteOff
+    // release just that note instead of choking every voice (mono behavior).
+    private voiceNotes: (number | null)[] = [];
+
     public trigger(time: number, note: number, velocity: number, overrides?: Record<string, number>): number {
         const index = this.nextVoiceIndex;
         const voice = this.voices[index];
         if (voice) {
             voice.trigger(time, note, velocity, overrides);
+            this.voiceNotes[index] = note;
         }
         this.nextVoiceIndex = (this.nextVoiceIndex + 1) % this.voices.length;
         return index;
@@ -52,10 +57,20 @@ export class Instrument {
         }
     }
 
-    public noteOff(time?: number) {
+    public noteOff(time?: number, note?: number) {
         if (!this.context) return;
         const releaseTime = time ?? this.context.currentTime;
+        if (note !== undefined) {
+            this.voices.forEach((voice, i) => {
+                if (this.voiceNotes[i] === note) {
+                    voice.release(releaseTime);
+                    this.voiceNotes[i] = null;
+                }
+            });
+            return;
+        }
         this.voices.forEach(voice => voice.release(releaseTime));
+        this.voiceNotes = this.voiceNotes.map(() => null);
     }
 
     public connect(destination: AudioNode | AudioParam, outputIndex?: number, inputIndex?: number) {

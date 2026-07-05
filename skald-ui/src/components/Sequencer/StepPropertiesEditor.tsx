@@ -8,7 +8,7 @@ interface StepPropertiesEditorProps {
     trackId: string;
     step: number; // 0-indexed
     track?: SequencerTrack;
-    onUpdateNote: (trackId: string, step: number, changes: Partial<NoteEvent>) => void;
+    onUpdateNote: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
     instrumentNode?: Node | null;
     onExport?: () => void;
 }

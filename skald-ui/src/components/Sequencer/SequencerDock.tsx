@@ -21,7 +21,7 @@ interface SequencerDockProps {
     onSoloToggle: (trackId: string) => void;
     onFocusTrack: (trackId: string) => void;
     onToggleStep: (trackId: string, step: number) => void;
-    onUpdateNote: (trackId: string, step: number, changes: Partial<any>) => void;
+    onUpdateNote: (trackId: string, step: number, changes: Partial<any>, notePitch?: number) => void;
     onUpdateSteps: (trackId: string, steps: number) => void;
     onStepSelect: (trackId: string, step: number) => void;
 }

@@ -51,14 +51,31 @@ export const useGraphState = () => {
         }
     }, [nodes, selectedNode?.id]);
 
-    const saveStateForUndo = useCallback(() => {
+    // Continuous-gesture coalescing: a slider drag fires updateNodeData per
+    // tick, and snapshotting every tick flushed the entire history in one
+    // drag. Rapid successive param edits share one undo entry instead.
+    const lastParamSnapshotAt = useRef(0);
+
+    const saveStateForUndo = useCallback((coalesce = false) => {
         if (isRestoring.current) return;
+        if (coalesce) {
+            const now = Date.now();
+            if (now - lastParamSnapshotAt.current < 500) return;
+            lastParamSnapshotAt.current = now;
+        }
         setHistory(prev => {
             const newHistory = [...prev, { nodes, edges }];
-            return newHistory.slice(-10); // Keep only the last 10 actions
+            return newHistory.slice(-50);
         });
         setFuture([]);
     }, [nodes, edges]);
+
+    // Loading/importing a file replaces the whole graph — undo must not be
+    // able to resurrect the pre-load graph on top of the loaded one.
+    const resetHistory = useCallback(() => {
+        setHistory([]);
+        setFuture([]);
+    }, []);
 
     const onNodesChange: OnNodesChange = useCallback((changes: NodeChange[]) => {
         const isUndoable = changes.some(c => c.type === 'add' || c.type === 'remove' || (c.type === 'position' && !c.dragging));
@@ -73,16 +90,29 @@ export const useGraphState = () => {
     }, [saveStateForUndo]);
 
     const onConnect: OnConnect = useCallback((connection) => {
+        if (connection.source === connection.target) return; // no self-loops
         saveStateForUndo();
-        const edge = { ...connection, id: `e${connection.source}-${connection.target}`, sourceHandle: connection.sourceHandle, targetHandle: connection.targetHandle };
+        // Handles are part of the id: `e{source}-{target}` alone collided
+        // when two edges targeted different ports of the same node, so the
+        // second wire silently replaced the first.
+        const edge = {
+            ...connection,
+            id: `e${connection.source}${connection.sourceHandle ?? ''}-${connection.target}${connection.targetHandle ?? ''}-${generateId()}`,
+            sourceHandle: connection.sourceHandle,
+            targetHandle: connection.targetHandle,
+        };
         setEdges(eds => addEdge(edge, eds));
     }, [saveStateForUndo]);
 
     const updateNodeData = useCallback((nodeId: string, data: Partial<NodeParams>, subNodeId?: string) => {
-        saveStateForUndo();
+        saveStateForUndo(true); // coalesce slider drags into one undo entry
         setNodes(nds => nds.map(node => {
             if (node.id === nodeId) {
-                if (subNodeId && node.data.subgraph?.nodes) {
+                // subNodeId === nodeId means "the node itself" — callers pass
+                // `subNodeId || node.id`. Without this check an instrument's
+                // OWN params (voiceCount/glide/unison/detune) were hunted
+                // inside its subgraph, never found, and silently dropped.
+                if (subNodeId && subNodeId !== nodeId && node.data.subgraph?.nodes) {
                     const newSubgraphNodes = node.data.subgraph.nodes.map(subNode => {
                         if (subNode.id === subNodeId) {
                             return { ...subNode, data: { ...subNode.data, ...data } };
@@ -139,7 +169,10 @@ export const useGraphState = () => {
                     y: node.position.y + 50
                 },
                 selected: true,
-                data: { ...node.data } // Ensure deep copy of data if needed, though JSON parse above handled it
+                // Deep clone per paste: a shallow spread meant pasting an
+                // instrument twice made both copies share ONE subgraph
+                // object — editing one silently edited the other.
+                data: JSON.parse(JSON.stringify(node.data))
             });
         });
 
@@ -216,6 +249,7 @@ export const useGraphState = () => {
         onSelectionChange,
         handleUndo,
         handleRedo,
+        resetHistory,
         handleCopy,
         handlePaste,
         handleCreateInstrument,

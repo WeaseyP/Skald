@@ -105,6 +105,7 @@ const EditorLayout = () => {
         onSelectionChange,
         handleUndo,
         handleRedo,
+        resetHistory,
         handleCreateInstrument,
         handleInstrumentNameSubmit,
         handleCreateGroup,
@@ -137,12 +138,14 @@ const EditorLayout = () => {
         nearestInScale
     );
 
+    // resetHistory wired for real: the old no-op callbacks meant "undo"
+    // after loading a file restored the stale pre-load graph.
     const { handleSave, handleLoad, handleImportGraph } = useFileIO(
         reactFlowInstance,
         setNodes,
         setEdges,
-        () => { },
-        () => { },
+        resetHistory,
+        resetHistory,
         sequencerStateHooks.tracks,
         sequencerStateHooks.loadTracks
     );

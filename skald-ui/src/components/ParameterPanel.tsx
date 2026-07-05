@@ -100,7 +100,7 @@ interface ParameterPanelProps {
     // Step Editing
     selectedStep?: { trackId: string, step: number } | null;
     tracks?: SequencerTrack[];
-    onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>) => void;
+    onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
     onExportStep?: (trackId: string, step: number) => void;
 }
 
@@ -158,16 +158,13 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             ? value
             : { [paramName]: value };
 
-        if (subNodeId) {
-            const subNode = allNodes.find((n: Node) => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find((n: Node) => n.id === subNodeId);
-            if (!subNode) return;
-            const newData = { ...subNode.data, ...dataToUpdate };
-            onUpdateNode(selectedNode.id, newData, subNodeId);
-            return;
-        }
-
-        const newData = { ...selectedNode.data, ...dataToUpdate };
-        onUpdateNode(selectedNode.id, newData);
+        // Pass ONLY the delta. updateNodeData merges it into the LATEST node
+        // data inside a functional setState. The old code spread the stale
+        // `selectedNode.data` snapshot captured at render, so multi-field
+        // controls (ADSR envelope editor, filter XY pad) firing several
+        // onChange calls in one React batch clobbered each other — the
+        // user's tuning never fully reached the graph or the export.
+        onUpdateNode(selectedNode.id, dataToUpdate, subNodeId);
     };
 
     const handleMixerChange = (channelId: number, newLevel: number, subNodeId?: string) => {

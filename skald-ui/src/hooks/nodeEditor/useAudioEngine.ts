@@ -115,20 +115,34 @@ export const useAudioEngine = (
             if (!nodes.find(n => n.id === node.id)) {
                 logger.debug('AudioEngine', `Removing node ${node.id} (${node.type})`);
                 const handler = node.type ? nodeHandlers[node.type] : null;
-                if (handler) {
-                    handler.remove(node);
-                } else {
-                    const audioNode = audioNodes.current.get(node.id);
-                    if (audioNode) {
-                        audioNode.disconnect();
-                        audioNodes.current.delete(node.id);
+                try {
+                    if (handler) {
+                        handler.remove(node);
+                    } else {
+                        const audioNode = audioNodes.current.get(node.id);
+                        if (audioNode) {
+                            // Output nodes map to the SHARED master bus gain.
+                            // Disconnecting it silenced every other output —
+                            // deleting one Output killed ALL audio.
+                            if (audioNode !== (masterGainNode.current as any)) {
+                                audioNode.disconnect();
+                            }
+                            audioNodes.current.delete(node.id);
+                        }
                     }
+                } catch (e) {
+                    logger.error('AudioEngine', `Error removing node ${node.id}`, e);
+                    audioNodes.current.delete(node.id);
                 }
             }
         });
 
         // ... (Node addition/update logic) ...
+        // Each node is isolated in its own try/catch: one throwing factory
+        // used to abort this whole effect, which left prevGraphState stale
+        // and duplicated every healthy node on the next pass.
         nodes.forEach(node => {
+            try {
             const liveNode = audioNodes.current.get(node.id);
             const prevNode = prevNodes.find(p => p.id === node.id);
             const handler = node.type ? nodeHandlers[node.type] : null;
@@ -228,6 +242,9 @@ export const useAudioEngine = (
                         }
                     }
                 }
+            }
+            } catch (e) {
+                logger.error('AudioEngine', `Error processing node ${node.id} (${node.type})`, e);
             }
         });
 

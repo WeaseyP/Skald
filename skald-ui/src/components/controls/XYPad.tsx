@@ -117,8 +117,13 @@ export const XYPad: React.FC<XYPadProps> = ({
         const newYValue = yScale === 'log' ? toLogValue(y, minY, maxY) : minY + y * (maxY - minY);
 
         setLocalPosition({ x: newXValue, y: newYValue });
+        // Commit live while dragging — you tune a filter cutoff by EAR, and
+        // the value only landing on mouse-release made that impossible.
+        // (Undo snapshots are drag-coalesced upstream, so this doesn't
+        // flood the history.)
+        onChange({ x: newXValue, y: newYValue });
 
-    }, [width, height, minX, maxX, minY, maxY, xScale, yScale]);
+    }, [width, height, minX, maxX, minY, maxY, xScale, yScale, onChange]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
@@ -127,10 +132,9 @@ export const XYPad: React.FC<XYPadProps> = ({
 
     const handleMouseUp = useCallback(() => {
         if (isDragging) {
-            onChange(localPosition);
             setIsDragging(false);
         }
-    }, [isDragging, localPosition, onChange]);
+    }, [isDragging]);
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (isDragging) {
