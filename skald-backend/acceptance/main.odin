@@ -196,6 +196,22 @@ main :: proc() {
 				release_start_s = 0.60,
 			)
 			all_pass &= assert_silence_after(buf, sample_rate, 1.5)
+			// The release TAIL must actually ring: release=0.3s from t=0.6,
+			// so mid-release (t≈0.7) still has audible energy. Guards the
+			// instant-cut regression (release_level clobbered to 0 at
+			// note_off/auto-release).
+			{
+				s := int(0.65 * sample_rate)
+				e := int(0.80 * sample_rate)
+				tail_rms := compute_rms(buf[s:e], .Left)
+				if tail_rms < 0.01 {
+					fmt.eprintfln(
+						"FAIL adsr_sine release tail: RMS %.6f in [0.65,0.80]s — release is cutting to silence",
+						tail_rms,
+					)
+					all_pass = false
+				}
+			}
 		}
 
 	case "kick_loop_120bpm":
@@ -335,6 +351,25 @@ main :: proc() {
 			all_pass &= run_smoke(buf, fixture)
 		} else {
 			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "melody_8step":
+		// THE melody gate: C4-E4-G4-C5 on steps 0/2/4/6 at 120 BPM. Every
+		// note must come out at its OWN pitch — this is the fixture that
+		// fails if the oscillator ever again bakes `frequency` in as a
+		// constant and the piano roll collapses to one tone.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			// Steps 0/2/4/6 at 120 BPM = onsets at 0.0/0.25/0.5/0.75s; each
+			// note rings for ~0.175s (1 step + release), so the windows sit
+			// inside each note's sustain.
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.010, 0.120, 261.63, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.260, 0.370, 329.63, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.510, 0.620, 392.00, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.760, 0.870, 523.25, 15.0)
 		}
 
 	case "sfx_oneshot":

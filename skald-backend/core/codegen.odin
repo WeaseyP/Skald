@@ -12,18 +12,15 @@ import json "core:encoding/json"
 
 generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, instrument: ^Project_Instrument) {
 	freq_str: string
-	
-	// Determine Base Frequency (Parameter OR Voice Frequency)
-	base_freq_str := "voice.current_freq" // Priority 3: Default to voice frequency
-	if val, ok := node.parameters["frequency"]; ok {
-        #partial switch v in val {
-		// Priority 2: Use fixed parameter if present
-		case json.Float:
-			base_freq_str = fmt.tprintf("%f", v)
-		case json.Integer:
-			base_freq_str = fmt.tprintf("%f", f64(v))
-        }
-	}
+
+	// The played note drives pitch, always. The UI serializes a `frequency`
+	// param on every oscillator, and the old code inlined it as a constant
+	// when present — which meant MIDI notes and the sequencer's piano roll
+	// could never change pitch (every melody collapsed to one tone). The
+	// preview's Voice.trigger() overwrites osc.frequency with the note
+	// frequency on every trigger, so note-wins is also the parity-correct
+	// semantic. voice.current_freq is set from the note at note_on.
+	base_freq_str := "voice.current_freq"
 
 	// Apply Modulation (Priority 1: Exponential FM / V/Oct)
 	// Apply Modulation (Priority 1: Exponential FM / V/Oct)
@@ -116,12 +113,15 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
     }
 
 	depth_str := get_f32_param(graph, node, "depth", "", 1.0)
-    
+
     // Fetch ADSR parameters
     attack_str  := get_f32_param(graph, node, "attack", "input_attack", 0.01)
     decay_str   := get_f32_param(graph, node, "decay", "input_decay", 0.1)
     sustain_str := get_f32_param(graph, node, "sustain", "input_sustain", 0.7)
     release_str := get_f32_param(graph, node, "release", "input_release", 0.1)
+    // velocitySensitivity: 0 = velocity ignored, 1 = envelope fully scaled
+    // by note velocity. This is where sequencer velocity becomes audible.
+    vs_str      := get_f32_param(graph, node, "velocitySensitivity", "", 0.5)
 
 	fmt.sbprintf(sb, "\t\t// --- ADSR Node %s ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
@@ -148,6 +148,10 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprint(sb, "\t\t\tcase .Sustain:\n")
 	fmt.sbprintf(sb, "\t\t\t\tenvelope = (%s);\n", sustain_str)
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
+	// A sustain level of ~0 (percussive envelope) held forever would keep
+	// the voice allocated and is_playing latched true. Nothing audible
+	// remains, so end the envelope.
+	fmt.sbprintf(sb, "\t\t\t\tif envelope <= 0.0001 do voice.adsr_%s_stage = .Idle;\n", node.id)
 	fmt.sbprint(sb, "\t\t\tcase .Release:\n")
 	fmt.sbprint(sb, "\t\t\t\ttime_in_release := voice.age - voice.time_released;\n")
 	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_release_level * (1.0 - (time_in_release / math.max(f32(%s), 0.000001))); else do envelope = 0.0;\n", release_str, node.id, release_str)
@@ -156,7 +160,8 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Idle;\n", node.id)
 	fmt.sbprint(sb, "\t\t\t\t}\n")
 	fmt.sbprint(sb, "\t\t\t}\n")
-	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * envelope * (%s);\n", node.id, input_str, depth_str)
+	fmt.sbprintf(sb, "\t\t\tvel_scale_%s := (1.0 - (%s)) + (%s) * voice.velocity;\n", node.id, vs_str, vs_str)
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * envelope * (%s) * vel_scale_%s;\n", node.id, input_str, depth_str, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
@@ -279,8 +284,25 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 }
 
 generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
-	freq_str := get_f32_param(graph, node, "frequency", "input_freq", 440.0)
-	fmt.sbprintf(sb, "\t\t// --- Wavetable Node %s (Placeholder) ---\n", node.id)
+	// Pitch tracks the played note (same note-wins semantic as Oscillator;
+	// this node used to bake `frequency` in and play 440 for every note).
+	// input_freq modulation uses the same exponential V/Oct convention.
+	freq_str := "voice.current_freq"
+	if graph != nil {
+		sources := find_inputs_for_port(graph, node.id, "input_freq")
+		defer delete(sources)
+		if len(sources) > 0 {
+			sb_sum := strings.builder_make()
+			defer strings.builder_destroy(&sb_sum)
+			for src, i in sources {
+				v := get_output_var(src.id, src.port)
+				if i == 0 do fmt.sbprint(&sb_sum, v)
+				else do fmt.sbprintf(&sb_sum, " + %s", v)
+			}
+			freq_str = fmt.tprintf("voice.current_freq * math.pow(2.0, %s)", strings.to_string(sb_sum))
+		}
+	}
+	fmt.sbprintf(sb, "\t\t// --- Wavetable Node %s (Placeholder waveform; pitch is real) ---\n", node.id)
 	fmt.sbprintf(sb, "\t\tvoice.wavetable_%s_phase = math.mod(voice.wavetable_%s_phase + (2 * f32(math.PI) * (%s) / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, freq_str)
 	fmt.sbprintf(sb, "\t\tnode_%s_out = math.sin(voice.wavetable_%s_phase);\n\n", node.id, node.id)
 }
@@ -526,9 +548,10 @@ generate_processor_code :: proc(
 		if node.type == "Oscillator" {
 			fmt.sbprintf(&sb, "\tosc_%s_phase: [%d]f32,\n", node.id, instrument.unison) 
 		} else if node.type == "ADSR" {
+			// (adsr_<id>_time / adsr_<id>_value removed: _time was written
+			// but never read; _value was ALWAYS 0.0 and note_off used to
+			// copy it into release_level, killing every release tail.)
 			fmt.sbprintf(&sb, "\tadsr_%s_stage: ADSR_Stage,\n", node.id)
-			fmt.sbprintf(&sb, "\tadsr_%s_time: f32,\n", node.id)
-			fmt.sbprintf(&sb, "\tadsr_%s_value: f32,\n", node.id)
             fmt.sbprintf(&sb, "\tadsr_%s_release_level: f32,\n", node.id)
 		} else if node.type == "Filter" {
 			fmt.sbprintf(&sb, "\tfilter_%s_low: f32,\n", node.id)
@@ -554,7 +577,6 @@ generate_processor_code :: proc(
 	fmt.sbprintf(&sb, "\tsample_rate: f32,\n")
 	fmt.sbprintf(&sb, "\tbpm: f32,\n")
 	fmt.sbprintf(&sb, "\tvoices: [%d]%s_Voice_State,\n", polyphony, namespace_prefix)
-	fmt.sbprint(&sb, "\tnext_voice_idx: int,\n")
 	fmt.sbprint(&sb, "\tprng: PRNG_State,\n")
     fmt.sbprint(&sb, "\ttotal_samples: u64,\n")
     // Music Layer transport (always present so the public API surface is
@@ -737,47 +759,89 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\t\t\tbreak\n")
 	fmt.sbprint(&sb, "\t\t}\n")
 	fmt.sbprint(&sb, "\t}\n")
+	// Steal the OLDEST voice, not a blind round-robin pointer (which could
+	// steal the note that started one sample ago while a 10s pad kept ringing).
+	fmt.sbprint(&sb, "\tstolen := false\n")
 	fmt.sbprint(&sb, "\tif voice_idx == -1 {\n")
-	fmt.sbprint(&sb, "\t\tvoice_idx = p.next_voice_idx\n")
-	fmt.sbprintf(&sb, "\t\tp.next_voice_idx = (p.next_voice_idx + 1) %% %d\n", polyphony)
+	fmt.sbprint(&sb, "\t\tstolen = true\n")
+	fmt.sbprint(&sb, "\t\toldest_age: f32 = -1.0\n")
+	fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
+	fmt.sbprint(&sb, "\t\t\tif p.voices[i].age > oldest_age {\n")
+	fmt.sbprint(&sb, "\t\t\t\toldest_age = p.voices[i].age\n")
+	fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
+	fmt.sbprint(&sb, "\t\t\t}\n")
+	fmt.sbprint(&sb, "\t\t}\n")
 	fmt.sbprint(&sb, "\t}\n\n")
-	
+
 	fmt.sbprint(&sb, "\tv := &p.voices[voice_idx]\n")
+	fmt.sbprint(&sb, "\tprev_freq := v.current_freq\n")
 	fmt.sbprint(&sb, "\tv.active = true\n")
 	fmt.sbprint(&sb, "\tv.note = note\n")
 	fmt.sbprint(&sb, "\tv.velocity = velocity\n")
     fmt.sbprint(&sb, "\tv.age = 0.0\n")
+    fmt.sbprint(&sb, "\tv.time_released = 0.0\n")
     fmt.sbprint(&sb, "\tfreq := 440.0 * math.pow(2.0, (f32(note) - 69.0) / 12.0)\n")
 	fmt.sbprint(&sb, "\tv.target_freq = freq\n")
-	fmt.sbprint(&sb, "\tv.current_freq = freq\n") 
     fmt.sbprintf(&sb, "\tv.glide_time = %f\n", instrument.glide)
+	// Glide applies on voice reuse (steal): the pitch slides from where the
+	// stolen voice was to the new note over glide_time. Fresh voices start
+	// exactly on pitch — gliding every new note from the previous one would
+	// smear chords (the UI default glide is nonzero on every instrument).
+	fmt.sbprint(&sb, "\tif stolen && v.glide_time > 0.0 && prev_freq > 0.0 {\n")
+	fmt.sbprint(&sb, "\t\tv.current_freq = prev_freq\n")
+	fmt.sbprint(&sb, "\t} else {\n")
+	fmt.sbprint(&sb, "\t\tv.current_freq = freq\n")
+	fmt.sbprint(&sb, "\t}\n")
     fmt.sbprint(&sb, "\tv.duration = duration\n")
-    
+
     // Reset Envelopes
 	for _, node in graph.nodes {
 		if node.type == "ADSR" {
 			fmt.sbprintf(&sb, "\tv.adsr_%s_stage = .Attack\n", node.id)
-			fmt.sbprintf(&sb, "\tv.adsr_%s_time = 0.0\n", node.id)
-			fmt.sbprintf(&sb, "\tv.adsr_%s_value = 0.0\n", node.id)
+			fmt.sbprintf(&sb, "\tv.adsr_%s_release_level = 0.0\n", node.id)
 		}
 	}
 	fmt.sbprint(&sb, "}\n\n")
 
-	fmt.sbprintf(&sb, "%s_note_off :: proc(p: ^%s_Processor, note: u8) {{\n", namespace_prefix, namespace_prefix)
-	fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
-	fmt.sbprint(&sb, "\t\tif p.voices[i].active && p.voices[i].note == note {\n")
-    fmt.sbprint(&sb, "\t\t\treleasing := false\n")
-    fmt.sbprint(&sb, "\t\t\tp.voices[i].time_released = p.voices[i].age\n")
+	// note_off releases ONE voice per call — the oldest active, not-yet-
+	// releasing voice holding this note. Releasing all of them meant the
+	// same note played twice (delay throws, echoes a chord) lost every
+	// copy's tail on the first note_off.
+	first_adsr_id := ""
 	for _, node in graph.nodes {
 		if node.type == "ADSR" {
-			fmt.sbprintf(&sb, "\t\t\tp.voices[i].adsr_%s_stage = .Release\n", node.id)
-            fmt.sbprintf(&sb, "\t\t\tp.voices[i].adsr_%s_release_level = p.voices[i].adsr_%s_value\n", node.id, node.id)
-            fmt.sbprintf(&sb, "\t\t\tp.voices[i].adsr_%s_time = 0.0\n", node.id)
-            fmt.sbprint(&sb, "\t\t\treleasing = true\n")
+			first_adsr_id = node.id
+			break
 		}
 	}
-    fmt.sbprint(&sb, "\t\t\tif !releasing do p.voices[i].active = false\n")
+	fmt.sbprintf(&sb, "%s_note_off :: proc(p: ^%s_Processor, note: u8) {{\n", namespace_prefix, namespace_prefix)
+	fmt.sbprint(&sb, "\tbest := -1\n")
+	fmt.sbprint(&sb, "\tbest_age: f32 = -1.0\n")
+	fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
+	fmt.sbprint(&sb, "\t\tif p.voices[i].active && p.voices[i].note == note {\n")
+	if first_adsr_id != "" {
+		fmt.sbprintf(&sb, "\t\t\tif p.voices[i].adsr_%s_stage == .Release do continue\n", first_adsr_id)
+	}
+	fmt.sbprint(&sb, "\t\t\tif p.voices[i].age > best_age {\n")
+	fmt.sbprint(&sb, "\t\t\t\tbest_age = p.voices[i].age\n")
+	fmt.sbprint(&sb, "\t\t\t\tbest = i\n")
+	fmt.sbprint(&sb, "\t\t\t}\n")
 	fmt.sbprint(&sb, "\t\t}\n")
+	fmt.sbprint(&sb, "\t}\n")
+	fmt.sbprint(&sb, "\tif best >= 0 {\n")
+	fmt.sbprint(&sb, "\t\tp.voices[best].time_released = p.voices[best].age\n")
+	if first_adsr_id != "" {
+		for _, node in graph.nodes {
+			if node.type == "ADSR" {
+				// release_level already tracks the live envelope value each
+				// sample — do NOT overwrite it here (that was the instant-
+				// silence bug: it was clobbered with a field that was always 0).
+				fmt.sbprintf(&sb, "\t\tp.voices[best].adsr_%s_stage = .Release\n", node.id)
+			}
+		}
+	} else {
+		fmt.sbprint(&sb, "\t\tp.voices[best].active = false\n")
+	}
 	fmt.sbprint(&sb, "\t}\n")
 	fmt.sbprint(&sb, "}\n\n")
 
@@ -959,16 +1023,29 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\t\tif !voice.active do continue\n\n")
     // Increment voice age
     fmt.sbprint(&sb, "\t\tvoice.age += 1.0 / sample_rate;\n")
+
+	// Glide: one-pole slide of current_freq toward target_freq. Only ever
+	// diverges on voice steal (see note_on); fresh notes start on pitch.
+	if instrument.glide > 0.0 {
+		fmt.sbprint(&sb, "\t\tif voice.current_freq != voice.target_freq {\n")
+		fmt.sbprint(&sb, "\t\t\tglide_k := 1.0 / math.max(voice.glide_time * sample_rate, 1.0)\n")
+		fmt.sbprint(&sb, "\t\t\tif glide_k > 1.0 do glide_k = 1.0\n")
+		fmt.sbprint(&sb, "\t\t\tvoice.current_freq += (voice.target_freq - voice.current_freq) * glide_k\n")
+		fmt.sbprint(&sb, "\t\t\tif abs(voice.target_freq - voice.current_freq) < 0.1 do voice.current_freq = voice.target_freq\n")
+		fmt.sbprint(&sb, "\t\t}\n")
+	}
     
-    // Auto-Release Check
+    // Auto-Release Check. time_released must be stamped here or the
+    // Release stage computes time_in_release from age-0 and the tail is
+    // skipped entirely (the sequencer fires every note through this path).
+    // release_level is NOT touched — it already tracks the live envelope.
     fmt.sbprint(&sb, "\t\tif voice.age >= voice.duration && voice.duration > 0.0 {\n")
 	for _, node in graph.nodes {
 		if node.type == "ADSR" {
             // Trigger Release
 			fmt.sbprintf(&sb, "\t\t\tif voice.adsr_%s_stage != .Release && voice.adsr_%s_stage != .Idle {{\n", node.id, node.id)
 			fmt.sbprintf(&sb, "\t\t\t\tvoice.adsr_%s_stage = .Release\n", node.id)
-            fmt.sbprintf(&sb, "\t\t\t\tvoice.adsr_%s_release_level = voice.adsr_%s_value\n", node.id, node.id)
-			fmt.sbprintf(&sb, "\t\t\t\tvoice.adsr_%s_time = 0.0\n", node.id)
+			fmt.sbprint(&sb, "\t\t\t\tvoice.time_released = voice.age\n")
 			fmt.sbprint(&sb, "\t\t\t}\n")
 		}
 	}
