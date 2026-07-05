@@ -456,6 +456,34 @@ main :: proc() {
 			}
 		}
 
+	case "wavetable_morph":
+		// Wavetable at position 0 (sine) must track the note pitch, and
+		// sweeping position toward sawtooth must brighten the spectrum —
+		// this node used to discard position entirely and play a fixed
+		// 440Hz sine.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{
+					kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0,
+					params = {{name = "position", value = 0.0}},
+				},
+				Render_Spec{
+					kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0,
+					params = {{name = "position", value = 2.0}},
+				},
+				"wavetable position sine->saw",
+				0.10,
+				Change_Expect{centroid = .Raise},
+			)
+		}
+
 	case "sfx_oneshot":
 		// SFX with ADSR but no sequencer track. Trigger once with finite
 		// duration, then assert silence after release ends.

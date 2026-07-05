@@ -128,7 +128,9 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	fmt.sbprintf(sb, "\t\t\t\tdetuned_freq := (%s) * math.pow(2.0, detune_amount / 1200.0);\n", freq_str)
 	fmt.sbprintf(sb, "\t\t\t\tphase_rads := f32(%s) * (f32(math.PI) / 180.0);\n", phase_str)
 	fmt.sbprintf(sb, "\t\t\t\tvoice.osc_%s_phase[i] = math.mod(voice.osc_%s_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));\n", node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\t\tfinal_phase := voice.osc_%s_phase[i] + phase_rads;\n", node.id)
+	// final_phase wrapped to [0, 2π): the phase-offset param used to push
+	// sawtooth/square out of range (DC offset up to +2.0 on saw).
+	fmt.sbprintf(sb, "\t\t\t\tfinal_phase := math.mod(voice.osc_%s_phase[i] + phase_rads, 2 * f32(math.PI));\n", node.id)
 
 	// BUG-WAVEFORM-CONST-SWITCH: previously emitted a runtime switch on a
 	// codegen-time literal — every non-matching branch was dead. Now we
@@ -137,9 +139,12 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	case "Sawtooth":
 		fmt.sbprint(sb, "\t\t\t\tunison_out += ((final_phase / f32(math.PI)) - 1.0);\n")
 	case "Square":
+		// True PWM: duty cycle == pulseWidth. The old sine-threshold
+		// comparator gave 33% duty at the 0.5 default and pure DC silence
+		// at pulseWidth=1.0.
 		fmt.sbprintf(
 			sb,
-			"\t\t\t\tif math.sin(final_phase) > %s do unison_out += 1.0; else do unison_out -= 1.0;\n",
+			"\t\t\t\tif final_phase < 2 * f32(math.PI) * math.clamp(f32(%s), 0.01, 0.99) do unison_out += 1.0; else do unison_out -= 1.0;\n",
 			pw_str,
 		)
 	case "Triangle":
@@ -284,6 +289,9 @@ generate_lfo_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp: s
 
 	fmt.sbprintf(sb, "\t\t// --- LFO Node %s ---\n", node.id)
 	fmt.sbprintf(sb, "\t\t%slfo_%s_phase = math.mod(%slfo_%s_phase + (2 * f32(math.PI) * (%s) / sample_rate), 2 * f32(math.PI));\n", sp, node.id, sp, node.id, freq_str)
+	// Negative frequency (legal via exposed params) drives math.mod negative
+	// — the sawtooth branch then outputs [-3,-1] instead of [-1,1].
+	fmt.sbprintf(sb, "\t\tif %slfo_%s_phase < 0.0 do %slfo_%s_phase += 2 * f32(math.PI);\n", sp, node.id, sp, node.id)
 
 	switch waveform {
 	case "Sawtooth":
@@ -341,8 +349,9 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 
 	fmt.sbprintf(sb, "\t\t// --- FM Operator Node %s ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	// Calculate the actual carrier frequency by applying the ratio.
-	fmt.sbprintf(sb, "\t\t\tcarrier_freq_%s := %s * (%s);\n", node.id, carrier_base_freq_str, ratio_str)
+	// Ratio clamped to [0.01, 32]: legacy saves carry the old UI default of
+	// 440 in this param, which as a raw ratio put the carrier at ~190kHz.
+	fmt.sbprintf(sb, "\t\t\tcarrier_freq_%s := %s * math.clamp(f32(%s), 0.01, 32.0);\n", node.id, carrier_base_freq_str, ratio_str)
 	// Increment the phase based on the carrier frequency.
 	fmt.sbprintf(sb, "\t\t\tvoice.fm_%s_phase = math.mod(voice.fm_%s_phase + (2 * f32(math.PI) * carrier_freq_%s / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, node.id)
 	// Calculate the final output. The modulator signal is multiplied by the modulation index and added to the phase.
@@ -369,9 +378,17 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph)
 			freq_str = fmt.tprintf("voice.current_freq * math.pow(2.0, math.clamp(f32(%s), -10.0, 10.0))", strings.to_string(sb_sum))
 		}
 	}
-	fmt.sbprintf(sb, "\t\t// --- Wavetable Node %s (Placeholder waveform; pitch is real) ---\n", node.id)
-	fmt.sbprintf(sb, "\t\tvoice.wavetable_%s_phase = math.mod(voice.wavetable_%s_phase + (2 * f32(math.PI) * (%s) / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, freq_str)
-	fmt.sbprintf(sb, "\t\tnode_%s_out = math.sin(voice.wavetable_%s_phase);\n\n", node.id, node.id)
+	// position morphs sine→triangle→saw→square (0..3, matching the preview
+	// worklet); input_pos modulation sums into it. The node used to be a
+	// placeholder that discarded tableName/position/input_pos and always
+	// played a sine.
+	pos_str := get_f32_param(graph, node, "position", "input_pos", 0.0)
+	amp_str := get_f32_param(graph, node, "amplitude", "input_amp", 1.0)
+
+	fmt.sbprintf(sb, "\t\t// --- Wavetable Node %s ---\n", node.id)
+	fmt.sbprintf(sb, "\t\tvoice.wavetable_%s_phase = math.mod(voice.wavetable_%s_phase + ((%s) / sample_rate), 1.0);\n", node.id, node.id, freq_str)
+	fmt.sbprintf(sb, "\t\tif voice.wavetable_%s_phase < 0.0 do voice.wavetable_%s_phase += 1.0;\n", node.id, node.id)
+	fmt.sbprintf(sb, "\t\tnode_%s_out = skald_wavetable_sample(voice.wavetable_%s_phase, f32(%s)) * (%s);\n\n", node.id, node.id, pos_str, amp_str)
 }
 
 generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
@@ -428,18 +445,37 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
-generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+// Canonical contract = the preview's WaveShaper graph: shape curve →
+// one-pole lowpass at `tone` Hz → wet/dry `mix`. The old codegen matched
+// shape strings the UI never sends ('SoftClip'/'HardClip'), dropped tone
+// and mix entirely, and shipped 100% wet with no tone filter.
+generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp: string) {
 	input_str := sum_port_inputs(graph, node.id, "input", "0.0")
 	drive_str := get_f32_param(graph, node, "drive", "", 20.0)
-	shape := get_string_param(node, "shape", "SoftClip")
+	tone_str  := get_f32_param(graph, node, "tone", "", 4000.0)
+	mix_str   := get_f32_param(graph, node, "mix", "", 0.5)
+	shape := strings.to_lower(get_string_param(node, "shape", "classic"), context.temp_allocator)
 
-	fmt.sbprintf(sb, "\t\t// --- Distortion Node %s ---\n", node.id)
+	fmt.sbprintf(sb, "\t\t// --- Distortion Node %s (%s) ---\n", node.id, shape)
+	fmt.sbprint(sb, "\t\t{\n")
+	fmt.sbprintf(sb, "\t\t\tdist_in_%s := (%s);\n", node.id, input_str)
+	fmt.sbprintf(sb, "\t\t\tdist_k_%s := math.max(f32(%s), 1.0);\n", node.id, drive_str)
 	switch shape {
-	case "HardClip":
-		fmt.sbprintf(sb, "\t\tnode_%s_out = math.clamp((%s) * (%s), -1.0, 1.0);\n\n", node.id, input_str, drive_str)
-	case: // "SoftClip"
-		fmt.sbprintf(sb, "\t\tnode_%s_out = math.tanh((%s) * (%s));\n\n", node.id, input_str, drive_str)
+	case "soft", "softclip":
+		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := math.tanh(dist_in_%s * dist_k_%s);\n", node.id, node.id, node.id)
+	case "hard", "hardclip":
+		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := math.clamp(dist_in_%s * dist_k_%s, -1.0, 1.0);\n", node.id, node.id, node.id)
+	case "asymmetric":
+		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := dist_in_%s > 0.0 ? dist_in_%s : dist_in_%s / (1.0 + abs(dist_in_%s * dist_k_%s));\n", node.id, node.id, node.id, node.id, node.id, node.id)
+	case: // classic
+		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := (f32(math.PI) + dist_k_%s) * dist_in_%s / (f32(math.PI) + dist_k_%s * abs(dist_in_%s));\n", node.id, node.id, node.id, node.id, node.id)
 	}
+	// One-pole lowpass tone filter on the wet path.
+	fmt.sbprintf(sb, "\t\t\ttone_k_%s := math.clamp(2.0 * f32(math.PI) * math.clamp(f32(%s), 100.0, 20000.0) / sample_rate, 0.001, 1.0);\n", node.id, tone_str)
+	fmt.sbprintf(sb, "\t\t\t%sdist_%s_tone += tone_k_%s * (dist_wet_%s - %sdist_%s_tone);\n", sp, node.id, node.id, node.id, sp, node.id)
+	fmt.sbprintf(sb, "\t\t\tmix_%s := math.clamp(f32(%s), 0.0, 1.0);\n", node.id, mix_str)
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = dist_in_%s * (1.0 - mix_%s) + %sdist_%s_tone * mix_%s;\n", node.id, node.id, node.id, sp, node.id, node.id)
+	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
 generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
@@ -552,8 +588,10 @@ generate_midi_input_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	fmt.sbprintf(sb, "\t\t// --- MIDI Input Node %s ---\n", node.id)
 	// Output 1: Pitch (V/Oct relative to A4 440Hz -> (Note - 69) / 12.0)
 	fmt.sbprintf(sb, "\t\tnode_%s_out_pitch := (f32(voice.note) - 69.0) / 12.0\n", node.id)
-	// Output 2: Gate
+	// Output 2: Gate — live per-voice signal (1 while held, 0 once
+	// released). It was a hardcoded compile-time 1.0 before.
 	fmt.sbprintf(sb, "\t\tnode_%s_out_gate := f32(1.0)\n", node.id)
+	fmt.sbprintf(sb, "\t\tif voice.time_released > 0.0 do node_%s_out_gate = 0.0\n", node.id)
 	// Output 3: Velocity
 	fmt.sbprintf(sb, "\t\tnode_%s_out_velocity := voice.velocity\n\n", node.id)
 }
@@ -706,6 +744,8 @@ generate_processor_code :: proc(
 			fmt.sbprintf(&sb, "\tsh_%s_counter: u64,\n", node.id)
 			fmt.sbprintf(&sb, "\tsh_%s_rng: PRNG_State,\n", node.id)
 			fmt.sbprintf(&sb, "\tsh_%s_current_value: f32,\n", node.id)
+		} else if node.type == "Distortion" {
+			fmt.sbprintf(&sb, "\tdist_%s_tone: f32,\n", node.id)
 		}
 	}
 	fmt.sbprint(&sb, "}\n\n")
@@ -723,6 +763,10 @@ generate_processor_code :: proc(
     fmt.sbprint(&sb, "\tloop: bool,\n")
     fmt.sbprint(&sb, "\tcurrent_step: u64,\n")
     fmt.sbprint(&sb, "\tsamples_until_next_step: u64,\n")
+    // Fractional-sample carry for the step clock: without it, truncating
+    // samples-per-step made 120 BPM render ~120.011 BPM at 44.1kHz and
+    // drift against the UI preview.
+    fmt.sbprint(&sb, "\tstep_frac_acc: f32,\n")
     
     // Generate Processor state fields (Global effects buffers)
 	for _, node in graph.nodes {
@@ -748,6 +792,8 @@ generate_processor_code :: proc(
 			fmt.sbprintf(&sb, "\tsh_%s_counter: u64,\n", node.id)
 			fmt.sbprintf(&sb, "\tsh_%s_rng: PRNG_State,\n", node.id)
 			fmt.sbprintf(&sb, "\tsh_%s_current_value: f32,\n", node.id)
+		case "Distortion":
+			fmt.sbprintf(&sb, "\tdist_%s_tone: f32,\n", node.id)
 		}
 	}
 
@@ -787,7 +833,7 @@ generate_processor_code :: proc(
                         p_name, is_str := p_val.(json.String)
                         if !is_str do continue
 
-                        rng := lookup_param_range(p_name)
+                        rng := lookup_param_range(p_name, node.type)
                         def_val := rng.default
                         if val, found := node.parameters[p_name]; found {
                             #partial switch v in val {
@@ -980,6 +1026,8 @@ generate_processor_code :: proc(
 			fmt.sbprintf(&sb, "\tv.fm_%s_phase = 0.0\n", node.id)
 		case "Wavetable":
 			fmt.sbprintf(&sb, "\tv.wavetable_%s_phase = 0.0\n", node.id)
+		case "Distortion":
+			fmt.sbprintf(&sb, "\tv.dist_%s_tone = 0.0\n", node.id)
 		}
 	}
 	fmt.sbprint(&sb, "}\n\n")
@@ -1056,6 +1104,7 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\tp.playing = true\n")
 	fmt.sbprint(&sb, "\tp.current_step = 0\n")
 	fmt.sbprint(&sb, "\tp.samples_until_next_step = 0\n")
+	fmt.sbprint(&sb, "\tp.step_frac_acc = 0.0\n")
 	fmt.sbprint(&sb, "}\n\n")
 
 	// _stop: Music Layer halt. Voices in mid-envelope keep releasing naturally.
@@ -1280,7 +1329,7 @@ generate_processor_code :: proc(
         case "Gain":
              generate_gain_code(&sb, node, graph)
         case "Distortion":
-             generate_distortion_code(&sb, node, graph)
+             generate_distortion_code(&sb, node, graph, "voice.")
         case "Noise":
              generate_noise_code(&sb, node, graph, "voice.")
         case "Mixer":
@@ -1368,7 +1417,7 @@ generate_processor_code :: proc(
 			case "Gain":
 				generate_gain_code(&sb, node, graph)
 			case "Distortion":
-				generate_distortion_code(&sb, node, graph)
+				generate_distortion_code(&sb, node, graph, "p.")
 			case "Delay":
 				generate_delay_code(&sb, node, graph)
 			case "Reverb":
@@ -1473,11 +1522,14 @@ generate_sequencer_logic :: proc(
 
 	fmt.sbprint(sb, "\tif !p.playing do return\n")
 
-	// samples_per_step recomputed each call so changes to p.sample_rate or
-	// p.bpm at runtime take effect on the next step. Cheap (one mul one div).
+	// Exact (fractional) samples-per-step, recomputed each call so changes
+	// to p.sample_rate or p.bpm at runtime take effect on the next step.
+	// The integer part drives the countdown; the fraction accumulates in
+	// p.step_frac_acc so long renders never drift (44.1kHz at 120 BPM is
+	// 91.875 samples/step — truncation ran ~0.01% fast).
 	fmt.sbprint(
 		sb,
-		"\tsamples_per_step := u64(p.sample_rate * 60.0 / p.bpm / 4.0)\n",
+		"\tsamples_per_step_f := p.sample_rate * 60.0 / (p.bpm * 4.0)\n",
 	)
 
 	// Fire-then-decrement: when the counter is 0, fire the current step's
@@ -1532,11 +1584,12 @@ generate_sequencer_logic :: proc(
 	fmt.sbprint(sb, "\t\t\t}\n")
 	fmt.sbprint(sb, "\t\t}\n")
 
-	// Reload counter. samples_per_step ≥ 1 in any realistic config; subtract
-	// 1 so this same-call counter==0 fire doesn't get double-counted.
-	fmt.sbprint(sb, "\t\tif samples_per_step > 0 {\n")
-	fmt.sbprint(sb, "\t\t\tp.samples_until_next_step = samples_per_step - 1\n")
-	fmt.sbprint(sb, "\t\t}\n")
+	// Reload counter with fractional carry; subtract 1 so this same-call
+	// counter==0 fire doesn't get double-counted.
+	fmt.sbprint(sb, "\t\tp.step_frac_acc += samples_per_step_f\n")
+	fmt.sbprint(sb, "\t\tn_step := u64(math.max(p.step_frac_acc, 1.0))\n")
+	fmt.sbprint(sb, "\t\tp.step_frac_acc -= f32(n_step)\n")
+	fmt.sbprint(sb, "\t\tp.samples_until_next_step = n_step - 1\n")
 	fmt.sbprint(sb, "\t} else {\n")
 	fmt.sbprint(sb, "\t\tp.samples_until_next_step -= 1\n")
 	fmt.sbprint(sb, "\t}\n")
@@ -1635,6 +1688,28 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "}\n\n")
 
     fmt.sbprint(&sb, "ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }\n\n")
+
+    // Wavetable morph shared by all Wavetable nodes: the four standard
+    // shapes (sine/triangle/saw/square), position 0..3 crossfades between
+    // adjacent shapes with wraparound — exactly the preview worklet's
+    // table set and interpolation. ph is normalized [0,1).
+    fmt.sbprint(&sb, "skald_wavetable_shape :: proc(idx: int, ph: f32) -> f32 {\n")
+    fmt.sbprint(&sb, "\tswitch idx {\n")
+    fmt.sbprint(&sb, "\tcase 1: return abs(ph * 4.0 - 2.0) - 1.0\n")
+    fmt.sbprint(&sb, "\tcase 2: return ph * 2.0 - 1.0\n")
+    fmt.sbprint(&sb, "\tcase 3: return ph < 0.5 ? 1.0 : -1.0\n")
+    fmt.sbprint(&sb, "\t}\n")
+    fmt.sbprint(&sb, "\treturn math.sin(ph * 2.0 * f32(math.PI))\n")
+    fmt.sbprint(&sb, "}\n\n")
+    fmt.sbprint(&sb, "skald_wavetable_sample :: proc(ph: f32, pos: f32) -> f32 {\n")
+    fmt.sbprint(&sb, "\tp := math.clamp(pos, 0.0, 3.0)\n")
+    fmt.sbprint(&sb, "\ti1 := int(p)\n")
+    fmt.sbprint(&sb, "\ti2 := (i1 + 1) % 4\n")
+    fmt.sbprint(&sb, "\tfrac := p - f32(i1)\n")
+    fmt.sbprint(&sb, "\ts1 := skald_wavetable_shape(i1, ph)\n")
+    fmt.sbprint(&sb, "\ts2 := skald_wavetable_shape(i2, ph)\n")
+    fmt.sbprint(&sb, "\treturn s1 + (s2 - s1) * frac\n")
+    fmt.sbprint(&sb, "}\n\n")
 
     fmt.sbprint(&sb, "Note_Event :: struct {\n")
     fmt.sbprint(&sb, "\tnote: u8,\n")
