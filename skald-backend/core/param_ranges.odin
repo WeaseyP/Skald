@@ -17,7 +17,15 @@ Param_Range :: struct {
 	unit:    string,
 }
 
+import "core:strings"
+
 lookup_param_range :: proc(name: string) -> Param_Range {
+	// Mixer channel levels: level1, level2, ... Default 1.0 (unity), NOT the
+	// wide-open unknown fallback — an exposed channel used to initialize to
+	// 0.0 (silently muted) with a ±1e6 clamp.
+	if strings.has_prefix(name, "level") && len(name) > 5 {
+		return {0.0, 2.0, 1.0, "x"}
+	}
 	switch name {
 	// Pitch / spectrum
 	case "frequency":

@@ -109,6 +109,24 @@ get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port:
 	return base_str
 }
 
+// Sum every connection into a port: "(a + b + c)". One convention for all
+// audio inputs — nodes that used find_input_for_port kept only the FIRST
+// edge and silently dropped the rest (the editor preview plays them all).
+sum_port_inputs :: proc(graph: ^Graph, node_id: string, port: string, default_str: string) -> string {
+	if graph == nil do return default_str
+	sources := find_inputs_for_port(graph, node_id, port)
+	defer delete(sources)
+	if len(sources) == 0 do return default_str
+	sb := strings.builder_make()
+	defer strings.builder_destroy(&sb)
+	for src, i in sources {
+		v := get_output_var(src.id, src.port)
+		if i == 0 do fmt.sbprint(&sb, v)
+		else do fmt.sbprintf(&sb, " + %s", v)
+	}
+	return fmt.tprintf("(%s)", strings.to_string(sb))
+}
+
 get_string_param :: proc(node: Node, param_name: string, default_val: string) -> string {
 	if val, ok := node.parameters[param_name]; ok {
         #partial switch v in val {

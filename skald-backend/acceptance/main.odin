@@ -407,6 +407,55 @@ main :: proc() {
 			}
 		}
 
+	// --- P3 routing fixtures ---
+
+	case "panner_mono":
+		// Panner feeding a mono-input node (Gain). Used to be TOTAL silence:
+		// downstream read node_<id>_out, which the Panner never wrote.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.5)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 5.0, .Left)
+		}
+
+	case "dual_panner":
+		// Two hard-panned sources, BOTH wired into the GraphOutput. Only the
+		// first connection used to survive — the right channel was silently
+		// dropped from the mix.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.5)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_audible(buf, .Right)
+			all_pass &= assert_stereo_differs(buf, 0.01)
+		}
+
+	case "delay_tail":
+		// 0.5s delay, feedback 0.5, note dies by ~0.35s. The second echo at
+		// t≈1.0-1.3s must ring even though every voice is dead — the effect
+		// used to be gated behind voice.active and hard-cut the tail.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.25)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			{
+				s := int(1.05 * sample_rate)
+				e := int(1.30 * sample_rate)
+				tail_rms := compute_rms(buf[s:e], .Both)
+				if tail_rms < 0.003 {
+					fmt.eprintfln(
+						"FAIL delay_tail: echo RMS %.6f in [1.05,1.30]s — tail cut when voices died",
+						tail_rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
 	case "sfx_oneshot":
 		// SFX with ADSR but no sequencer track. Trigger once with finite
 		// duration, then assert silence after release ends.
