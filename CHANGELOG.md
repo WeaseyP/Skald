@@ -1,5 +1,58 @@
 # Skald Changelog
 
+## Full-system review fixes, P0–P8 (2026-07-05)
+
+Eight phases on branch `review-fixes`, one commit per phase, driven by the
+290-agent review (findings + synthesis in `review-checkpoints/`). Gates:
+**20/20 acceptance fixtures** (11 new adversarial ones), **53/53 UI tests**.
+
+- ✅ **P0 — everything the UI produces compiles**: exposed-param collision
+  resolution fixed at every call site, identifier sanitization for any
+  node id / instrument name, chord switch-case dedup, constant-division
+  guards. Fixtures: dual_osc, fm_patch, reverb_adsr_exposure, chord_step,
+  numeric_ids.
+- ✅ **P1 — generated code plays music**: note-driven pitch (piano-roll
+  melodies work), real ADSR release tails, velocity sensitivity,
+  oldest-voice stealing, steal-glide, per-note note_off. Fixture:
+  melody_8step pins four sequenced pitches.
+- ✅ **P2 — no NaN ever**: clamps at point of use for FM exponent, SVF
+  cutoff/damping, delay feedback, pan; per-voice DSP state reset on
+  note_on; reverb decay is real seconds (RT60-mapped gain). Fixture:
+  hostile_modulation (±8 oct pitch LFO, ±30kHz cutoff LFO) stays finite
+  for 60s at 44.1k/48k.
+- ✅ **P3 — nothing silently disappears**: Delay/Reverb run once per
+  sample on a post-voice bus (tails ring after voices die), cycles are a
+  loud codegen error, every input port sums all its wires, GraphOutput
+  sums all connections port-aware, Panner feeds mono consumers, mixer
+  reads the UI's real level keys, master limiter ceiling is truly 1.0,
+  mute/solo/master_volume honored. Fixtures: panner_mono, dual_panner,
+  delay_tail.
+- ✅ **P4 — node DSP fidelity**: true PWM square, real morphing wavetable
+  (position 0–3, matches the preview worklet), full distortion contract
+  (classic/soft/hard/asymmetric + tone + mix), FM ratio semantics,
+  live MIDI gate, drift-free fractional step clock. Fixture:
+  wavetable_morph.
+- ✅ **P5 — exports carry the whole song**: probability, P-locks,
+  scale-quantized pitches, BPM-synced LFO/S&H/Delay rates, global
+  pattern_steps, honored track mute, correct duration/start_time.
+  Serializer contract test pins every field.
+- ✅ **P6 — preview parity**: exponential V/Oct FM in the preview,
+  V/Oct MIDI pitch, note-tracking FM ratio, working modIndex knob,
+  filter/pan/wavetable modulation wires actually connect, multiplicative
+  amp modulation, live pan edits, clamped Mapper, schema-aligned
+  defaults, and `skaldType` dispatch replacing `constructor.name`
+  (which minified builds mangled — all modulation died in production).
+- ✅ **P7 — UI state integrity**: collapse/explode edge fidelity (no more
+  cross-wiring or dropped fan-out), handle-aware edge ids, delta-based
+  param updates (ADSR editor / XY pad no longer clobber themselves,
+  instrument params editable), undo fixed (load resets, drags coalesce,
+  depth 50), paste deep-clones, error boundary, engine per-node fault
+  isolation, Output delete no longer silences everything, Snap-to-Scale
+  preserves chords, XY pad tunes live, StepGrid modifier-drags work.
+- ✅ **P8 — UX conventions**: Delete key deletes, shortcut legend (?),
+  palette tooltips, double-click slider reset, 24px hit targets,
+  Wavetable back in the palette.
+
 ## Test harness generalization (2026-07-04)
 
 - ✅ **Acceptance: 8/8 fixtures green + FFT self-test** (honest baseline
