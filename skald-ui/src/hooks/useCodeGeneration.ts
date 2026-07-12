@@ -43,7 +43,7 @@ export const useCodeGeneration = () => {
         );
 
         try {
-            const code = await (window as any).electron.invokeCodegen(JSON.stringify(projectData, null, 2), { packageName, outputPath });
+            const code = await window.electron.invokeCodegen(JSON.stringify(projectData, null, 2), { packageName, outputPath });
             setGeneratedCode(code);
         } catch (error) {
             console.error("Error during code generation:", error);

@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, review-fixes]
+  pull_request:
+
+# The whole project is Windows-first (batch scripts, Squirrel packaging),
+# so both jobs run on windows-latest.
+
+jobs:
+  backend:
+    name: Backend (codegen + acceptance)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pin the Odin release CI builds against. Local dev is on dev-2025-02;
+      # bump this deliberately, alongside a local upgrade, never implicitly.
+      - name: Install Odin
+        shell: pwsh
+        run: |
+          $release = "dev-2025-02"
+          $url = "https://github.com/odin-lang/Odin/releases/download/$release/odin-windows-amd64-$release.zip"
+          Invoke-WebRequest -Uri $url -OutFile odin.zip
+          Expand-Archive odin.zip -DestinationPath C:\odin-dist
+          # The zip may nest the distribution one directory deep.
+          $exe = Get-ChildItem C:\odin-dist -Recurse -Filter odin.exe | Select-Object -First 1
+          if (-not $exe) { throw "odin.exe not found in release archive" }
+          Add-Content $env:GITHUB_PATH $exe.DirectoryName
+
+      - name: Odin version
+        run: odin version
+
+      - name: Acceptance suite (codegen + FFT assertions, 22 fixtures)
+        working-directory: skald-backend
+        run: .\run_acceptance.bat
+
+  ui:
+    name: UI (lint + typecheck + tests)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: skald-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: skald-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test

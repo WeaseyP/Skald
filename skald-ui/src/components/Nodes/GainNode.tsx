@@ -27,7 +27,7 @@ const GainNodeComponent = ({ data }: NodeProps) => {
             </div>
 
             <div style={{ position: 'relative', height: '10px', marginTop: '5px' }}>
-                <Handle type="target" position={Position.Left} id="input_gain" style={{ top: '50%' }} background="#555" />
+                <Handle type="target" position={Position.Left} id="input_gain" style={{ top: '50%', background: '#555' }} />
                 <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Gain</span>
             </div>
 

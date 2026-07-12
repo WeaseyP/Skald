@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { spawn, spawnSync } from 'child_process';
 import started from 'electron-squirrel-startup';
+import { assertCodegenTargetSafe } from './main/codegenGuards';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -73,68 +74,13 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { package
 
   const executablePath = codegenExePath();
 
-  // Refuse to overwrite a foreign Odin source file. The generated file
-  // declares `package <packageName>`; if the file already at the output path
-  // declares a DIFFERENT package, the user almost certainly picked the wrong
-  // output file — overwriting would destroy hand-written code. (This really
-  // happened: an output path pointed at the tester's `package main`
-  // test_harness.odin, and every Generate silently killed the test harness.)
-  if (options.outputPath && fs.existsSync(options.outputPath)) {
-    let existingPackage: string | null = null;
-    try {
-      const existing = fs.readFileSync(options.outputPath, { encoding: 'utf8' });
-      const pkgMatch = existing.match(/^\s*package\s+([A-Za-z0-9_]+)/m);
-      existingPackage = pkgMatch ? pkgMatch[1] : null;
-    } catch {
-      // Unreadable target — let the codegen's own write surface the error.
-    }
-    const targetPackage = options.packageName || 'generated_audio';
-    if (existingPackage && existingPackage !== targetPackage) {
-      const msg =
-        `Refusing to overwrite ${options.outputPath}: it declares 'package ${existingPackage}', ` +
-        `but this generation would write 'package ${targetPackage}'. That file looks hand-written ` +
-        `(e.g. the test harness). Pick a different output file, such as ` +
-        `skald-backend/tester/generated_audio/generated_audio.odin.`;
-      console.error(`[Skald] ${msg}`);
-      throw new Error(msg);
-    }
-  }
-
-  // Odin allows exactly ONE package per directory. Writing the generated
-  // file into a directory whose OTHER .odin files declare a different
-  // package breaks that whole package's build (e.g. generated_audio.odin
-  // dropped into tester/ next to the 'package main' test harness).
+  // Refuse to clobber a foreign Odin package — either by overwriting a
+  // different-package file at the output path, or by dropping our file into a
+  // directory another package already owns (Odin: one package per directory).
+  // (This really happened: an output path pointed at the tester's `package
+  // main` test_harness.odin, and every Generate silently killed it.)
   if (options.outputPath) {
-    const targetPackage = options.packageName || 'generated_audio';
-    const outPathResolved = path.resolve(options.outputPath).toLowerCase();
-    const outDir = path.dirname(path.resolve(options.outputPath));
-    let dirEntries: string[] = [];
-    try {
-      dirEntries = fs.readdirSync(outDir);
-    } catch {
-      // Directory doesn't exist yet — the codegen write will surface that.
-    }
-    for (const name of dirEntries) {
-      if (!name.toLowerCase().endsWith('.odin')) continue;
-      const fullPath = path.join(outDir, name);
-      if (fullPath.toLowerCase() === outPathResolved) continue; // the target itself, checked above
-      let siblingPackage: string | null = null;
-      try {
-        const m = fs.readFileSync(fullPath, { encoding: 'utf8' }).match(/^\s*package\s+([A-Za-z0-9_]+)/m);
-        siblingPackage = m ? m[1] : null;
-      } catch {
-        continue;
-      }
-      if (siblingPackage && siblingPackage !== targetPackage) {
-        const msg =
-          `Refusing to write into ${outDir}: it contains ${name} ('package ${siblingPackage}'), ` +
-          `and Odin allows only one package per directory — adding 'package ${targetPackage}' ` +
-          `there would break the build. Pick a directory of its own, such as ` +
-          `skald-backend/tester/generated_audio/generated_audio.odin.`;
-        console.error(`[Skald] ${msg}`);
-        throw new Error(msg);
-      }
-    }
+    assertCodegenTargetSafe(options.outputPath, options.packageName);
   }
 
   // Capture the Project JSON next to the output .odin so the acceptance

@@ -74,7 +74,7 @@ describe('useCodeGeneration', () => {
         const masterVol = 0.85;
 
         // Execute
-        await result.current.handleGenerate(nodes, edges, tracks, bpm, masterVol);
+        await result.current.handleGenerate(nodes, edges, tracks, bpm, masterVol, 'generated_audio', 'out/generated_audio.odin');
 
         // Assert
         expect(invokeCodegenMock).toHaveBeenCalledTimes(1);
@@ -214,7 +214,7 @@ describe('useCodeGeneration', () => {
         ];
 
         await act(async () => {
-            await result.current.handleGenerate(nodes, [], [], 120, 1.0);
+            await result.current.handleGenerate(nodes, [], [], 120, 1.0, 'generated_audio', 'out/generated_audio.odin');
         });
 
         expect(result.current.generatedCode).toBe(realisticCode);

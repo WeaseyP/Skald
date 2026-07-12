@@ -80,7 +80,7 @@ export const useWasmAudioEngine = (
         if (projectData.project.instruments.length === 0) {
             throw new Error('No instruments on the canvas. Wrap nodes in an Instrument before playing.');
         }
-        const bytes = await (window as any).electron.buildWasmPreview(JSON.stringify(projectData));
+        const bytes = await window.electron.buildWasmPreview(JSON.stringify(projectData));
         const module = await WebAssembly.compile(bytes);
         return {
             module,

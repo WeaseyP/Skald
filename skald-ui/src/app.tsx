@@ -83,7 +83,7 @@ const EditorLayout = () => {
     const [outputPath, setOutputPath] = useState("");
 
     const handleSelectOutputPath = async () => {
-        const path = await (window as any).electron.selectOutputPath();
+        const path = await window.electron.selectOutputPath();
         if (path) setOutputPath(path);
     };
 

@@ -112,7 +112,7 @@ export const useGraphState = () => {
                 // `subNodeId || node.id`. Without this check an instrument's
                 // OWN params (voiceCount/glide/unison/detune) were hunted
                 // inside its subgraph, never found, and silently dropped.
-                if (subNodeId && subNodeId !== nodeId && node.data.subgraph?.nodes) {
+                if (subNodeId && subNodeId !== nodeId && 'subgraph' in node.data && node.data.subgraph?.nodes) {
                     const newSubgraphNodes = node.data.subgraph.nodes.map(subNode => {
                         if (subNode.id === subNodeId) {
                             return { ...subNode, data: { ...subNode.data, ...data } };
