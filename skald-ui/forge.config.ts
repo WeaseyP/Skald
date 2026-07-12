@@ -10,6 +10,10 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // The codegen CLI must live OUTSIDE app.asar: child_process.spawn cannot
+    // execute a binary from the virtual asar path. This places it under
+    // process.resourcesPath in packaged builds (see codegenExePath in main.ts).
+    extraResource: ['./skald_codegen.exe'],
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],

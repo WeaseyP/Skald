@@ -21,7 +21,7 @@ import { nodeTypes } from './definitions/nodeTypes';
 
 // Import your new hooks
 import { useGraphState } from './hooks/nodeEditor/useGraphState';
-import { useAudioEngine } from './hooks/nodeEditor/useAudioEngine';
+import { useWasmAudioEngine } from './hooks/nodeEditor/useWasmAudioEngine';
 import { useFileIO } from './hooks/nodeEditor/useFileIO';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
 // import { NODE_DEFINITIONS } from './definitions/node-definitions'; // Unused
@@ -29,6 +29,7 @@ import { SequencerDock } from './components/Sequencer/SequencerDock';
 import { useSequencerState } from './hooks/sequencer/useSequencerState';
 import { useInstrumentRegistry } from './hooks/sequencer/useInstrumentRegistry';
 import { useScale , ScaleProvider } from './contexts/ScaleContext';
+import { GraphActionsProvider } from './contexts/GraphActionsContext';
 
 
 
@@ -128,7 +129,7 @@ const EditorLayout = () => {
     useInstrumentRegistry(nodes, sequencerStateHooks);
     const { nearestInScale } = useScale();
 
-    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode } = useAudioEngine(
+    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode } = useWasmAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -262,6 +263,12 @@ const EditorLayout = () => {
         }
     }, [isPlaying, nodes, setNodes, analyserNode]);
 
+    // On-canvas node editors (ADSR, Filter) write node data through THIS
+    // updater so their edits land in useGraphState — the store the audio
+    // engine, save and codegen actually read. (Writing to React Flow's
+    // internal store made those edits silently inert.)
+    const graphActions = useMemo(() => ({ updateNodeData }), [updateNodeData]);
+
     const handleExportStep = (trackId: string, step: number) => {
         const track = sequencerStateHooks.tracks.find(t => t.id === trackId);
         if (!track) return;
@@ -356,6 +363,7 @@ const EditorLayout = () => {
                         />
                     </div>
                     <div style={mainCanvasStyles} ref={reactFlowWrapper}>
+                        <GraphActionsProvider value={graphActions}>
                         <ReactFlow
                             nodes={nodes}
                             edges={edges}
@@ -375,6 +383,7 @@ const EditorLayout = () => {
                             <Background />
                             <Controls />
                         </ReactFlow>
+                        </GraphActionsProvider>
                         <ShortcutLegend />
                     </div>
 

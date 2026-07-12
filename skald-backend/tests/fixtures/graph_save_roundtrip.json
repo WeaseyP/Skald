@@ -1,0 +1,59 @@
+﻿{
+  "nodes": [
+    {
+      "id": "asset-instrument",
+      "type": "instrument",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "name": "Asset",
+        "label": "Asset",
+        "voiceCount": 4,
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 0,
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "osc-1",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 0 },
+              "data": {
+                "label": "Oscillator",
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "adsr-1",
+              "type": "adsr",
+              "position": { "x": 200, "y": 0 },
+              "data": {
+                "label": "ADSR",
+                "attack": 0.01,
+                "decay": 0.1,
+                "sustain": 0.7,
+                "release": 0.2,
+                "depth": 1,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "out-1",
+              "type": "output",
+              "position": { "x": 400, "y": 0 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "osc-1", "from_port": "output", "to_node": "adsr-1", "to_port": "input" },
+            { "from_node": "adsr-1", "from_port": "output", "to_node": "out-1", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "sequencerTracks": []
+}

@@ -3,6 +3,8 @@ import { connectNodes } from './audioNodeUtils';
 import type { AdsrDataMap } from './types';
 import { nodeCreationMap } from './audioNodeFactory';
 
+type AudioNodeCreator = (context: AudioContext, node: Node, adsrData: AdsrDataMap) => AudioNode | null;
+
 export class Voice {
     private audioContext: AudioContext;
     private internalNodes: Map<string, AudioNode> = new Map();
@@ -29,13 +31,9 @@ export class Voice {
     private buildSubgraph() {
         this.subgraph.nodes.forEach(node => {
             let audioNode: AudioNode | null = null;
-            if (node.type && (nodeCreationMap as any)[node.type]) {
-                const creator = nodeCreationMap[node.type as keyof typeof nodeCreationMap] as Function;
-                audioNode = creator(this.audioContext, node, this.adsrData);
-            } else {
-                const creator = nodeCreationMap['default'] as Function;
-                audioNode = creator(this.audioContext, node, this.adsrData);
-            }
+            const creators = nodeCreationMap as Record<string, AudioNodeCreator>;
+            const creator = node.type && creators[node.type] ? creators[node.type] : creators.default;
+            audioNode = creator(this.audioContext, node, this.adsrData);
             if (audioNode) {
                 this.internalNodes.set(node.id, audioNode);
             }

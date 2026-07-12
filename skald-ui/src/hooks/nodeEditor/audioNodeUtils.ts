@@ -57,7 +57,7 @@ export const connectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge 
         }
 
         // 2. Check Input Gains (Dynamic input ports)
-        if (targetNode.hasOwnProperty('inputGains') && handle && handle.startsWith('input_')) {
+        if (Object.prototype.hasOwnProperty.call(targetNode, 'inputGains') && handle && handle.startsWith('input_')) {
             const context = targetNode.context as AudioContext;
             let inputGain = targetNode.inputGains.get(handle);
             if (!inputGain) {
@@ -108,7 +108,7 @@ export const connectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge 
 
 export const disconnectNodes = (sourceNode: AudioNode, targetNode: any, edge: Edge | Connection) => {
     try {
-        if (targetNode.hasOwnProperty('inputGains') && edge.targetHandle && edge.targetHandle.startsWith('input_')) {
+        if (Object.prototype.hasOwnProperty.call(targetNode, 'inputGains') && edge.targetHandle && edge.targetHandle.startsWith('input_')) {
             const inputGain = targetNode.inputGains.get(edge.targetHandle);
             if (inputGain) sourceNode.disconnect(inputGain);
         } else if (targetNode instanceof AudioWorkletNode && edge.targetHandle?.startsWith('input_')) {

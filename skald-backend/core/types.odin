@@ -1,4 +1,4 @@
-package skald_core
+﻿package skald_core
 
 import json "core:encoding/json"
 
@@ -12,7 +12,7 @@ Note_Event :: struct {
     step:       int,
 	duration:   f32,
 	// 0..1 chance the step fires each loop; <=0 (absent in old fixtures)
-	// means "always" — the UI serializes explicit values from 0.001 up.
+	// means "always" - the UI serializes explicit values from 0.001 up.
 	probability: f32,
 	// Per-step parameter changes (P-locks): exposed-param name -> value,
 	// applied via set_param just before the step's note_on.
@@ -30,7 +30,26 @@ Node_Raw :: struct {
 	id:         string,
 	type:       string,
 	parameters: json.Object,
+	// React Flow saves store node parameters under `data`; Project JSON uses
+	// `parameters`. The parser normalizes either shape into Node.parameters.
+	data:       json.Object,
 	subgraph:   json.Object,
+}
+
+React_Flow_Edge_Raw :: struct {
+	source:       string,
+	sourceHandle: string,
+	target:       string,
+	targetHandle: string,
+}
+
+Sequencer_Track_Raw :: struct {
+	targetNodeId: string,
+	name:         string,
+	notes:        []Note_Event,
+	isMuted:      bool,
+	isSolo:       bool,
+	steps:        int,
 }
 
 Connection :: struct {
@@ -78,8 +97,12 @@ Graph :: struct {
 Graph_Raw :: struct {
 	nodes:            []Node_Raw,
 	connections:      []Connection,
+	// React Flow save files use `edges` with source/target field names.
+	edges:            []React_Flow_Edge_Raw,
 	events:           []Note_Event,
 	sequencer_tracks: []Sequencer_Track,
+	// React Flow save files use camelCase `sequencerTracks`.
+	sequencerTracks:  []Sequencer_Track_Raw,
 }
 
 // --- Project Level Structures (New for UI Integration) ---
@@ -142,4 +165,3 @@ Asset_Type :: enum {
 	SFX,
 	Music_Layer,
 }
-

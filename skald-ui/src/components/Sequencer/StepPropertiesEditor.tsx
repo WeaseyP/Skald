@@ -83,7 +83,7 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
     };
 
     const toggleLock = (paramKey: string, currentGlobalValue: any) => {
-        const isOverridden = note.patchOverrides && note.patchOverrides.hasOwnProperty(paramKey);
+        const isOverridden = note.patchOverrides && Object.prototype.hasOwnProperty.call(note.patchOverrides, paramKey);
         const newOverrides = { ...note.patchOverrides };
 
         if (isOverridden) {
@@ -111,7 +111,7 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
             const paramKey = `${label}:${paramName}`;
 
             // Check if overridden
-            const isOverridden = note.patchOverrides && note.patchOverrides.hasOwnProperty(paramKey);
+            const isOverridden = note.patchOverrides && Object.prototype.hasOwnProperty.call(note.patchOverrides, paramKey);
             const isLocked = !isOverridden;
 
             // If locked, we want to show global value.

@@ -37,7 +37,7 @@ bpm_sync_seconds_expr :: proc(node: Node) -> (string, bool) {
 	}
 	beats := 4.0 / f64(denom) // whole note = 4 beats
 	if triplet do beats *= 2.0 / 3.0
-	return fmt.tprintf("((60.0 / p.bpm) * %f)", beats), true
+	return fmt.tprintf("((60.0 / p.bpm) * %.9f)", beats), true
 }
 
 // Node types whose generated code reads per-voice context (pitch, envelope
@@ -113,7 +113,6 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	base_freq_str := "voice.current_freq"
 
 	// Apply Modulation (Priority 1: Exponential FM / V/Oct)
-	// Apply Modulation (Priority 1: Exponential FM / V/Oct)
     // Sum all inputs to 'input_freq' before applying exponent
     input_sum_str := "0.0"
 	if graph != nil {
@@ -148,7 +147,11 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	phase_str:= get_f32_param(graph, node, "phase", "", 0.0)
 	waveform := get_string_param(node, "waveform", "Sine")
 
+	// json.odin normalizes unison at parse time; this guard covers
+	// Instruments constructed directly in code (a 0 would emit a [0]f32
+	// phase array and a permanently silent oscillator).
 	unison_count := instrument.unison
+	if unison_count <= 0 do unison_count = 1
 	detune_amount := instrument.detune
 
 	fmt.sbprintf(sb, "\t\t// --- Oscillator Node %s (Unison/Detune) ---\n", node.id)
@@ -157,7 +160,7 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	fmt.sbprintf(sb, "\t\t\tunison_count := %d;\n", unison_count)
 	fmt.sbprint(sb, "\t\t\tfor i in 0..<unison_count {\n")
 	fmt.sbprint(sb, "\t\t\t\tdetune_amount: f32 = 0.0;\n")
-	fmt.sbprintf(sb, "\t\t\t\tif unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (%f);\n", detune_amount)
+	fmt.sbprintf(sb, "\t\t\t\tif unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (%.9f);\n", detune_amount)
 	fmt.sbprintf(sb, "\t\t\t\tdetuned_freq := (%s) * math.pow(2.0, detune_amount / 1200.0);\n", freq_str)
 	fmt.sbprintf(sb, "\t\t\t\tphase_rads := f32(%s) * (f32(math.PI) / 180.0);\n", phase_str)
 	fmt.sbprintf(sb, "\t\t\t\tvoice.osc_%s_phase[i] = math.mod(voice.osc_%s_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));\n", node.id, node.id)
@@ -474,7 +477,7 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 
 	fmt.sbprintf(sb, "\t\t// --- Reverb Node %s (Simple FDN) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%f) * sample_rate, 0, %d-1));\n", node.id, delay_time, 96000)
+	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%.9f) * sample_rate, 0, %d-1));\n", node.id, delay_time, 96000)
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
 	// decay is a TIME in the UI (seconds) but a feedback GAIN here; the UI
@@ -500,8 +503,13 @@ generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 
 	fmt.sbprintf(sb, "\t\t// --- Distortion Node %s (%s) ---\n", node.id, shape)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tdist_in_%s := (%s);\n", node.id, input_str)
-	fmt.sbprintf(sb, "\t\t\tdist_k_%s := math.max(f32(%s), 1.0);\n", node.id, drive_str)
+	// Explicit ': f32' on these three locals: with literal params, Odin
+	// constant-folds the whole initializer (including math.max/math.clamp
+	// when a literal bound is the selected value) into an untyped constant,
+	// and ':=' would then default the local to f64 — breaking every f32
+	// use below. Same class as the Mapper in_range fix.
+	fmt.sbprintf(sb, "\t\t\tdist_in_%s: f32 = (%s);\n", node.id, input_str)
+	fmt.sbprintf(sb, "\t\t\tdist_k_%s: f32 = math.max(f32(%s), 1.0);\n", node.id, drive_str)
 	switch shape {
 	case "soft", "softclip":
 		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := math.tanh(dist_in_%s * dist_k_%s);\n", node.id, node.id, node.id)
@@ -515,7 +523,7 @@ generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	// One-pole lowpass tone filter on the wet path.
 	fmt.sbprintf(sb, "\t\t\ttone_k_%s := math.clamp(2.0 * f32(math.PI) * math.clamp(f32(%s), 100.0, 20000.0) / sample_rate, 0.001, 1.0);\n", node.id, tone_str)
 	fmt.sbprintf(sb, "\t\t\t%sdist_%s_tone += tone_k_%s * (dist_wet_%s - %sdist_%s_tone);\n", sp, node.id, node.id, node.id, sp, node.id)
-	fmt.sbprintf(sb, "\t\t\tmix_%s := math.clamp(f32(%s), 0.0, 1.0);\n", node.id, mix_str)
+	fmt.sbprintf(sb, "\t\t\tmix_%s: f32 = math.clamp(f32(%s), 0.0, 1.0);\n", node.id, mix_str)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = dist_in_%s * (1.0 - mix_%s) + %sdist_%s_tone * mix_%s;\n", node.id, node.id, node.id, sp, node.id, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
@@ -615,9 +623,12 @@ generate_mapper_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// Runtime guard: inMax == inMin (trivially reachable from the UI) would
 	// emit a constant division by zero when both are literals, and NaN when
 	// modulated. Degenerate range maps everything to outMin.
-	fmt.sbprintf(sb, "\t\t\tin_range_%s := (%s) - (%s);\n", node.id, inMax, inMin)
+	// f32() on both operands: with literal params the subtraction is an
+	// untyped-constant expression and the variable would default to f64,
+	// which fails to compile against the f32 signal expression below.
+	fmt.sbprintf(sb, "\t\t\tin_range_%s := f32(%s) - f32(%s);\n", node.id, inMax, inMin)
 	fmt.sbprintf(sb, "\t\t\tif in_range_%s == 0.0 do in_range_%s = 1.0;\n", node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tnode_%s_out = math.lerp(f32(%s), f32(%s), math.clamp(((%s) - (%s)) / in_range_%s, 0.0, 1.0));\n", node.id, outMin, outMax, input_str, inMin, node.id)
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = math.lerp(f32(%s), f32(%s), math.clamp((f32(%s) - f32(%s)) / in_range_%s, 0.0, 1.0));\n", node.id, outMin, outMax, input_str, inMin, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
@@ -774,7 +785,7 @@ generate_processor_code :: proc(
 	for _, node in graph.nodes {
 		if bus_nodes[node.id] do continue
 		if node.type == "Oscillator" {
-			fmt.sbprintf(&sb, "\tosc_%s_phase: [%d]f32,\n", node.id, instrument.unison)
+			fmt.sbprintf(&sb, "\tosc_%s_phase: [%d]f32,\n", node.id, max(instrument.unison, 1))
 		} else if node.type == "ADSR" {
 			// (adsr_<id>_time / adsr_<id>_value removed: _time was written
 			// but never read; _value was ALWAYS 0.0 and note_off used to
@@ -947,7 +958,7 @@ generate_processor_code :: proc(
 	// --- Initialization ---
 	fmt.sbprintf(&sb, "%s_init :: proc(p: ^%s_Processor, sr: f32) {{\n", namespace_prefix, namespace_prefix)
 	fmt.sbprint(&sb, "\tp.sample_rate = sr\n")
-    fmt.sbprintf(&sb, "\tp.bpm = %f\n", bpm)
+    fmt.sbprintf(&sb, "\tp.bpm = %.9f\n", bpm)
     fmt.sbprintf(&sb, "\tp.prng.state = 12345\n")
     fmt.sbprint(&sb, "\tp.loop = true\n")
 
@@ -1009,7 +1020,7 @@ generate_processor_code :: proc(
     for _, res in resolutions {
         if !init_seen[res.field_name] {
             init_seen[res.field_name] = true
-            fmt.sbprintf(&sb, "\tp.%s = %f\n", res.field_name, res.default)
+            fmt.sbprintf(&sb, "\tp.%s = %.9f\n", res.field_name, res.default)
         }
     }
 
@@ -1047,7 +1058,7 @@ generate_processor_code :: proc(
     fmt.sbprint(&sb, "\tv.time_released = 0.0\n")
     fmt.sbprint(&sb, "\tfreq := 440.0 * math.pow(2.0, (f32(note) - 69.0) / 12.0)\n")
 	fmt.sbprint(&sb, "\tv.target_freq = freq\n")
-    fmt.sbprintf(&sb, "\tv.glide_time = %f\n", instrument.glide)
+    fmt.sbprintf(&sb, "\tv.glide_time = %.9f\n", instrument.glide)
 	// Glide applies on voice reuse (steal): the pitch slides from where the
 	// stolen voice was to the new note over glide_time. Fresh voices start
 	// exactly on pitch — gliding every new note from the previous one would
@@ -1220,8 +1231,8 @@ generate_processor_code :: proc(
 			namespace_prefix,
 		)
 		fmt.sbprint(&sb, "\tv := value\n")
-		fmt.sbprintf(&sb, "\tif v < %f do v = %f\n", res.range_min, res.range_min)
-		fmt.sbprintf(&sb, "\tif v > %f do v = %f\n", res.range_max, res.range_max)
+		fmt.sbprintf(&sb, "\tif v < %.9f do v = %.9f\n", res.range_min, res.range_min)
+		fmt.sbprintf(&sb, "\tif v > %.9f do v = %.9f\n", res.range_max, res.range_max)
 		fmt.sbprintf(&sb, "\tp.%s = v\n", res.field_name)
 		fmt.sbprint(&sb, "}\n\n")
 	}
@@ -1234,7 +1245,7 @@ generate_processor_code :: proc(
 	for res in stable_resolutions {
 		fmt.sbprintf(
 			&sb,
-			"\t{{\"%s\", %f, %f, %f, \"%s\"}},\n",
+			"\t{{\"%s\", %.9f, %.9f, %.9f, \"%s\"}},\n",
 			res.field_name,
 			res.range_min,
 			res.range_max,
@@ -1623,7 +1634,7 @@ generate_sequencer_logic :: proc(
 			indent := "\t\t\t"
 			has_prob := event.probability > 0.0 && event.probability < 1.0
 			if has_prob {
-				fmt.sbprintf(sb, "\t\t\tif next_float32(&p.prng) <= %f {{\n", event.probability)
+				fmt.sbprintf(sb, "\t\t\tif next_float32(&p.prng) <= %.9f {{\n", event.probability)
 				indent = "\t\t\t\t"
 			}
 			// P-locks: apply this step's parameter overrides through the
@@ -1633,7 +1644,7 @@ generate_sequencer_logic :: proc(
 			for key, val in event.patch_overrides {
 				fmt.sbprintf(
 					sb,
-					"%s%s_set_param(p, \"%s\", %f)\n",
+					"%s%s_set_param(p, \"%s\", %.9f)\n",
 					indent,
 					namespace_prefix,
 					key,
@@ -1643,7 +1654,7 @@ generate_sequencer_logic :: proc(
 			// duration is in steps; convert to seconds at runtime using p.bpm.
 			fmt.sbprintf(
 				sb,
-				"%s%s_note_on(p, %d, %f, f32(%f) * (60.0 / p.bpm / 4.0))\n",
+				"%s%s_note_on(p, %d, %.9f, f32(%.9f) * (60.0 / p.bpm / 4.0))\n",
 				indent,
 				namespace_prefix,
 				event.note,
@@ -1683,6 +1694,31 @@ generate_sequencer_logic :: proc(
 }
 
 // --- Project Level Generation ---
+// BUG-INSTRUMENT-NAME-DUPS: when multiple instruments share a name (or
+// multiple instruments fall back to the same `Instrument_<id>` default),
+// the previous codegen emitted duplicate struct fields and Odin refused
+// the file. Resolve unique namespace prefixes once — first occurrence keeps
+// the bare name, subsequent collisions append _2 / _3 / ... so the order of
+// instruments in the project drives which one gets the unsuffixed name (UI
+// iteration order is stable). Shared by generate_project_code and
+// generate_wasm_shim_code so both emit matching symbol names.
+resolve_unique_names :: proc(project: ^Project) -> []string {
+    unique_names := make([]string, len(project.instruments))
+    name_counts := make(map[string]int)
+    defer delete(name_counts)
+    for i in 0 ..< len(project.instruments) {
+        base := clean_instrument_name(&project.instruments[i])
+        count := name_counts[base]
+        if count == 0 {
+            unique_names[i] = base
+        } else {
+            unique_names[i] = fmt.aprintf("%s_%d", base, count + 1)
+        }
+        name_counts[base] = count + 1
+    }
+    return unique_names
+}
+
 generate_project_code :: proc(project: ^Project, project_name: string, package_name: string) -> string {
     sb := strings.builder_make()
     // defer strings.builder_destroy(&sb)
@@ -1695,31 +1731,15 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
         asset_types[i] = detect_asset_type(&project.instruments[i], project)
     }
 
-    // BUG-INSTRUMENT-NAME-DUPS: when multiple instruments share a name (or
-    // multiple instruments fall back to the same `Instrument_<id>` default),
-    // the previous codegen emitted duplicate struct fields and Odin refused
-    // the file. Resolve unique namespace prefixes here once and reuse below
-    // — first occurrence keeps the bare name, subsequent collisions append
-    // _2 / _3 / ... so the order of instruments in the project drives which
-    // one gets the unsuffixed name (UI iteration order is stable).
-    unique_names := make([]string, len(project.instruments))
+    unique_names := resolve_unique_names(project)
     defer delete(unique_names)
-    {
-        name_counts := make(map[string]int)
-        defer delete(name_counts)
-        for i in 0 ..< len(project.instruments) {
-            base := clean_instrument_name(&project.instruments[i])
-            count := name_counts[base]
-            if count == 0 {
-                unique_names[i] = base
-            } else {
-                unique_names[i] = fmt.aprintf("%s_%d", base, count + 1)
-            }
-            name_counts[base] = count + 1
-        }
-    }
 
-    // --- Header doc comment ---
+    // --- Package line first, header doc comment below it ---
+    // `package` on line 1 is the Odin convention; a comment banner above it
+    // is legal but reads as suspicious clutter in a generated file (users
+    // were hand-deleting it before every harness run).
+    fmt.sbprintf(&sb, "package %s\n\n", package_name)
+
     fmt.sbprint(&sb, "// =====================================================================\n")
     fmt.sbprint(&sb, "// Generated by Skald.\n")
     fmt.sbprint(&sb, "//\n")
@@ -1753,7 +1773,6 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "// harness only — game code should consume per-asset procs directly.\n")
     fmt.sbprint(&sb, "// =====================================================================\n\n")
 
-    fmt.sbprintf(&sb, "package %s\n\n", package_name)
     fmt.sbprint(&sb, "import \"core:math\"\n")
     fmt.sbprint(&sb, "import \"core:math/rand\"\n")
     fmt.sbprint(&sb, "\n")
@@ -1882,8 +1901,8 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     }
     // Master volume, then a soft limiter whose ceiling really is 1.0 —
     // tanh(x*0.7)/0.7 topped out at 1.43 and still clipped the device.
-    fmt.sbprintf(&sb, "\tmixed_left = math.tanh(mixed_left * %f)\n", master_vol)
-    fmt.sbprintf(&sb, "\tmixed_right = math.tanh(mixed_right * %f)\n", master_vol)
+    fmt.sbprintf(&sb, "\tmixed_left = math.tanh(mixed_left * %.9f)\n", master_vol)
+    fmt.sbprintf(&sb, "\tmixed_right = math.tanh(mixed_right * %.9f)\n", master_vol)
     fmt.sbprint(&sb, "\treturn mixed_left, mixed_right\n")
     fmt.sbprint(&sb, "}\n\n")
 
@@ -1892,6 +1911,204 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
         fmt.sbprintf(&sb, "\tfree(p.%s)\n", unique_names[i])
     }
     fmt.sbprint(&sb, "}\n\n")
+
+    return strings.to_string(sb)
+}
+
+// generate_wasm_shim_code emits a companion file for the editor's live
+// preview: `@(export)` wrappers around the per-asset API so the generated
+// package compiles to a self-contained wasm module
+// (-target:freestanding_wasm32) and runs inside an AudioWorklet. Assets are
+// addressed by index (project instrument order); params are addressed by
+// name, passed through the exported name buffer, so no ordering contract
+// exists between the UI and the (unordered) exposed-param resolution above.
+// Processors live in globals — no allocator is ever needed, which is what
+// keeps the freestanding target viable.
+generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> string {
+    sb := strings.builder_make()
+
+    asset_types := make([]Asset_Type, len(project.instruments))
+    defer delete(asset_types)
+    for i in 0 ..< len(project.instruments) {
+        asset_types[i] = detect_asset_type(&project.instruments[i], project)
+    }
+    unique_names := resolve_unique_names(project)
+    defer delete(unique_names)
+
+    fmt.sbprintf(&sb, "package %s\n\n", package_name)
+    fmt.sbprint(&sb, "// Generated by Skald — wasm export shim for the editor preview.\n")
+    fmt.sbprint(&sb, "// Not part of the game-facing API; do not ship this file.\n")
+    fmt.sbprint(&sb, "// Build: odin build <this dir> -target:freestanding_wasm32 -no-entry-point\n\n")
+    fmt.sbprint(&sb, "import \"base:runtime\"\n")
+    fmt.sbprint(&sb, "import \"core:math\"\n\n")
+
+    for i in 0 ..< len(project.instruments) {
+        fmt.sbprintf(&sb, "@(private=\"file\") wasm_%s: %s_Processor\n", unique_names[i], unique_names[i])
+    }
+    fmt.sbprint(&sb, "\n")
+
+    // One Web Audio render quantum of planar stereo, plus the param-name
+    // mailbox the host writes UTF-8 bytes into before skald_set_param.
+    fmt.sbprint(&sb, "SKALD_WASM_BLOCK :: 128\n")
+    fmt.sbprint(&sb, "@(private=\"file\") skald_left: [SKALD_WASM_BLOCK]f32\n")
+    fmt.sbprint(&sb, "@(private=\"file\") skald_right: [SKALD_WASM_BLOCK]f32\n")
+    fmt.sbprint(&sb, "@(private=\"file\") skald_name_buf: [64]u8\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_left_ptr :: proc \"c\" () -> rawptr { return &skald_left[0] }\n\n")
+    fmt.sbprint(&sb, "@(export)\nskald_right_ptr :: proc \"c\" () -> rawptr { return &skald_right[0] }\n\n")
+    fmt.sbprint(&sb, "@(export)\nskald_name_buf_ptr :: proc \"c\" () -> rawptr { return &skald_name_buf[0] }\n\n")
+
+    fmt.sbprintf(&sb, "@(export)\nskald_asset_count :: proc \"c\" () -> i32 {{ return %d }}\n\n", len(project.instruments))
+
+    fmt.sbprint(&sb, "@(export)\nskald_init :: proc \"c\" (sample_rate: f32) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\twasm_%s = {{}}\n", n)
+        fmt.sbprintf(&sb, "\t%s_init(&wasm_%s, sample_rate)\n", n, n)
+    }
+    fmt.sbprint(&sb, "}\n\n")
+
+    // start_all mirrors project_init's auto-start policy: Music Layers only.
+    fmt.sbprint(&sb, "@(export)\nskald_start_all :: proc \"c\" () {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    for i in 0 ..< len(project.instruments) {
+        if asset_types[i] == .Music_Layer {
+            fmt.sbprintf(&sb, "\t%s_start(&wasm_%s)\n", unique_names[i], unique_names[i])
+        }
+    }
+    fmt.sbprint(&sb, "}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_stop_all :: proc \"c\" () {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    for i in 0 ..< len(project.instruments) {
+        fmt.sbprintf(&sb, "\t%s_stop(&wasm_%s)\n", unique_names[i], unique_names[i])
+    }
+    fmt.sbprint(&sb, "}\n\n")
+
+    // Per-asset dispatch helpers. Emitted as a switch over the asset index;
+    // out-of-range indices are ignored (or return a sentinel).
+    fmt.sbprint(&sb, "@(export)\nskald_trigger :: proc \"c\" (asset: i32, note: u8, velocity: f32, duration: f32) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d: %s_trigger(&wasm_%s, note, velocity, duration)\n", i, n, n)
+    }
+    fmt.sbprint(&sb, "\t}\n}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_note_on :: proc \"c\" (asset: i32, note: u8, velocity: f32, duration: f32) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d: %s_note_on(&wasm_%s, note, velocity, duration)\n", i, n, n)
+    }
+    fmt.sbprint(&sb, "\t}\n}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_note_off :: proc \"c\" (asset: i32, note: u8) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d: %s_note_off(&wasm_%s, note)\n", i, n, n)
+    }
+    fmt.sbprint(&sb, "\t}\n}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_set_loop :: proc \"c\" (asset: i32, loop: i32) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d: %s_set_loop(&wasm_%s, loop != 0)\n", i, n, n)
+    }
+    fmt.sbprint(&sb, "\t}\n}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_is_playing :: proc \"c\" (asset: i32) -> i32 {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d: return %s_is_playing(&wasm_%s) ? 1 : 0\n", i, n, n)
+    }
+    fmt.sbprint(&sb, "\t}\n\treturn 0\n}\n\n")
+
+    // Host writes the param name's UTF-8 bytes into skald_name_buf first.
+    // Reuses the generated string-keyed <Foo>_set_param, so the name
+    // contract is exactly the exposed-param field names in <Foo>_PARAMS.
+    fmt.sbprint(&sb, "@(export)\nskald_set_param :: proc \"c\" (asset: i32, name_len: i32, value: f32) -> i32 {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tif name_len <= 0 || int(name_len) > len(skald_name_buf) do return 0\n")
+    fmt.sbprint(&sb, "\tname := string(skald_name_buf[:name_len])\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d: return %s_set_param(&wasm_%s, name, value) ? 1 : 0\n", i, n, n)
+    }
+    fmt.sbprint(&sb, "\t}\n\treturn 0\n}\n\n")
+
+    // Transport introspection/seek for hot-swap: the host captures the step
+    // clock before replacing the module and re-seeds the new instance so the
+    // sequence resumes in place instead of restarting at step 0.
+    fmt.sbprint(&sb, "@(export)\nskald_get_step :: proc \"c\" (asset: i32) -> i32 {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        fmt.sbprintf(&sb, "\tcase %d: return i32(wasm_%s.current_step)\n", i, unique_names[i])
+    }
+    fmt.sbprint(&sb, "\t}\n\treturn -1\n}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_get_step_wait :: proc \"c\" (asset: i32) -> i32 {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        fmt.sbprintf(&sb, "\tcase %d: return i32(wasm_%s.samples_until_next_step)\n", i, unique_names[i])
+    }
+    fmt.sbprint(&sb, "\t}\n\treturn -1\n}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_seek :: proc \"c\" (asset: i32, step: i32, samples_until_next: i32) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tif step < 0 || samples_until_next < 0 do return\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d:\n", i)
+        fmt.sbprintf(&sb, "\t\twasm_%s.current_step = u64(step)\n", n)
+        fmt.sbprintf(&sb, "\t\twasm_%s.samples_until_next_step = u64(samples_until_next)\n", n)
+        fmt.sbprintf(&sb, "\t\twasm_%s.step_frac_acc = 0.0\n", n)
+    }
+    fmt.sbprint(&sb, "\t}\n}\n\n")
+
+    // Master mix — identical policy to project_process (mute/solo exclusion,
+    // master-volume tanh soft limit) so the preview IS the export.
+    any_solo := false
+    for i in 0 ..< len(project.instruments) {
+        if project.instruments[i].solo do any_solo = true
+    }
+    master_vol := project.master_volume
+    if master_vol <= 0.0 do master_vol = 1.0
+
+    fmt.sbprint(&sb, "@(export)\nskald_process :: proc \"c\" (nframes: i32) -> i32 {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tn := int(nframes)\n")
+    fmt.sbprint(&sb, "\tif n > SKALD_WASM_BLOCK do n = SKALD_WASM_BLOCK\n")
+    fmt.sbprint(&sb, "\tfor i in 0 ..< n {\n")
+    fmt.sbprint(&sb, "\t\tmixed_left: f32 = 0.0\n")
+    fmt.sbprint(&sb, "\t\tmixed_right: f32 = 0.0\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        inst := &project.instruments[i]
+        if inst.mute || (any_solo && !inst.solo) {
+            fmt.sbprintf(&sb, "\t\t// %s: muted in the project (excluded from the mix)\n", n)
+            continue
+        }
+        fmt.sbprintf(&sb, "\t\t{{ l, r := %s_process(&wasm_%s); mixed_left += l; mixed_right += r }}\n", n, n)
+    }
+    fmt.sbprintf(&sb, "\t\tskald_left[i] = math.tanh(mixed_left * %.9f)\n", master_vol)
+    fmt.sbprintf(&sb, "\t\tskald_right[i] = math.tanh(mixed_right * %.9f)\n", master_vol)
+    fmt.sbprint(&sb, "\t}\n")
+    fmt.sbprint(&sb, "\treturn i32(n)\n")
+    fmt.sbprint(&sb, "}\n")
 
     return strings.to_string(sb)
 }

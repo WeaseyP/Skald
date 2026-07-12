@@ -68,7 +68,7 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
     scale = 'linear',
     step = 0.01,
     defaultValue = 0,
-    onReset = () => {},
+    onReset,
 }) => {
     // Internal state for immediate UI feedback
     const [localValue, setLocalValue] = useState(value);
@@ -150,7 +150,7 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         setLocalValue(defaultValue);
         setTextValue(defaultValue.toString());
         onChange(defaultValue);
-        onReset();
+        onReset?.();
     };
 
     return (

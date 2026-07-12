@@ -45,7 +45,7 @@ get_output_var :: proc(node_id: string, port_name: string = "") -> string {
 }
 
 get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: f32) -> string {
-    base_str := fmt.tprintf("%f", default_val)
+    base_str := fmt.tprintf("%.9f", default_val)
 
     // Phase 3: prefer the codegen-computed resolution (which knows the
     // collision-free field name) over the raw exposedParameters list.
@@ -80,9 +80,27 @@ get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port:
         if val, ok := node.parameters[param_name]; ok {
             #partial switch v in val {
             case json.Float:
-                base_str = fmt.tprintf("%f", v)
+                base_str = fmt.tprintf("%.9f", v)
             case json.Integer:
-                base_str = fmt.tprintf("%f", f64(v))
+                base_str = fmt.tprintf("%.9f", f64(v))
+            }
+        } else if param_name == "mix" && (node.type == "Delay" || node.type == "Reverb") {
+            if val, ok := node.parameters["wetDryMix"]; ok {
+                #partial switch v in val {
+                case json.Float:
+                    base_str = fmt.tprintf("%.9f", v)
+                case json.Integer:
+                    base_str = fmt.tprintf("%.9f", f64(v))
+                }
+            }
+        } else if param_name == "delayTime" && node.type == "Delay" {
+            if val, ok := node.parameters["time"]; ok {
+                #partial switch v in val {
+                case json.Float:
+                    base_str = fmt.tprintf("%.9f", v / 1000.0)
+                case json.Integer:
+                    base_str = fmt.tprintf("%.9f", f64(v) / 1000.0)
+                }
             }
         }
     }
@@ -134,9 +152,16 @@ get_string_param :: proc(node: Node, param_name: string, default_val: string) ->
              return v
         }
 	}
+	if param_name == "type" && node.type == "Filter" {
+		if val, ok := node.parameters["filterType"]; ok {
+			#partial switch v in val {
+			case json.String:
+				return v
+			}
+		}
+	}
 	return default_val
 }
-
 get_int_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: int) -> string {
 	if graph != nil {
 		if id, port, ok := find_input_for_port(graph, node.id, input_port); ok {

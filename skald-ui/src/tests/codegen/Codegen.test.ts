@@ -80,7 +80,6 @@ describe('useCodeGeneration', () => {
         expect(invokeCodegenMock).toHaveBeenCalledTimes(1);
         const jsonArg = JSON.parse(invokeCodegenMock.mock.calls[0][0]);
 
-        console.log('Generatd JSON:', JSON.stringify(jsonArg, null, 2));
 
         // 1. Global Params
         expect(jsonArg.project.bpm).toBe(128);

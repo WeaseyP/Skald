@@ -67,19 +67,25 @@ export const useNodeComposition = ({
         const newInstrumentId = `${generateId()}`;
         const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
 
-        const avgPosition = selectedNodesForGrouping.reduce(
+        // Resolve FRESH node objects from graph state. The selection array
+        // holds snapshots captured when the selection was MADE — any param
+        // tweaked after selecting (but before clicking Create Instrument)
+        // would otherwise be baked into the instrument stale.
+        const selectedNodes = nodes.filter(n => selectedIds.has(n.id));
+
+        const avgPosition = selectedNodes.reduce(
             (acc, node) => ({ x: acc.x + node.position.x, y: acc.y + node.position.y }), { x: 0, y: 0 }
         );
-        if (selectedNodesForGrouping.length > 0) {
-            avgPosition.x /= selectedNodesForGrouping.length;
-            avgPosition.y /= selectedNodesForGrouping.length;
+        if (selectedNodes.length > 0) {
+            avgPosition.x /= selectedNodes.length;
+            avgPosition.y /= selectedNodes.length;
         }
 
         const oldIdToNewIdMap = new Map<string, string>();
         let subGraphNodeIdCounter = 1;
 
         // Store nodes relative to the center of the instrument
-        const subgraphNodes: Node[] = selectedNodesForGrouping.map(node => {
+        const subgraphNodes: Node[] = selectedNodes.map(node => {
             const newId = `${subGraphNodeIdCounter++}`;
             oldIdToNewIdMap.set(node.id, newId);
             return {
@@ -251,7 +257,10 @@ export const useNodeComposition = ({
     }, [nodes, selectedNodesForGrouping, saveStateForUndo, setNodes]);
 
     const handleExplodeInstrument = useCallback(() => {
-        const instrumentNode = selectedNodesForGrouping.length === 1 ? selectedNodesForGrouping[0] : null;
+        const selectedSnapshot = selectedNodesForGrouping.length === 1 ? selectedNodesForGrouping[0] : null;
+        // Same staleness trap as Create Instrument: resolve the live node
+        // from graph state, not the selection-time snapshot.
+        const instrumentNode = selectedSnapshot ? nodes.find(n => n.id === selectedSnapshot.id) ?? selectedSnapshot : null;
         if (!instrumentNode || instrumentNode.type !== 'instrument') return;
 
         const instrumentData = instrumentNode.data as InstrumentParams;

@@ -156,10 +156,11 @@ render_from_spec :: proc(
 	spec: Render_Spec,
 	label: string,
 ) -> bool {
-	p: ga.Asset_Processor
-	ga.Asset_init(&p, sample_rate)
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
 	for ps in spec.params {
-		if !ga.Asset_set_param(&p, ps.name, ps.value) {
+		if !ga.Asset_set_param(p, ps.name, ps.value) {
 			fmt.eprintfln(
 				"FAIL render_from_spec[%s]: Asset_set_param(%q) rejected — parameter not exposed by this asset",
 				label, ps.name,
@@ -169,12 +170,12 @@ render_from_spec :: proc(
 	}
 	switch spec.kind {
 	case .Trigger:
-		ga.Asset_trigger(&p, spec.note, spec.velocity, spec.duration)
+		ga.Asset_trigger(p, spec.note, spec.velocity, spec.duration)
 	case .Start:
-		ga.Asset_start(&p)
+		ga.Asset_start(p)
 	}
 	for i in 0 ..< len(buf) {
-		l, r := ga.Asset_process(&p)
+		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}
 	}
 	return true

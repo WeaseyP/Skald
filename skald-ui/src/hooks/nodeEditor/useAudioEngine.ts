@@ -14,6 +14,8 @@ import { useOscillatorHandler } from './node-handlers/useOscillatorHandler';
 import { useAdsrHandler } from './node-handlers/useAdsrHandler';
 import { logger } from '../../utils/logger';
 
+type AudioNodeCreator = (context: AudioContext, node: Node, adsrData: AdsrDataMap) => AudioNode | null;
+
 export const useAudioEngine = (
     nodes: Node[],
     edges: Edge[],
@@ -184,13 +186,11 @@ export const useAudioEngine = (
                     else if (node.type === 'instrument') {
                         logger.debug('AudioEngine', `Creating Instrument Node ${node.id}`);
                         newAudioNode = new Instrument(context, node);
-                    } else if (node.type && (nodeCreationMap as any)[node.type]) {
-                        logger.debug('AudioEngine', `Creating Standard Node ${node.id} via Factory`);
-                        const creator = (nodeCreationMap as any)[node.type] as Function;
-                        newAudioNode = creator(context, node, adsrNodes.current);
                     } else {
-                        logger.debug('AudioEngine', `Creating Default Node ${node.id}`);
-                        const creator = nodeCreationMap['default'] as Function;
+                        const creators = nodeCreationMap as Record<string, AudioNodeCreator>;
+                        const isStandardNode = Boolean(node.type && creators[node.type]);
+                        const creator = isStandardNode && node.type ? creators[node.type] : creators.default;
+                        logger.debug('AudioEngine', `Creating ${isStandardNode ? 'Standard' : 'Default'} Node ${node.id} via Factory`);
                         newAudioNode = creator(context, node, adsrNodes.current);
                     }
 

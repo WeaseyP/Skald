@@ -2,11 +2,21 @@ import React, { memo } from 'react';
 import { NumberInput } from '../common/NumberInput';
 import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
 import { commonNodeStyles, nodeHeaderStyles, handleContainerStyles, labelStyles, inputGroupStyles, numberInputStyles, NodeTheme } from './NodeStyles';
+import { useGraphActions } from '../../contexts/GraphActionsContext';
 
 const FilterNodeComponent = ({ id, data }: NodeProps) => {
+  const graphActions = useGraphActions();
   const { setNodes } = useReactFlow();
 
   const updateParam = (param: string, value: number) => {
+    // Write through app state (useGraphState), NOT React Flow's internal
+    // store — see ADSRNode for the full story. Internal-store writes were
+    // never heard by the audio engine and never reached save/codegen.
+    if (graphActions) {
+      graphActions.updateNodeData(id, { [param]: value });
+      return;
+    }
+    // Fallback for isolated rendering (tests) without the app provider.
     setNodes((nds) => nds.map((node) => {
       if (node.id === id) {
         return {

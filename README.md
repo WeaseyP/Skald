@@ -66,7 +66,7 @@ Skald supports a robust set of audio building blocks. These are the nodes curren
 To verify the audio engine without the UI:
 
 1.  Generate code using the Skald UI.
-2.  Copy the output to `skald-backend/tester/generated_audio/audio.odin`.
+2.  Replace the contents of `skald-backend/tester/generated_audio/generated_audio.odin` with the output. (Don't add a second `.odin` file next to it — the package would end up with duplicate symbols — and don't paste into `tester/test_harness.odin`, which is the player, not the generated code.)
 3.  Run the test harness:
 
 ```bash

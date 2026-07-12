@@ -484,6 +484,30 @@ main :: proc() {
 			)
 		}
 
+	case "graph_save_roundtrip":
+		// Raw React Flow save: instrument metadata and subgraph live under
+		// node.data, and internal nodes use UI type names. This used to fall
+		// back to Untitled with an empty graph, so the Asset_* harness symbols
+		// did not even compile.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.4)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+		}
+
+	case "legacy_loose_graph":
+		// Legacy loose graph: top-level nodes/edges with no Instrument wrapper.
+		// The importer wraps these as an Asset SFX so the old example library
+		// round-trips instead of generating an empty/no-instrument project.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.4)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+		}
 	case "sfx_oneshot":
 		// SFX with ADSR but no sequencer track. Trigger once with finite
 		// duration, then assert silence after release ends.
@@ -532,21 +556,23 @@ render_sfx_one_shot :: proc(
 	velocity: f32,
 	duration: f32,
 ) {
-	p: ga.Asset_Processor
-	ga.Asset_init(&p, sample_rate)
-	ga.Asset_trigger(&p, note, velocity, duration)
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	ga.Asset_trigger(p, note, velocity, duration)
 	for i in 0 ..< len(buf) {
-		l, r := ga.Asset_process(&p)
+		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}
 	}
 }
 
 render_music_layer :: proc(buf: []Stereo_Sample, sample_rate: f32) {
-	p: ga.Asset_Processor
-	ga.Asset_init(&p, sample_rate)
-	ga.Asset_start(&p)
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	ga.Asset_start(p)
 	for i in 0 ..< len(buf) {
-		l, r := ga.Asset_process(&p)
+		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}
 	}
 }
@@ -557,15 +583,16 @@ render_music_layer :: proc(buf: []Stereo_Sample, sample_rate: f32) {
 // any fixture, not just one that exposes cutoff — fixtures without an
 // exposed cutoff get a no-op set_param call and the assertion fails honestly.
 render_param_sweep :: proc(buf: []Stereo_Sample, sample_rate: f32) {
-	p: ga.Asset_Processor
-	ga.Asset_init(&p, sample_rate)
-	ga.Asset_trigger(&p, 69, 1.0, 0.0) // A4, infinite duration
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	ga.Asset_trigger(p, 69, 1.0, 0.0) // A4, infinite duration
 	n := len(buf)
 	for i in 0 ..< n {
 		t := f32(i) / f32(n - 1)
 		cutoff := f32(200.0) + t * f32(3800.0)
-		ga.Asset_set_param(&p, "cutoff", cutoff)
-		l, r := ga.Asset_process(&p)
+		ga.Asset_set_param(p, "cutoff", cutoff)
+		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}
 	}
 }

@@ -2,11 +2,24 @@ import React, { memo } from 'react';
 import { NumberInput } from '../common/NumberInput';
 import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
 import { commonNodeStyles, nodeHeaderStyles, handleContainerStyles, labelStyles, inputGroupStyles, numberInputStyles, NodeTheme } from './NodeStyles';
+import { useGraphActions } from '../../contexts/GraphActionsContext';
 
 const ADSRNodeComponent = ({ id, data }: NodeProps) => {
+    const graphActions = useGraphActions();
     const { setNodes } = useReactFlow();
 
     const updateParam = (param: string, value: number) => {
+        // Write through app state (useGraphState), NOT React Flow's internal
+        // store. The flow is controlled: the audio engine, save and codegen
+        // all read useGraphState's nodes, so a `useReactFlow().setNodes`
+        // write was never heard, never exported, and visually snapped back
+        // on the next state change — "the instrument still plays the old
+        // sound after I edit it".
+        if (graphActions) {
+            graphActions.updateNodeData(id, { [param]: value });
+            return;
+        }
+        // Fallback for isolated rendering (tests) without the app provider.
         setNodes((nds) => nds.map((node) => {
             if (node.id === id) {
                 return {

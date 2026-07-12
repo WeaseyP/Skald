@@ -13,4 +13,7 @@ contextBridge.exposeInMainWorld('electron', {
 
     selectOutputPath: (): Promise<string | null> =>
         ipcRenderer.invoke('select-output-path'),
+
+    buildWasmPreview: (projectJson: string): Promise<ArrayBuffer> =>
+        ipcRenderer.invoke('build-wasm-preview', projectJson),
 });
