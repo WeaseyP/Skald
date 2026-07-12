@@ -6,7 +6,17 @@ import "core:strings"
 import "core:strconv"
 import "core:math"
 import rand "core:math/rand"
+import "core:slice"
 import json "core:encoding/json"
+
+// Fixed sample count for every Delay/Reverb ring buffer on the processor.
+// 96000 = 2 seconds at 48kHz, which caps the maximum delay length: a delay
+// scheduled longer than this (or any delay at a sample rate above 48kHz)
+// truncates because the buffer is sized in SAMPLES, not seconds. Naming it
+// keeps the struct field and the two clamp bounds in sync; changing the delay
+// ceiling means changing this one constant. (Behavioral resize is out of
+// scope here — this only names the pre-existing literal.)
+MAX_DELAY_SAMPLES :: 96000
 
 // BPM-sync resolution: when a node has bpmSync=true, its time base comes
 // from the musical division in syncRate ("1/8", "1/4t", ... "1/1"; trailing
@@ -161,8 +171,8 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	fmt.sbprint(sb, "\t\t\tfor i in 0..<unison_count {\n")
 	fmt.sbprint(sb, "\t\t\t\tdetune_amount: f32 = 0.0;\n")
 	fmt.sbprintf(sb, "\t\t\t\tif unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (%.9f);\n", detune_amount)
-	fmt.sbprintf(sb, "\t\t\t\tdetuned_freq := (%s) * math.pow(2.0, detune_amount / 1200.0);\n", freq_str)
-	fmt.sbprintf(sb, "\t\t\t\tphase_rads := f32(%s) * (f32(math.PI) / 180.0);\n", phase_str)
+	emit_f32_local(sb, "\t\t\t\t", "detuned_freq", fmt.tprintf("(%s) * math.pow(2.0, detune_amount / 1200.0)", freq_str))
+	emit_f32_local(sb, "\t\t\t\t", "phase_rads", fmt.tprintf("f32(%s) * (f32(math.PI) / 180.0)", phase_str))
 	fmt.sbprintf(sb, "\t\t\t\tvoice.osc_%s_phase[i] = math.mod(voice.osc_%s_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));\n", node.id, node.id)
 	// final_phase wrapped to [0, 2π): the phase-offset param used to push
 	// sawtooth/square out of range (DC offset up to +2.0 on saw).
@@ -260,7 +270,7 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Idle;\n", node.id)
 	fmt.sbprint(sb, "\t\t\t\t}\n")
 	fmt.sbprint(sb, "\t\t\t}\n")
-	fmt.sbprintf(sb, "\t\t\tvel_scale_%s := (1.0 - (%s)) + (%s) * voice.velocity;\n", node.id, vs_str, vs_str)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("vel_scale_%s", node.id), fmt.tprintf("(1.0 - (%s)) + (%s) * voice.velocity", vs_str, vs_str))
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * envelope * (%s) * vel_scale_%s;\n", node.id, input_str, depth_str, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
@@ -294,9 +304,9 @@ generate_filter_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp
 	//   - damping q <= ~(1.9 - f): res < 1 (fully legal in the UI) blows up
 	//     at cutoffs as low as 1.5 kHz otherwise. Low floor 0.05 keeps high
 	//     resonance ringing but bounded.
-	fmt.sbprintf(sb, "\t\t\tcutoff_c_%s := math.clamp(f32(%s), 10.0, sample_rate * 0.16);\n", node.id, cutoff_str)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("cutoff_c_%s", node.id), fmt.tprintf("math.clamp(f32(%s), 10.0, sample_rate * 0.16)", cutoff_str))
 	fmt.sbprintf(sb, "\t\t\tf_%s := f32(2.0 * math.sin(f32(math.PI) * cutoff_c_%s / sample_rate));\n", node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\tq_%s := math.clamp(1.0 / math.max(f32(%s), 0.1), 0.05, 1.9 - f_%s);\n", node.id, res_str, node.id)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("q_%s", node.id), fmt.tprintf("math.clamp(1.0 / math.max(f32(%s), 0.1), 0.05, 1.9 - f_%s)", res_str, node.id))
 
 	fmt.sbprintf(sb, "\t\t\t%sfilter_%s_low += f_%s * %sfilter_%s_band;\n", sp, node.id, node.id, sp, node.id)
 	fmt.sbprintf(sb, "\t\t\thigh_%s := f32((%s) - %sfilter_%s_low - q_%s * %sfilter_%s_band);\n", node.id, input_str, sp, node.id, node.id, sp, node.id)
@@ -393,7 +403,7 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 	fmt.sbprint(sb, "\t\t{\n")
 	// Ratio clamped to [0.01, 32]: legacy saves carry the old UI default of
 	// 440 in this param, which as a raw ratio put the carrier at ~190kHz.
-	fmt.sbprintf(sb, "\t\t\tcarrier_freq_%s := %s * math.clamp(f32(%s), 0.01, 32.0);\n", node.id, carrier_base_freq_str, ratio_str)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("carrier_freq_%s", node.id), fmt.tprintf("%s * math.clamp(f32(%s), 0.01, 32.0)", carrier_base_freq_str, ratio_str))
 	// Increment the phase based on the carrier frequency.
 	fmt.sbprintf(sb, "\t\t\tvoice.fm_%s_phase = math.mod(voice.fm_%s_phase + (2 * f32(math.PI) * carrier_freq_%s / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, node.id)
 	// Calculate the final output. The modulator signal is multiplied by the modulation index and added to the phase.
@@ -452,7 +462,7 @@ generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprint(sb, "\t\t{\n")
 	// Min 1 sample: delayTime=0 made read_index == write_index, which reads
 	// the slot from one full buffer wrap ago — a 2-second delay, not 0ms.
-	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%s) * sample_rate, 1, %d-1));\n", node.id, time_str, 96000)
+	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%s) * sample_rate, 1, %d-1));\n", node.id, time_str, MAX_DELAY_SAMPLES)
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
 	// Feedback clamped below 1 at point of use — literal or modulated
@@ -477,13 +487,13 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 
 	fmt.sbprintf(sb, "\t\t// --- Reverb Node %s (Simple FDN) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
-	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%.9f) * sample_rate, 0, %d-1));\n", node.id, delay_time, 96000)
+	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%.9f) * sample_rate, 0, %d-1));\n", node.id, delay_time, MAX_DELAY_SAMPLES)
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
 	// decay is a TIME in the UI (seconds) but a feedback GAIN here; the UI
 	// default of 3.0 diverged exponentially. Map RT60-style: gain such that
 	// the 75ms tap decays 60dB over `decay` seconds, hard-capped below 1.
-	fmt.sbprintf(sb, "\t\t\tdecay_gain_%s := math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(%s), 0.01)), 0.0, 0.95);\n", node.id, decay_str)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("decay_gain_%s", node.id), fmt.tprintf("math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(%s), 0.01)), 0.0, 0.95)", decay_str))
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = (%s) + delayed_sample_%s * decay_gain_%s;\n", node.id, node.id, input_str, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_write_index = (p.delay_%s_write_index + 1) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * (1.0 - (%s)) + delayed_sample_%s * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)
@@ -503,27 +513,27 @@ generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 
 	fmt.sbprintf(sb, "\t\t// --- Distortion Node %s (%s) ---\n", node.id, shape)
 	fmt.sbprint(sb, "\t\t{\n")
-	// Explicit ': f32' on these three locals: with literal params, Odin
-	// constant-folds the whole initializer (including math.max/math.clamp
-	// when a literal bound is the selected value) into an untyped constant,
-	// and ':=' would then default the local to f64 — breaking every f32
-	// use below. Same class as the Mapper in_range fix.
-	fmt.sbprintf(sb, "\t\t\tdist_in_%s: f32 = (%s);\n", node.id, input_str)
-	fmt.sbprintf(sb, "\t\t\tdist_k_%s: f32 = math.max(f32(%s), 1.0);\n", node.id, drive_str)
+	// Every param-derived local goes through emit_f32_local (explicit ': f32'):
+	// with literal params, Odin constant-folds the whole initializer (including
+	// math.max/math.clamp when a literal bound is the selected value) into an
+	// untyped constant, and a bare ':=' would then default the local to f64 —
+	// breaking every f32 use below. Same class as the Mapper in_range fix.
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("dist_in_%s", node.id), fmt.tprintf("(%s)", input_str))
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("dist_k_%s", node.id), fmt.tprintf("math.max(f32(%s), 1.0)", drive_str))
 	switch shape {
 	case "soft", "softclip":
-		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := math.tanh(dist_in_%s * dist_k_%s);\n", node.id, node.id, node.id)
+		emit_f32_local(sb, "\t\t\t", fmt.tprintf("dist_wet_%s", node.id), fmt.tprintf("math.tanh(dist_in_%s * dist_k_%s)", node.id, node.id))
 	case "hard", "hardclip":
-		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := math.clamp(dist_in_%s * dist_k_%s, -1.0, 1.0);\n", node.id, node.id, node.id)
+		emit_f32_local(sb, "\t\t\t", fmt.tprintf("dist_wet_%s", node.id), fmt.tprintf("math.clamp(dist_in_%s * dist_k_%s, -1.0, 1.0)", node.id, node.id))
 	case "asymmetric":
-		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := dist_in_%s > 0.0 ? dist_in_%s : dist_in_%s / (1.0 + abs(dist_in_%s * dist_k_%s));\n", node.id, node.id, node.id, node.id, node.id, node.id)
+		emit_f32_local(sb, "\t\t\t", fmt.tprintf("dist_wet_%s", node.id), fmt.tprintf("dist_in_%s > 0.0 ? dist_in_%s : dist_in_%s / (1.0 + abs(dist_in_%s * dist_k_%s))", node.id, node.id, node.id, node.id, node.id))
 	case: // classic
-		fmt.sbprintf(sb, "\t\t\tdist_wet_%s := (f32(math.PI) + dist_k_%s) * dist_in_%s / (f32(math.PI) + dist_k_%s * abs(dist_in_%s));\n", node.id, node.id, node.id, node.id, node.id)
+		emit_f32_local(sb, "\t\t\t", fmt.tprintf("dist_wet_%s", node.id), fmt.tprintf("(f32(math.PI) + dist_k_%s) * dist_in_%s / (f32(math.PI) + dist_k_%s * abs(dist_in_%s))", node.id, node.id, node.id, node.id))
 	}
 	// One-pole lowpass tone filter on the wet path.
-	fmt.sbprintf(sb, "\t\t\ttone_k_%s := math.clamp(2.0 * f32(math.PI) * math.clamp(f32(%s), 100.0, 20000.0) / sample_rate, 0.001, 1.0);\n", node.id, tone_str)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("tone_k_%s", node.id), fmt.tprintf("math.clamp(2.0 * f32(math.PI) * math.clamp(f32(%s), 100.0, 20000.0) / sample_rate, 0.001, 1.0)", tone_str))
 	fmt.sbprintf(sb, "\t\t\t%sdist_%s_tone += tone_k_%s * (dist_wet_%s - %sdist_%s_tone);\n", sp, node.id, node.id, node.id, sp, node.id)
-	fmt.sbprintf(sb, "\t\t\tmix_%s: f32 = math.clamp(f32(%s), 0.0, 1.0);\n", node.id, mix_str)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("mix_%s", node.id), fmt.tprintf("math.clamp(f32(%s), 0.0, 1.0)", mix_str))
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = dist_in_%s * (1.0 - mix_%s) + %sdist_%s_tone * mix_%s;\n", node.id, node.id, node.id, sp, node.id, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
@@ -600,7 +610,7 @@ generate_panner_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprint(sb, "\t\t{\n")
 	// Pan clamped: modulation past ±1 rotates the angle out of [0, π/2] and
 	// leaks a polarity-inverted copy into the opposite channel.
-	fmt.sbprintf(sb, "\t\t\tpan_angle_%s := (math.clamp(f32(%s), -1.0, 1.0) * 0.5 + 0.5) * f32(math.PI) / 2.0;\n", node.id, pan_str)
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("pan_angle_%s", node.id), fmt.tprintf("(math.clamp(f32(%s), -1.0, 1.0) * 0.5 + 0.5) * f32(math.PI) / 2.0", pan_str))
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out_left = (%s) * math.cos(pan_angle_%s);\n", node.id, input_str, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out_right = (%s) * math.sin(pan_angle_%s);\n", node.id, input_str, node.id)
 	// Mono downmix for mono-input consumers: a Panner feeding a Filter or
@@ -623,10 +633,11 @@ generate_mapper_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// Runtime guard: inMax == inMin (trivially reachable from the UI) would
 	// emit a constant division by zero when both are literals, and NaN when
 	// modulated. Degenerate range maps everything to outMin.
-	// f32() on both operands: with literal params the subtraction is an
-	// untyped-constant expression and the variable would default to f64,
-	// which fails to compile against the f32 signal expression below.
-	fmt.sbprintf(sb, "\t\t\tin_range_%s := f32(%s) - f32(%s);\n", node.id, inMax, inMin)
+	// emit_f32_local + f32() on both operands: with literal params the
+	// subtraction is an untyped-constant expression and a bare ':=' local
+	// would default to f64, which fails to compile against the f32 signal
+	// expression below.
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("in_range_%s", node.id), fmt.tprintf("f32(%s) - f32(%s)", inMax, inMin))
 	fmt.sbprintf(sb, "\t\t\tif in_range_%s == 0.0 do in_range_%s = 1.0;\n", node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = math.lerp(f32(%s), f32(%s), math.clamp((f32(%s) - f32(%s)) / in_range_%s, 0.0, 1.0));\n", node.id, outMin, outMax, input_str, inMin, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
@@ -732,11 +743,19 @@ generate_processor_code :: proc(
 	// mean "half your patch is gone".
 	sorted_nodes, is_dag := topological_sort(graph)
 	// (freed at end of proc; needed throughout emission)
+
+	// Deterministic per-node iteration for every emission loop below: raw
+	// `graph.nodes` map order is unspecified and varies run-to-run (see
+	// nodes_sorted_by_id). Using this everywhere keeps the generated source —
+	// and the golden snapshots — reproducible.
+	all_nodes := nodes_sorted_by_id(graph)
+	defer delete(all_nodes)
+
 	if !is_dag {
 		in_sorted := make(map[string]bool)
 		for n in sorted_nodes do in_sorted[n.id] = true
 		fmt.eprintf("Error: instrument %q contains a feedback loop. Nodes in or behind the cycle:", instrument.name)
-		for _, node in graph.nodes {
+		for node in all_nodes {
 			if !in_sorted[node.id] do fmt.eprintf(" %s(%s)", node.type, node.id)
 		}
 		fmt.eprintf("\nBreak the cycle (remove the feedback wire) and regenerate.\n")
@@ -747,13 +766,20 @@ generate_processor_code :: proc(
 	// Voice-domain output vars consumed by bus-domain nodes get a per-voice
 	// accumulator (`<var>_vsum`): the bus section runs once per sample on
 	// the SUM of all voices. Keyed by emitted variable name so Panner
-	// L/R port outputs work like everything else.
+	// L/R port outputs work like everything else. cross_vars_ordered preserves
+	// first-seen (connection) order so the emitted `_vsum` decls are stable.
 	cross_vars := make(map[string]bool)
 	defer delete(cross_vars)
+	cross_vars_ordered := make([dynamic]string)
+	defer delete(cross_vars_ordered)
 	for conn in graph.connections {
 		if bus_nodes[conn.to_node] && !bus_nodes[conn.from_node] {
 			if _, ok := graph.nodes[conn.from_node]; ok {
-				cross_vars[get_output_var(conn.from_node, conn.from_port)] = true
+				v := get_output_var(conn.from_node, conn.from_port)
+				if !cross_vars[v] {
+					cross_vars[v] = true
+					append(&cross_vars_ordered, v)
+				}
 			}
 		}
 	}
@@ -782,7 +808,7 @@ generate_processor_code :: proc(
 
 	// Generate state fields for nodes. Bus-domain nodes keep their state on
 	// the PROCESSOR (they run once per sample, not per voice) — see below.
-	for _, node in graph.nodes {
+	for node in all_nodes {
 		if bus_nodes[node.id] do continue
 		if node.type == "Oscillator" {
 			fmt.sbprintf(&sb, "\tosc_%s_phase: [%d]f32,\n", node.id, max(instrument.unison, 1))
@@ -832,16 +858,16 @@ generate_processor_code :: proc(
     fmt.sbprint(&sb, "\tstep_frac_acc: f32,\n")
     
     // Generate Processor state fields (Global effects buffers)
-	for _, node in graph.nodes {
+	for node in all_nodes {
         // Delay and Reverb usage of delay buffer
 		if node.type == "Delay" || node.type == "Reverb" {
-			fmt.sbprintf(&sb, "\tdelay_%s_buffer: [96000]f32,\n", node.id)
+			fmt.sbprintf(&sb, "\tdelay_%s_buffer: [%d]f32,\n", node.id, MAX_DELAY_SAMPLES)
             fmt.sbprintf(&sb, "\tdelay_%s_write_index: int,\n", node.id)
 		}
 	}
 	// Bus-domain stateful nodes (a Filter/LFO/etc downstream of a Delay or
 	// Reverb) keep their DSP state here instead of on the voice.
-	for _, node in graph.nodes {
+	for node in all_nodes {
 		if !bus_nodes[node.id] do continue
 		switch node.type {
 		case "Filter":
@@ -871,7 +897,7 @@ generate_processor_code :: proc(
         // Pass 1: count occurrences per param name.
         counts := make(map[string]int)
         defer delete(counts)
-        for _, node in graph.nodes {
+        for node in all_nodes {
             if params_val, ok := node.parameters["exposedParameters"]; ok {
                 if arr, is_arr := params_val.(json.Array); is_arr {
                     for p_val in arr {
@@ -889,7 +915,7 @@ generate_processor_code :: proc(
         // exposing the same param would otherwise silently share one field.
         used_fields := make(map[string]bool)
         defer delete(used_fields)
-        for _, node in graph.nodes {
+        for node in all_nodes {
             if params_val, ok := node.parameters["exposedParameters"]; ok {
                 if arr, is_arr := params_val.(json.Array); is_arr {
                     for p_val in arr {
@@ -941,16 +967,35 @@ generate_processor_code :: proc(
     }
     graph.exposed_resolutions = resolutions
 
-    // Emit a struct field per unique resolved field_name. Iteration order
-    // over Odin maps is unspecified, but the codegen output is consumed
-    // by Odin (which doesn't care about field order) so we don't sort.
-    seen_fields := make(map[string]bool)
-    defer delete(seen_fields)
-    for _, res in resolutions {
-        if !seen_fields[res.field_name] {
-            seen_fields[res.field_name] = true
-            fmt.sbprintf(&sb, "\t%s: f32,\n", res.field_name)
+    // Stable, deduplicated, field-name-sorted list of resolutions. Built ONCE
+    // here and reused for every emission that walks the exposed params (struct
+    // fields, init, setters, PARAMS, set_param/get_param dispatch). Odin map
+    // iteration is unspecified and varies run-to-run, so emitting straight from
+    // the `resolutions` map produced different field/case ordering each run —
+    // harmless to the Odin compiler but fatal to golden snapshots. Sorting by
+    // field_name pins a single reproducible order.
+    stable_resolutions: [dynamic]Exposed_Resolution
+    defer delete(stable_resolutions)
+    {
+        stable_seen := make(map[string]bool)
+        defer delete(stable_seen)
+        // Map order here doesn't matter: the dedup + sort below make the
+        // result deterministic regardless of iteration order.
+        for _, res in resolutions {
+            if !stable_seen[res.field_name] {
+                stable_seen[res.field_name] = true
+                append(&stable_resolutions, res)
+            }
         }
+        slice.sort_by(stable_resolutions[:], proc(a, b: Exposed_Resolution) -> bool {
+            return a.field_name < b.field_name
+        })
+    }
+
+    // Emit a struct field per unique resolved field_name (Odin doesn't care
+    // about field order; we sort only for reproducibility).
+    for res in stable_resolutions {
+        fmt.sbprintf(&sb, "\t%s: f32,\n", res.field_name)
     }
 
     fmt.sbprint(&sb, "}\n\n")
@@ -968,7 +1013,7 @@ generate_processor_code :: proc(
     // entirely when no Noise/SampleHold nodes exist, otherwise we'd emit
     // a for-loop with an empty body and Odin flags `v` as unused.
     needs_voice_rng_seed := false
-    for _, node in graph.nodes {
+    for node in all_nodes {
         if (node.type == "Noise" || node.type == "SampleHold") && !bus_nodes[node.id] {
             needs_voice_rng_seed = true
             break
@@ -978,7 +1023,7 @@ generate_processor_code :: proc(
     if needs_voice_rng_seed {
         fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
         fmt.sbprint(&sb, "\t\tv := &p.voices[i]\n")
-        for _, node in graph.nodes {
+        for node in all_nodes {
             if bus_nodes[node.id] do continue
             if node.type == "Noise" {
                 fmt.sbprintf(
@@ -1001,7 +1046,7 @@ generate_processor_code :: proc(
         fmt.sbprint(&sb, "\t}\n")
     }
     // Bus-domain rngs are seeded once on the processor.
-    for _, node in graph.nodes {
+    for node in all_nodes {
         if !bus_nodes[node.id] do continue
         if node.type == "Noise" {
             fmt.sbprintf(&sb, "\tp.noise_%s_rng.state = u32(0x%08X)\n", node.id, voice_seed)
@@ -1012,16 +1057,10 @@ generate_processor_code :: proc(
         }
     }
 
-    // Init Exposed Parameters using resolved field names. Iterate the same
-    // seen-fields set so each field gets initialized exactly once even when
-    // multiple nodes resolve to the same field (no-collision case).
-    init_seen := make(map[string]bool)
-    defer delete(init_seen)
-    for _, res in resolutions {
-        if !init_seen[res.field_name] {
-            init_seen[res.field_name] = true
-            fmt.sbprintf(&sb, "\tp.%s = %.9f\n", res.field_name, res.default)
-        }
+    // Init Exposed Parameters using resolved field names. stable_resolutions
+    // is already deduplicated by field_name, so each field inits exactly once.
+    for res in stable_resolutions {
+        fmt.sbprintf(&sb, "\tp.%s = %.9f\n", res.field_name, res.default)
     }
 
 	fmt.sbprint(&sb, "}\n\n")
@@ -1074,7 +1113,7 @@ generate_processor_code :: proc(
     // voice reuse — worse, a single NaN blowup latched the voice silent
     // forever. Phases reset too so retriggers are deterministic. Bus-domain
     // node state lives on the processor and is never reset per note.
-	for _, node in graph.nodes {
+	for node in all_nodes {
 		if bus_nodes[node.id] do continue
 		switch node.type {
 		case "ADSR":
@@ -1100,7 +1139,7 @@ generate_processor_code :: proc(
 	// same note played twice (delay throws, echoes a chord) lost every
 	// copy's tail on the first note_off.
 	first_adsr_id := ""
-	for _, node in graph.nodes {
+	for node in all_nodes {
 		if node.type == "ADSR" {
 			first_adsr_id = node.id
 			break
@@ -1123,7 +1162,7 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\tif best >= 0 {\n")
 	fmt.sbprint(&sb, "\t\tp.voices[best].time_released = p.voices[best].age\n")
 	if first_adsr_id != "" {
-		for _, node in graph.nodes {
+		for node in all_nodes {
 			if node.type == "ADSR" {
 				// release_level already tracks the live envelope value each
 				// sample — do NOT overwrite it here (that was the instant-
@@ -1206,19 +1245,10 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "}\n\n")
 
 	// --- Phase 3: Exposed-parameter API ---
-	// Collect a stable, deduplicated list of resolutions for this instrument
-	// so we emit setters / PARAMS entries / dispatch arms in a consistent
-	// order. Map iteration in Odin is unordered, so we copy out values once.
-	stable_resolutions: [dynamic]Exposed_Resolution
-	defer delete(stable_resolutions)
-	stable_seen := make(map[string]bool)
-	defer delete(stable_seen)
-	for _, res in resolutions {
-		if !stable_seen[res.field_name] {
-			stable_seen[res.field_name] = true
-			append(&stable_resolutions, res)
-		}
-	}
+	// (stable_resolutions — the field-name-sorted, deduplicated list — was
+	// built once right after the resolution pass above and is reused here for
+	// setters / PARAMS entries / dispatch arms so every surface shares one
+	// reproducible order.)
 
 	// Typed setters: <Foo>_set_<field>(p, value) with min/max clamping
 	// computed at codegen time from the param-range table.
@@ -1313,7 +1343,7 @@ generate_processor_code :: proc(
 
 	// Cross-domain accumulators: voice-domain outputs consumed by the bus
 	// section are summed across voices here, then handed to the bus block.
-	for var_name in cross_vars {
+	for var_name in cross_vars_ordered {
 		fmt.sbprintf(&sb, "\t%s_vsum: f32 = 0.0\n", var_name)
 	}
 
@@ -1339,7 +1369,7 @@ generate_processor_code :: proc(
     // skipped entirely (the sequencer fires every note through this path).
     // release_level is NOT touched — it already tracks the live envelope.
     fmt.sbprint(&sb, "\t\tif voice.age >= voice.duration && voice.duration > 0.0 {\n")
-	for _, node in graph.nodes {
+	for node in all_nodes {
 		if node.type == "ADSR" {
             // Trigger Release
 			fmt.sbprintf(&sb, "\t\t\tif voice.adsr_%s_stage != .Release && voice.adsr_%s_stage != .Idle {{\n", node.id, node.id)
@@ -1354,7 +1384,7 @@ generate_processor_code :: proc(
     // only when at least one ADSR exists in the graph — otherwise Odin
     // flags it "declared but not used" for SFX without envelopes.
     has_adsr_in_graph := false
-    for _, node in graph.nodes {
+    for node in all_nodes {
         if node.type == "ADSR" {
             has_adsr_in_graph = true
             break
@@ -1367,7 +1397,7 @@ generate_processor_code :: proc(
 	// Variable declarations — voice-domain nodes only (bus nodes live in the
 	// bus block below the loop). Every node gets a mono `node_<id>_out`;
 	// Panner nodes also get the stereo pair.
-	for _, node in graph.nodes {
+	for node in all_nodes {
 		if bus_nodes[node.id] do continue
 		fmt.sbprintf(&sb, "\t\tnode_%s_out: f32 = 0.0\n", node.id)
 		if node.type == "Panner" {
@@ -1425,7 +1455,7 @@ generate_processor_code :: proc(
     }
 
 	// Accumulate cross-domain sums (feeds the bus block after the loop).
-	for var_name in cross_vars {
+	for var_name in cross_vars_ordered {
 		fmt.sbprintf(&sb, "\t\t%s_vsum += %s\n", var_name, var_name)
 	}
 
@@ -1435,7 +1465,7 @@ generate_processor_code :: proc(
         // expires — otherwise the voice slot is held forever and SFX without
         // an envelope plays indefinitely.
         has_adsr := false
-        for _, node in graph.nodes {
+        for node in all_nodes {
             if node.type == "ADSR" {
                 has_adsr = true
                 fmt.sbprintf(&sb, "\t\tif voice.adsr_%s_stage != .Idle do voice_busy = true\n", node.id)
@@ -1468,7 +1498,7 @@ generate_processor_code :: proc(
 		fmt.sbprint(&sb, "\t{\n")
 		// Voice-domain sources appear under their normal names, holding the
 		// all-voices sum.
-		for var_name in cross_vars {
+		for var_name in cross_vars_ordered {
 			fmt.sbprintf(&sb, "\t\t%s := %s_vsum\n", var_name, var_name)
 		}
 		for node in sorted_nodes {

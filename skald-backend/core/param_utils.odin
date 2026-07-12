@@ -8,6 +8,32 @@ import json "core:encoding/json"
 // SECTION C: Type-Safe Parameter Fetching System
 // =================================================================================
 
+// Format a numeric parameter as an *explicitly f32-typed* constant string,
+// e.g. 440.0 -> "f32(440.000000000)".
+//
+// This is the structural fix for a bug class that was patched three times at
+// individual sites (Mapper in_range, Distortion dist_in/dist_k/mix, ADSR
+// math.max denominators): a bare literal like "440.000000000" is an *untyped*
+// Odin constant. Pasted behind ':=' it defaults the local to f64, and folded
+// into an all-literal initializer it silently makes the whole expression f64 —
+// which then fails to compile against the f32 signal path. Wrapping every
+// literal in f32(...) makes that untyped state unrepresentable at the source,
+// so no current or future generator can reintroduce it via get_f32_param.
+f32_literal :: proc(v: f64) -> string {
+	return fmt.tprintf("f32(%.9f)", v)
+}
+
+// Emit a param-derived local with an explicit `: f32` type:
+//   <indent><name>: f32 = <expr>;
+// Generators MUST use this (never a bare `name := <param-expr>`) for any local
+// whose initializer embeds a parameter/input expression. It carries the "this
+// local is f32" invariant in one place instead of relying on each author to
+// remember the annotation — the per-site vigilance contract that failed 3+
+// times. See f32_literal for the companion source-side guard.
+emit_f32_local :: proc(sb: ^strings.Builder, indent: string, name: string, expr: string) {
+	fmt.sbprintf(sb, "%s%s: f32 = %s;\n", indent, name, expr)
+}
+
 // Map an arbitrary string (node id, label, instrument name — all user- or
 // UI-controlled) onto a chunk that is safe to embed in an Odin identifier.
 // Every non [A-Za-z0-9_] byte becomes '_'. When the result would start with
@@ -45,7 +71,7 @@ get_output_var :: proc(node_id: string, port_name: string = "") -> string {
 }
 
 get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: f32) -> string {
-    base_str := fmt.tprintf("%.9f", default_val)
+    base_str := f32_literal(f64(default_val))
 
     // Phase 3: prefer the codegen-computed resolution (which knows the
     // collision-free field name) over the raw exposedParameters list.
@@ -80,26 +106,26 @@ get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port:
         if val, ok := node.parameters[param_name]; ok {
             #partial switch v in val {
             case json.Float:
-                base_str = fmt.tprintf("%.9f", v)
+                base_str = f32_literal(f64(v))
             case json.Integer:
-                base_str = fmt.tprintf("%.9f", f64(v))
+                base_str = f32_literal(f64(v))
             }
         } else if param_name == "mix" && (node.type == "Delay" || node.type == "Reverb") {
             if val, ok := node.parameters["wetDryMix"]; ok {
                 #partial switch v in val {
                 case json.Float:
-                    base_str = fmt.tprintf("%.9f", v)
+                    base_str = f32_literal(f64(v))
                 case json.Integer:
-                    base_str = fmt.tprintf("%.9f", f64(v))
+                    base_str = f32_literal(f64(v))
                 }
             }
         } else if param_name == "delayTime" && node.type == "Delay" {
             if val, ok := node.parameters["time"]; ok {
                 #partial switch v in val {
                 case json.Float:
-                    base_str = fmt.tprintf("%.9f", v / 1000.0)
+                    base_str = f32_literal(f64(v) / 1000.0)
                 case json.Integer:
-                    base_str = fmt.tprintf("%.9f", f64(v) / 1000.0)
+                    base_str = f32_literal(f64(v) / 1000.0)
                 }
             }
         }
@@ -113,14 +139,19 @@ get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port:
 		sources := find_inputs_for_port(graph, node.id, input_port)
         defer delete(sources)
         if len(sources) > 0 {
-            sb := strings.builder_make()
-            defer strings.builder_destroy(&sb)
-            fmt.sbprintf(&sb, "(%s)", base_str)
-            for src, i in sources {
+            // Accumulate through the temp allocator (fmt.tprintf) rather than a
+            // builder we destroy on return: strings.to_string() aliases the
+            // builder's buffer, so returning it after `defer builder_destroy`
+            // handed back a dangling pointer. Callers that immediately pasted
+            // it into one sbprintf survived by luck; a caller that reads it a
+            // second time (e.g. through emit_f32_local's nested tprintf) got
+            // freed memory. Temp strings live for the whole one-shot run.
+            result := fmt.tprintf("(%s)", base_str)
+            for src in sources {
                 input_str := get_output_var(src.id, src.port)
-                fmt.sbprintf(&sb, " + (%s)", input_str)
+                result = fmt.tprintf("%s + (%s)", result, input_str)
             }
-            return strings.to_string(sb)
+            return result
         }
 	}
 	

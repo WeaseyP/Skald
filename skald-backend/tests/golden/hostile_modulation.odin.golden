@@ -79,9 +79,14 @@ Asset_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	wavetable_1_phase: f32,
-	adsr_2_stage: ADSR_Stage,
-	adsr_2_release_level: f32,
+	osc_1_phase: [3]f32,
+	lfo_2_phase: f32,
+	lfo_3_phase: f32,
+	lfo_4_phase: f32,
+	filter_5_low: f32,
+	filter_5_band: f32,
+	adsr_6_stage: ADSR_Stage,
+	adsr_6_release_level: f32,
 }
 
 Asset_Processor :: struct {
@@ -95,7 +100,8 @@ Asset_Processor :: struct {
 	current_step: u64,
 	samples_until_next_step: u64,
 	step_frac_acc: f32,
-	position: f32,
+	delay_7_buffer: [96000]f32,
+	delay_7_write_index: int,
 }
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
@@ -103,7 +109,6 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.bpm = 120.000000000
 	p.prng.state = 12345
 	p.loop = true
-	p.position = 0.000000000
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -142,9 +147,11 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 		v.current_freq = freq
 	}
 	v.duration = duration
-	v.wavetable_1_phase = 0.0
-	v.adsr_2_stage = .Attack
-	v.adsr_2_release_level = 0.0
+	v.osc_1_phase = {}
+	v.filter_5_low = 0.0
+	v.filter_5_band = 0.0
+	v.adsr_6_stage = .Attack
+	v.adsr_6_release_level = 0.0
 }
 
 Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
@@ -152,7 +159,7 @@ Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
 	best_age: f32 = -1.0
 	for i in 0..<8 {
 		if p.voices[i].active && p.voices[i].note == note {
-			if p.voices[i].adsr_2_stage == .Release do continue
+			if p.voices[i].adsr_6_stage == .Release do continue
 			if p.voices[i].age > best_age {
 				best_age = p.voices[i].age
 				best = i
@@ -161,7 +168,7 @@ Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
 	}
 	if best >= 0 {
 		p.voices[best].time_released = p.voices[best].age
-		p.voices[best].adsr_2_stage = .Release
+		p.voices[best].adsr_6_stage = .Release
 	}
 }
 
@@ -192,31 +199,14 @@ Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	return false
 }
 
-Asset_set_position :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.000000000 do v = 0.000000000
-	if v > 3.000000000 do v = 3.000000000
-	p.position = v
-}
-
 Asset_PARAMS := []Skald_Param_Info{
-	{"position", 0.000000000, 3.000000000, 0.000000000, ""},
 }
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
-	switch name {
-	case "position":
-		Asset_set_position(p, value)
-		return true
-	}
 	return false
 }
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
-	switch name {
-	case "position":
-		return p.position, true
-	}
 	return 0.0, false
 }
 
@@ -226,6 +216,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 	output_right: f32 = 0.0
 	p.total_samples += 1
 
+	node_6_out_vsum: f32 = 0.0
 	for v_idx in 0..<8 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
@@ -238,8 +229,8 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			if abs(voice.target_freq - voice.current_freq) < 0.1 do voice.current_freq = voice.target_freq
 		}
 		if voice.age >= voice.duration && voice.duration > 0.0 {
-			if voice.adsr_2_stage != .Release && voice.adsr_2_stage != .Idle {
-				voice.adsr_2_stage = .Release
+			if voice.adsr_6_stage != .Release && voice.adsr_6_stage != .Idle {
+				voice.adsr_6_stage = .Release
 				voice.time_released = voice.age
 			}
 		}
@@ -247,51 +238,109 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		node_1_out: f32 = 0.0
 		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
+		node_4_out: f32 = 0.0
+		node_5_out: f32 = 0.0
+		node_6_out: f32 = 0.0
 
-		// --- Wavetable Node 1 ---
-		voice.wavetable_1_phase = math.mod(voice.wavetable_1_phase + ((voice.current_freq) / sample_rate), 1.0);
-		if voice.wavetable_1_phase < 0.0 do voice.wavetable_1_phase += 1.0;
-		node_1_out = skald_wavetable_sample(voice.wavetable_1_phase, f32(p.position)) * (f32(1.000000000));
+		// --- LFO Node 2 ---
+		voice.lfo_2_phase = math.mod(voice.lfo_2_phase + (2 * f32(math.PI) * (f32(6.000000000)) / sample_rate), 2 * f32(math.PI));
+		if voice.lfo_2_phase < 0.0 do voice.lfo_2_phase += 2 * f32(math.PI);
+		node_2_out = math.sin(voice.lfo_2_phase) * (f32(8.000000000));
 
-		// --- ADSR Node 2 ---
+		// --- LFO Node 3 ---
+		voice.lfo_3_phase = math.mod(voice.lfo_3_phase + (2 * f32(math.PI) * (f32(3.000000000)) / sample_rate), 2 * f32(math.PI));
+		if voice.lfo_3_phase < 0.0 do voice.lfo_3_phase += 2 * f32(math.PI);
+		node_3_out = math.sin(voice.lfo_3_phase) * (f32(30000.000000000));
+
+		// --- LFO Node 4 ---
+		voice.lfo_4_phase = math.mod(voice.lfo_4_phase + (2 * f32(math.PI) * (f32(5.000000000)) / sample_rate), 2 * f32(math.PI));
+		if voice.lfo_4_phase < 0.0 do voice.lfo_4_phase += 2 * f32(math.PI);
+		node_4_out = math.sin(voice.lfo_4_phase) * (f32(40.000000000));
+
+		// --- Oscillator Node 1 (Unison/Detune) ---
+		{
+			unison_out: f32 = 0.0;
+			unison_count := 3;
+			for i in 0..<unison_count {
+				detune_amount: f32 = 0.0;
+				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (25.000000000);
+				detuned_freq: f32 = ((voice.current_freq) * math.pow(2.0, math.clamp(f32(node_2_out), -10.0, 10.0))) * math.pow(2.0, detune_amount / 1200.0);
+				phase_rads: f32 = f32(f32(0.000000000)) * (f32(math.PI) / 180.0);
+				voice.osc_1_phase[i] = math.mod(voice.osc_1_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));
+				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
+				unison_out += ((final_phase / f32(math.PI)) - 1.0);
+			}
+			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+		}
+
+		// --- Filter Node 5 (SVF) ---
+		{
+			cutoff_c_5: f32 = math.clamp(f32((f32(1000.000000000)) + (node_3_out)), 10.0, sample_rate * 0.16);
+			f_5 := f32(2.0 * math.sin(f32(math.PI) * cutoff_c_5 / sample_rate));
+			q_5: f32 = math.clamp(1.0 / math.max(f32((f32(0.300000000)) + (node_4_out)), 0.1), 0.05, 1.9 - f_5);
+			voice.filter_5_low += f_5 * voice.filter_5_band;
+			high_5 := f32(((node_1_out)) - voice.filter_5_low - q_5 * voice.filter_5_band);
+			voice.filter_5_band += f_5 * high_5;
+			node_5_out = voice.filter_5_low;
+		}
+
+		// --- ADSR Node 6 ---
 		{
 			envelope: f32 = 0.0;
-			switch voice.adsr_2_stage {
+			switch voice.adsr_6_stage {
 			case .Idle:
 				envelope = 0.0;
 			case .Attack:
 				if (f32(0.010000000)) > 0 do envelope = voice.age / math.max(f32(f32(0.010000000)), 0.000001); else do envelope = 1.0;
-				voice.adsr_2_release_level = envelope;
+				voice.adsr_6_release_level = envelope;
 				if voice.age >= (f32(0.010000000)) {
-					voice.adsr_2_stage = .Decay;
+					voice.adsr_6_stage = .Decay;
 				}
 			case .Decay:
 				time_in_decay := voice.age - (f32(0.010000000));
-				if (f32(0.050000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.050000000)), 0.000001)) * (1.0 - (f32(0.900000000))); else do envelope = (f32(0.900000000));
-				voice.adsr_2_release_level = envelope;
-				if time_in_decay >= (f32(0.050000000)) {
-					voice.adsr_2_stage = .Sustain;
+				if (f32(0.100000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.100000000)), 0.000001)) * (1.0 - (f32(1.000000000))); else do envelope = (f32(1.000000000));
+				voice.adsr_6_release_level = envelope;
+				if time_in_decay >= (f32(0.100000000)) {
+					voice.adsr_6_stage = .Sustain;
 				}
 			case .Sustain:
-				envelope = (f32(0.900000000));
-				voice.adsr_2_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_2_stage = .Idle;
+				envelope = (f32(1.000000000));
+				voice.adsr_6_release_level = envelope;
+				if envelope <= 0.0001 do voice.adsr_6_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
-				if (f32(0.200000000)) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.200000000)), 0.000001))); else do envelope = 0.0;
+				if (f32(0.200000000)) > 0 do envelope = voice.adsr_6_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.200000000)), 0.000001))); else do envelope = 0.0;
 				if envelope <= 0 {
 					envelope = 0;
-					voice.adsr_2_stage = .Idle;
+					voice.adsr_6_stage = .Idle;
 				}
 			}
-			vel_scale_2: f32 = (1.0 - (f32(0.500000000))) + (f32(0.500000000)) * voice.velocity;
-			node_2_out = ((node_1_out)) * envelope * (f32(1.000000000)) * vel_scale_2;
+			vel_scale_6: f32 = (1.0 - (f32(0.500000000))) + (f32(0.500000000)) * voice.velocity;
+			node_6_out = ((node_5_out)) * envelope * (f32(1.000000000)) * vel_scale_6;
 		}
 
-		output_left += node_2_out
-		output_right += node_2_out
-		if voice.adsr_2_stage != .Idle do voice_busy = true
+		node_6_out_vsum += node_6_out
+		if voice.adsr_6_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
+	}
+
+	// --- Bus effects (once per sample, post voice sum) ---
+	{
+		node_6_out := node_6_out_vsum
+		node_7_out: f32 = 0.0
+		// --- Reverb Node 7 (Simple FDN) ---
+		{
+			delay_samples_7 := int(math.clamp((0.075000000) * sample_rate, 0, 96000-1));
+			read_index_7 := (p.delay_7_write_index - delay_samples_7 + len(p.delay_7_buffer)) % len(p.delay_7_buffer);
+			delayed_sample_7 := p.delay_7_buffer[read_index_7];
+			decay_gain_7: f32 = math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(f32(3.000000000)), 0.01)), 0.0, 0.95);
+			p.delay_7_buffer[p.delay_7_write_index] = ((node_6_out)) + delayed_sample_7 * decay_gain_7;
+			p.delay_7_write_index = (p.delay_7_write_index + 1) % len(p.delay_7_buffer);
+			node_7_out = ((node_6_out)) * (1.0 - (f32(0.500000000))) + delayed_sample_7 * (f32(0.500000000));
+		}
+
+		output_left += node_7_out
+		output_right += node_7_out
 	}
 	return output_left, output_right
 }

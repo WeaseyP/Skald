@@ -79,7 +79,7 @@ Asset_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	wavetable_1_phase: f32,
+	osc_1_phase: [1]f32,
 	adsr_2_stage: ADSR_Stage,
 	adsr_2_release_level: f32,
 }
@@ -95,7 +95,6 @@ Asset_Processor :: struct {
 	current_step: u64,
 	samples_until_next_step: u64,
 	step_frac_acc: f32,
-	position: f32,
 }
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
@@ -103,7 +102,6 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.bpm = 120.000000000
 	p.prng.state = 12345
 	p.loop = true
-	p.position = 0.000000000
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -142,7 +140,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 		v.current_freq = freq
 	}
 	v.duration = duration
-	v.wavetable_1_phase = 0.0
+	v.osc_1_phase = {}
 	v.adsr_2_stage = .Attack
 	v.adsr_2_release_level = 0.0
 }
@@ -192,31 +190,14 @@ Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	return false
 }
 
-Asset_set_position :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.000000000 do v = 0.000000000
-	if v > 3.000000000 do v = 3.000000000
-	p.position = v
-}
-
 Asset_PARAMS := []Skald_Param_Info{
-	{"position", 0.000000000, 3.000000000, 0.000000000, ""},
 }
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
-	switch name {
-	case "position":
-		Asset_set_position(p, value)
-		return true
-	}
 	return false
 }
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
-	switch name {
-	case "position":
-		return p.position, true
-	}
 	return 0.0, false
 }
 
@@ -248,10 +229,21 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
 
-		// --- Wavetable Node 1 ---
-		voice.wavetable_1_phase = math.mod(voice.wavetable_1_phase + ((voice.current_freq) / sample_rate), 1.0);
-		if voice.wavetable_1_phase < 0.0 do voice.wavetable_1_phase += 1.0;
-		node_1_out = skald_wavetable_sample(voice.wavetable_1_phase, f32(p.position)) * (f32(1.000000000));
+		// --- Oscillator Node 1 (Unison/Detune) ---
+		{
+			unison_out: f32 = 0.0;
+			unison_count := 1;
+			for i in 0..<unison_count {
+				detune_amount: f32 = 0.0;
+				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (5.000000000);
+				detuned_freq: f32 = (voice.current_freq) * math.pow(2.0, detune_amount / 1200.0);
+				phase_rads: f32 = f32(f32(0.000000000)) * (f32(math.PI) / 180.0);
+				voice.osc_1_phase[i] = math.mod(voice.osc_1_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));
+				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
+				unison_out += math.sin(final_phase);
+			}
+			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+		}
 
 		// --- ADSR Node 2 ---
 		{
@@ -260,13 +252,13 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			case .Idle:
 				envelope = 0.0;
 			case .Attack:
-				if (f32(0.010000000)) > 0 do envelope = voice.age / math.max(f32(f32(0.010000000)), 0.000001); else do envelope = 1.0;
+				if (f32(0.050000000)) > 0 do envelope = voice.age / math.max(f32(f32(0.050000000)), 0.000001); else do envelope = 1.0;
 				voice.adsr_2_release_level = envelope;
-				if voice.age >= (f32(0.010000000)) {
+				if voice.age >= (f32(0.050000000)) {
 					voice.adsr_2_stage = .Decay;
 				}
 			case .Decay:
-				time_in_decay := voice.age - (f32(0.010000000));
+				time_in_decay := voice.age - (f32(0.050000000));
 				if (f32(0.050000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.050000000)), 0.000001)) * (1.0 - (f32(0.900000000))); else do envelope = (f32(0.900000000));
 				voice.adsr_2_release_level = envelope;
 				if time_in_decay >= (f32(0.050000000)) {
@@ -278,7 +270,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				if envelope <= 0.0001 do voice.adsr_2_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
-				if (f32(0.200000000)) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.200000000)), 0.000001))); else do envelope = 0.0;
+				if (f32(0.500000000)) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.500000000)), 0.000001))); else do envelope = 0.0;
 				if envelope <= 0 {
 					envelope = 0;
 					voice.adsr_2_stage = .Idle;

@@ -1,8 +1,27 @@
 package skald_core
 
+import "core:slice"
+
 // =================================================================================
 // SECTION B: Graph Traversal & Analysis Helpers
 // =================================================================================
+
+// Odin map iteration order is unspecified and varies run-to-run. Any codegen
+// loop that emits per-node output (struct fields, PRNG seed assignment, the
+// "first ADSR" selection, exposed-param collision suffixes, node_out decls)
+// must iterate this sorted-by-id view instead of `graph.nodes` directly, or
+// the generated source is non-deterministic — which breaks reproducible builds
+// and makes golden snapshots useless. Caller owns the returned slice.
+nodes_sorted_by_id :: proc(graph: ^Graph) -> []Node {
+	ids := make([dynamic]string)
+	defer delete(ids)
+	for id in graph.nodes do append(&ids, id)
+	slice.sort(ids[:])
+	out := make([]Node, len(ids))
+	for id, i in ids do out[i] = graph.nodes[id]
+	return out
+}
+
 topological_sort :: proc(graph: ^Graph) -> (sorted_nodes: []Node, is_dag: bool) {
 	if graph == nil do return nil, true
 	in_degree := make(map[string]int)
@@ -20,6 +39,11 @@ topological_sort :: proc(graph: ^Graph) -> (sorted_nodes: []Node, is_dag: bool) 
 	for id, degree in in_degree {
 		if degree == 0 do append(&queue, id)
 	}
+	// Sort the initial ready-set so the Kahn traversal is deterministic:
+	// the seed came from a map iteration, and connections are scanned in a
+	// fixed slice order below, so a sorted seed makes the whole topological
+	// order reproducible across runs (required for stable golden snapshots).
+	slice.sort(queue[:])
 
 	sorted := make([dynamic]Node)
 	// defer delete(sorted) // Corrected: Do not delete the 'sorted' dynamic array.
