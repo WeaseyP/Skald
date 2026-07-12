@@ -54,6 +54,16 @@ const LockIcon: React.FC<{ isLocked: boolean }> = ({ isLocked }) => (
 );
 
 export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trackId, step, track, onUpdateNote, instrumentNode }) => {
+    // All hooks must run before the conditional returns below (Rules of
+    // Hooks): toggling between a step with and without a note would
+    // otherwise change the hook count between renders and crash React.
+    const internalNodes = useMemo(() => {
+        if (instrumentNode && instrumentNode.type === 'instrument' && instrumentNode.data.subgraph) {
+            return instrumentNode.data.subgraph.nodes as Node[];
+        }
+        return [];
+    }, [instrumentNode]);
+
     if (!track) return <div>Track not found</div>;
 
     const note = track.notes.find(n => n.step === step);
@@ -65,14 +75,6 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
             </div>
         );
     }
-
-    // Iterate through instrument subgraph nodes
-    const internalNodes = useMemo(() => {
-        if (instrumentNode && instrumentNode.type === 'instrument' && instrumentNode.data.subgraph) {
-            return instrumentNode.data.subgraph.nodes as Node[];
-        }
-        return [];
-    }, [instrumentNode]);
 
 
     const handleOverrideChange = (paramKey: string, newValue: any) => {

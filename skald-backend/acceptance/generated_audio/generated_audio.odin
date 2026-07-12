@@ -244,9 +244,9 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			}
 		}
 		voice_busy := false
+		node_3_out: f32 = 0.0
 		node_2_out: f32 = 0.0
 		node_1_out: f32 = 0.0
-		node_3_out: f32 = 0.0
 
 		// --- Wavetable Node 1 ---
 		voice.wavetable_1_phase = math.mod(voice.wavetable_1_phase + ((voice.current_freq) / sample_rate), 1.0);

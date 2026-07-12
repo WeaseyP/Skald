@@ -1413,6 +1413,14 @@ generate_processor_code :: proc(
              generate_sample_hold_code(&sb, node, graph, "voice.")
         case "GraphOutput":
              generate_graph_output_adds(&sb, node, graph, bus_nodes, false)
+        case:
+            // A silent fall-through here would emit a dead `node_<id>_out = 0`
+            // and the patch would "generate fine" minus one node. Fail loudly
+            // instead, matching the cycle-error convention above.
+            fmt.eprintf(
+                "Error: unknown node type %q (node id %s) in instrument %q — no code generator exists for it. Refusing to generate a silently-broken patch.\n",
+                node.type, node.id, instrument.name)
+            os.exit(1)
         }
     }
 
@@ -1499,6 +1507,15 @@ generate_processor_code :: proc(
 				generate_sample_hold_code(&sb, node, graph, "p.")
 			case "GraphOutput":
 				generate_graph_output_adds(&sb, node, graph, bus_nodes, true)
+			case:
+				// Voice-only node types (Oscillator, ADSR, MidiInput,
+				// FmOperator, Wavetable) land in the bus domain when wired
+				// downstream of a Delay/Reverb; previously they were
+				// silently dropped from the patch.
+				fmt.eprintf(
+					"Error: node type %q (node id %s) in instrument %q cannot run downstream of a Delay/Reverb (bus domain) — it would have been silently dropped. Move it upstream of the Delay/Reverb or remove that wire.\n",
+					node.type, node.id, instrument.name)
+				os.exit(1)
 			}
 		}
 		fmt.sbprint(&sb, "\t}\n")
