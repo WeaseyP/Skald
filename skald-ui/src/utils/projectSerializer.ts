@@ -158,6 +158,9 @@ export const buildProjectData = (
             name: data.name || 'Unnamed Instrument',
             mute: track ? track.isMuted : false,
             solo: track ? track.isSolo : false,
+            // Floor at 0.001, never 0: the backend reads an exact 0 as
+            // "field absent" (older saves) and substitutes unity.
+            volume: Math.max(data.volume ?? 1.0, 0.001),
             voice_count: data.voiceCount || 8,
             glide: data.glide ?? 0.05,
             unison: data.unison ?? 1,

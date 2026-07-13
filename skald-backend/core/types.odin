@@ -120,6 +120,7 @@ Project_Instrument_Raw :: struct {
 	glide:       f32,
 	unison:      int,
 	detune:      f32,
+	volume:      f32,
 	midi_config: Midi_Config,
 	audio_graph: Graph_Raw,
 }
@@ -146,6 +147,11 @@ Project_Instrument :: struct {
 	glide:       f32,
 	unison:      int,
 	detune:      f32,
+	// Instrument output level, 0..1, baked into the generated process proc.
+	// 0 means "absent from the JSON" and defaults to 1.0 at parse time (the
+	// UI serializes an explicit floor of 0.001 instead of a true 0; muting
+	// is the `mute` flag's job).
+	volume:      f32,
 	midi_config: Midi_Config,
 	graph:       Graph,
 }

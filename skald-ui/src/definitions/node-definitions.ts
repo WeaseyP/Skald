@@ -108,9 +108,6 @@ const defaultAdsrParams: AdsrParams = {
     release: 1.0,
     depth: 1.0,
     velocitySensitivity: 0.5,
-    attackCurve: 'linear',
-    decayCurve: 'linear',
-    releaseCurve: 'linear',
     exposedParameters: ['attack', 'decay', 'sustain', 'release', 'depth']
 };
 
@@ -164,6 +161,7 @@ const defaultOutputParams: OutputParams = {
 
 const defaultInstrumentParams: InstrumentParams = {
     name: 'New Instrument',
+    volume: 1.0,
     voiceCount: 8,
     voiceStealing: 'oldest',
     glide: 0.05,

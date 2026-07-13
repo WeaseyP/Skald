@@ -512,7 +512,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		if voice.adsr_4_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left, output_right
+	return output_left * f32(1.000000000), output_right * f32(1.000000000)
 }
 Asset_process_sequence :: proc(p: ^Asset_Processor) {
 }

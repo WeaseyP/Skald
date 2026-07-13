@@ -176,6 +176,13 @@ sum_port_inputs :: proc(graph: ^Graph, node_id: string, port: string, default_st
 	return fmt.tprintf("(%s)", strings.to_string(sb))
 }
 
+get_bool_param :: proc(node: Node, param_name: string, default_val: bool) -> bool {
+	if val, ok := node.parameters[param_name]; ok {
+		if b, is_b := val.(json.Boolean); is_b do return bool(b)
+	}
+	return default_val
+}
+
 get_string_param :: proc(node: Node, param_name: string, default_val: string) -> string {
 	if val, ok := node.parameters[param_name]; ok {
         #partial switch v in val {

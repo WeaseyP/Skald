@@ -113,14 +113,18 @@ compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: strin
 generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, instrument: ^Project_Instrument) {
 	freq_str: string
 
-	// The played note drives pitch, always. The UI serializes a `frequency`
-	// param on every oscillator, and the old code inlined it as a constant
-	// when present — which meant MIDI notes and the sequencer's piano roll
-	// could never change pitch (every melody collapsed to one tone). The
-	// preview's Voice.trigger() overwrites osc.frequency with the note
-	// frequency on every trigger, so note-wins is also the parity-correct
-	// semantic. voice.current_freq is set from the note at note_on.
+	// The played note drives pitch by default. The UI serializes a
+	// `frequency` param on every oscillator, and the old code inlined it as
+	// a constant when present — which meant MIDI notes and the sequencer's
+	// piano roll could never change pitch (every melody collapsed to one
+	// tone). Note-wins is the correct default; opting in to `fixedPitch`
+	// makes the oscillator ignore the note and use the `frequency` param
+	// (drones, layered SFX components that must not track pitch). Without
+	// the opt-in the frequency field is inert by design.
 	base_freq_str := "voice.current_freq"
+	if get_bool_param(node, "fixedPitch", false) {
+		base_freq_str = get_f32_param(graph, node, "frequency", "", 440.0)
+	}
 
 	// Apply Modulation (Priority 1: Exponential FM / V/Oct)
     // Sum all inputs to 'input_freq' before applying exponent
@@ -275,12 +279,33 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
+// The UI offers 'White' | 'Pink'; pink was silently generated as white
+// until the Phase-3 trial caught it. Pink uses Paul Kellett's "economy"
+// 3-pole filter over the same PRNG (state fields emitted alongside the rng).
+noise_is_pink :: proc(node: Node) -> bool {
+	t := get_string_param(node, "type", "White")
+	return strings.to_lower(t, context.temp_allocator) == "pink"
+}
+
 generate_noise_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, sp: string) {
 	amp_str := get_f32_param(graph, node, "amplitude", "input_amp", 1.0)
 	fmt.sbprintf(sb, "\t\t// --- Noise Node %s ---\n", node.id)
-	// Bipolar: the raw PRNG is [0,1), which put a +0.5*amp DC offset on
-	// every voice.
-	fmt.sbprintf(sb, "\t\tnode_%s_out = (next_float32(&%snoise_%s_rng) * 2.0 - 1.0) * (%s);\n\n", node.id, sp, node.id, amp_str)
+	if noise_is_pink(node) {
+		fmt.sbprint(sb, "\t\t{\n")
+		// Bipolar white source: raw PRNG is [0,1), which would put a DC
+		// offset on every voice.
+		fmt.sbprintf(sb, "\t\t\twhite_%s := next_float32(&%snoise_%s_rng) * 2.0 - 1.0;\n", node.id, sp, node.id)
+		fmt.sbprintf(sb, "\t\t\t%snoise_%s_p0 = 0.99765 * %snoise_%s_p0 + white_%s * 0.0990460;\n", sp, node.id, sp, node.id, node.id)
+		fmt.sbprintf(sb, "\t\t\t%snoise_%s_p1 = 0.96300 * %snoise_%s_p1 + white_%s * 0.2965164;\n", sp, node.id, sp, node.id, node.id)
+		fmt.sbprintf(sb, "\t\t\t%snoise_%s_p2 = 0.57000 * %snoise_%s_p2 + white_%s * 1.0526913;\n", sp, node.id, sp, node.id, node.id)
+		// 0.25 normalizes the filter's ~[-4,4] swing back toward [-1,1].
+		fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%snoise_%s_p0 + %snoise_%s_p1 + %snoise_%s_p2 + white_%s * 0.1848) * 0.25 * (%s);\n", node.id, sp, node.id, sp, node.id, sp, node.id, node.id, amp_str)
+		fmt.sbprint(sb, "\t\t}\n\n")
+	} else {
+		// Bipolar: the raw PRNG is [0,1), which put a +0.5*amp DC offset on
+		// every voice.
+		fmt.sbprintf(sb, "\t\tnode_%s_out = (next_float32(&%snoise_%s_rng) * 2.0 - 1.0) * (%s);\n\n", node.id, sp, node.id, amp_str)
+	}
 }
 
 // sp is the state prefix: "voice." in the per-voice loop, "p." when the
@@ -414,8 +439,13 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// Pitch tracks the played note (same note-wins semantic as Oscillator;
 	// this node used to bake `frequency` in and play 440 for every note).
+	// `fixedPitch` opts back in to the frequency param, same as Oscillator.
 	// input_freq modulation uses the same exponential V/Oct convention.
-	freq_str := "voice.current_freq"
+	base_freq_str := "voice.current_freq"
+	if get_bool_param(node, "fixedPitch", false) {
+		base_freq_str = get_f32_param(graph, node, "frequency", "", 440.0)
+	}
+	freq_str := base_freq_str
 	if graph != nil {
 		sources := find_inputs_for_port(graph, node.id, "input_freq")
 		defer delete(sources)
@@ -427,7 +457,7 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph)
 				if i == 0 do fmt.sbprint(&sb_sum, v)
 				else do fmt.sbprintf(&sb_sum, " + %s", v)
 			}
-			freq_str = fmt.tprintf("voice.current_freq * math.pow(2.0, math.clamp(f32(%s), -10.0, 10.0))", strings.to_string(sb_sum))
+			freq_str = fmt.tprintf("(%s) * math.pow(2.0, math.clamp(f32(%s), -10.0, 10.0))", base_freq_str, strings.to_string(sb_sum))
 		}
 	}
 	// position morphs sine→triangle→saw→square (0..3, matching the preview
@@ -761,6 +791,10 @@ generate_processor_code :: proc(
 		fmt.eprintf("\nBreak the cycle (remove the feedback wire) and regenerate.\n")
 		os.exit(1)
 	}
+	// Reject wires the generators would silently ignore (typoed port names,
+	// dangling node ids) before emitting anything.
+	validate_connections(graph, instrument.name)
+
 	bus_nodes := compute_bus_domain(graph, sorted_nodes, instrument.name)
 
 	// Voice-domain output vars consumed by bus-domain nodes get a per-voice
@@ -829,6 +863,11 @@ generate_processor_code :: proc(
 			fmt.sbprintf(&sb, "\twavetable_%s_phase: f32,\n", node.id)
 		} else if node.type == "Noise" {
 			fmt.sbprintf(&sb, "\tnoise_%s_rng: PRNG_State,\n", node.id)
+			if noise_is_pink(node) {
+				fmt.sbprintf(&sb, "\tnoise_%s_p0: f32,\n", node.id)
+				fmt.sbprintf(&sb, "\tnoise_%s_p1: f32,\n", node.id)
+				fmt.sbprintf(&sb, "\tnoise_%s_p2: f32,\n", node.id)
+			}
 		} else if node.type == "SampleHold" {
 			fmt.sbprintf(&sb, "\tsh_%s_counter: u64,\n", node.id)
 			fmt.sbprintf(&sb, "\tsh_%s_rng: PRNG_State,\n", node.id)
@@ -877,6 +916,11 @@ generate_processor_code :: proc(
 			fmt.sbprintf(&sb, "\tlfo_%s_phase: f32,\n", node.id)
 		case "Noise":
 			fmt.sbprintf(&sb, "\tnoise_%s_rng: PRNG_State,\n", node.id)
+			if noise_is_pink(node) {
+				fmt.sbprintf(&sb, "\tnoise_%s_p0: f32,\n", node.id)
+				fmt.sbprintf(&sb, "\tnoise_%s_p1: f32,\n", node.id)
+				fmt.sbprintf(&sb, "\tnoise_%s_p2: f32,\n", node.id)
+			}
 		case "SampleHold":
 			fmt.sbprintf(&sb, "\tsh_%s_counter: u64,\n", node.id)
 			fmt.sbprintf(&sb, "\tsh_%s_rng: PRNG_State,\n", node.id)
@@ -1551,7 +1595,10 @@ generate_processor_code :: proc(
 		fmt.sbprint(&sb, "\t}\n")
 	}
 
-	fmt.sbprint(&sb, "\treturn output_left, output_right\n")
+	// Per-instrument level (parse guarantees > 0; unity for older JSONs).
+	// Applied at the asset boundary so a hot drum kit can be pulled down
+	// without fighting the master tanh saturator.
+	fmt.sbprintf(&sb, "\treturn output_left * f32(%.9f), output_right * f32(%.9f)\n", instrument.volume, instrument.volume)
 	fmt.sbprint(&sb, "}\n")
 
 	return strings.to_string(sb)

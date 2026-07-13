@@ -253,6 +253,10 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 		if voice_count <= 0 do voice_count = 1
 		unison := raw_inst.unison
 		if unison <= 0 do unison = 1
+		// volume 0 = field absent (pre-volume JSONs) -> unity. The UI never
+		// writes a true 0 (it floors at 0.001); mute is the mute flag's job.
+		volume := raw_inst.volume
+		if volume <= 0 do volume = 1.0
 
 		project.instruments[i] = Project_Instrument {
 			id = sanitize_identifier(raw_inst.id, true),
@@ -263,6 +267,7 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 			glide = raw_inst.glide,
 			unison = unison,
 			detune = raw_inst.detune,
+			volume = volume,
 			midi_config = raw_inst.midi_config,
 			graph = build_graph_from_raw(&raw_graph_copy),
 		}
@@ -304,6 +309,7 @@ build_project_from_graph :: proc(graph: ^Graph) -> Project {
 			glide = 0.0,
 			unison = 1,
 			detune = 0.0,
+			volume = 1.0,
 			graph = graph^,
 		}
 		project.sequencer_tracks = graph.sequencer_tracks
@@ -323,6 +329,8 @@ build_project_from_graph :: proc(graph: ^Graph) -> Project {
             unison := int(get_f32_param_val(node, "unison", 1.0))
             if unison <= 0 do unison = 1
             detune := get_f32_param_val(node, "detune", 0.0)
+            volume := get_f32_param_val(node, "volume", 1.0)
+            if volume <= 0 do volume = 1.0
 
             inst_graph := Graph{}
             if node.subgraph != nil {
@@ -336,6 +344,7 @@ build_project_from_graph :: proc(graph: ^Graph) -> Project {
                 glide = glide,
                 unison = unison,
                 detune = detune,
+                volume = volume,
                 graph = inst_graph,
             }
             idx += 1

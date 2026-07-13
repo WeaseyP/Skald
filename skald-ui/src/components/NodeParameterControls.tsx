@@ -126,19 +126,33 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             </>);
         case 'fmOperator':
             return (<>
-                {renderControlWrapper('frequency', 'Carrier Freq (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {/* The backend treats `frequency` as a carrier ratio (× note
+                    frequency), clamped to 0.01–32. The old label said
+                    "Carrier Freq (Hz)" with a 20–20000 range — every value
+                    above 32 silently clamped. */}
+                {renderControlWrapper('frequency', 'Ratio (× note freq)', slider('frequency', 0.01, 32, 1, 'log'))}
                 {renderControlWrapper('modIndex', 'Modulation Index', slider('modIndex', 0, 1000, 100))}
             </>);
         case 'wavetable':
             return (<>
                 {renderControlWrapper('tableName', 'Table', createSelect('tableName', ['Sine', 'Triangle', 'Sawtooth', 'Square']), false)}
-                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                <div style={{ margin: '10px 0' }}>
+                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
+                    <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
+                </div>
+                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
                 {renderControlWrapper('position', 'Table Position', slider('position', 0, 3, 0, undefined, 0.01))}
             </>);
         case 'oscillator':
             return (<>
                 {renderControlWrapper('waveform', 'Waveform', createSelect('waveform', ['Sawtooth', 'Sine', 'Triangle', 'Square']), false)}
-                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {/* Pitch follows the played note unless Fixed Pitch is on —
+                    only then does the frequency slider do anything. */}
+                <div style={{ margin: '10px 0' }}>
+                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
+                    <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
+                </div>
+                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
                 {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 0.5))}
                 {data.waveform === 'Square' && renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5))}
                 {renderControlWrapper('phase', 'Phase', slider('phase', 0, 360, 0))}
@@ -173,6 +187,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         // but simple Instrument params (non-subgraph) can go here
         case 'instrument':
             return (<>
+                {renderControlWrapper('volume', 'Volume', slider('volume', 0, 1, 1))}
                 {renderControlWrapper('voiceCount', 'Voice Count', slider('voiceCount', 1, 32, 8, undefined, 1))}
                 {renderControlWrapper('glide', 'Glide (s)', slider('glide', 0, 2, 0.05))}
                 {renderControlWrapper('unison', 'Unison Voices', slider('unison', 1, 16, 1, undefined, 1))}

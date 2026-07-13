@@ -40,6 +40,8 @@ export interface FmOperatorParams extends BaseNodeParams {
 }
 
 export interface WavetableParams extends BaseNodeParams {
+  // Same note-vs-fixed pitch opt-in as OscillatorParams.fixedPitch.
+  fixedPitch?: boolean;
   tableName: 'Sine' | 'Triangle' | 'Sawtooth' | 'Square';
   frequency: number;
   position: number;
@@ -64,6 +66,10 @@ export interface OscillatorParams extends BaseNodeParams {
   amplitude: number;
   pulseWidth: number;
   phase: number;
+  // When true the oscillator ignores the played note and uses `frequency`
+  // (drones, SFX layers that must not track pitch). Default: note-wins,
+  // and `frequency` is unused.
+  fixedPitch?: boolean;
 }
 
 export type FilterType = 'Lowpass' | 'Highpass' | 'Bandpass' | 'Notch';
@@ -79,7 +85,6 @@ export interface NoiseParams extends BaseNodeParams {
   amplitude: number;
 }
 
-export type AdsrCurve = 'linear' | 'exponential';
 export interface AdsrParams extends BaseNodeParams {
   attack: number;
   decay: number;
@@ -87,10 +92,6 @@ export interface AdsrParams extends BaseNodeParams {
   release: number;
   depth: number;
   velocitySensitivity: number;
-  attackCurve: AdsrCurve;
-  decayCurve: AdsrCurve;
-  releaseCurve: AdsrCurve;
-  loop?: boolean;
   lastTrigger?: number;
 }
 
@@ -180,6 +181,9 @@ export interface SkaldGraphConnection {
 
 export interface InstrumentParams extends BaseNodeParams {
   name: string;
+  // Instrument output level (0..1). The serializer floors it at 0.001 —
+  // the backend treats an exact 0 as "absent, default to unity".
+  volume?: number;
   voiceCount: number;
   voiceStealing: 'oldest' | 'newest';
   glide: number;
