@@ -183,6 +183,36 @@ describe('useWasmAudioEngine — live edits while playing', () => {
         expect(buildWasmPreview).toHaveBeenCalledTimes(2);
     });
 
+    it('a failed rebuild flags the preview STALE (old module still playing) and a later success clears it', async () => {
+        vi.useFakeTimers();
+        const { result, rerender } = await startPlaying([makeInstrument(440)]);
+        expect(result.current.previewStale).toBeNull();
+
+        // Break the next build (e.g. a half-wired graph mid-edit).
+        buildWasmPreview.mockRejectedValueOnce(new Error('codegen: broken wire'));
+        await act(async () => { rerender({ n: [makeInstrument(220)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+        // The engine keeps playing the previous module but SAYS so.
+        expect(result.current.isPlaying).toBe(true);
+        expect(result.current.previewStale).toContain('codegen: broken wire');
+
+        // Next successful rebuild clears the stale flag.
+        await act(async () => { rerender({ n: [makeInstrument(330)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+        expect(result.current.previewStale).toBeNull();
+    });
+
+    it('a failed Play surfaces previewError instead of dying console-only', async () => {
+        buildWasmPreview.mockRejectedValueOnce(new Error('Odin compiler not found'));
+        const { result } = renderEngine([makeInstrument()]);
+
+        await act(async () => { await result.current.handlePlay(); });
+
+        expect(result.current.isPlaying).toBe(false);
+        expect(result.current.previewError).toContain('Odin compiler not found');
+    });
+
     it('a uniquely-exposed param edit applies via set-param WITHOUT rebuilding', async () => {
         vi.useFakeTimers();
         const { result, rerender } = await startPlaying([makeInstrument(440, 800)]);

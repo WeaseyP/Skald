@@ -136,6 +136,33 @@ describe('buildProjectData — per-step patch overrides (p-locks)', () => {
         // the backend never has to distinguish "absent" from "no locks".
         expect(events[2].patch_overrides).toEqual({});
     });
+
+    it('passes label-scoped override keys through verbatim (the backend resolves them)', () => {
+        const track = makeTrack('i1', {
+            notes: [note({ step: 0, patchOverrides: { 'Filter:cutoff': 4000 } })],
+        });
+        const data = buildProjectData([makeInstrument('i1', 'PLock')], [], [track], 120, 1.0);
+        const events = data.project.instruments[0].audio_graph.sequencer_tracks[0].events;
+        expect(events[0].patch_overrides).toEqual({ 'Filter:cutoff': 4000 });
+    });
+
+    it('drops non-numeric overrides (backend applies P-locks via the f32 set_param API)', () => {
+        const track = makeTrack('i1', {
+            notes: [note({ step: 0, patchOverrides: { 'Osc:waveform': 'Saw', 'Osc:frequency': 220, 'Osc:phase': NaN } as any })],
+        });
+        const data = buildProjectData([makeInstrument('i1', 'PLock')], [], [track], 120, 1.0);
+        const events = data.project.instruments[0].audio_graph.sequencer_tracks[0].events;
+        // A string override would fail the whole JSON parse backend-side
+        // (patch_overrides is map[string]f32); NaN is not representable.
+        expect(events[0].patch_overrides).toEqual({ 'Osc:frequency': 220 });
+    });
+
+    it('serializes node labels — the backend resolves P-lock keys and collision prefixes from them', () => {
+        const data = buildProjectData([makeInstrument('i1', 'L')], [], [], 120, 1.0);
+        const nodes = data.project.instruments[0].audio_graph.nodes;
+        const osc = nodes.find((n: any) => n.type === 'Oscillator');
+        expect(osc.parameters.label).toBe('Osc');
+    });
 });
 
 describe('buildProjectData — note event derivation', () => {

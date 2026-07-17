@@ -70,7 +70,12 @@ is_voice_coupled_type :: proc(t: string) -> bool {
 compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: string) -> map[string]bool {
 	bus_nodes := make(map[string]bool)
 	for node in sorted_nodes {
-		if node.type == "Delay" || node.type == "Reverb" {
+		// GraphInput (an instrument's external audio input, created by
+		// collapse-with-incoming-wires) seeds the bus domain too: external
+		// audio is voice-independent and must keep flowing when no voice is
+		// active — inside the voice loop an untriggered effect instrument
+		// would be permanently silent.
+		if node.type == "Delay" || node.type == "Reverb" || node.type == "GraphInput" {
 			bus_nodes[node.id] = true
 			continue
 		}
@@ -84,7 +89,7 @@ compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: strin
 	for node in sorted_nodes {
 		if bus_nodes[node.id] && is_voice_coupled_type(node.type) {
 			fmt.eprintf(
-				"Error: instrument %q wires a %s node (%s) downstream of a Delay/Reverb. Envelopes, oscillators and MIDI nodes are per-voice and cannot process the post-voice effect bus. Move the %s before the effect.\n",
+				"Error: instrument %q wires a %s node (%s) downstream of a Delay/Reverb/instrument-input. Envelopes, oscillators and MIDI nodes are per-voice and cannot process the post-voice effect bus. Move the %s before the effect.\n",
 				inst_name, node.type, node.id, node.type,
 			)
 			os.exit(1)
@@ -418,6 +423,30 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 	// The base frequency for the carrier should come from the voice's current frequency.
 	carrier_base_freq_str := "voice.current_freq"
 
+	// Carrier-frequency modulation: the UI's "Carrier" handle (input_carrier)
+	// plus the legacy input_freq alias, both exponential V/Oct like the
+	// Oscillator's input_freq. input_carrier used to have no consumer at all —
+	// the validator rejected the only wire the UI could draw, with an error
+	// suggesting a port the FM node doesn't even show.
+	carrier_mod_str := ""
+	if graph != nil {
+		sources := find_inputs_for_port(graph, node.id, "input_carrier")
+		defer delete(sources)
+		freq_sources := find_inputs_for_port(graph, node.id, "input_freq")
+		defer delete(freq_sources)
+		for src in freq_sources do append(&sources, src)
+		if len(sources) > 0 {
+			sb_sum := strings.builder_make()
+			defer strings.builder_destroy(&sb_sum)
+			for src, i in sources {
+				v := get_output_var(src.id, src.port)
+				if i == 0 do fmt.sbprint(&sb_sum, v)
+				else do fmt.sbprintf(&sb_sum, " + %s", v)
+			}
+			carrier_mod_str = fmt.tprintf(" * math.pow(2.0, math.clamp(f32(%s), -10.0, 10.0))", strings.to_string(sb_sum))
+		}
+	}
+
 	// Parameters from the node itself.
 	// The UI sends 'frequency' which we will treat as the carrier-to-modulator frequency ratio.
 	ratio_str := get_f32_param(graph, node, "frequency", "", 1.0)
@@ -428,7 +457,7 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 	fmt.sbprint(sb, "\t\t{\n")
 	// Ratio clamped to [0.01, 32]: legacy saves carry the old UI default of
 	// 440 in this param, which as a raw ratio put the carrier at ~190kHz.
-	emit_f32_local(sb, "\t\t\t", fmt.tprintf("carrier_freq_%s", node.id), fmt.tprintf("%s * math.clamp(f32(%s), 0.01, 32.0)", carrier_base_freq_str, ratio_str))
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("carrier_freq_%s", node.id), fmt.tprintf("%s * math.clamp(f32(%s), 0.01, 32.0)%s", carrier_base_freq_str, ratio_str, carrier_mod_str))
 	// Increment the phase based on the carrier frequency.
 	fmt.sbprintf(sb, "\t\t\tvoice.fm_%s_phase = math.mod(voice.fm_%s_phase + (2 * f32(math.PI) * carrier_freq_%s / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, node.id)
 	// Calculate the final output. The modulator signal is multiplied by the modulation index and added to the phase.
@@ -741,6 +770,109 @@ find_sequencer_track :: proc(
 	return nil
 }
 
+// A P-lock (per-step parameter override) resolved to a concrete node+param.
+// The UI keys overrides as "<node label>:<param>" — a label, not a node id —
+// so the codegen has to resolve the label back to nodes before it can emit
+// anything that matches the collision-resolved set_param cases.
+Plock_Target :: struct {
+	node_id: string,
+	param:   string,
+}
+
+// The label the UI builds P-lock keys from: data.label (serialized as
+// parameters.label), falling back to the node type. Compared case-
+// insensitively because a label-less node falls back to the React Flow
+// type ("oscillator") in the UI but the codegen type ("Oscillator") here.
+plock_node_label :: proc(node: Node) -> string {
+	return get_string_param(node, "label", node.type)
+}
+
+// Resolve one patch_overrides key into (node, param) targets.
+// "<Label>:<param>" matches EVERY node whose label matches — the UI's own
+// demux has the same semantics, so same-label nodes intentionally share
+// overrides. A bare key (no colon — old fixtures) matches every node that
+// carries a param of that name. An empty result means the key references
+// nothing in the graph; callers must treat that as a hard error (silently
+// dropped P-locks are the bug class this resolver exists to kill).
+resolve_plock_targets :: proc(all_nodes: []Node, key: string) -> [dynamic]Plock_Target {
+	targets: [dynamic]Plock_Target
+
+	label_part := ""
+	param_part := key
+	if idx := strings.index_byte(key, ':'); idx >= 0 {
+		label_part = key[:idx]
+		param_part = key[idx + 1:]
+	}
+	if len(param_part) == 0 do return targets
+
+	for node in all_nodes {
+		if len(label_part) > 0 {
+			if !strings.equal_fold(plock_node_label(node), label_part) do continue
+		}
+		has_param := false
+		if _, ok := node.parameters[param_part]; ok {
+			has_param = true
+		} else if exposed_val, ok2 := node.parameters["exposedParameters"]; ok2 {
+			if arr, is_arr := exposed_val.(json.Array); is_arr {
+				for v in arr {
+					if s, is_str := v.(json.String); is_str && s == param_part {
+						has_param = true
+						break
+					}
+				}
+			}
+		}
+		if has_param {
+			append(&targets, Plock_Target{node_id = node.id, param = param_part})
+		}
+	}
+	return targets
+}
+
+// Walk every P-lock key on an instrument's sequencer track and resolve it,
+// exiting loudly on any key that matches nothing (a renamed/deleted node —
+// exporting would silently drop the user's step automation). The result is
+// fed into generate_processor_code so each P-locked param gets a real
+// processor field (exposure) that <Foo>_set_param can write.
+collect_plock_targets :: proc(
+	instrument: ^Project_Instrument,
+	project: ^Project,
+) -> [dynamic]Plock_Target {
+	targets: [dynamic]Plock_Target
+	track := find_sequencer_track(instrument, project)
+	if track == nil do return targets
+
+	all_nodes := nodes_sorted_by_id(&instrument.graph)
+	defer delete(all_nodes)
+
+	seen := make(map[string]bool)
+	defer delete(seen)
+	for event in track.events {
+		for key, _ in event.patch_overrides {
+			if seen[key] do continue
+			seen[key] = true
+			resolved := resolve_plock_targets(all_nodes, key)
+			defer delete(resolved)
+			if len(resolved) == 0 {
+				fmt.eprintf(
+					"Error: instrument %q has a step parameter override (P-lock) %q that matches no node in the patch. Valid targets:",
+					instrument.name,
+					key,
+				)
+				for node in all_nodes {
+					fmt.eprintf(" %q", plock_node_label(node))
+				}
+				fmt.eprintf(
+					"\nThe node was probably renamed or deleted after the override was created. Remove the override in the step editor (or restore the node's label) and regenerate.\n",
+				)
+				os.exit(1)
+			}
+			for t in resolved do append(&targets, t)
+		}
+	}
+	return targets
+}
+
 // Sanitize an instrument name into a valid Odin identifier prefix.
 // Full sanitization, not just spaces: "808 Kick!" must become "n808_Kick_"
 // (leading digit prefixed, punctuation replaced), or every emitted proc
@@ -754,6 +886,38 @@ clean_instrument_name :: proc(inst: ^Project_Instrument) -> string {
 
 // generate_processor_code generates the Odin source code for the audio processor logic.
 // It creates struct definitions, state management, and the `process_audio` function.
+// Effective exposure list for one node: the UI's exposedParameters array
+// plus every P-locked param targeting this node, deduplicated. A P-lock can
+// only work through <Foo>_set_param if the param lives as a real processor
+// field — while it stayed a baked literal, every step override was a silent
+// no-op. Caller deletes the result.
+effective_exposed_params :: proc(node: Node, plock_targets: []Plock_Target) -> [dynamic]string {
+	names: [dynamic]string
+	seen := make(map[string]bool)
+	defer delete(seen)
+
+	if params_val, ok := node.parameters["exposedParameters"]; ok {
+		if arr, is_arr := params_val.(json.Array); is_arr {
+			for p_val in arr {
+				if p_name, is_str := p_val.(json.String); is_str {
+					if !seen[p_name] {
+						seen[p_name] = true
+						append(&names, string(p_name))
+					}
+				}
+			}
+		}
+	}
+	for t in plock_targets {
+		if t.node_id != node.id do continue
+		if !seen[t.param] {
+			seen[t.param] = true
+			append(&names, t.param)
+		}
+	}
+	return names
+}
+
 generate_processor_code :: proc(
 	graph: ^Graph,
 	instrument: ^Project_Instrument,
@@ -761,6 +925,7 @@ generate_processor_code :: proc(
 	asset_type: Asset_Type,
 	bpm: f32,
 	include_header := true,
+	plock_targets: []Plock_Target = nil,
 ) -> string {
 	
 	// --- Extract Instrument Parameters ---
@@ -895,6 +1060,13 @@ generate_processor_code :: proc(
     // samples-per-step made 120 BPM render ~120.011 BPM at 44.1kHz and
     // drift against the UI preview.
     fmt.sbprint(&sb, "\tstep_frac_acc: f32,\n")
+
+	// External audio input bus. Only read by GraphInput nodes (effect
+	// instruments), but always present so the public API surface — and the
+	// acceptance harness's static symbol references — stay uniform across
+	// asset shapes (same convention as the transport fields above).
+	fmt.sbprint(&sb, "\text_in_l: f32,\n")
+	fmt.sbprint(&sb, "\text_in_r: f32,\n")
     
     // Generate Processor state fields (Global effects buffers)
 	for node in all_nodes {
@@ -938,18 +1110,16 @@ generate_processor_code :: proc(
     // / PARAMS-table emission below.
     resolutions := make(map[string]Exposed_Resolution)
     {
-        // Pass 1: count occurrences per param name.
+        // Pass 1: count occurrences per param name. Exposure here means the
+        // UI's exposedParameters PLUS sequencer P-lock targets — see
+        // effective_exposed_params.
         counts := make(map[string]int)
         defer delete(counts)
         for node in all_nodes {
-            if params_val, ok := node.parameters["exposedParameters"]; ok {
-                if arr, is_arr := params_val.(json.Array); is_arr {
-                    for p_val in arr {
-                        if p_name, is_str := p_val.(json.String); is_str {
-                            counts[p_name] += 1
-                        }
-                    }
-                }
+            names := effective_exposed_params(node, plock_targets)
+            defer delete(names)
+            for p_name in names {
+                counts[p_name] += 1
             }
         }
 
@@ -960,51 +1130,46 @@ generate_processor_code :: proc(
         used_fields := make(map[string]bool)
         defer delete(used_fields)
         for node in all_nodes {
-            if params_val, ok := node.parameters["exposedParameters"]; ok {
-                if arr, is_arr := params_val.(json.Array); is_arr {
-                    for p_val in arr {
-                        p_name, is_str := p_val.(json.String)
-                        if !is_str do continue
-
-                        rng := lookup_param_range(p_name, node.type)
-                        def_val := rng.default
-                        if val, found := node.parameters[p_name]; found {
-                            #partial switch v in val {
-                            case json.Float:   def_val = f32(v)
-                            case json.Integer: def_val = f32(v)
-                            }
-                        }
-
-                        field_name := p_name
-                        if counts[p_name] > 1 {
-                            // Collision: prefix with the sanitized node label
-                            // (falls back to node id — sanitize handles the
-                            // digit-leading case, `2_pulseWidth` is not a
-                            // legal Odin identifier).
-                            label := sanitize_identifier(get_string_param(node, "label", node.id))
-                            field_name = fmt.tprintf("%s_%s", label, p_name)
-                        }
-                        if used_fields[field_name] {
-                            base := field_name
-                            n := 2
-                            for used_fields[field_name] {
-                                field_name = fmt.tprintf("%s_%d", base, n)
-                                n += 1
-                            }
-                        }
-                        used_fields[field_name] = true
-
-                        key := fmt.aprintf("%s::%s", node.id, p_name)
-                        resolutions[key] = Exposed_Resolution{
-                            field_name = field_name,
-                            param_name = p_name,
-                            node_id    = node.id,
-                            default    = def_val,
-                            range_min  = rng.min,
-                            range_max  = rng.max,
-                            unit       = rng.unit,
-                        }
+            names := effective_exposed_params(node, plock_targets)
+            defer delete(names)
+            for p_name in names {
+                rng := lookup_param_range(p_name, node.type)
+                def_val := rng.default
+                if val, found := node.parameters[p_name]; found {
+                    #partial switch v in val {
+                    case json.Float:   def_val = f32(v)
+                    case json.Integer: def_val = f32(v)
                     }
+                }
+
+                field_name := p_name
+                if counts[p_name] > 1 {
+                    // Collision: prefix with the sanitized node label
+                    // (falls back to node id — sanitize handles the
+                    // digit-leading case, `2_pulseWidth` is not a
+                    // legal Odin identifier).
+                    label := sanitize_identifier(get_string_param(node, "label", node.id))
+                    field_name = fmt.tprintf("%s_%s", label, p_name)
+                }
+                if used_fields[field_name] {
+                    base := field_name
+                    n := 2
+                    for used_fields[field_name] {
+                        field_name = fmt.tprintf("%s_%d", base, n)
+                        n += 1
+                    }
+                }
+                used_fields[field_name] = true
+
+                key := fmt.aprintf("%s::%s", node.id, p_name)
+                resolutions[key] = Exposed_Resolution{
+                    field_name = field_name,
+                    param_name = p_name,
+                    node_id    = node.id,
+                    default    = def_val,
+                    range_min  = rng.min,
+                    range_max  = rng.max,
+                    unit       = rng.unit,
                 }
             }
         }
@@ -1228,14 +1393,64 @@ generate_processor_code :: proc(
 	// against any fixture.
 
 	// _trigger: SFX one-shot. For Music Layer, fires an extra one-off note
-	// on top of the running sequence. duration=0 plays through full envelope.
+	// on top of the running sequence. duration<=0 means "play the natural
+	// one-shot": hold through the envelope's attack+decay, then release —
+	// computed HERE, not in note_on, because note_on(duration=0) is the
+	// manual API contract (hold until note_off). The old behavior passed 0
+	// straight through, so the default trigger call on any sustaining patch
+	// held the voice (and is_playing) forever — a stuck-voice leak from the
+	// most natural line of game code. Patches with no envelope get a fixed
+	// 1s one-shot; pass an explicit duration (or use note_on/note_off or
+	// start/stop) for anything longer.
 	fmt.sbprintf(
 		&sb,
 		"%s_trigger :: proc(p: ^%s_Processor, note: u8 = 60, velocity: f32 = 1.0, duration: f32 = 0.0) {{\n",
 		namespace_prefix,
 		namespace_prefix,
 	)
-	fmt.sbprintf(&sb, "\t%s_note_on(p, note, velocity, duration)\n", namespace_prefix)
+	fmt.sbprint(&sb, "\td := duration\n")
+	fmt.sbprint(&sb, "\tif d <= 0.0 {\n")
+	{
+		has_adsr := false
+		for node in all_nodes {
+			if node.type == "ADSR" && !bus_nodes[node.id] {
+				has_adsr = true
+				break
+			}
+		}
+		if has_adsr {
+			// Longest attack+decay across the patch's envelopes. input_port
+			// is deliberately "" — graph-modulation sums reference per-sample
+			// locals that don't exist in this scope; exposed params still
+			// resolve to their live p.<field> values.
+			fmt.sbprint(&sb, "\t\td = 0.0\n")
+			for node in all_nodes {
+				if node.type != "ADSR" || bus_nodes[node.id] do continue
+				atk := get_f32_param(graph, node, "attack", "", 0.1)
+				dec := get_f32_param(graph, node, "decay", "", 0.1)
+				fmt.sbprintf(&sb, "\t\tif (%s) + (%s) > d do d = (%s) + (%s)\n", atk, dec, atk, dec)
+			}
+			fmt.sbprint(&sb, "\t\tif d <= 0.0 do d = 0.001\n")
+		} else {
+			fmt.sbprint(&sb, "\t\td = 1.0\n")
+		}
+	}
+	fmt.sbprint(&sb, "\t}\n")
+	fmt.sbprintf(&sb, "\t%s_note_on(p, note, velocity, d)\n", namespace_prefix)
+	fmt.sbprint(&sb, "}\n\n")
+
+	// _feed_input: external audio in. Read by the instrument's Input node
+	// (effect instruments); a no-op sink for assets without one — emitted
+	// unconditionally so the API surface is uniform (see the transport
+	// procs note above). The game writes one stereo sample per _process call.
+	fmt.sbprintf(
+		&sb,
+		"%s_feed_input :: proc(p: ^%s_Processor, in_left: f32, in_right: f32) {{\n",
+		namespace_prefix,
+		namespace_prefix,
+	)
+	fmt.sbprint(&sb, "\tp.ext_in_l = in_left\n")
+	fmt.sbprint(&sb, "\tp.ext_in_r = in_right\n")
 	fmt.sbprint(&sb, "}\n\n")
 
 	// _start: Music Layer kick-off. Resets sequencer to step 0, sets playing.
@@ -1557,6 +1772,13 @@ generate_processor_code :: proc(
 		for node in sorted_nodes {
 			if !bus_nodes[node.id] do continue
 			switch node.type {
+			case "GraphInput":
+				// External input bus, downmixed mono like every other
+				// mono node output (stereo-aware consumers would need
+				// stereo propagation — the Panner is the only stereo
+				// writer today and it downmixes for mono consumers too).
+				fmt.sbprintf(&sb, "\t\t// --- Instrument Input %s (fed by <Foo>_feed_input) ---\n", node.id)
+				fmt.sbprintf(&sb, "\t\tnode_%s_out = (p.ext_in_l + p.ext_in_r) * 0.5\n\n", node.id)
 			case "Filter":
 				generate_filter_code(&sb, node, graph, "p.")
 			case "Gain":
@@ -1672,6 +1894,10 @@ generate_sequencer_logic :: proc(
 		return
 	}
 
+	// Deterministic node order for P-lock label resolution below.
+	seq_nodes := nodes_sorted_by_id(&instrument.graph)
+	defer delete(seq_nodes)
+
 	// Track length drives WHICH step's notes fire; the global pattern
 	// length drives the loop boundary (shorter tracks wrap polyrhythmically
 	// inside it — same semantics as the UI engine). pattern_steps was never
@@ -1732,18 +1958,43 @@ generate_sequencer_logic :: proc(
 				indent = "\t\t\t\t"
 			}
 			// P-locks: apply this step's parameter overrides through the
-			// string-keyed setter before firing the note. (Divergence note:
-			// the preview scopes overrides to the triggered voice; here they
-			// persist until the next override — Elektron-style.)
-			for key, val in event.patch_overrides {
-				fmt.sbprintf(
-					sb,
-					"%s%s_set_param(p, \"%s\", %.9f)\n",
-					indent,
-					namespace_prefix,
-					key,
-					val,
-				)
+			// string-keyed setter before firing the note (they persist until
+			// the next override — Elektron-style). The UI key ("Label:param")
+			// must be resolved to the collision-free field name set_param
+			// actually switches on: the key used to be emitted verbatim, so
+			// every P-lock was a silent no-op returning false.
+			if len(event.patch_overrides) > 0 {
+				plock_keys: [dynamic]string
+				defer delete(plock_keys)
+				for key, _ in event.patch_overrides do append(&plock_keys, key)
+				// Map iteration order varies run to run; the goldens diff bytes.
+				slice.sort(plock_keys[:])
+
+				emitted := make(map[string]bool)
+				defer delete(emitted)
+				for key in plock_keys {
+					val := event.patch_overrides[key]
+					plock_targets := resolve_plock_targets(seq_nodes, key)
+					defer delete(plock_targets)
+					// collect_plock_targets already hard-errored on unresolvable
+					// keys before the processor was emitted, so targets resolve
+					// to real exposures here.
+					clear(&emitted)
+					for t in plock_targets {
+						res, found := instrument.graph.exposed_resolutions[fmt.tprintf("%s::%s", t.node_id, t.param)]
+						if !found do continue
+						if emitted[res.field_name] do continue
+						emitted[res.field_name] = true
+						fmt.sbprintf(
+							sb,
+							"%s%s_set_param(p, \"%s\", %.9f)\n",
+							indent,
+							namespace_prefix,
+							res.field_name,
+							val,
+						)
+					}
+				}
 			}
 			// duration is in steps; convert to seconds at runtime using p.bpm.
 			fmt.sbprintf(
@@ -1863,6 +2114,27 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "//   Music Layer: <Bar>_init, <Bar>_start, <Bar>_stop, <Bar>_process,\n")
     fmt.sbprint(&sb, "//                <Bar>_set_loop\n")
     fmt.sbprint(&sb, "//\n")
+    fmt.sbprint(&sb, "// <Foo>_trigger with duration<=0 (the default) plays a natural one-shot:\n")
+    fmt.sbprint(&sb, "// the envelope holds through attack+decay, then releases (a patch with no\n")
+    fmt.sbprint(&sb, "// envelope plays 1s). Pass an explicit duration in seconds to hold longer,\n")
+    fmt.sbprint(&sb, "// or drive <Foo>_note_on / <Foo>_note_off yourself for full control.\n")
+    {
+        any_graph_input := false
+        scan: for i in 0 ..< len(project.instruments) {
+            for _, node in project.instruments[i].graph.nodes {
+                if node.type == "GraphInput" {
+                    any_graph_input = true
+                    break scan
+                }
+            }
+        }
+        if any_graph_input {
+            fmt.sbprint(&sb, "//\n")
+            fmt.sbprint(&sb, "// Effect assets (instruments with an Input node) process external audio:\n")
+            fmt.sbprint(&sb, "// call <Foo>_feed_input(p, l, r) with one stereo sample, then <Foo>_process.\n")
+        }
+    }
+    fmt.sbprint(&sb, "//\n")
     fmt.sbprint(&sb, "// project_init/process/destroy is a convenience wrapper for the test\n")
     fmt.sbprint(&sb, "// harness only — game code should consume per-asset procs directly.\n")
     fmt.sbprint(&sb, "// =====================================================================\n\n")
@@ -1930,6 +2202,11 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
 
     for i in 0 ..< len(project.instruments) {
         inst := &project.instruments[i]
+        // Resolve every sequencer P-lock up front (hard error on keys that
+        // match nothing) so the processor emission can give each P-locked
+        // param a real field for set_param to write.
+        plocks := collect_plock_targets(inst, project)
+        defer delete(plocks)
         code := generate_processor_code(
             &inst.graph,
             inst,
@@ -1937,6 +2214,7 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
             asset_types[i],
             project.bpm,
             false,
+            plocks[:],
         )
         fmt.sbprint(&sb, code)
         generate_sequencer_logic(&sb, inst, unique_names[i], project, asset_types[i])

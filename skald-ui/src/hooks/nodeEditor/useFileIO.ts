@@ -10,6 +10,15 @@ import { useCallback } from 'react';
 import { Node, Edge, ReactFlowInstance } from 'reactflow';
 import { SequencerTrack } from '../../definitions/types';
 
+// Song-level settings that live outside the graph/tracks but shape how the
+// project sounds and exports. They used to be dropped from saves entirely:
+// a 140 BPM / 32-step song reloaded as 120 BPM / 16 steps.
+export interface SessionSettings {
+    bpm: number;
+    patternSteps: number;
+    masterVolume: number;
+}
+
 export const useFileIO = (
     reactFlowInstance: ReactFlowInstance | null,
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
@@ -17,19 +26,22 @@ export const useFileIO = (
     setHistory: (history: any[]) => void,
     setFuture: (future: any[]) => void,
     sequencerTracks: SequencerTrack[],
-    loadSequencerTracks: (tracks: SequencerTrack[]) => void
+    loadSequencerTracks: (tracks: SequencerTrack[]) => void,
+    sessionSettings: SessionSettings,
+    applySessionSettings: (settings: Partial<SessionSettings>) => void
 ) => {
     const handleSave = useCallback(() => {
         if (reactFlowInstance) {
             const flow = reactFlowInstance.toObject();
             const saveData = {
                 ...flow,
-                sequencerTracks
+                sequencerTracks,
+                session: sessionSettings
             };
             const graphJson = JSON.stringify(saveData, null, 2);
             window.electron.saveGraph(graphJson);
         }
-    }, [reactFlowInstance, sequencerTracks]);
+    }, [reactFlowInstance, sequencerTracks, sessionSettings]);
 
     const handleLoad = useCallback(async () => {
         const graphJson = await window.electron.loadGraph();
@@ -42,11 +54,27 @@ export const useFileIO = (
                 if (flow.sequencerTracks) {
                     loadSequencerTracks(flow.sequencerTracks);
                 }
+                // Older saves have no session block — leave the current
+                // settings alone rather than inventing defaults, and only
+                // apply fields that hold sane numbers.
+                if (flow.session) {
+                    const restored: Partial<SessionSettings> = {};
+                    if (Number.isFinite(flow.session.bpm) && flow.session.bpm > 0) {
+                        restored.bpm = flow.session.bpm;
+                    }
+                    if (Number.isFinite(flow.session.patternSteps) && flow.session.patternSteps > 0) {
+                        restored.patternSteps = flow.session.patternSteps;
+                    }
+                    if (Number.isFinite(flow.session.masterVolume) && flow.session.masterVolume >= 0) {
+                        restored.masterVolume = flow.session.masterVolume;
+                    }
+                    applySessionSettings(restored);
+                }
                 setHistory([]);
                 setFuture([]);
             }
         }
-    }, [setNodes, setEdges, setHistory, setFuture, loadSequencerTracks]);
+    }, [setNodes, setEdges, setHistory, setFuture, loadSequencerTracks, applySessionSettings]);
 
     const handleImportGraph = useCallback(async () => {
         if (!reactFlowInstance) return;

@@ -10,6 +10,12 @@ interface SequencerDockProps {
     setBpm: (bpm: number) => void;
     patternSteps: number;
     setPatternSteps: (steps: number) => void;
+    // Master volume is OWNED by the app (it's exported into the generated
+    // code and persisted in saves), not by this dock — when it was local
+    // state here, Generate-while-stopped baked a hardcoded 0.8 instead of
+    // the slider value.
+    masterVolume: number;
+    setMasterVolume: (volume: number) => void;
     // Actions
     onPlay: () => void;
     onStop: () => void;
@@ -63,6 +69,8 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     setBpm,
     patternSteps,
     setPatternSteps,
+    masterVolume,
+    setMasterVolume,
     onPlay,
     onStop,
     onToggleLoop,
@@ -78,7 +86,6 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     masterGainNode
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
-    const [masterVolume, setMasterVolume] = useState(0.8);
     const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
 
     const [height, setHeight] = useState(300);

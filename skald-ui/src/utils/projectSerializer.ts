@@ -29,8 +29,9 @@ const formatNodesForCodegen = (nodeList: Node<NodeParams>[]): any[] => {
 
         let parameters: any = { ...node.data };
 
-        // Clean up UI-only prarams
-        delete parameters.label;
+        // Clean up UI-only params. `label` is NOT UI-only: the backend
+        // resolves P-lock keys ("Label:param") and collision-prefixed
+        // field names from it — deleting it made every P-lock unresolvable.
         delete parameters.analyser;
         delete parameters.subgraph; // Subgraph handled separately
 
@@ -145,8 +146,14 @@ export const buildProjectData = (
                     // from 0 because the backend treats <=0 as
                     // "field absent — play always".
                     probability: Math.max(n.probability ?? 1, 0.001),
-                    // P-locks: per-step parameter overrides.
-                    patch_overrides: n.patchOverrides ?? {}
+                    // P-locks: per-step parameter overrides. Numeric only:
+                    // the backend applies them through the f32 set_param
+                    // API (a string override — e.g. a waveform switch —
+                    // would fail the whole JSON parse backend-side).
+                    patch_overrides: Object.fromEntries(
+                        Object.entries(n.patchOverrides ?? {})
+                            .filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+                    )
                 }))
             }];
         } else if (subgraph) {

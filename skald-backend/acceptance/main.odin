@@ -508,6 +508,69 @@ main :: proc() {
 			all_pass &= assert_audible(buf, .Left)
 			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
 		}
+	case "effect_input":
+		// Effect instrument: GraphInput -> Lowpass(2000) -> GraphOutput, no
+		// oscillators, no notes. This shape used to hard-fail codegen
+		// ("unknown node type GraphInput") — the collapse-with-inputs UI flow
+		// was unexportable. Feed a 440Hz sine via the _feed_input API: it
+		// must pass through the filter audibly WITHOUT any voice triggered.
+		render_effect_feed(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+			// And with nothing fed, an effect asset is silent (no leak from
+			// stale input state or phantom voices).
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				sum_sq: f32 = 0
+				for _ in 0 ..< len(buf) {
+					l, r := ga.Asset_process(p)
+					sum_sq += l * l + r * r
+				}
+				idle_rms := math.sqrt(sum_sq / f32(len(buf) * 2))
+				if idle_rms > 0.001 {
+					fmt.eprintfln(
+						"FAIL effect_input: unfed effect asset produced RMS %.6f (expected silence)",
+						idle_rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "fm_carrier_wire":
+		// The UI's FM "Carrier" handle (input_carrier): an LFO wired into it
+		// V/Oct-modulates the carrier frequency. This wire used to be
+		// REJECTED by the connection validator with a hint to use a port the
+		// FM node doesn't even show — the canonical UI patch was unexportable.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "plock_step":
+		// P-lock gate: a 16-step sawtooth loop through a Lowpass at 300Hz.
+		// Step 8 carries a "Filter:cutoff" P-lock to 8000Hz — cutoff is NOT
+		// in the node's exposedParameters, so this proves the codegen (a)
+		// auto-exposes P-locked params and (b) resolves the UI's
+		// "Label:param" key to the real set_param field name. Both used to
+		// fail silently: the whole render stayed dark at 300Hz.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			// Steps 0-7 (0.0-1.0s) at cutoff 300 vs steps 8-15 (1.0-2.0s)
+			// at cutoff 8000: the second half must be dramatically brighter.
+			all_pass &= assert_centroid_shifts(buf, sample_rate, 2.0)
+		}
+
 	case "sfx_oneshot":
 		// SFX with ADSR but no sequencer track. Trigger once with finite
 		// duration, then assert silence after release ends.
@@ -517,6 +580,30 @@ main :: proc() {
 		} else {
 			all_pass &= assert_audible(buf, .Left)
 			all_pass &= assert_silence_after(buf, sample_rate, 1.5)
+			// Default-args trigger (duration=0) must be a one-shot, not a
+			// drone. This patch SUSTAINS at 0.9 — the old passthrough kept
+			// the voice (and is_playing) alive forever. Now: auto-release
+			// after attack+decay (0.1s), idle by ~0.6s, silent by 1.0s.
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				ga.Asset_trigger(p)
+				buf2 := make([]Stereo_Sample, len(buf))
+				defer delete(buf2)
+				for i in 0 ..< len(buf2) {
+					l, r := ga.Asset_process(p)
+					buf2[i] = {l, r}
+				}
+				all_pass &= assert_audible(buf2, .Left)
+				all_pass &= assert_silence_after(buf2, sample_rate, 1.0)
+				if ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL sfx_oneshot: is_playing still true after a default-duration trigger — stuck voice",
+					)
+					all_pass = false
+				}
+			}
 		}
 
 	case:
@@ -566,6 +653,21 @@ render_sfx_one_shot :: proc(
 	}
 }
 
+// Effect-asset path: no trigger, no sequencer — feed a 440Hz half-amplitude
+// sine into the external input every sample and pull the processed output.
+render_effect_feed :: proc(buf: []Stereo_Sample, sample_rate: f32) {
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	for i in 0 ..< len(buf) {
+		t := f32(i) / sample_rate
+		s := math.sin(f32(2.0) * f32(math.PI) * f32(440.0) * t) * f32(0.5)
+		ga.Asset_feed_input(p, s, s)
+		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+}
+
 render_music_layer :: proc(buf: []Stereo_Sample, sample_rate: f32) {
 	p := new(ga.Asset_Processor)
 	defer free(p)
@@ -586,7 +688,11 @@ render_param_sweep :: proc(buf: []Stereo_Sample, sample_rate: f32) {
 	p := new(ga.Asset_Processor)
 	defer free(p)
 	ga.Asset_init(p, sample_rate)
-	ga.Asset_trigger(p, 69, 1.0, 0.0) // A4, infinite duration
+	// A4, held for the whole render. note_on(duration=0) is the manual
+	// "hold until note_off" API; _trigger now auto-releases a 0 duration
+	// after attack+decay (the one-shot contract), which would end this
+	// note long before the sweep finishes.
+	ga.Asset_note_on(p, 69, 1.0, 0.0)
 	n := len(buf)
 	for i in 0 ..< n {
 		t := f32(i) / f32(n - 1)

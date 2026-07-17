@@ -76,6 +76,10 @@ const EditorLayout = () => {
     const [bpm, setBpm] = useState(120);
     const [isLooping, setIsLooping] = useState(false);
     const [patternSteps, setPatternSteps] = useState(16);
+    // Owned here (not in SequencerDock): the exported project and the save
+    // file both carry it. Reading the live GainNode at Generate time baked
+    // 0.8 whenever playback was stopped (the node only exists while playing).
+    const [masterVolume, setMasterVolume] = useState(0.8);
     const [selectedStep, setSelectedStep] = useState<{ trackId: string, step: number } | null>(null);
 
 
@@ -129,7 +133,7 @@ const EditorLayout = () => {
     useInstrumentRegistry(nodes, sequencerStateHooks);
     const { nearestInScale } = useScale();
 
-    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode } = useWasmAudioEngine(
+    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode, previewError, previewStale } = useWasmAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -142,6 +146,15 @@ const EditorLayout = () => {
 
     // resetHistory wired for real: the old no-op callbacks meant "undo"
     // after loading a file restored the stale pre-load graph.
+    const sessionSettings = useMemo(
+        () => ({ bpm, patternSteps, masterVolume }),
+        [bpm, patternSteps, masterVolume]
+    );
+    const applySessionSettings = useCallback((s: { bpm?: number; patternSteps?: number; masterVolume?: number }) => {
+        if (s.bpm !== undefined) setBpm(s.bpm);
+        if (s.patternSteps !== undefined) setPatternSteps(s.patternSteps);
+        if (s.masterVolume !== undefined) setMasterVolume(s.masterVolume);
+    }, []);
     const { handleSave, handleLoad, handleImportGraph } = useFileIO(
         reactFlowInstance,
         setNodes,
@@ -149,7 +162,9 @@ const EditorLayout = () => {
         resetHistory,
         resetHistory,
         sequencerStateHooks.tracks,
-        sequencerStateHooks.loadTracks
+        sequencerStateHooks.loadTracks,
+        sessionSettings,
+        applySessionSettings
     );
 
     const sequencerState = {
@@ -340,7 +355,7 @@ const EditorLayout = () => {
                 <div style={workspaceContainerStyles}>
                     <div style={sidebarPanelStyles}>
                         <Sidebar
-                            onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks, bpm, masterGainNode?.current?.gain.value || 0.8, packageName, outputPath, patternSteps, nearestInScale)}
+                            onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks, bpm, masterVolume, packageName, outputPath, patternSteps, nearestInScale)}
                             onPlay={handlePlay}
                             onStop={handleStop}
                             isPlaying={isPlaying}
@@ -385,6 +400,31 @@ const EditorLayout = () => {
                         </ReactFlow>
                         </GraphActionsProvider>
                         <ShortcutLegend />
+                        {(previewError || previewStale) && (
+                            <div
+                                data-testid="preview-status-banner"
+                                style={{
+                                    position: 'absolute',
+                                    top: 10,
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    zIndex: 50,
+                                    maxWidth: '85%',
+                                    padding: '8px 14px',
+                                    borderRadius: 6,
+                                    fontSize: '0.85em',
+                                    whiteSpace: 'pre-wrap',
+                                    color: '#fff',
+                                    backgroundColor: previewError ? 'rgba(178,45,45,0.95)' : 'rgba(178,120,25,0.95)',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                <strong>{previewError ? 'Preview failed' : 'Preview out of date — last edit failed to build'}</strong>
+                                {' — '}
+                                {previewError ?? previewStale}
+                            </div>
+                        )}
                     </div>
 
 
@@ -413,6 +453,8 @@ const EditorLayout = () => {
                     setBpm={setBpm}
                     patternSteps={patternSteps}
                     setPatternSteps={setPatternSteps}
+                    masterVolume={masterVolume}
+                    setMasterVolume={setMasterVolume}
                     onPlay={handlePlay}
                     onStop={handleStop}
                     onToggleLoop={() => setIsLooping(!isLooping)}

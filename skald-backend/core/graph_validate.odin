@@ -27,7 +27,7 @@ import json "core:encoding/json"
 @(private = "file") ADSR_INPUTS := [?]string{"input", "input_attack", "input_decay", "input_sustain", "input_release"}
 @(private = "file") NOISE_INPUTS := [?]string{"input_amp"}
 @(private = "file") FILTER_INPUTS := [?]string{"input", "input_cutoff", "input_res"}
-@(private = "file") FM_INPUTS := [?]string{"input_mod", "input_freq"}
+@(private = "file") FM_INPUTS := [?]string{"input_mod", "input_carrier", "input_freq"}
 @(private = "file") WAVETABLE_INPUTS := [?]string{"input_freq", "input_pos", "input_amp"}
 @(private = "file") THROUGH_INPUTS := [?]string{"input"}
 @(private = "file") PANNER_INPUTS := [?]string{"input", "input_pan"}
@@ -54,7 +54,7 @@ valid_input_ports :: proc(node_type: string) -> ([]string, bool) {
 		return PANNER_INPUTS[:], true
 	case "Gain":
 		return GAIN_INPUTS[:], true
-	case "LFO", "SampleHold", "MidiInput":
+	case "LFO", "SampleHold", "MidiInput", "GraphInput":
 		return nil, true // sources only — no modulation inputs
 	}
 	return nil, false

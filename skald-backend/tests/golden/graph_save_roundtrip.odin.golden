@@ -11,6 +11,11 @@ package generated_audio
 //   Music Layer: <Bar>_init, <Bar>_start, <Bar>_stop, <Bar>_process,
 //                <Bar>_set_loop
 //
+// <Foo>_trigger with duration<=0 (the default) plays a natural one-shot:
+// the envelope holds through attack+decay, then releases (a patch with no
+// envelope plays 1s). Pass an explicit duration in seconds to hold longer,
+// or drive <Foo>_note_on / <Foo>_note_off yourself for full control.
+//
 // project_init/process/destroy is a convenience wrapper for the test
 // harness only — game code should consume per-asset procs directly.
 // =====================================================================
@@ -95,6 +100,8 @@ Asset_Processor :: struct {
 	current_step: u64,
 	samples_until_next_step: u64,
 	step_frac_acc: f32,
+	ext_in_l: f32,
+	ext_in_r: f32,
 	amplitude: f32,
 	attack: f32,
 	decay: f32,
@@ -178,7 +185,18 @@ Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
 }
 
 Asset_trigger :: proc(p: ^Asset_Processor, note: u8 = 60, velocity: f32 = 1.0, duration: f32 = 0.0) {
-	Asset_note_on(p, note, velocity, duration)
+	d := duration
+	if d <= 0.0 {
+		d = 0.0
+		if (p.attack) + (p.decay) > d do d = (p.attack) + (p.decay)
+		if d <= 0.0 do d = 0.001
+	}
+	Asset_note_on(p, note, velocity, d)
+}
+
+Asset_feed_input :: proc(p: ^Asset_Processor, in_left: f32, in_right: f32) {
+	p.ext_in_l = in_left
+	p.ext_in_r = in_right
 }
 
 Asset_start :: proc(p: ^Asset_Processor) {

@@ -30,7 +30,10 @@ const SCALES: Record<ScaleName, number[]> = {
 
 export const ScaleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [rootNote, setRootNote] = useState<NoteName>('C');
-    const [scaleName, setScaleName] = useState<ScaleName>('Minor');
+    // Chromatic = quantization off. The default must not silently repitch:
+    // with C Minor here, placing an E4 previewed AND exported as Eb4 while
+    // the piano roll displayed E4 — opting into a scale is the user's call.
+    const [scaleName, setScaleName] = useState<ScaleName>('Chromatic');
 
     const scaleIntervals = useMemo(() => SCALES[scaleName], [scaleName]);
     const rootIndex = useMemo(() => NOTES.indexOf(rootNote), [rootNote]);

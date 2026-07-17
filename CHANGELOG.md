@@ -1,5 +1,45 @@
 # Skald Changelog
 
+## Seven trust/workflow fixes from the three-lead readiness review (2026-07-17)
+
+Gates: **25/25 acceptance** (3 new fixtures), **24/24 goldens** (regenerated —
+every asset gained `_feed_input`/`ext_in_*` and the new trigger semantics),
+**57/57 UI tests** (5 new), typecheck + lint clean.
+
+- ✅ **P-locks actually export**: the serializer now ships node labels, the
+  codegen auto-exposes P-locked params (they need a live processor field)
+  and resolves the UI's `"Label:param"` key to the collision-free
+  `set_param` field name — every step override used to be a silent no-op.
+  Unresolvable keys (renamed/deleted node) are a loud codegen error.
+  Non-numeric overrides are filtered at serialization (f32 API). Fixture:
+  plock_step (cutoff P-lock audibly brightens the second half).
+- ✅ **`_trigger` duration<=0 is a real one-shot**: holds through
+  attack+decay then releases (1s cap for envelope-less patches) — the
+  default call on a sustaining patch used to drone forever and leak the
+  voice. `note_on(duration=0)` keeps its manual hold-until-note_off
+  contract. sfx_oneshot now pins silence + is_playing=false after a
+  default trigger.
+- ✅ **Effect instruments export**: `GraphInput` (collapse-with-inputs)
+  seeds the bus domain and reads a new per-asset external input bus fed by
+  `<Foo>_feed_input(p, l, r)` — the shape used to hard-fail codegen.
+  Fixture: effect_input (fed 440Hz passes the filter audibly with zero
+  voices; unfed is silent).
+- ✅ **FM "Carrier" wire works**: `input_carrier` validates and V/Oct-
+  modulates the carrier frequency (alias: legacy `input_freq`) — the only
+  wire the UI could draw into that port used to be rejected with a hint to
+  use a port the node doesn't show. Fixture: fm_carrier_wire.
+- ✅ **Master volume exports honestly**: owned by the app, not the dock —
+  Generate while stopped used to bake a hardcoded 0.8 (and slider-at-0 hit
+  the `|| 0.8` falsy trap).
+- ✅ **Saves carry BPM / pattern length / master volume** (`session` block;
+  older saves keep current settings on load).
+- ✅ **Default scale is Chromatic**: C Minor was silently repitching placed
+  notes at preview AND export while the piano roll showed the raw pitch.
+- ✅ **Preview failures are visible**: a canvas banner shows Play/build
+  errors (red) and the "preview out of date — last edit failed to build,
+  you're hearing the previous module" state (amber), clearing on the next
+  successful build. Both were console-only.
+
 ## Full-system review fixes, P0–P8 (2026-07-05)
 
 Eight phases on branch `review-fixes`, one commit per phase, driven by the

@@ -54,6 +54,15 @@ export const useWasmAudioEngine = (
     const [analyserState, setAnalyserState] = useState<AnalyserNode | null>(null);
     const [masterGainState, setMasterGainState] = useState<GainNode | null>(null);
 
+    // Surfaced to the UI — these errors were console-only, which made every
+    // failure mode (Odin missing, codegen error, build timeout) look exactly
+    // like "my patch is silent".
+    // previewError: Play/worklet failed outright — nothing is sounding.
+    // previewStale: a live-edit rebuild failed and the PREVIOUS module is
+    // still playing — what you hear is not the graph on screen.
+    const [previewError, setPreviewError] = useState<string | null>(null);
+    const [previewStale, setPreviewStale] = useState<string | null>(null);
+
     const lastSignature = useRef<string | null>(null);
     const prevInstruments = useRef<Node[]>([]);
     const rebuildTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,6 +116,9 @@ export const useWasmAudioEngine = (
         setAnalyserState(null);
         setMasterGainState(null);
         setIsPlaying(false);
+        // Stopped = no longer listening to a stale module. A play *error*
+        // stays visible until the next Play attempt resolves it.
+        setPreviewStale(null);
     }, []);
 
     const handleStopRef = useRef(handleStop);
@@ -121,6 +133,8 @@ export const useWasmAudioEngine = (
         logger.info('WasmAudioEngine', 'Play requested');
         if (isPlaying || startInFlight.current) return;
         startInFlight.current = true;
+        setPreviewError(null);
+        setPreviewStale(null);
         try {
             // Create the AudioContext synchronously, inside the click
             // gesture's window — created after the multi-hundred-ms build
@@ -148,7 +162,10 @@ export const useWasmAudioEngine = (
                 const m = e.data;
                 if (m.type === 'step' && m.step >= 0) setCurrentStep(m.step % patternSteps);
                 else if (m.type === 'ended') handleStopRef.current();
-                else if (m.type === 'error') logger.error('WasmAudioEngine', 'Worklet error', m.message);
+                else if (m.type === 'error') {
+                    logger.error('WasmAudioEngine', 'Worklet error', m.message);
+                    setPreviewError(String(m.message));
+                }
             };
 
             const masterGain = context.createGain();
@@ -170,8 +187,10 @@ export const useWasmAudioEngine = (
             setIsPlaying(true);
             logger.info('WasmAudioEngine', 'Playing generated wasm module');
         } catch (e) {
-            logger.error('WasmAudioEngine', 'Failed to start wasm preview', cleanIpcError(e));
+            const message = cleanIpcError(e);
+            logger.error('WasmAudioEngine', 'Failed to start wasm preview', message);
             console.error('Failed to start wasm preview:', e);
+            setPreviewError(message);
             audioContext.current?.close();
             audioContext.current = null;
         } finally {
@@ -229,11 +248,17 @@ export const useWasmAudioEngine = (
                 if (!workletNode.current) return; // stopped while building
                 workletNode.current.port.postMessage({ type: 'swap', module, stepAsset });
                 lastSignature.current = signature;
+                setPreviewStale(null);
                 logger.info('WasmAudioEngine', 'Hot-swapped rebuilt wasm module');
             } catch (e) {
                 // Keep playing the previous module: mid-edit states (e.g. a
                 // half-wired graph) are expected to fail codegen sometimes.
-                logger.error('WasmAudioEngine', 'Preview rebuild failed; keeping last module', cleanIpcError(e));
+                // But SAY so — silently playing the old DSP while the screen
+                // shows the new graph is the one way preview and export can
+                // still disagree.
+                const message = cleanIpcError(e);
+                logger.error('WasmAudioEngine', 'Preview rebuild failed; keeping last module', message);
+                setPreviewStale(message);
             } finally {
                 buildInFlight.current = false;
                 if (rebuildQueued.current) {
@@ -338,5 +363,9 @@ export const useWasmAudioEngine = (
         handleStop,
         analyserNode: { current: analyserState },
         masterGainNode: { current: masterGainState },
+        // Preview health, for visible UI surfacing (console-only errors made
+        // toolchain failures indistinguishable from a silent patch).
+        previewError,
+        previewStale,
     };
 };
