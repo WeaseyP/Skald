@@ -81,7 +81,13 @@ export const useWasmAudioEngine = (
         return idx; // -1 falls back to asset 0 in the worklet's ?? guard
     }, []);
 
-    const buildModule = useCallback(async (): Promise<{ module: WebAssembly.Module, signature: string, stepAsset: number }> => {
+    // Returns raw wasm BYTES, not a compiled WebAssembly.Module: the worklet
+    // compiles them itself. A compiled Module survives processorOptions at
+    // node construction but is SILENTLY DROPPED when posted through the
+    // MessagePort (structured deserialization fails on the audio thread with
+    // only an unobserved messageerror) — every hot-swap vanished in transit
+    // and live edits never applied until Stop/Play.
+    const buildModule = useCallback(async (): Promise<{ bytes: ArrayBuffer, signature: string, stepAsset: number }> => {
         // master_volume is baked as 1.0 for the preview: the dock's volume
         // slider drives the JS master GainNode live instead, so volume moves
         // don't force a recompile. The export path bakes the real value.
@@ -90,9 +96,8 @@ export const useWasmAudioEngine = (
             throw new Error('No instruments on the canvas. Wrap nodes in an Instrument before playing.');
         }
         const bytes = await window.electron.buildWasmPreview(JSON.stringify(projectData));
-        const module = await WebAssembly.compile(bytes);
         return {
-            module,
+            bytes,
             signature: topologySignature(projectData),
             stepAsset: Math.max(computeStepAsset(nodes, sequencerTracks), 0),
         };
@@ -123,6 +128,8 @@ export const useWasmAudioEngine = (
 
     const handleStopRef = useRef(handleStop);
     handleStopRef.current = handleStop;
+    const patternStepsRef = useRef(patternSteps);
+    patternStepsRef.current = patternSteps;
 
     // Synchronous re-entry latch: `isPlaying` is React state and stays stale
     // for the whole async build, so a fast double-click on Play would start
@@ -143,7 +150,7 @@ export const useWasmAudioEngine = (
             const context = new AudioContext();
             audioContext.current = context;
 
-            const { module, signature, stepAsset } = await buildModule();
+            const { bytes, signature, stepAsset } = await buildModule();
             if (audioContext.current !== context) return; // stopped while building
 
             const workletUrl = URL.createObjectURL(
@@ -156,16 +163,28 @@ export const useWasmAudioEngine = (
                 numberOfInputs: 0,
                 numberOfOutputs: 1,
                 outputChannelCount: [2],
-                processorOptions: { module, stepAsset, loop: isLooping },
+                processorOptions: { bytes, stepAsset, loop: isLooping },
             });
             node.port.onmessage = (e) => {
                 const m = e.data;
-                if (m.type === 'step' && m.step >= 0) setCurrentStep(m.step % patternSteps);
+                // patternSteps via ref: this handler lives for the whole
+                // playback session, so a captured value goes stale the moment
+                // the user changes the pattern length mid-play — the audio
+                // followed the new length but the playhead kept wrapping at
+                // the old one.
+                if (m.type === 'step' && m.step >= 0) setCurrentStep(m.step % patternStepsRef.current);
                 else if (m.type === 'ended') handleStopRef.current();
                 else if (m.type === 'error') {
                     logger.error('WasmAudioEngine', 'Worklet error', m.message);
                     setPreviewError(String(m.message));
                 }
+            };
+            // Structured-deserialization failures on messages FROM the worklet
+            // are otherwise dropped without a trace (the worklet side has the
+            // same net — that silence is how hot-swaps died undetected).
+            node.port.onmessageerror = () => {
+                logger.error('WasmAudioEngine', 'Message from worklet failed to deserialize');
+                setPreviewError('A message from the audio engine was dropped (deserialization error).');
             };
 
             const masterGain = context.createGain();
@@ -244,9 +263,11 @@ export const useWasmAudioEngine = (
             }
             buildInFlight.current = true;
             try {
-                const { module, signature, stepAsset } = await buildModule();
+                const { bytes, signature, stepAsset } = await buildModule();
                 if (!workletNode.current) return; // stopped while building
-                workletNode.current.port.postMessage({ type: 'swap', module, stepAsset });
+                // Raw bytes, transferred: a compiled WebAssembly.Module here is
+                // silently dropped by the port and the edit never lands.
+                workletNode.current.port.postMessage({ type: 'swap', bytes, stepAsset }, [bytes]);
                 lastSignature.current = signature;
                 setPreviewStale(null);
                 logger.info('WasmAudioEngine', 'Hot-swapped rebuilt wasm module');

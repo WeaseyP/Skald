@@ -1,66 +1,31 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { MidiInputParams } from '../../definitions/types';
+import {
+    nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
+    NodeTheme, accentFor,
+} from './NodeStyles';
 
-const nodeStyles: React.CSSProperties = {
-    padding: '10px',
-    borderRadius: '5px',
-    background: '#2D3748',
-    color: '#E0E0E0',
-    border: '1px solid #4A5568',
-    minWidth: '100px',
-    fontSize: '0.8em',
-};
-
-const labelStyles: React.CSSProperties = {
-    display: 'block',
-    marginBottom: '5px',
-    fontWeight: 'bold',
-    textAlign: 'center',
-    borderBottom: '1px solid #4A5568',
-    paddingBottom: '5px',
-};
-
-const handleLabelStyles: React.CSSProperties = {
-    fontSize: '0.7em',
-    color: '#A0AEC0',
-    position: 'absolute',
-    right: '10px',
-};
+const accent = accentFor('midiInput');
 
 const MidiInputNode = ({ data }: NodeProps<MidiInputParams>) => {
+    const outputs = [
+        { id: 'pitch', label: 'Pitch' },
+        { id: 'gate', label: 'Gate' },
+        { id: 'velocity', label: 'Vel' },
+    ];
     return (
-        <div style={nodeStyles}>
-            <span style={labelStyles}>MIDI Input</span>
-            <div style={{ position: 'relative', height: '15px', marginBottom: '5px' }}>
-                <span style={{ ...handleLabelStyles, top: 0 }}>Pitch</span>
-                <Handle
-                    type="source"
-                    position={Position.Right}
-                    id="pitch"
-                    style={{ background: '#63B3ED', top: '50%' }}
-                />
-            </div>
-            <div style={{ position: 'relative', height: '15px', marginBottom: '5px' }}>
-                <span style={{ ...handleLabelStyles, top: 0 }}>Gate</span>
-                <Handle
-                    type="source"
-                    position={Position.Right}
-                    id="gate"
-                    style={{ background: '#F6E05E', top: '50%' }}
-                />
-            </div>
-            <div style={{ position: 'relative', height: '15px' }}>
-                <span style={{ ...handleLabelStyles, top: 0 }}>Vel</span>
-                <Handle
-                    type="source"
-                    position={Position.Right}
-                    id="velocity"
-                    style={{ background: '#68D391', top: '50%' }}
-                />
-            </div>
+        <div style={nodeShellStyles(accent)}>
+            <div style={nodeHeaderStylesFor(accent)}>{data.label || 'MIDI Input'}</div>
+            {outputs.map((port) => (
+                <div key={port.id} style={{ ...handleContainerStyles, justifyContent: 'flex-end' }}>
+                    <span style={{ marginRight: '12px', ...labelStyles }}>{port.label}</span>
+                    <Handle type="source" position={Position.Right} id={port.id}
+                        style={{ background: NodeTheme.colors.handleOut }} />
+                </div>
+            ))}
             {data.useMpe && (
-                <div style={{ fontSize: '0.6em', color: '#68D391', textAlign: 'center', marginTop: '5px' }}>
+                <div style={{ fontSize: '0.6em', color: NodeTheme.colors.handleOut, textAlign: 'center', marginTop: '5px' }}>
                     MPE Active
                 </div>
             )}

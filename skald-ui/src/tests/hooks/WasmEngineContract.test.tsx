@@ -47,7 +47,9 @@ beforeEach(() => {
 
     vi.stubGlobal('AudioContext', FakeAudioContext);
     vi.stubGlobal('AudioWorkletNode', FakeAudioWorkletNode);
-    vi.spyOn(WebAssembly, 'compile').mockResolvedValue({} as WebAssembly.Module);
+    // NOTE: the engine deliberately never calls WebAssembly.compile — raw
+    // bytes go to the worklet, which compiles them itself (a compiled
+    // Module is silently dropped by the worklet port; see the engine).
 
     (URL as unknown as { createObjectURL: unknown }).createObjectURL = vi.fn(() => 'blob:mock');
     (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn();
@@ -181,6 +183,15 @@ describe('useWasmAudioEngine — live edits while playing', () => {
 
         // ...then the module is rebuilt.
         expect(buildWasmPreview).toHaveBeenCalledTimes(2);
+
+        // The swap must carry raw BYTES, never a compiled WebAssembly.Module:
+        // the worklet port silently drops Module payloads (no error, no
+        // delivery), which made every live edit a no-op until Stop/Play.
+        const swaps = createdWorklets[0].port.postMessage.mock.calls
+            .map((c) => c[0]).filter((m: { type: string }) => m.type === 'swap');
+        expect(swaps).toHaveLength(1);
+        expect(swaps[0].bytes).toBeInstanceOf(ArrayBuffer);
+        expect('module' in swaps[0]).toBe(false);
     });
 
     it('a failed rebuild flags the preview STALE (old module still playing) and a later success clears it', async () => {

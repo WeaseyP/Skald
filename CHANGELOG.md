@@ -1,5 +1,42 @@
 # Skald Changelog
 
+## Live-edit hot-swap fix + unified node UI (2026-07-18)
+
+Gates: UI 67/67, typecheck + lint clean. Backend untouched.
+
+- ✅ **Live edits actually apply while playing/looping** — root cause found
+  by instrumenting the worklet port: the hot-swap message carried a
+  compiled `WebAssembly.Module`, which Chromium SILENTLY DROPS when posted
+  to an AudioWorklet port (survives `processorOptions` at construction —
+  why initial Play worked — but fails structured deserialization in
+  transit, with only an unobserved `messageerror`). Every rebuild logged
+  "Hot-swapped" while the old DSP kept playing; the user's edits only
+  registered after Stop/Play. Swaps now ship raw wasm BYTES (transferable)
+  and the worklet compiles them itself; both port ends listen for
+  `messageerror` so a dropped message can never again be silent.
+  Verified live: BPM 120→240 mid-loop halves the step interval
+  (125ms→63ms), pattern length 16→6→12 re-wraps immediately.
+- ✅ **Playhead follows pattern-length changes mid-play** — the step
+  handler read `patternSteps` from a stale closure captured at Play.
+- ✅ **Every node is now built on one visual system** (the ADSR/Filter
+  style): dark card, labeled port rows, and INLINE editable controls on
+  the node itself — waveform/type selects, BPM-sync toggles, numeric
+  fields — for Oscillator, LFO, S&H, Noise, FM, Wavetable, Delay, Reverb,
+  Distortion, Mixer (per-channel levels), Panner, VCA, Mapper, Filter
+  (incl. type select), ADSR (incl. depth + velocity), Output and MIDI In.
+  Mode-dependent fields hide when inert (frequency without Fixed Pitch,
+  free-run rate under BPM sync).
+- ✅ **One fixed accent color per node type** (NODE_ACCENTS): warm =
+  sources, purple = modulators, green = envelopes, blue/teal = tone & time,
+  red = drive, grey/yellow = utilities, indigo = structure.
+- ✅ **Side panel: every slider gained a typed number box**; the Filter's
+  read-only cutoff/resonance text became editable fields (XY pad for
+  exploring, numbers for landing); Mapper and Mixer gained full panels;
+  the Wavetable's dead Table dropdown was removed (position IS the table).
+- ✅ **Instruments are renameable** — double-click the node title (or use
+  the new Name field in the side panel); the name flows into the generated
+  asset prefix on the next Generate.
+
 ## Multi-track export + save/load hardening (2026-07-17)
 
 Gates: **26/26 acceptance** (new dual_track fixture), **25/25 goldens**

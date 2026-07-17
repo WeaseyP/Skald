@@ -1,44 +1,14 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { makeParamNode } from './ParamNode';
 
-const baseNodeStyles: React.CSSProperties = {
-    border: '1px solid #2f9e44',
-    borderRadius: '4px',
-    padding: '10px 15px',
-    width: 150,
-    textAlign: 'center'
-};
-
-const gainNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#E9D8FD', borderColor: '#B794F4' };
-
-const handleLabelStyles: React.CSSProperties = {
-    fontSize: '0.6em',
-    color: '#000',
-    position: 'absolute',
-    pointerEvents: 'none'
-};
-
-const GainNodeComponent = ({ data }: NodeProps) => {
-    return (
-        <div style={gainNodeStyles}>
-            <div style={{ position: 'relative', height: '10px' }}>
-                <Handle type="target" position={Position.Left} id="input" style={{ top: '50%' }} />
-                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>In</span>
-            </div>
-
-            <div style={{ position: 'relative', height: '10px', marginTop: '5px' }}>
-                <Handle type="target" position={Position.Left} id="input_gain" style={{ top: '50%', background: '#555' }} />
-                <span style={{ ...handleLabelStyles, left: '10px', top: '0px' }}>Gain</span>
-            </div>
-
-            <div style={{ margin: '5px 0' }}><strong>{data.label || 'VCA'}</strong></div>
-
-            <div style={{ position: 'relative', height: '10px' }}>
-                <span style={{ ...handleLabelStyles, right: '10px', top: '0px' }}>Out</span>
-                <Handle type="source" position={Position.Right} id="output" style={{ top: '50%' }} />
-            </div>
-        </div>
-    );
-};
-
-export const VisualGainNode = memo(GainNodeComponent);
+export const VisualGainNode = makeParamNode({
+    type: 'gain',
+    title: 'VCA',
+    inputs: [
+        { id: 'input', label: 'In' },
+        { id: 'input_gain', label: 'Gain' },
+    ],
+    outputs: [{ id: 'output', label: 'Out' }],
+    fields: [
+        { key: 'gain', label: 'Gain', min: 0, max: 4, step: 0.05 },
+    ],
+});

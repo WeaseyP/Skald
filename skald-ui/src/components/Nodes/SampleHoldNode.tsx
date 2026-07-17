@@ -1,23 +1,15 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { makeParamNode } from './ParamNode';
 
-const baseNodeStyles: React.CSSProperties = {
-    border: '1px solid #2f9e44',
-    borderRadius: '4px',
-    padding: '10px 15px',
-    width: 150,
-    textAlign: 'center'
-};
+const SYNC_RATES = ['1/1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/4t', '1/8t', '1/16t'];
 
-const sampleHoldNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#f3d9fa', borderColor: '#be4bdb' };
-
-const SampleHoldNodeComponent = ({ data }: NodeProps) => {
-    return (
-        <div style={sampleHoldNodeStyles}>
-            <div><strong>{data.label || 'Sample & Hold'}</strong></div>
-            <Handle type="source" position={Position.Right} id="output" />
-        </div>
-    );
-};
-
-export const SampleHoldNode = memo(SampleHoldNodeComponent);
+export const SampleHoldNode = makeParamNode({
+    type: 'sampleHold',
+    title: 'S & H',
+    outputs: [{ id: 'output', label: 'Out' }],
+    fields: [
+        { key: 'bpmSync', label: 'BPM Sync', kind: 'toggle' },
+        { key: 'syncRate', label: 'Rate', kind: 'select', options: SYNC_RATES, showIf: (d) => !!d.bpmSync },
+        { key: 'rate', label: 'Rate (Hz)', min: 0.1, max: 1000, step: 0.5, showIf: (d) => !d.bpmSync },
+        { key: 'amplitude', label: 'Amount', min: 0, max: 10, step: 0.01 },
+    ],
+});

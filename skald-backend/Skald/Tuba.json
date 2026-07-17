@@ -1,0 +1,1197 @@
+{
+  "nodes": [
+    {
+      "id": "mroy07am3z6sz",
+      "type": "instrument",
+      "position": {
+        "x": -0.6572670550838536,
+        "y": 1183.7582946786736
+      },
+      "data": {
+        "name": "Tuba",
+        "label": "Tuba",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "oscillator",
+              "position": {
+                "x": -94.04942311107752,
+                "y": -265.5326525093067
+              },
+              "data": {
+                "frequency": 440,
+                "waveform": "Sawtooth",
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 184,
+              "height": 150,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -94.70669016616137,
+                "y": 918.2256421693669
+              },
+              "dragging": false
+            },
+            {
+              "id": "2",
+              "type": "filter",
+              "position": {
+                "x": 152.35901340697367,
+                "y": -20.039506872779157
+              },
+              "data": {
+                "type": "Lowpass",
+                "cutoff": 220,
+                "resonance": 0.8,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ],
+                "label": "Filter"
+              },
+              "width": 184,
+              "height": 237,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 151.70174635188982,
+                "y": 1163.7187878058944
+              },
+              "dragging": false
+            },
+            {
+              "id": "3",
+              "type": "adsr",
+              "position": {
+                "x": 498.2487189798978,
+                "y": 201.20469573281662
+              },
+              "data": {
+                "attack": 0.08,
+                "decay": 0.1,
+                "sustain": 0.85,
+                "release": 0.18,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 184,
+              "height": 245,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 497.5914519248139,
+                "y": 1384.9629904114902
+              }
+            },
+            {
+              "id": "4",
+              "type": "adsr",
+              "position": {
+                "x": -667.9323725611862,
+                "y": -118.11621867422286
+              },
+              "data": {
+                "attack": 0.09,
+                "decay": 0.25,
+                "sustain": 0.35,
+                "release": 0.15,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 184,
+              "height": 245,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -668.58963961627,
+                "y": 1065.6420760044507
+              },
+              "dragging": false
+            },
+            {
+              "id": "5",
+              "type": "mapper",
+              "position": {
+                "x": -266.27416452191625,
+                "y": 90.36603122789415
+              },
+              "data": {
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 700,
+                "label": "Mapper (Scale)"
+              },
+              "width": 158,
+              "height": 69,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -266.9314315770001,
+                "y": 1274.1243259065677
+              }
+            },
+            {
+              "id": "6",
+              "type": "lfo",
+              "position": {
+                "x": -511.1748327613656,
+                "y": -271.17913632387877
+              },
+              "data": {
+                "waveform": "Sine",
+                "frequency": 5,
+                "amplitude": 0.02,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ],
+                "label": "LFO"
+              },
+              "width": 182,
+              "height": 43,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -511.8320998164495,
+                "y": 912.5791583547948
+              }
+            },
+            {
+              "id": "7",
+              "type": "output",
+              "position": {
+                "x": 888.8230605686741,
+                "y": 383.29678741947646
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 112,
+              "selected": true
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "7",
+              "to_port": "input"
+            },
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "5",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "6",
+              "from_port": "output",
+              "to_node": "1",
+              "to_port": "input_freq"
+            }
+          ]
+        }
+      },
+      "width": 174,
+      "height": 108,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": -0.6572670550838536,
+        "y": 1183.7582946786736
+      }
+    },
+    {
+      "id": "mroyc6kyxovya",
+      "type": "instrument",
+      "position": {
+        "x": -2029.8420150298814,
+        "y": 786.5285067980392
+      },
+      "data": {
+        "name": "Blaster",
+        "label": "Blaster",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "oscillator",
+              "position": {
+                "x": -94.04942311107743,
+                "y": -265.5326525093068
+              },
+              "data": {
+                "frequency": 440,
+                "waveform": "Square",
+                "amplitude": 0,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 188,
+              "height": 154,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -94.70669016616137,
+                "y": 918.2256421693669
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "2",
+              "type": "filter",
+              "position": {
+                "x": 152.35901340697365,
+                "y": -20.03950687277927
+              },
+              "data": {
+                "type": "Lowpass",
+                "cutoff": 220,
+                "resonance": 0.8,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ],
+                "label": "Filter"
+              },
+              "width": 188,
+              "height": 241,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 151.70174635188982,
+                "y": 1163.7187878058944
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "3",
+              "type": "adsr",
+              "position": {
+                "x": 498.24871897989783,
+                "y": 201.2046957328165
+              },
+              "data": {
+                "attack": 0.08,
+                "decay": 0.1,
+                "sustain": 0.85,
+                "release": 0.18,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 188,
+              "height": 249,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 497.5914519248139,
+                "y": 1384.9629904114902
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "4",
+              "type": "adsr",
+              "position": {
+                "x": -667.932372561186,
+                "y": -118.11621867422298
+              },
+              "data": {
+                "attack": 0.09,
+                "decay": 0.25,
+                "sustain": 0.35,
+                "release": 0.15,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 188,
+              "height": 249,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -668.58963961627,
+                "y": 1065.6420760044507
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "5",
+              "type": "mapper",
+              "position": {
+                "x": -266.2741645219164,
+                "y": 90.36603122789404
+              },
+              "data": {
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 700,
+                "label": "Mapper (Scale)"
+              },
+              "width": 162,
+              "height": 73,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -266.9314315770001,
+                "y": 1274.1243259065677
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "6",
+              "type": "lfo",
+              "position": {
+                "x": -511.1748327613657,
+                "y": -271.1791363238789
+              },
+              "data": {
+                "waveform": "Sine",
+                "frequency": 50,
+                "amplitude": 1,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ],
+                "label": "LFO"
+              },
+              "width": 186,
+              "height": 47,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -511.8320998164495,
+                "y": 912.5791583547948
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "7",
+              "type": "output",
+              "position": {
+                "x": 888.8230605686741,
+                "y": 383.29678741947635
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 112,
+              "selected": true,
+              "zIndex": 1
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "7",
+              "to_port": "input"
+            },
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "5",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "6",
+              "from_port": "output",
+              "to_node": "1",
+              "to_port": "input_freq"
+            }
+          ]
+        }
+      },
+      "width": 174,
+      "height": 108,
+      "selected": false,
+      "positionAbsolute": {
+        "x": -2029.8420150298814,
+        "y": 786.5285067980392
+      },
+      "dragging": false
+    },
+    {
+      "id": "mroye5qrazc9f",
+      "type": "instrument",
+      "position": {
+        "x": -1599.8420150298814,
+        "y": 674.5285067980392
+      },
+      "data": {
+        "name": "Blaster",
+        "label": "Blaster (Step 3)",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "oscillator",
+              "position": {
+                "x": -94.04942311107743,
+                "y": -265.5326525093068
+              },
+              "data": {
+                "frequency": 440,
+                "waveform": "Square",
+                "amplitude": 1,
+                "pulseWidth": 0.01,
+                "phase": 0,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 188,
+              "height": 154,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -94.70669016616137,
+                "y": 918.2256421693669
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "2",
+              "type": "filter",
+              "position": {
+                "x": 152.35901340697365,
+                "y": -20.03950687277927
+              },
+              "data": {
+                "type": "Lowpass",
+                "cutoff": 220,
+                "resonance": 0.8,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ],
+                "label": "Filter"
+              },
+              "width": 188,
+              "height": 241,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 151.70174635188982,
+                "y": 1163.7187878058944
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "3",
+              "type": "adsr",
+              "position": {
+                "x": 498.24871897989783,
+                "y": 201.2046957328165
+              },
+              "data": {
+                "attack": 0.08,
+                "decay": 0.1,
+                "sustain": 0.85,
+                "release": 0.18,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 188,
+              "height": 249,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 497.5914519248139,
+                "y": 1384.9629904114902
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "4",
+              "type": "adsr",
+              "position": {
+                "x": -667.932372561186,
+                "y": -118.11621867422298
+              },
+              "data": {
+                "attack": 0.09,
+                "decay": 0.25,
+                "sustain": 0.35,
+                "release": 0.15,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 188,
+              "height": 249,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -668.58963961627,
+                "y": 1065.6420760044507
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "5",
+              "type": "mapper",
+              "position": {
+                "x": -266.2741645219164,
+                "y": 90.36603122789404
+              },
+              "data": {
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 700,
+                "label": "Mapper (Scale)"
+              },
+              "width": 162,
+              "height": 73,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -266.9314315770001,
+                "y": 1274.1243259065677
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "6",
+              "type": "lfo",
+              "position": {
+                "x": -511.1748327613657,
+                "y": -271.1791363238789
+              },
+              "data": {
+                "waveform": "Sine",
+                "frequency": 0.1,
+                "amplitude": 1,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ],
+                "label": "LFO"
+              },
+              "width": 186,
+              "height": 47,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -511.8320998164495,
+                "y": 912.5791583547948
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "7",
+              "type": "output",
+              "position": {
+                "x": 888.8230605686741,
+                "y": 383.29678741947635
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 112,
+              "selected": true,
+              "zIndex": 1
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "7",
+              "to_port": "input"
+            },
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "5",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "6",
+              "from_port": "output",
+              "to_node": "1",
+              "to_port": "input_freq"
+            }
+          ]
+        }
+      },
+      "width": 178,
+      "height": 112,
+      "selected": false,
+      "positionAbsolute": {
+        "x": -1599.8420150298814,
+        "y": 674.5285067980392
+      },
+      "dragging": false
+    },
+    {
+      "id": "mroye9izndq9g",
+      "type": "instrument",
+      "position": {
+        "x": -1727.8420150298814,
+        "y": 1026.5285067980392
+      },
+      "data": {
+        "name": "Blaster",
+        "label": "Blaster (Step 4)",
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "oscillator",
+              "position": {
+                "x": -94.04942311107743,
+                "y": -265.5326525093068
+              },
+              "data": {
+                "frequency": 440,
+                "waveform": "Square",
+                "amplitude": 1,
+                "pulseWidth": 0.99,
+                "phase": 360,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ],
+                "label": "Oscillator"
+              },
+              "width": 188,
+              "height": 154,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -94.70669016616137,
+                "y": 918.2256421693669
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "2",
+              "type": "filter",
+              "position": {
+                "x": 152.35901340697365,
+                "y": -20.03950687277927
+              },
+              "data": {
+                "type": "Lowpass",
+                "cutoff": 220,
+                "resonance": 0.8,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ],
+                "label": "Filter"
+              },
+              "width": 188,
+              "height": 241,
+              "selected": true,
+              "positionAbsolute": {
+                "x": 151.70174635188982,
+                "y": 1163.7187878058944
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "3",
+              "type": "adsr",
+              "position": {
+                "x": 498.24871897989783,
+                "y": 201.2046957328165
+              },
+              "data": {
+                "attack": 0.08,
+                "decay": 0.1,
+                "sustain": 0.85,
+                "release": 0.18,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 188,
+              "height": 249,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": 497.5914519248139,
+                "y": 1384.9629904114902
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "4",
+              "type": "adsr",
+              "position": {
+                "x": -667.932372561186,
+                "y": -118.11621867422298
+              },
+              "data": {
+                "attack": 0.09,
+                "decay": 0.25,
+                "sustain": 0.35,
+                "release": 0.15,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ],
+                "label": "ADSR"
+              },
+              "width": 188,
+              "height": 249,
+              "selected": true,
+              "positionAbsolute": {
+                "x": -668.58963961627,
+                "y": 1065.6420760044507
+              },
+              "dragging": false,
+              "zIndex": 1
+            },
+            {
+              "id": "5",
+              "type": "mapper",
+              "position": {
+                "x": -266.2741645219164,
+                "y": 90.36603122789404
+              },
+              "data": {
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 700,
+                "label": "Mapper (Scale)"
+              },
+              "width": 162,
+              "height": 73,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -266.9314315770001,
+                "y": 1274.1243259065677
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "6",
+              "type": "lfo",
+              "position": {
+                "x": -511.1748327613657,
+                "y": -271.1791363238789
+              },
+              "data": {
+                "waveform": "Sine",
+                "frequency": 5,
+                "amplitude": 1,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ],
+                "label": "LFO"
+              },
+              "width": 186,
+              "height": 47,
+              "selected": true,
+              "dragging": false,
+              "positionAbsolute": {
+                "x": -511.8320998164495,
+                "y": 912.5791583547948
+              },
+              "zIndex": 1
+            },
+            {
+              "id": "7",
+              "type": "output",
+              "position": {
+                "x": 888.8230605686741,
+                "y": 383.29678741947635
+              },
+              "data": {
+                "exposedParameters": [],
+                "label": "Output"
+              },
+              "width": 150,
+              "height": 112,
+              "selected": true,
+              "zIndex": 1
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            },
+            {
+              "from_node": "3",
+              "from_port": "output",
+              "to_node": "7",
+              "to_port": "input"
+            },
+            {
+              "from_node": "4",
+              "from_port": "output",
+              "to_node": "5",
+              "to_port": "input"
+            },
+            {
+              "from_node": "5",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input_cutoff"
+            },
+            {
+              "from_node": "6",
+              "from_port": "output",
+              "to_node": "1",
+              "to_port": "input_freq"
+            }
+          ]
+        }
+      },
+      "width": 178,
+      "height": 112,
+      "selected": false,
+      "positionAbsolute": {
+        "x": -1727.8420150298814,
+        "y": 1026.5285067980392
+      },
+      "dragging": false
+    }
+  ],
+  "edges": [],
+  "viewport": {
+    "x": 1239.7637758132923,
+    "y": -124.40864087321211,
+    "zoom": 0.5
+  },
+  "sequencerTracks": [
+    {
+      "id": "820pirgj2",
+      "targetNodeId": "mroy07am3z6sz",
+      "name": "Tuba",
+      "color": "#007acc",
+      "steps": 64,
+      "notes": [],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "hv4656us6",
+      "targetNodeId": "mroyc6kyxovya",
+      "name": "Blaster",
+      "color": "#007acc",
+      "steps": 16,
+      "notes": [
+        {
+          "step": 2,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 4,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 3,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 7,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 1,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 0,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 6,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 5,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "hr1hexm0n",
+      "targetNodeId": "mroye5qrazc9f",
+      "name": "Blaster (Step 3)",
+      "color": "#007acc",
+      "steps": 16,
+      "notes": [
+        {
+          "step": 1,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 3,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 5,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 7,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "nhfewx2fi",
+      "targetNodeId": "mroye9izndq9g",
+      "name": "Blaster (Step 4)",
+      "color": "#007acc",
+      "steps": 16,
+      "notes": [
+        {
+          "step": 2,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 4,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 6,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        },
+        {
+          "step": 0,
+          "note": 60,
+          "velocity": 1,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": {
+    "bpm": 120,
+    "patternSteps": 8,
+    "masterVolume": 0.8
+  }
+}

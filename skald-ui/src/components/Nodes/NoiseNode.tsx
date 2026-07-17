@@ -1,23 +1,12 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { makeParamNode } from './ParamNode';
 
-const baseNodeStyles: React.CSSProperties = {
-    border: '1px solid #2f9e44',
-    borderRadius: '4px',
-    padding: '10px 15px',
-    width: 150,
-    textAlign: 'center'
-};
-
-const noiseNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#e9ecef', borderColor: '#495057' };
-
-const NoiseNodeComponent = ({ data }: NodeProps) => {
-    return (
-        <div style={noiseNodeStyles}>
-            <div><strong>{data.label || 'Noise'}</strong></div>
-            <Handle type="source" position={Position.Right} id="output" />
-        </div>
-    );
-};
-
-export const NoiseNode = memo(NoiseNodeComponent);
+export const NoiseNode = makeParamNode({
+    type: 'noise',
+    title: 'Noise',
+    inputs: [{ id: 'input_amp', label: 'Amp' }],
+    outputs: [{ id: 'output', label: 'Out' }],
+    fields: [
+        { key: 'type', label: 'Type', kind: 'select', options: ['White', 'Pink'] },
+        { key: 'amplitude', label: 'Amp', min: 0, max: 1, step: 0.05 },
+    ],
+});

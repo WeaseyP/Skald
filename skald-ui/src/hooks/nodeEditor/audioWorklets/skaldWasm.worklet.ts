@@ -7,8 +7,10 @@
 | preview graph — the preview and the shipped export are now the same DSP.    |
 |                                                                              |
 | Messages in:                                                                 |
-|   {type:'swap', module, stepAsset}  hot-swap a freshly built module,        |
+|   {type:'swap', bytes, stepAsset}   hot-swap freshly built wasm BYTES,      |
 |                                     preserving the step-clock position       |
+|                                     (bytes, never a compiled Module — the   |
+|                                     port silently drops Module payloads)     |
 |   {type:'set-param', asset, nameBytes, value}   live exposed-param edit     |
 |   {type:'note-on'|'note-off'|'trigger', asset, note, velocity?, duration?}  |
 |   {type:'set-loop', loop}                                                    |
@@ -30,10 +32,18 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         this.loopEnabled = true;
         const opts = options.processorOptions || {};
         if (typeof opts.loop === 'boolean') this.loopEnabled = opts.loop;
-        if (opts.module) {
-            this.instantiate(opts.module, opts.stepAsset ?? 0, false);
+        if (opts.bytes) {
+            this.instantiate(opts.bytes, opts.stepAsset ?? 0, false);
         }
         this.port.onmessage = (e) => this.handleMessage(e.data);
+        // A message whose payload fails structured deserialization is
+        // otherwise dropped WITHOUT any event on the sender — this is
+        // exactly how live hot-swaps died silently when they carried a
+        // compiled WebAssembly.Module (Chromium won't deserialize one on
+        // the audio thread). Swaps now carry raw bytes, but keep the net.
+        this.port.onmessageerror = () => {
+            this.port.postMessage({ type: 'error', message: 'worklet message failed to deserialize — live edit was dropped' });
+        };
     }
 
     // Odin's core:math on freestanding_wasm32 imports libm; supply it from JS.
@@ -51,13 +61,20 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         }};
     }
 
-    instantiate(module, stepAsset, preserveTransport) {
+    // bytes: raw wasm binary (ArrayBuffer). Compiled HERE, on the audio
+    // thread, because a pre-compiled WebAssembly.Module survives
+    // processorOptions at construction but is silently dropped when posted
+    // through the MessagePort — the hot-swap path never received a single
+    // module. Sync compile off the main thread is allowed at any size, and
+    // preview modules are tiny.
+    instantiate(bytes, stepAsset, preserveTransport) {
         let seek = null;
         if (preserveTransport && this.ex) {
             const step = this.ex.skald_get_step(this.stepAsset);
             const wait = this.ex.skald_get_step_wait(this.stepAsset);
             if (step >= 0 && wait >= 0) seek = { step, wait };
         }
+        const module = new WebAssembly.Module(bytes);
         const ex = new WebAssembly.Instance(module, this.imports()).exports;
         ex.skald_init(sampleRate);
         ex.skald_start_all();
@@ -84,7 +101,7 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         try {
             switch (m.type) {
                 case 'swap':
-                    this.instantiate(m.module, m.stepAsset ?? this.stepAsset, true);
+                    this.instantiate(m.bytes, m.stepAsset ?? this.stepAsset, true);
                     break;
                 case 'set-param': {
                     if (!this.ex || !m.nameBytes || m.nameBytes.length === 0) break;
