@@ -288,8 +288,10 @@ ipcMain.handle('select-output-path', async () => {
 });
 
 
-// Handler for saving the graph
-ipcMain.handle('save-graph', async (_, graphJson: string) => {
+// Handler for saving the graph. Returns an explicit result: the renderer
+// used to fire-and-forget, so a full disk / locked file / permission error
+// left the user believing their song was saved when nothing was written.
+ipcMain.handle('save-graph', async (_, graphJson: string): Promise<{ saved: boolean; path?: string; error?: string }> => {
   const { filePath } = await dialog.showSaveDialog({
     title: 'Save Skald Graph',
     buttonLabel: 'Save',
@@ -297,13 +299,20 @@ ipcMain.handle('save-graph', async (_, graphJson: string) => {
     filters: [{ name: 'Skald Files', extensions: ['json'] }],
   });
 
-  if (filePath) {
-    fs.writeFileSync(filePath, graphJson);
+  if (!filePath) {
+    return { saved: false }; // user canceled — not an error
+  }
+  try {
+    fs.writeFileSync(filePath, graphJson, { encoding: 'utf8' });
+    return { saved: true, path: filePath };
+  } catch (err) {
+    console.error(`[Skald] Failed to save graph to ${filePath}:`, err);
+    return { saved: false, error: err instanceof Error ? err.message : String(err) };
   }
 });
 
-// Handler for loading the graph
-ipcMain.handle('load-graph', async () => {
+// Handler for loading the graph. content: null with no error = canceled.
+ipcMain.handle('load-graph', async (): Promise<{ content: string | null; error?: string }> => {
   const { filePaths } = await dialog.showOpenDialog({
     title: 'Load Skald Graph',
     buttonLabel: 'Load',
@@ -311,9 +320,13 @@ ipcMain.handle('load-graph', async () => {
     filters: [{ name: 'Skald Files', extensions: ['json'] }],
   });
 
-  if (filePaths && filePaths.length > 0) {
-    const content = fs.readFileSync(filePaths[0], 'utf-8');
-    return content;
+  if (!filePaths || filePaths.length === 0) {
+    return { content: null };
   }
-  return null;
+  try {
+    return { content: fs.readFileSync(filePaths[0], 'utf-8') };
+  } catch (err) {
+    console.error(`[Skald] Failed to read graph from ${filePaths[0]}:`, err);
+    return { content: null, error: err instanceof Error ? err.message : String(err) };
+  }
 });

@@ -333,6 +333,7 @@ Asset_process_sequence :: proc(p: ^Asset_Processor) {
 	if !p.playing do return
 	samples_per_step_f := p.sample_rate * 60.0 / (p.bpm * 4.0)
 	if p.samples_until_next_step == 0 {
+		// Track "Asset" (16 steps)
 		switch p.current_step % 16 {
 		case 0:
 			Asset_note_on(p, 60, 1.000000000, f32(16.000000000) * (60.0 / p.bpm / 4.0))

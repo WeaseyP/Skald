@@ -508,6 +508,40 @@ main :: proc() {
 			all_pass &= assert_audible(buf, .Left)
 			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
 		}
+	case "dual_track":
+		// TWO sequencer tracks on one instrument (plus a muted third).
+		// Only tracks[0] used to be read — every extra track silently
+		// vanished from the export (the four_bar_song "Pad Third" data
+		// loss). Track "Lead": C4@0, E4@8. Track "Counter": C5@4, E5@12.
+		// Muted "MutedGhost": note@2 that must NOT sound.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			// First track's notes (steps 0/8 at 120 BPM = 0.0s/1.0s).
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.010, 0.120, 261.63, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 1.010, 1.120, 329.63, 15.0)
+			// SECOND track's notes (steps 4/12 = 0.5s/1.5s) — the ones that
+			// used to be dropped.
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.510, 0.620, 523.25, 20.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 1.510, 1.620, 659.26, 25.0)
+			// Muted track's step-2 note (0.25s) must not sound: by 0.26s the
+			// step-0 note is fully released (0.125s gate + 0.05s release).
+			{
+				s := int(0.28 * sample_rate)
+				e := int(0.45 * sample_rate)
+				gap_rms := compute_rms(buf[s:e], .Both)
+				if gap_rms > 0.005 {
+					fmt.eprintfln(
+						"FAIL dual_track: muted track leaked audio (RMS %.6f in [0.28,0.45]s)",
+						gap_rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
 	case "effect_input":
 		// Effect instrument: GraphInput -> Lowpass(2000) -> GraphOutput, no
 		// oscillators, no notes. This shape used to hard-fail codegen

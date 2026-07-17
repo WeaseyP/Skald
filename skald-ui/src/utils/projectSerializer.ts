@@ -102,7 +102,10 @@ export const buildProjectData = (
 
     projectData.project.instruments = instrumentNodes.map(instNode => {
         const data = instNode.data as InstrumentParams;
-        const track = sequencerTracks.find(t => t.targetNodeId === instNode.id);
+        // ALL tracks targeting this instrument. Only the first used to be
+        // serialized — any additional track silently vanished from both the
+        // preview and the export (four notes of data loss per lost track).
+        const tracks = sequencerTracks.filter(t => t.targetNodeId === instNode.id);
 
         // Find connected MIDI Input
         // Check edges where target is this instrument and source is 'midiInput'
@@ -121,9 +124,9 @@ export const buildProjectData = (
 
         const subgraph = formatSubgraph(data.subgraph as any);
 
-        // Inject Sequencer Track for this instrument
-        if (subgraph && track) {
-            subgraph.sequencer_tracks = [{
+        // Inject the Sequencer Tracks for this instrument
+        if (subgraph && tracks.length > 0) {
+            subgraph.sequencer_tracks = tracks.map(track => ({
                 target_node_id: track.targetNodeId,
                 name: track.name,
                 mute: track.isMuted,
@@ -155,7 +158,7 @@ export const buildProjectData = (
                             .filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
                     )
                 }))
-            }];
+            }));
         } else if (subgraph) {
             subgraph.sequencer_tracks = [];
         }
@@ -163,8 +166,11 @@ export const buildProjectData = (
         return {
             id: instNode.id,
             name: data.name || 'Unnamed Instrument',
-            mute: track ? track.isMuted : false,
-            solo: track ? track.isSolo : false,
+            // Instrument-level mute silences the whole asset — only when
+            // EVERY track is muted (per-track mute lives on the track).
+            // Solo bubbles up if any track solos.
+            mute: tracks.length > 0 && tracks.every(t => t.isMuted),
+            solo: tracks.some(t => t.isSolo),
             // Floor at 0.001, never 0: the backend reads an exact 0 as
             // "field absent" (older saves) and substitutes unity.
             volume: Math.max(data.volume ?? 1.0, 0.001),

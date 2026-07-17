@@ -1,6 +1,30 @@
 # Skald Changelog
 
-## Seven trust/workflow fixes from the three-lead readiness review (2026-07-17)
+## Multi-track export + save/load hardening (2026-07-17)
+
+Gates: **26/26 acceptance** (new dual_track fixture), **25/25 goldens**
+(regenerated — Music Layer emission gained per-track blocks), **67/67 UI
+tests** (10 new), typecheck + lint clean.
+
+- ✅ **Every sequencer track exports** — data-loss fix. Only `tracks[0]`
+  per instrument was ever read (serializer `.find()`, codegen
+  `sequencer_tracks[0]`); any additional track targeting the same
+  instrument silently vanished from both preview and export (proven:
+  four_bar_song's "Pad Third"). The serializer now ships ALL matching
+  tracks and the codegen emits one switch block per active track on the
+  shared step clock, each wrapping at its own length (polyrhythm), with
+  per-track mute honored and intra-instrument solo silencing non-soloed
+  siblings. Instrument-level mute now requires every track muted; solo
+  bubbles up from any track. Fixture: dual_track (both tracks' pitches
+  assert at their onsets; a muted third track must stay silent).
+- ✅ **Save reports its outcome**: the IPC returns `{saved, path, error}`,
+  a green "Saved to <path>" banner confirms success, and a disk-write
+  failure shows "Save FAILED — nothing was written" instead of the old
+  fire-and-forget silence.
+- ✅ **Load/Import validate before touching state**: corrupt JSON, foreign
+  files, and unreadable paths surface a visible error and leave the
+  current graph untouched (a bad file used to either throw at the error
+  boundary or silently clobber the canvas).
 
 Gates: **25/25 acceptance** (3 new fixtures), **24/24 goldens** (regenerated —
 every asset gained `_feed_input`/`ext_in_*` and the new trigger semantics),

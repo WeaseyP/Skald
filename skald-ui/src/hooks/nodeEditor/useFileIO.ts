@@ -19,6 +19,30 @@ export interface SessionSettings {
     masterVolume: number;
 }
 
+export type FileStatus = { kind: 'success' | 'error'; message: string };
+
+// Parse + shape-check a save file BEFORE any state is touched. A truncated
+// or foreign JSON used to either throw at the boundary or silently clobber
+// the graph with `undefined` fields.
+const parseSaveFile = (graphJson: string): { flow?: any; error?: string } => {
+    let flow: any;
+    try {
+        flow = JSON.parse(graphJson);
+    } catch (e) {
+        return { error: `not valid JSON (${e instanceof Error ? e.message : e})` };
+    }
+    if (!flow || typeof flow !== 'object' || !Array.isArray(flow.nodes)) {
+        return { error: 'not a Skald save file (missing nodes array)' };
+    }
+    if (flow.edges !== undefined && !Array.isArray(flow.edges)) {
+        return { error: 'not a Skald save file (edges is not an array)' };
+    }
+    if (flow.sequencerTracks !== undefined && !Array.isArray(flow.sequencerTracks)) {
+        return { error: 'not a Skald save file (sequencerTracks is not an array)' };
+    }
+    return { flow };
+};
+
 export const useFileIO = (
     reactFlowInstance: ReactFlowInstance | null,
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
@@ -28,61 +52,94 @@ export const useFileIO = (
     sequencerTracks: SequencerTrack[],
     loadSequencerTracks: (tracks: SequencerTrack[]) => void,
     sessionSettings: SessionSettings,
-    applySessionSettings: (settings: Partial<SessionSettings>) => void
+    applySessionSettings: (settings: Partial<SessionSettings>) => void,
+    // Visible outcome reporting — saves used to be fire-and-forget (a disk
+    // error looked identical to success) and load failures died silently.
+    notifyFileStatus: (status: FileStatus) => void = () => undefined
 ) => {
-    const handleSave = useCallback(() => {
-        if (reactFlowInstance) {
-            const flow = reactFlowInstance.toObject();
-            const saveData = {
-                ...flow,
-                sequencerTracks,
-                session: sessionSettings
-            };
-            const graphJson = JSON.stringify(saveData, null, 2);
-            window.electron.saveGraph(graphJson);
+    const handleSave = useCallback(async () => {
+        if (!reactFlowInstance) return;
+        const flow = reactFlowInstance.toObject();
+        const saveData = {
+            ...flow,
+            sequencerTracks,
+            session: sessionSettings
+        };
+        const graphJson = JSON.stringify(saveData, null, 2);
+        try {
+            const result = await window.electron.saveGraph(graphJson);
+            if (result?.saved) {
+                notifyFileStatus({ kind: 'success', message: `Saved to ${result.path}` });
+            } else if (result?.error) {
+                notifyFileStatus({ kind: 'error', message: `Save FAILED — nothing was written: ${result.error}` });
+            }
+            // saved:false with no error = user canceled the dialog; stay quiet.
+        } catch (e) {
+            notifyFileStatus({ kind: 'error', message: `Save FAILED — nothing was written: ${e instanceof Error ? e.message : e}` });
         }
-    }, [reactFlowInstance, sequencerTracks, sessionSettings]);
+    }, [reactFlowInstance, sequencerTracks, sessionSettings, notifyFileStatus]);
 
     const handleLoad = useCallback(async () => {
-        const graphJson = await window.electron.loadGraph();
-        if (graphJson) {
-            const flow = JSON.parse(graphJson);
-            if (flow) {
-                const loadedNodes = flow.nodes || [];
-                setNodes(loadedNodes);
-                setEdges(flow.edges || []);
-                if (flow.sequencerTracks) {
-                    loadSequencerTracks(flow.sequencerTracks);
-                }
-                // Older saves have no session block — leave the current
-                // settings alone rather than inventing defaults, and only
-                // apply fields that hold sane numbers.
-                if (flow.session) {
-                    const restored: Partial<SessionSettings> = {};
-                    if (Number.isFinite(flow.session.bpm) && flow.session.bpm > 0) {
-                        restored.bpm = flow.session.bpm;
-                    }
-                    if (Number.isFinite(flow.session.patternSteps) && flow.session.patternSteps > 0) {
-                        restored.patternSteps = flow.session.patternSteps;
-                    }
-                    if (Number.isFinite(flow.session.masterVolume) && flow.session.masterVolume >= 0) {
-                        restored.masterVolume = flow.session.masterVolume;
-                    }
-                    applySessionSettings(restored);
-                }
-                setHistory([]);
-                setFuture([]);
+        let content: string | null;
+        try {
+            const result = await window.electron.loadGraph();
+            if (result?.error) {
+                notifyFileStatus({ kind: 'error', message: `Load failed — could not read the file: ${result.error}` });
+                return;
             }
+            content = result?.content ?? null;
+        } catch (e) {
+            notifyFileStatus({ kind: 'error', message: `Load failed: ${e instanceof Error ? e.message : e}` });
+            return;
         }
-    }, [setNodes, setEdges, setHistory, setFuture, loadSequencerTracks, applySessionSettings]);
+        if (content === null) return; // canceled
+
+        const { flow, error } = parseSaveFile(content);
+        if (error) {
+            // The current graph is untouched — say so explicitly.
+            notifyFileStatus({ kind: 'error', message: `Load failed — ${error}. Your current graph is unchanged.` });
+            return;
+        }
+
+        setNodes(flow.nodes);
+        setEdges(flow.edges || []);
+        if (flow.sequencerTracks) {
+            loadSequencerTracks(flow.sequencerTracks);
+        }
+        // Older saves have no session block — leave the current
+        // settings alone rather than inventing defaults, and only
+        // apply fields that hold sane numbers.
+        if (flow.session) {
+            const restored: Partial<SessionSettings> = {};
+            if (Number.isFinite(flow.session.bpm) && flow.session.bpm > 0) {
+                restored.bpm = flow.session.bpm;
+            }
+            if (Number.isFinite(flow.session.patternSteps) && flow.session.patternSteps > 0) {
+                restored.patternSteps = flow.session.patternSteps;
+            }
+            if (Number.isFinite(flow.session.masterVolume) && flow.session.masterVolume >= 0) {
+                restored.masterVolume = flow.session.masterVolume;
+            }
+            applySessionSettings(restored);
+        }
+        setHistory([]);
+        setFuture([]);
+    }, [setNodes, setEdges, setHistory, setFuture, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
 
     const handleImportGraph = useCallback(async () => {
         if (!reactFlowInstance) return;
-        const graphJson = await window.electron.loadGraph();
-        if (!graphJson) return;
+        const result = await window.electron.loadGraph().catch((e) => ({ content: null, error: String(e) }));
+        if (result?.error) {
+            notifyFileStatus({ kind: 'error', message: `Import failed — could not read the file: ${result.error}` });
+            return;
+        }
+        if (!result?.content) return; // canceled
 
-        const flow = JSON.parse(graphJson);
-        if (!flow || !flow.nodes) return;
+        const { flow, error } = parseSaveFile(result.content);
+        if (error) {
+            notifyFileStatus({ kind: 'error', message: `Import failed — ${error}. Your current graph is unchanged.` });
+            return;
+        }
 
         const importedNodes = flow.nodes as Node[];
         const importedEdges = flow.edges as Edge[] || [];
@@ -170,7 +227,7 @@ export const useFileIO = (
         // Merge tracks
         loadSequencerTracks([...sequencerTracks, ...remappedTracks]);
 
-    }, [reactFlowInstance, setNodes, setEdges, loadSequencerTracks, sequencerTracks]);
+    }, [reactFlowInstance, setNodes, setEdges, loadSequencerTracks, sequencerTracks, notifyFileStatus]);
 
     return { handleSave, handleLoad, handleImportGraph };
 };

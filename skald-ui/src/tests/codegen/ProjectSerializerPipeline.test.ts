@@ -118,6 +118,35 @@ describe('buildProjectData — mute / solo handling', () => {
     });
 });
 
+describe('buildProjectData — multiple tracks per instrument', () => {
+    it('serializes EVERY track targeting an instrument, not just the first', () => {
+        const lead = makeTrack('i1', { name: 'Lead', notes: [note({ step: 0 }), note({ step: 8 })] });
+        const counter = makeTrack('i1', { name: 'Counter', steps: 8, notes: [note({ step: 4, note: 72 })] });
+        const data = buildProjectData([makeInstrument('i1', 'Multi')], [], [lead, counter], 120, 1.0);
+
+        const tracks = data.project.instruments[0].audio_graph.sequencer_tracks;
+        // The second track used to silently vanish (four_bar_song "Pad Third").
+        expect(tracks).toHaveLength(2);
+        expect(tracks.map((t: any) => t.name)).toEqual(['Lead', 'Counter']);
+        expect(tracks[0].events).toHaveLength(2);
+        expect(tracks[1].events).toHaveLength(1);
+        expect(tracks[1].num_steps).toBe(8); // per-track length survives
+        expect(tracks[1].events[0].note).toBe(72);
+    });
+
+    it('instrument mute requires EVERY track muted; solo bubbles up from any track', () => {
+        const a = makeTrack('i1', { name: 'A', isMuted: true, notes: [note()] });
+        const b = makeTrack('i1', { name: 'B', isMuted: false, isSolo: true, notes: [note()] });
+        const data = buildProjectData([makeInstrument('i1', 'Multi')], [], [a, b], 120, 1.0);
+        const inst = data.project.instruments[0];
+        expect(inst.mute).toBe(false); // one live track keeps the asset audible
+        expect(inst.solo).toBe(true);
+        // Per-track flags pass through untouched.
+        expect(inst.audio_graph.sequencer_tracks[0].mute).toBe(true);
+        expect(inst.audio_graph.sequencer_tracks[1].solo).toBe(true);
+    });
+});
+
 describe('buildProjectData — per-step patch overrides (p-locks)', () => {
     it('demuxes each note.patchOverrides into its own emitted event; missing overrides become {}', () => {
         const track = makeTrack('i1', {

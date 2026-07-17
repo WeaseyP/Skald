@@ -744,30 +744,54 @@ generate_midi_input_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 // distinguishes the two in the UI: clicking step cells to place notes turns
 // an SFX into a Music Layer.
 detect_asset_type :: proc(instrument: ^Project_Instrument, project: ^Project) -> Asset_Type {
-	track := find_sequencer_track(instrument, project)
-	// A muted track exports as SFX: no auto-start, no sequence. It used to
-	// export as an audible auto-starting Music Layer despite the mute flag.
-	if track != nil && len(track.events) > 0 && !track.mute {
+	// A muted (or empty) track exports as SFX: no auto-start, no sequence.
+	active := active_sequencer_tracks(instrument, project)
+	defer delete(active)
+	if len(active) > 0 {
 		return .Music_Layer
 	}
 	return .SFX
 }
 
-// Returns the matching sequencer track (instrument-local takes priority over
-// project-level) or nil if none.
-find_sequencer_track :: proc(
+// Every sequencer track that will actually emit events for this instrument:
+// non-empty, un-muted, honoring intra-instrument solo (a soloed track
+// silences its non-soloed siblings; solo ACROSS instruments is resolved at
+// the project level). Instrument-local tracks take priority over
+// project-level ones, matching the old single-track lookup.
+//
+// ALL matching tracks are returned — only tracks[0] was ever read before,
+// so a second track targeting the same instrument silently vanished from
+// the export (proven: four_bar_song's "Pad Third" lost its four notes).
+active_sequencer_tracks :: proc(
 	instrument: ^Project_Instrument,
 	project: ^Project,
-) -> ^Sequencer_Track {
+) -> [dynamic]^Sequencer_Track {
+	all: [dynamic]^Sequencer_Track
+	defer delete(all)
 	if len(instrument.graph.sequencer_tracks) > 0 {
-		return &instrument.graph.sequencer_tracks[0]
-	}
-	for i in 0 ..< len(project.sequencer_tracks) {
-		if project.sequencer_tracks[i].target_node_id == instrument.id {
-			return &project.sequencer_tracks[i]
+		for i in 0 ..< len(instrument.graph.sequencer_tracks) {
+			append(&all, &instrument.graph.sequencer_tracks[i])
+		}
+	} else {
+		for i in 0 ..< len(project.sequencer_tracks) {
+			if project.sequencer_tracks[i].target_node_id == instrument.id {
+				append(&all, &project.sequencer_tracks[i])
+			}
 		}
 	}
-	return nil
+	any_solo := false
+	for t in all {
+		if t.solo && !t.mute && len(t.events) > 0 {
+			any_solo = true
+		}
+	}
+	active: [dynamic]^Sequencer_Track
+	for t in all {
+		if t.mute || len(t.events) == 0 do continue
+		if any_solo && !t.solo do continue
+		append(&active, t)
+	}
+	return active
 }
 
 // A P-lock (per-step parameter override) resolved to a concrete node+param.
@@ -839,15 +863,16 @@ collect_plock_targets :: proc(
 	project: ^Project,
 ) -> [dynamic]Plock_Target {
 	targets: [dynamic]Plock_Target
-	track := find_sequencer_track(instrument, project)
-	if track == nil do return targets
+	tracks := active_sequencer_tracks(instrument, project)
+	defer delete(tracks)
+	if len(tracks) == 0 do return targets
 
 	all_nodes := nodes_sorted_by_id(&instrument.graph)
 	defer delete(all_nodes)
 
 	seen := make(map[string]bool)
 	defer delete(seen)
-	for event in track.events {
+	for track in tracks do for event in track.events {
 		for key, _ in event.patch_overrides {
 			if seen[key] do continue
 			seen[key] = true
@@ -1887,9 +1912,10 @@ generate_sequencer_logic :: proc(
 		return
 	}
 
-	track := find_sequencer_track(instrument, project)
-	if track == nil {
-		// Detected as Music_Layer but no track found — should not happen.
+	tracks := active_sequencer_tracks(instrument, project)
+	defer delete(tracks)
+	if len(tracks) == 0 {
+		// Detected as Music_Layer but no active track — should not happen.
 		fmt.sbprint(sb, "}\n\n")
 		return
 	}
@@ -1901,14 +1927,15 @@ generate_sequencer_logic :: proc(
 	// Track length drives WHICH step's notes fire; the global pattern
 	// length drives the loop boundary (shorter tracks wrap polyrhythmically
 	// inside it — same semantics as the UI engine). pattern_steps was never
-	// serialized before, so every loop silently reverted to 16.
-	track_steps := track.num_steps
-	if track_steps <= 0 {
-		track_steps = 16
-	}
+	// serialized before, so every loop silently reverted to 16. With no
+	// project-level length, fall back to the longest active track.
 	global_steps := project.pattern_steps
 	if global_steps <= 0 {
-		global_steps = track_steps
+		for track in tracks {
+			track_steps := track.num_steps
+			if track_steps <= 0 do track_steps = 16
+			if track_steps > global_steps do global_steps = track_steps
+		}
 	}
 
 	fmt.sbprint(sb, "\tif !p.playing do return\n")
@@ -1928,91 +1955,101 @@ generate_sequencer_logic :: proc(
 	// _start sets samples_until_next_step=0 so step 0 fires on the first
 	// process call after start.
 	fmt.sbprint(sb, "\tif p.samples_until_next_step == 0 {\n")
-	fmt.sbprintf(sb, "\t\tswitch p.current_step %% %d {{\n", track_steps)
 
-	// Group events by step before emitting: two notes on the same step (a
-	// chord) must share ONE `case` — duplicate switch cases don't compile.
-	max_step := 0
-	for event in track.events {
-		if event.step > max_step do max_step = event.step
-	}
-	for s in 0 ..= max_step {
-		first := true
+	// One switch block per active track, all driven by the shared step
+	// clock; each wraps at its own length (polyrhythm).
+	for track in tracks {
+		track_steps := track.num_steps
+		if track_steps <= 0 {
+			track_steps = 16
+		}
+		fmt.sbprintf(sb, "\t\t// Track %q (%d steps)\n", track.name, track_steps)
+		fmt.sbprintf(sb, "\t\tswitch p.current_step %% %d {{\n", track_steps)
+
+		// Group events by step before emitting: two notes on the same step (a
+		// chord) must share ONE `case` — duplicate switch cases don't compile.
+		max_step := 0
 		for event in track.events {
-			if event.step != s do continue
-			if first {
-				fmt.sbprintf(sb, "\t\tcase %d:\n", s)
-				first = false
-			}
-			duration_val := event.duration
-			if duration_val <= 0.0 {
-				duration_val = 1.0 // Default to 1 step
-			}
-			// Probability: <=0 means the field was absent (old fixtures) —
-			// play always. Values in (0,1) gate the step on the processor
-			// PRNG each loop.
-			indent := "\t\t\t"
-			has_prob := event.probability > 0.0 && event.probability < 1.0
-			if has_prob {
-				fmt.sbprintf(sb, "\t\t\tif next_float32(&p.prng) <= %.9f {{\n", event.probability)
-				indent = "\t\t\t\t"
-			}
-			// P-locks: apply this step's parameter overrides through the
-			// string-keyed setter before firing the note (they persist until
-			// the next override — Elektron-style). The UI key ("Label:param")
-			// must be resolved to the collision-free field name set_param
-			// actually switches on: the key used to be emitted verbatim, so
-			// every P-lock was a silent no-op returning false.
-			if len(event.patch_overrides) > 0 {
-				plock_keys: [dynamic]string
-				defer delete(plock_keys)
-				for key, _ in event.patch_overrides do append(&plock_keys, key)
-				// Map iteration order varies run to run; the goldens diff bytes.
-				slice.sort(plock_keys[:])
+			if event.step > max_step do max_step = event.step
+		}
+		for s in 0 ..= max_step {
+			first := true
+			for event in track.events {
+				if event.step != s do continue
+				if first {
+					fmt.sbprintf(sb, "\t\tcase %d:\n", s)
+					first = false
+				}
+				duration_val := event.duration
+				if duration_val <= 0.0 {
+					duration_val = 1.0 // Default to 1 step
+				}
+				// Probability: <=0 means the field was absent (old fixtures) —
+				// play always. Values in (0,1) gate the step on the processor
+				// PRNG each loop.
+				indent := "\t\t\t"
+				has_prob := event.probability > 0.0 && event.probability < 1.0
+				if has_prob {
+					fmt.sbprintf(sb, "\t\t\tif next_float32(&p.prng) <= %.9f {{\n", event.probability)
+					indent = "\t\t\t\t"
+				}
+				// P-locks: apply this step's parameter overrides through the
+				// string-keyed setter before firing the note (they persist until
+				// the next override — Elektron-style). The UI key ("Label:param")
+				// must be resolved to the collision-free field name set_param
+				// actually switches on: the key used to be emitted verbatim, so
+				// every P-lock was a silent no-op returning false.
+				if len(event.patch_overrides) > 0 {
+					plock_keys: [dynamic]string
+					defer delete(plock_keys)
+					for key, _ in event.patch_overrides do append(&plock_keys, key)
+					// Map iteration order varies run to run; the goldens diff bytes.
+					slice.sort(plock_keys[:])
 
-				emitted := make(map[string]bool)
-				defer delete(emitted)
-				for key in plock_keys {
-					val := event.patch_overrides[key]
-					plock_targets := resolve_plock_targets(seq_nodes, key)
-					defer delete(plock_targets)
-					// collect_plock_targets already hard-errored on unresolvable
-					// keys before the processor was emitted, so targets resolve
-					// to real exposures here.
-					clear(&emitted)
-					for t in plock_targets {
-						res, found := instrument.graph.exposed_resolutions[fmt.tprintf("%s::%s", t.node_id, t.param)]
-						if !found do continue
-						if emitted[res.field_name] do continue
-						emitted[res.field_name] = true
-						fmt.sbprintf(
-							sb,
-							"%s%s_set_param(p, \"%s\", %.9f)\n",
-							indent,
-							namespace_prefix,
-							res.field_name,
-							val,
-						)
+					emitted := make(map[string]bool)
+					defer delete(emitted)
+					for key in plock_keys {
+						val := event.patch_overrides[key]
+						plock_targets := resolve_plock_targets(seq_nodes, key)
+						defer delete(plock_targets)
+						// collect_plock_targets already hard-errored on unresolvable
+						// keys before the processor was emitted, so targets resolve
+						// to real exposures here.
+						clear(&emitted)
+						for t in plock_targets {
+							res, found := instrument.graph.exposed_resolutions[fmt.tprintf("%s::%s", t.node_id, t.param)]
+							if !found do continue
+							if emitted[res.field_name] do continue
+							emitted[res.field_name] = true
+							fmt.sbprintf(
+								sb,
+								"%s%s_set_param(p, \"%s\", %.9f)\n",
+								indent,
+								namespace_prefix,
+								res.field_name,
+								val,
+							)
+						}
 					}
 				}
-			}
-			// duration is in steps; convert to seconds at runtime using p.bpm.
-			fmt.sbprintf(
-				sb,
-				"%s%s_note_on(p, %d, %.9f, f32(%.9f) * (60.0 / p.bpm / 4.0))\n",
-				indent,
-				namespace_prefix,
-				event.note,
-				event.velocity,
-				duration_val,
-			)
-			if has_prob {
-				fmt.sbprint(sb, "\t\t\t}\n")
+				// duration is in steps; convert to seconds at runtime using p.bpm.
+				fmt.sbprintf(
+					sb,
+					"%s%s_note_on(p, %d, %.9f, f32(%.9f) * (60.0 / p.bpm / 4.0))\n",
+					indent,
+					namespace_prefix,
+					event.note,
+					event.velocity,
+					duration_val,
+				)
+				if has_prob {
+					fmt.sbprint(sb, "\t\t\t}\n")
+				}
 			}
 		}
-	}
 
-	fmt.sbprint(sb, "\t\t}\n")
+		fmt.sbprint(sb, "\t\t}\n")
+	}
 
 	// Advance step. The loop boundary is the GLOBAL pattern length; honor
 	// `loop`: if false and we just finished the last step, halt the layer.

@@ -174,7 +174,7 @@ Asset_trigger :: proc(p: ^Asset_Processor, note: u8 = 60, velocity: f32 = 1.0, d
 	d := duration
 	if d <= 0.0 {
 		d = 0.0
-		if (f32(0.005000000)) + (f32(0.100000000)) > d do d = (f32(0.005000000)) + (f32(0.100000000))
+		if (f32(0.005000000)) + (f32(0.050000000)) > d do d = (f32(0.005000000)) + (f32(0.050000000))
 		if d <= 0.0 do d = 0.001
 	}
 	Asset_note_on(p, note, velocity, d)
@@ -278,18 +278,18 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				}
 			case .Decay:
 				time_in_decay := voice.age - (f32(0.005000000));
-				if (f32(0.100000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.100000000)), 0.000001)) * (1.0 - (f32(0.000000000))); else do envelope = (f32(0.000000000));
+				if (f32(0.050000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.050000000)), 0.000001)) * (1.0 - (f32(0.700000000))); else do envelope = (f32(0.700000000));
 				voice.adsr_2_release_level = envelope;
-				if time_in_decay >= (f32(0.100000000)) {
+				if time_in_decay >= (f32(0.050000000)) {
 					voice.adsr_2_stage = .Sustain;
 				}
 			case .Sustain:
-				envelope = (f32(0.000000000));
+				envelope = (f32(0.700000000));
 				voice.adsr_2_release_level = envelope;
 				if envelope <= 0.0001 do voice.adsr_2_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
-				if (f32(0.080000000)) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.080000000)), 0.000001))); else do envelope = 0.0;
+				if (f32(0.050000000)) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.050000000)), 0.000001))); else do envelope = 0.0;
 				if envelope <= 0 {
 					envelope = 0;
 					voice.adsr_2_stage = .Idle;
@@ -310,14 +310,19 @@ Asset_process_sequence :: proc(p: ^Asset_Processor) {
 	if !p.playing do return
 	samples_per_step_f := p.sample_rate * 60.0 / (p.bpm * 4.0)
 	if p.samples_until_next_step == 0 {
-		// Track "Asset" (16 steps)
+		// Track "Lead" (16 steps)
 		switch p.current_step % 16 {
 		case 0:
 			Asset_note_on(p, 60, 1.000000000, f32(1.000000000) * (60.0 / p.bpm / 4.0))
+		case 8:
 			Asset_note_on(p, 64, 1.000000000, f32(1.000000000) * (60.0 / p.bpm / 4.0))
-			Asset_note_on(p, 67, 1.000000000, f32(1.000000000) * (60.0 / p.bpm / 4.0))
+		}
+		// Track "Counter" (16 steps)
+		switch p.current_step % 16 {
 		case 4:
-			Asset_note_on(p, 60, 1.000000000, f32(1.000000000) * (60.0 / p.bpm / 4.0))
+			Asset_note_on(p, 72, 1.000000000, f32(1.000000000) * (60.0 / p.bpm / 4.0))
+		case 12:
+			Asset_note_on(p, 76, 1.000000000, f32(1.000000000) * (60.0 / p.bpm / 4.0))
 		}
 		p.current_step += 1
 		if p.current_step >= 16 {

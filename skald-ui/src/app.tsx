@@ -22,7 +22,7 @@ import { nodeTypes } from './definitions/nodeTypes';
 // Import your new hooks
 import { useGraphState } from './hooks/nodeEditor/useGraphState';
 import { useWasmAudioEngine } from './hooks/nodeEditor/useWasmAudioEngine';
-import { useFileIO } from './hooks/nodeEditor/useFileIO';
+import { useFileIO, FileStatus } from './hooks/nodeEditor/useFileIO';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
 // import { NODE_DEFINITIONS } from './definitions/node-definitions'; // Unused
 import { SequencerDock } from './components/Sequencer/SequencerDock';
@@ -155,6 +155,17 @@ const EditorLayout = () => {
         if (s.patternSteps !== undefined) setPatternSteps(s.patternSteps);
         if (s.masterVolume !== undefined) setMasterVolume(s.masterVolume);
     }, []);
+    // Save/load outcome, shown in a banner over the canvas. Errors stay up
+    // until the next file action; successes auto-clear after a few seconds.
+    const [fileStatus, setFileStatus] = useState<FileStatus | null>(null);
+    const fileStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const notifyFileStatus = useCallback((status: FileStatus) => {
+        if (fileStatusTimer.current) clearTimeout(fileStatusTimer.current);
+        setFileStatus(status);
+        if (status.kind === 'success') {
+            fileStatusTimer.current = setTimeout(() => setFileStatus(null), 4000);
+        }
+    }, []);
     const { handleSave, handleLoad, handleImportGraph } = useFileIO(
         reactFlowInstance,
         setNodes,
@@ -164,7 +175,8 @@ const EditorLayout = () => {
         sequencerStateHooks.tracks,
         sequencerStateHooks.loadTracks,
         sessionSettings,
-        applySessionSettings
+        applySessionSettings,
+        notifyFileStatus
     );
 
     const sequencerState = {
@@ -423,6 +435,29 @@ const EditorLayout = () => {
                                 <strong>{previewError ? 'Preview failed' : 'Preview out of date — last edit failed to build'}</strong>
                                 {' — '}
                                 {previewError ?? previewStale}
+                            </div>
+                        )}
+                        {fileStatus && (
+                            <div
+                                data-testid="file-status-banner"
+                                style={{
+                                    position: 'absolute',
+                                    bottom: 10,
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    zIndex: 50,
+                                    maxWidth: '85%',
+                                    padding: '8px 14px',
+                                    borderRadius: 6,
+                                    fontSize: '0.85em',
+                                    whiteSpace: 'pre-wrap',
+                                    color: '#fff',
+                                    backgroundColor: fileStatus.kind === 'error' ? 'rgba(178,45,45,0.95)' : 'rgba(35,130,65,0.95)',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                {fileStatus.message}
                             </div>
                         )}
                     </div>
