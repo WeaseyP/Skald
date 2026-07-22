@@ -1,89 +1,126 @@
 # Skald
 
-**Visual Audio Programming Language & Code Generator for Odin**
+Skald is a Windows desktop application for building audio instruments, sound effects, and songs with a node graph. It previews the audio and generates Odin source code for use in a game or audio application.
 
-Skald is a hybrid development tool that combines a modern visual editor with a high-performance code generation engine. Users construct audio processing graphs visually, and Skald compiles them into pure, dependency-free **Odin** source code, ready to be dropped into games or audio applications.
+## Status
 
-> **v0.1.0 game-production preview** - the core workflow is implemented, but bugs and breaking pre-1.0 changes are expected.
+Version 0.1.0 is a prerelease. The main editing, sequencing, preview, save/load, and Odin export workflows are in place. Bugs are expected, and project files or generated APIs may change before 1.0.
 
-Windows releases include an installer and portable ZIP. See [release notes](docs/releases/v0.1.0.md) and the [release guide](docs/RELEASING.md).
+See the [v0.1.0 release notes](docs/releases/v0.1.0.md), [release process](docs/RELEASING.md), and [bug list](BUGS.md).
 
-## 🚀 Getting Started
+## Install
 
-### Prerequisites
+Windows builds are available from the [GitHub releases page](https://github.com/WeaseyP/Skald/releases). Use the Setup executable for a normal installation or the ZIP for a portable copy.
 
-* **Windows 10 or newer**
-* **Node.js 22** and npm
-* **Git**
-* **Windows C++ build tools** required by Electron dependencies
+### Build from source
 
-Odin is pinned to `dev-2025-02` and installed inside this repository by the setup script, so no administrator access or system-wide Odin installation is required.
+Requirements:
 
-### Installation
+- Windows 10 or newer
+- Git
+- Node.js 22 and npm
+- Windows C++ build tools used by Electron dependencies
 
-```powershell
+From the repository root:
+
+~~~powershell
 git clone https://github.com/WeaseyP/Skald.git
 cd Skald
 .\scripts\setup-dev.ps1
-```
+~~~
 
-The script installs exact npm dependencies, downloads the pinned Odin compiler into the ignored `.tools/` directory when needed, and builds the code generator.
+The setup script installs npm dependencies, downloads Odin `dev-2025-02` into the ignored `.tools` directory, and builds the Odin code generator. It does not install Odin system-wide.
 
-### Running the App
+## Run
 
-Start immediately after setup:
+After setup:
 
-```powershell
-.\scripts\setup-dev.ps1 -Start
-```
-
-For later launches:
-
-```powershell
+~~~powershell
 cd skald-ui
 npm start
-```
+~~~
 
-`npm start` uses the existing code generator. After changing the Odin backend, use `npm run start:rebuild` to rebuild it before Electron starts.
+To set up and start the application in one command:
 
-## 🎛️ Available Audio Nodes
+~~~powershell
+.\scripts\setup-dev.ps1 -Start
+~~~
 
-Skald supports a robust set of audio building blocks. These are the nodes currently available in the engine:
+`npm start` uses the existing code generator. If you change the Odin backend, run:
 
-| Node Type | Parameters | Description |
-| :--- | :--- | :--- |
-| **Oscillator** | Frequency, Waveform (Sine, Saw, Square, Triangle), PulseWidth, Phase | The primary sound source. Supports Unison and Detune at the Instrument level. |
-| **FM Operator** | Ratio, ModIndex | Designed for Frequency Modulation synthesis. Frequency acts as a ratio of the base pitch. |
-| **Wavetable** | Frequency, Position | Wavetable oscillator. |
-| **Noise** | Amplitude, Type (White) | Noise generator useful for percussion or textures. |
-| **LFO** | Frequency, Amplitude, Waveform | Low Frequency Oscillator for modulating other parameters. |
-| **Sample & Hold**| Rate, Amplitude | Generates random stepped values at a specific rate. |
-| **ADSR** | Attack, Decay, Sustain, Release, Depth | Standard Envelope Generator for shaping amplitude or modulation. |
-| **Filter** | Cutoff, Resonance, Type (LowPass, HighPass, BandPass, Notch) | Chamberlin State Variable Filter (SVF). |
-| **Delay** | Time, Feedback, Mix | Delay line effect. |
-| **Reverb** | Decay, Mix | Simple Feedback Delay Network (FDN) reverb. |
-| **Distortion** | Drive, Shape (SoftClip, HardClip) | Waveshaping distortion for adding grit or saturation. |
-| **Mixer** | Gain (per channel) | Simple utility to sum multiple signals. |
-| **Panner** | Pan | Stereo panning control. |
-| **Gain** | Gain | Volume control / VCA. |
-| **Mapper** | InMin, InMax, OutMin, OutMax | Math utility to re-map a signal from one range to another. |
-| **MIDI Input** | - | Interface for incoming Note On/Off events. Outputs Pitch (V/Oct), Gate, and Velocity. |
+~~~powershell
+cd skald-ui
+npm run start:rebuild
+~~~
 
-## 🏗️ Architecture
+## Project layout
 
-*   **Frontend (`skald-ui/`)**: A **React + TypeScript** application wrapped in **Electron**. It manages the visual node graph (via React Flow) and user interaction.
-*   **Backend (`skald-backend/`)**: A headless CLI tool written in **Odin**. It accepts a JSON representation of the audio graph via `stdin` and outputs optimized Odin source code via `stdout`.
+| Path | Purpose |
+| --- | --- |
+| `skald-ui/` | Electron, React, TypeScript, the instrument graph, sequencer, and audio preview |
+| `skald-backend/` | Odin code generator and generated-code test harness |
+| `examples/` | Importable sound-effect, instrument, and song projects |
+| `scripts/` | Developer setup and Windows release scripts |
+| `docs/` | Release documentation |
 
-## 🛠️ Testing Generated Code
+The UI sends a project description to `skald_codegen.exe`. The generator writes an Odin source file containing the instruments, effects, sequencing data, and control functions for that project.
 
-To verify the audio engine without the UI:
+## Nodes
 
-1.  Generate code using the Skald UI.
-2.  Replace the contents of `skald-backend/tester/generated_audio/generated_audio.odin` with the output. (Don't add a second `.odin` file next to it — the package would end up with duplicate symbols — and don't paste into `tester/test_harness.odin`, which is the player, not the generated code.)
-3.  Run the test harness:
+| Node | Purpose |
+| --- | --- |
+| Oscillator | Sine, saw, triangle, and pulse-width square wave source |
+| Noise | White-noise source |
+| LFO | Free-running or BPM-synced modulation oscillator |
+| Sample and Hold | Free-running or BPM-synced stepped random modulation |
+| FM Operator | FM sine operator using a ratio of the played note |
+| Wavetable | Position morphing between sine, triangle, saw, and square |
+| ADSR | Attack, decay, sustain, and release envelope |
+| Filter | Low-pass, high-pass, band-pass, and notch filtering |
+| Delay | Delay time, feedback, mix, and BPM sync |
+| Reverb | Decay, pre-delay, and wet/dry mix |
+| Distortion | Waveshaping, tone, and wet/dry mix |
+| Mixer | Multiple inputs with a level for each channel |
+| Mapper | Maps a modulation signal from one range to another |
+| Panner | Equal-power stereo panning |
+| VCA | Gain stage with a modulation input |
+| Output | Routes a patch to the master output |
+| MIDI Input | Pitch, gate, and velocity from a MIDI device |
 
-```bash
+## Tests
+
+Run the backend checks from `skald-backend`:
+
+~~~powershell
+.\run_acceptance.bat
+.\run_golden.bat check
+~~~
+
+Run the UI checks from `skald-ui`:
+
+~~~powershell
+npm run lint
+npm run typecheck
+npm test
+~~~
+
+To build and test the Windows release from the repository root:
+
+~~~powershell
+.\scripts\build-release.ps1
+~~~
+
+## Test generated Odin code
+
+Generate an Odin file from the application, then place its contents in:
+
+`skald-backend/tester/generated_audio/generated_audio.odin`
+
+Do not add a second Odin file to that directory, and do not replace `tester/test_harness.odin`. Odin expects one package per directory.
+
+Run the harness:
+
+~~~powershell
 cd skald-backend
-# Windows
 .\build_and_test.bat
-```
+~~~
