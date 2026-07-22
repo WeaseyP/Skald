@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, review-fixes]
+    branches: [main, dev, review-fixes]
   pull_request:
 
 # The whole project is Windows-first (batch scripts, Squirrel packaging),
