@@ -1,0 +1,134 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-disruptor-alarm",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Disruptor Alarm",
+        "label": "GW Disruptor Alarm",
+        "volume": 0.55,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "alarm-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Klaxon",
+                "waveform": "Square",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "alarm-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Horn",
+                "type": "Bandpass",
+                "cutoff": 950,
+                "resonance": 2,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "alarm-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Stab",
+                "attack": 0.002,
+                "decay": 0.09,
+                "sustain": 0.2,
+                "release": 0.04,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay", "sustain"]
+              }
+            },
+            {
+              "id": "alarm-grit",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Grit",
+                "shape": "classic",
+                "drive": 12,
+                "tone": 3800,
+                "mix": 0.25,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "alarm-panic",
+              "type": "delay",
+              "position": { "x": 1040, "y": 120 },
+              "data": {
+                "label": "Panic Echo",
+                "delayTime": 0.234,
+                "feedback": 0.3,
+                "mix": 0.25,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "alarm-output",
+              "type": "output",
+              "position": { "x": 1300, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "alarm-osc", "from_port": "output", "to_node": "alarm-filter", "to_port": "input" },
+            { "from_node": "alarm-filter", "from_port": "output", "to_node": "alarm-amp", "to_port": "input" },
+            { "from_node": "alarm-amp", "from_port": "output", "to_node": "alarm-grit", "to_port": "input" },
+            { "from_node": "alarm-grit", "from_port": "output", "to_node": "alarm-panic", "to_port": "input" },
+            { "from_node": "alarm-panic", "from_port": "output", "to_node": "alarm-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-disruptor-alarm",
+      "targetNodeId": "instrument-gw-disruptor-alarm",
+      "name": "GW Disruptor Alarm",
+      "color": "#40E8E8",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 64, "velocity": 0.9, "duration": 1 },
+        { "step": 2, "note": 65, "velocity": 0.9, "duration": 1 },
+        { "step": 4, "note": 64, "velocity": 0.85, "duration": 1 },
+        { "step": 6, "note": 65, "velocity": 0.85, "duration": 1 },
+        { "step": 8, "note": 64, "velocity": 0.9, "duration": 1 },
+        { "step": 10, "note": 65, "velocity": 0.9, "duration": 1 },
+        { "step": 12, "note": 64, "velocity": 0.85, "duration": 1 },
+        { "step": 13, "note": 64, "velocity": 0.6, "duration": 1, "probability": 0.7 },
+        { "step": 14, "note": 65, "velocity": 0.95, "duration": 1 },
+        { "step": 15, "note": 65, "velocity": 0.6, "duration": 1, "probability": 0.7 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}

@@ -89,33 +89,46 @@
               }
             },
             {
-              "id": "tuba-vibrato",
-              "type": "lfo",
-              "position": { "x": 0, "y": 700 },
-              "data": {
-                "label": "Vibrato",
-                "waveform": "Sine",
-                "frequency": 5,
-                "amplitude": 0.02,
-                "bpmSync": false,
-                "syncRate": "1/4",
-                "exposedParameters": ["frequency", "amplitude"]
-              }
-            },
-            {
               "id": "tuba-output",
               "type": "output",
               "position": { "x": 800, "y": 120 },
-              "data": { "label": "Output", "exposedParameters": [] }
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
             }
           ],
           "connections": [
-            { "from_node": "tuba-osc", "from_port": "output", "to_node": "tuba-filter", "to_port": "input" },
-            { "from_node": "tuba-filter", "from_port": "output", "to_node": "tuba-amp", "to_port": "input" },
-            { "from_node": "tuba-amp", "from_port": "output", "to_node": "tuba-output", "to_port": "input" },
-            { "from_node": "tuba-blow", "from_port": "output", "to_node": "tuba-blow-map", "to_port": "input" },
-            { "from_node": "tuba-blow-map", "from_port": "output", "to_node": "tuba-filter", "to_port": "input_cutoff" },
-            { "from_node": "tuba-vibrato", "from_port": "output", "to_node": "tuba-osc", "to_port": "input_freq" }
+            {
+              "from_node": "tuba-osc",
+              "from_port": "output",
+              "to_node": "tuba-filter",
+              "to_port": "input"
+            },
+            {
+              "from_node": "tuba-filter",
+              "from_port": "output",
+              "to_node": "tuba-amp",
+              "to_port": "input"
+            },
+            {
+              "from_node": "tuba-amp",
+              "from_port": "output",
+              "to_node": "tuba-output",
+              "to_port": "input"
+            },
+            {
+              "from_node": "tuba-blow",
+              "from_port": "output",
+              "to_node": "tuba-blow-map",
+              "to_port": "input"
+            },
+            {
+              "from_node": "tuba-blow-map",
+              "from_port": "output",
+              "to_node": "tuba-filter",
+              "to_port": "input_cutoff"
+            }
           ]
         }
       }
@@ -140,5 +153,9 @@
       "isSolo": false
     }
   ],
-  "session": { "bpm": 96, "patternSteps": 16, "masterVolume": 0.8 }
+  "session": {
+    "bpm": 96,
+    "patternSteps": 16,
+    "masterVolume": 0.8
+  }
 }

@@ -1,0 +1,172 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-slowboy-tuba",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Slowboy Doom Tuba",
+        "label": "GW Slowboy Doom Tuba",
+        "volume": 0.68,
+        "voiceCount": 3,
+        "voiceStealing": "oldest",
+        "glide": 0.06,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "doom-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 200 },
+              "data": {
+                "label": "Doom Reed",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "doom-body",
+              "type": "filter",
+              "position": { "x": 260, "y": 200 },
+              "data": {
+                "label": "Body",
+                "type": "Lowpass",
+                "cutoff": 240,
+                "resonance": 0.9,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "doom-filter-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 520 },
+              "data": {
+                "label": "Blat",
+                "attack": 0.1,
+                "decay": 0.3,
+                "sustain": 0.3,
+                "release": 0.2,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay"]
+              }
+            },
+            {
+              "id": "doom-filter-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 520 },
+              "data": {
+                "label": "Blat Amount",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 450,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "doom-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 200 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.08,
+                "decay": 0.1,
+                "sustain": 0.85,
+                "release": 0.25,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "release"]
+              }
+            },
+            {
+              "id": "doom-shake",
+              "type": "lfo",
+              "position": { "x": 0, "y": 800 },
+              "data": {
+                "label": "Windup Shake",
+                "waveform": "Sine",
+                "frequency": 0.5,
+                "amplitude": 0,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "doom-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 1060 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 4.5,
+                "amplitude": 0.012,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "doom-drive",
+              "type": "distortion",
+              "position": { "x": 780, "y": 200 },
+              "data": {
+                "label": "Charge Grit",
+                "shape": "soft",
+                "drive": 5,
+                "tone": 2800,
+                "mix": 0.1,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "doom-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 200 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "doom-osc", "from_port": "output", "to_node": "doom-body", "to_port": "input" },
+            { "from_node": "doom-body", "from_port": "output", "to_node": "doom-amp", "to_port": "input" },
+            { "from_node": "doom-amp", "from_port": "output", "to_node": "doom-drive", "to_port": "input" },
+            { "from_node": "doom-drive", "from_port": "output", "to_node": "doom-output", "to_port": "input" },
+            { "from_node": "doom-filter-env", "from_port": "output", "to_node": "doom-filter-map", "to_port": "input" },
+            { "from_node": "doom-filter-map", "from_port": "output", "to_node": "doom-body", "to_port": "input_cutoff" },
+            { "from_node": "doom-shake", "from_port": "output", "to_node": "doom-osc", "to_port": "input_amp" },
+            { "from_node": "doom-vibrato", "from_port": "output", "to_node": "doom-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-slowboy-tuba",
+      "targetNodeId": "instrument-gw-slowboy-tuba",
+      "name": "GW Slowboy Doom Tuba",
+      "color": "#4FB3E8",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 38, "velocity": 0.95, "duration": 6 },
+        { "step": 8, "note": 33, "velocity": 0.9, "duration": 5 },
+        { "step": 14, "note": 36, "velocity": 0.7, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}

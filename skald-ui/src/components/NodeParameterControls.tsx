@@ -96,6 +96,14 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                         onChange('release', newAdsr.release);
                     }}
                 />
+                {/* Keep the envelope graph for quick shaping, then provide
+                    exact-value entry for landing on precise musical timings.
+                    Each field stays inside the normal wrapper so parameter
+                    exposure works exactly like it does for other controls. */}
+                {renderControlWrapper('attack', 'Attack (s)', numberField('attack', 0.1, { min: 0, max: 10, step: 0.001 }))}
+                {renderControlWrapper('decay', 'Decay (s)', numberField('decay', 0.2, { min: 0, max: 10, step: 0.001 }))}
+                {renderControlWrapper('sustain', 'Sustain', numberField('sustain', 0.5, { min: 0, max: 1, step: 0.01 }))}
+                {renderControlWrapper('release', 'Release (s)', numberField('release', 1, { min: 0, max: 10, step: 0.001 }))}
                 {renderControlWrapper('depth', 'Depth', slider('depth', 0, 1, 1))}
                 {renderControlWrapper('velocitySensitivity', 'Velocity Sens.', slider('velocitySensitivity', 0, 1, 0.5))}
             </>);

@@ -1,0 +1,131 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-tuba-oompah",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Tuba Oompah Shop",
+        "label": "GW Tuba Oompah Shop",
+        "volume": 0.66,
+        "voiceCount": 3,
+        "voiceStealing": "oldest",
+        "glide": 0.03,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "oompah-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Sousa",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.55,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "oompah-body",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Body",
+                "type": "Lowpass",
+                "cutoff": 260,
+                "resonance": 0.8,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "oompah-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Bounce",
+                "attack": 0.02,
+                "decay": 0.12,
+                "sustain": 0.45,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release"]
+              }
+            },
+            {
+              "id": "oompah-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 440 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 4.8,
+                "amplitude": 0.012,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "oompah-reverb",
+              "type": "reverb",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Shop Floor",
+                "decay": 1.2,
+                "preDelay": 0.01,
+                "mix": 0.1,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "oompah-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "oompah-osc", "from_port": "output", "to_node": "oompah-body", "to_port": "input" },
+            { "from_node": "oompah-body", "from_port": "output", "to_node": "oompah-amp", "to_port": "input" },
+            { "from_node": "oompah-amp", "from_port": "output", "to_node": "oompah-reverb", "to_port": "input" },
+            { "from_node": "oompah-reverb", "from_port": "output", "to_node": "oompah-output", "to_port": "input" },
+            { "from_node": "oompah-vibrato", "from_port": "output", "to_node": "oompah-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-tuba-oompah",
+      "targetNodeId": "instrument-gw-tuba-oompah",
+      "name": "GW Tuba Oompah Shop",
+      "color": "#8BC34A",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 41, "velocity": 1, "duration": 1 },
+        { "step": 2, "note": 48, "velocity": 0.6, "duration": 1 },
+        { "step": 4, "note": 45, "velocity": 0.9, "duration": 1 },
+        { "step": 6, "note": 48, "velocity": 0.6, "duration": 1 },
+        { "step": 8, "note": 41, "velocity": 1, "duration": 1 },
+        { "step": 10, "note": 48, "velocity": 0.6, "duration": 1 },
+        { "step": 12, "note": 43, "velocity": 0.9, "duration": 1 },
+        { "step": 14, "note": 48, "velocity": 0.65, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 116, "patternSteps": 16, "masterVolume": 0.75 }
+}

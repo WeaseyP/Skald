@@ -1,0 +1,245 @@
+{
+  "nodes": [
+    {
+      "id": "pad-instrument",
+      "type": "instrument",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "name": "Pad",
+        "label": "Pad",
+        "volume": 1,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 3,
+        "detune": 12,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "pad-wavetable",
+              "type": "wavetable",
+              "position": {
+                "x": -560,
+                "y": -80
+              },
+              "data": {
+                "label": "Wavetable",
+                "tableName": "Sine",
+                "frequency": 440,
+                "position": 0.8,
+                "amplitude": 1,
+                "fixedPitch": false,
+                "exposedParameters": [
+                  "frequency",
+                  "position"
+                ]
+              }
+            },
+            {
+              "id": "pad-filter",
+              "type": "filter",
+              "position": {
+                "x": -300,
+                "y": -80
+              },
+              "data": {
+                "label": "Filter",
+                "type": "Lowpass",
+                "cutoff": 900,
+                "resonance": 0.8,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ]
+              }
+            },
+            {
+              "id": "pad-amp-envelope",
+              "type": "adsr",
+              "position": {
+                "x": -40,
+                "y": -80
+              },
+              "data": {
+                "label": "Amp",
+                "attack": 0.9,
+                "decay": 0.5,
+                "sustain": 0.8,
+                "release": 2,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ]
+              }
+            },
+            {
+              "id": "pad-reverb",
+              "type": "reverb",
+              "position": {
+                "x": 220,
+                "y": -80
+              },
+              "data": {
+                "label": "Reverb",
+                "decay": 4,
+                "preDelay": 0.01,
+                "mix": 0.35,
+                "exposedParameters": [
+                  "decay",
+                  "mix"
+                ]
+              }
+            },
+            {
+              "id": "pad-output",
+              "type": "output",
+              "position": {
+                "x": 480,
+                "y": -80
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "pad-morph-lfo",
+              "type": "lfo",
+              "position": {
+                "x": -560,
+                "y": 240
+              },
+              "data": {
+                "label": "Slow Morph",
+                "waveform": "Sine",
+                "frequency": 0.15,
+                "amplitude": 0.6,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ]
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "pad-wavetable",
+              "from_port": "output",
+              "to_node": "pad-filter",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-filter",
+              "from_port": "output",
+              "to_node": "pad-amp-envelope",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-amp-envelope",
+              "from_port": "output",
+              "to_node": "pad-reverb",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-reverb",
+              "from_port": "output",
+              "to_node": "pad-output",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-morph-lfo",
+              "from_port": "output",
+              "to_node": "pad-wavetable",
+              "to_port": "input_pos"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": {
+    "x": 420,
+    "y": 260,
+    "zoom": 0.9
+  },
+  "sequencerTracks": [
+    {
+      "id": "pad-track",
+      "targetNodeId": "pad-instrument",
+      "name": "Pad",
+      "color": "#ED8936",
+      "steps": 16,
+      "notes": [
+        {
+          "step": 0,
+          "note": 48,
+          "velocity": 0.72,
+          "duration": 8,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 0,
+          "note": 55,
+          "velocity": 0.68,
+          "duration": 8,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 0,
+          "note": 60,
+          "velocity": 0.65,
+          "duration": 8,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 8,
+          "note": 53,
+          "velocity": 0.72,
+          "duration": 8,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 8,
+          "note": 60,
+          "velocity": 0.68,
+          "duration": 8,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 8,
+          "note": 64,
+          "velocity": 0.65,
+          "duration": 8,
+          "probability": 1,
+          "patchOverrides": {}
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": {
+    "bpm": 90,
+    "patternSteps": 16,
+    "masterVolume": 0.8
+  }
+}

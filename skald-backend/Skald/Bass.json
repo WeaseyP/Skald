@@ -1,0 +1,132 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Bass",
+        "label": "Bass",
+        "volume": 0.8,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0.03,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "bass-growl",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 40 },
+              "data": {
+                "label": "Growl",
+                "waveform": "Square",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.3,
+                "phase": 0,
+                "exposedParameters": ["amplitude", "pulseWidth"]
+              }
+            },
+            {
+              "id": "bass-sub",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 340 },
+              "data": {
+                "label": "Sub",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "bass-mixer",
+              "type": "mixer",
+              "position": { "x": 280, "y": 180 },
+              "data": {
+                "label": "Growl + Sub",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.7, "pan": 0 },
+                  { "id": 2, "level": 0.9, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "bass-filter",
+              "type": "filter",
+              "position": { "x": 540, "y": 180 },
+              "data": {
+                "label": "Bass Tone",
+                "type": "Lowpass",
+                "cutoff": 500,
+                "resonance": 1.5,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "bass-amp",
+              "type": "adsr",
+              "position": { "x": 800, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.005,
+                "decay": 0.15,
+                "sustain": 0.7,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "bass-output",
+              "type": "output",
+              "position": { "x": 1060, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "bass-growl", "from_port": "output", "to_node": "bass-mixer", "to_port": "input_1" },
+            { "from_node": "bass-sub", "from_port": "output", "to_node": "bass-mixer", "to_port": "input_2" },
+            { "from_node": "bass-mixer", "from_port": "output", "to_node": "bass-filter", "to_port": "input" },
+            { "from_node": "bass-filter", "from_port": "output", "to_node": "bass-amp", "to_port": "input" },
+            { "from_node": "bass-amp", "from_port": "output", "to_node": "bass-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-bass",
+      "targetNodeId": "instrument-bass",
+      "name": "Bass",
+      "color": "#EA580C",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 36, "velocity": 0.95, "duration": 2 },
+        { "step": 3, "note": 36, "velocity": 0.72, "duration": 1 },
+        { "step": 5, "note": 43, "velocity": 0.88, "duration": 2 },
+        { "step": 8, "note": 34, "velocity": 0.92, "duration": 2 },
+        { "step": 11, "note": 34, "velocity": 0.7, "duration": 1 },
+        { "step": 13, "note": 31, "velocity": 0.86, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 110, "patternSteps": 16, "masterVolume": 0.8 }
+}

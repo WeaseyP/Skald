@@ -1,0 +1,245 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-boss-war-tuba",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Boss War Tuba",
+        "label": "GW Boss War Tuba",
+        "volume": 0.72,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "war-reed",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 220 },
+              "data": {
+                "label": "Reed",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "war-body",
+              "type": "filter",
+              "position": { "x": 260, "y": 60 },
+              "data": {
+                "label": "Body",
+                "type": "Lowpass",
+                "cutoff": 320,
+                "resonance": 1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "war-formant",
+              "type": "filter",
+              "position": { "x": 260, "y": 340 },
+              "data": {
+                "label": "Formant",
+                "type": "Bandpass",
+                "cutoff": 600,
+                "resonance": 2.2,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "war-breath",
+              "type": "noise",
+              "position": { "x": 0, "y": 600 },
+              "data": {
+                "label": "Breath",
+                "type": "Pink",
+                "amplitude": 0.06,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "war-air",
+              "type": "filter",
+              "position": { "x": 260, "y": 600 },
+              "data": {
+                "label": "Air",
+                "type": "Bandpass",
+                "cutoff": 2500,
+                "resonance": 1,
+                "exposedParameters": ["cutoff"]
+              }
+            },
+            {
+              "id": "war-puff",
+              "type": "adsr",
+              "position": { "x": 520, "y": 600 },
+              "data": {
+                "label": "Puff",
+                "attack": 0.015,
+                "decay": 0.12,
+                "sustain": 0.3,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["sustain"]
+              }
+            },
+            {
+              "id": "war-mixer",
+              "type": "mixer",
+              "position": { "x": 790, "y": 260 },
+              "data": {
+                "label": "Body + Formant + Air",
+                "inputCount": 3,
+                "levels": [
+                  { "id": 1, "level": 0.85, "pan": 0 },
+                  { "id": 2, "level": 0.45, "pan": 0 },
+                  { "id": 3, "level": 0.3, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "war-drive",
+              "type": "distortion",
+              "position": { "x": 1060, "y": 260 },
+              "data": {
+                "label": "Rage",
+                "shape": "soft",
+                "drive": 6,
+                "tone": 3200,
+                "mix": 0.12,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "war-amp",
+              "type": "adsr",
+              "position": { "x": 1320, "y": 260 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.07,
+                "decay": 0.15,
+                "sustain": 0.85,
+                "release": 0.2,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "decay", "sustain", "release"]
+              }
+            },
+            {
+              "id": "war-reverb",
+              "type": "reverb",
+              "position": { "x": 1580, "y": 260 },
+              "data": {
+                "label": "Arena",
+                "decay": 1.6,
+                "preDelay": 0.01,
+                "mix": 0.12,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "war-output",
+              "type": "output",
+              "position": { "x": 1840, "y": 260 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "war-scoop",
+              "type": "adsr",
+              "position": { "x": 0, "y": 900 },
+              "data": {
+                "label": "Scoop",
+                "attack": 0.09,
+                "decay": 0.2,
+                "sustain": 1,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0,
+                "exposedParameters": ["attack"]
+              }
+            },
+            {
+              "id": "war-scoop-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 900 },
+              "data": {
+                "label": "Scoop -0.1 to 0",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": -0.1,
+                "outMax": 0,
+                "exposedParameters": ["outMin"]
+              }
+            },
+            {
+              "id": "war-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 1160 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 4.5,
+                "amplitude": 0.015,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "war-reed", "from_port": "output", "to_node": "war-body", "to_port": "input" },
+            { "from_node": "war-body", "from_port": "output", "to_node": "war-mixer", "to_port": "input_1" },
+            { "from_node": "war-reed", "from_port": "output", "to_node": "war-formant", "to_port": "input" },
+            { "from_node": "war-formant", "from_port": "output", "to_node": "war-mixer", "to_port": "input_2" },
+            { "from_node": "war-breath", "from_port": "output", "to_node": "war-air", "to_port": "input" },
+            { "from_node": "war-air", "from_port": "output", "to_node": "war-puff", "to_port": "input" },
+            { "from_node": "war-puff", "from_port": "output", "to_node": "war-mixer", "to_port": "input_3" },
+            { "from_node": "war-mixer", "from_port": "output", "to_node": "war-drive", "to_port": "input" },
+            { "from_node": "war-drive", "from_port": "output", "to_node": "war-amp", "to_port": "input" },
+            { "from_node": "war-amp", "from_port": "output", "to_node": "war-reverb", "to_port": "input" },
+            { "from_node": "war-reverb", "from_port": "output", "to_node": "war-output", "to_port": "input" },
+            { "from_node": "war-scoop", "from_port": "output", "to_node": "war-scoop-map", "to_port": "input" },
+            { "from_node": "war-scoop-map", "from_port": "output", "to_node": "war-reed", "to_port": "input_freq" },
+            { "from_node": "war-vibrato", "from_port": "output", "to_node": "war-reed", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-boss-war-tuba",
+      "targetNodeId": "instrument-gw-boss-war-tuba",
+      "name": "GW Boss War Tuba",
+      "color": "#C0C0C8",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 50, "velocity": 0.95, "duration": 3 },
+        { "step": 4, "note": 53, "velocity": 0.85, "duration": 2 },
+        { "step": 6, "note": 55, "velocity": 0.8, "duration": 2 },
+        { "step": 8, "note": 57, "velocity": 1, "duration": 3 },
+        { "step": 12, "note": 55, "velocity": 0.75, "duration": 1 },
+        { "step": 13, "note": 53, "velocity": 0.8, "duration": 1 },
+        { "step": 14, "note": 50, "velocity": 0.9, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 112, "patternSteps": 16, "masterVolume": 0.75 }
+}

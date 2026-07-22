@@ -1,0 +1,119 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-grunt-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Grunt Swarm Bass",
+        "label": "GW Grunt Swarm Bass",
+        "volume": 0.62,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "grunt-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Swarm Saw",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "grunt-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Anger",
+                "type": "Lowpass",
+                "cutoff": 750,
+                "resonance": 1.4,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "grunt-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.005,
+                "decay": 0.12,
+                "sustain": 0.55,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release"]
+              }
+            },
+            {
+              "id": "grunt-dirt",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Dirt",
+                "shape": "classic",
+                "drive": 8,
+                "tone": 4500,
+                "mix": 0.18,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "grunt-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "grunt-osc", "from_port": "output", "to_node": "grunt-filter", "to_port": "input" },
+            { "from_node": "grunt-filter", "from_port": "output", "to_node": "grunt-amp", "to_port": "input" },
+            { "from_node": "grunt-amp", "from_port": "output", "to_node": "grunt-dirt", "to_port": "input" },
+            { "from_node": "grunt-dirt", "from_port": "output", "to_node": "grunt-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-grunt-bass",
+      "targetNodeId": "instrument-gw-grunt-bass",
+      "name": "GW Grunt Swarm Bass",
+      "color": "#E91E8C",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 38, "velocity": 1, "duration": 1 },
+        { "step": 2, "note": 38, "velocity": 0.7, "duration": 1 },
+        { "step": 4, "note": 41, "velocity": 0.85, "duration": 1 },
+        { "step": 6, "note": 38, "velocity": 0.7, "duration": 1 },
+        { "step": 7, "note": 38, "velocity": 0.5, "duration": 1, "probability": 0.5 },
+        { "step": 8, "note": 43, "velocity": 0.9, "duration": 1 },
+        { "step": 10, "note": 41, "velocity": 0.75, "duration": 1 },
+        { "step": 12, "note": 40, "velocity": 0.85, "duration": 1 },
+        { "step": 14, "note": 38, "velocity": 0.8, "duration": 1 },
+        { "step": 15, "note": 40, "velocity": 0.5, "duration": 1, "probability": 0.5 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}
