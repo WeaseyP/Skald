@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: skald-ui/package-lock.json
+
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $version = (Get-Content skald-ui/package.json -Raw | ConvertFrom-Json).version
+          $tag = "${{ github.ref_name }}"
+          if ($tag -ne "v$version") {
+            throw "Tag $tag does not match package version v$version."
+          }
+
+      - name: Install Odin dev-2025-02
+        shell: pwsh
+        run: |
+          $release = 'dev-2025-02'
+          $url = "https://github.com/odin-lang/Odin/releases/download/$release/odin-windows-amd64-$release.zip"
+          Invoke-WebRequest -Uri $url -OutFile odin.zip
+          Expand-Archive odin.zip -DestinationPath C:\odin-dist
+          $exe = Get-ChildItem C:\odin-dist -Recurse -Filter odin.exe -File | Select-Object -First 1
+          if (-not $exe) { throw 'odin.exe not found in release archive' }
+          Add-Content $env:GITHUB_PATH $exe.DirectoryName
+
+      - name: Build and verify release
+        shell: pwsh
+        run: .\scripts\build-release.ps1
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Skald-${{ github.ref_name }}-windows-x64
+          path: release/${{ github.ref_name }}/windows-x64/*
+          if-no-files-found: error
+
+      - name: Create draft prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notes = "docs/releases/$tag.md"
+          $assets = Get-ChildItem "release/$tag/windows-x64" -File | ForEach-Object FullName
+          if (Test-Path $notes) {
+            gh release create $tag $assets --draft --prerelease --title "Skald $tag" --notes-file $notes
+          } else {
+            gh release create $tag $assets --draft --prerelease --title "Skald $tag" --generate-notes
+          }

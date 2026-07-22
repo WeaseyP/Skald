@@ -30,6 +30,10 @@ skald-backend/tests/out/
 /scratch/
 /skald-backend/.scratch/
 
+# Repository-local toolchain and assembled release artifacts
+/.tools/
+/release/
+
 # Scripts/Data
 *.csv
 

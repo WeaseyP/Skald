@@ -32,7 +32,7 @@ jobs:
       - name: Odin version
         run: odin version
 
-      - name: Acceptance suite (codegen + FFT assertions, 22 fixtures)
+      - name: Acceptance suite (codegen + FFT assertions, 26 fixtures)
         working-directory: skald-backend
         run: .\run_acceptance.bat
 

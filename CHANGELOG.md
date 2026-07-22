@@ -1,5 +1,16 @@
 # Skald Changelog
 
+## [0.1.0] - 2026-07-22
+
+First public game-production preview.
+
+- Added a reproducible Windows developer setup with Node 22 and Odin dev-2025-02.
+- Upgraded the packaged runtime to Electron 43 and verified zero production dependency audit findings.
+- Added verified Squirrel installer and portable ZIP release packaging.
+- Added organized import examples for sound effects, instruments, and songs.
+- Documented prerelease limitations: unsigned Windows binaries, default Electron icon, and pre-1.0 compatibility changes.
+- Release gates: backend acceptance and golden snapshots; UI lint, typecheck, and tests.
+
 ## Live-edit hot-swap fix + unified node UI (2026-07-18)
 
 Gates: UI 67/67, typecheck + lint clean. Backend untouched.

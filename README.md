@@ -4,34 +4,47 @@
 
 Skald is a hybrid development tool that combines a modern visual editor with a high-performance code generation engine. Users construct audio processing graphs visually, and Skald compiles them into pure, dependency-free **Odin** source code, ready to be dropped into games or audio applications.
 
+> **v0.1.0 game-production preview** - the core workflow is implemented, but bugs and breaking pre-1.0 changes are expected.
+
+Windows releases include an installer and portable ZIP. See [release notes](docs/releases/v0.1.0.md) and the [release guide](docs/RELEASING.md).
+
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-*   **Node.js**: Required to run the user interface.
-*   **Odin Compiler**: Required to build the backend generator. Ensure `odin` is in your system `PATH`.
+* **Windows 10 or newer**
+* **Node.js 22** and npm
+* **Git**
+* **Windows C++ build tools** required by Electron dependencies
+
+Odin is pinned to `dev-2025-02` and installed inside this repository by the setup script, so no administrator access or system-wide Odin installation is required.
 
 ### Installation
 
-```bash
+```powershell
 git clone https://github.com/WeaseyP/Skald.git
-cd skald/skald-ui
-npm install
+cd Skald
+.\scripts\setup-dev.ps1
 ```
+
+The script installs exact npm dependencies, downloads the pinned Odin compiler into the ignored `.tools/` directory when needed, and builds the code generator.
 
 ### Running the App
 
-All development operations are driven from the `skald-ui` directory.
+Start immediately after setup:
 
-```bash
-# Inside skald-ui/
+```powershell
+.\scripts\setup-dev.ps1 -Start
+```
+
+For later launches:
+
+```powershell
+cd skald-ui
 npm start
 ```
 
-This command automatically:
-1.  Compiles the Odin backend (`skald-backend/`).
-2.  Copies the resulting executable to the UI folder.
-3.  Launches the Electron application.
+`npm start` uses the existing code generator. After changing the Odin backend, use `npm run start:rebuild` to rebuild it before Electron starts.
 
 ## 🎛️ Available Audio Nodes
 

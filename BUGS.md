@@ -4,6 +4,18 @@ Generated during Phase 0 triage. No fixes applied. Items reference current state
 
 Repo paths are relative to the Skald project root (`./skald-backend/...`, `./skald-ui/...`).
 
+## v0.1 follow-up queue (2026-07-22)
+
+These are open observations from using the release candidate. They need reproduction and design work; no fix is claimed yet.
+
+- [ ] **BUG-EXAMPLES-LEGACY-CLEANUP** - Audit the example library for old-schema, duplicate, placeholder, or misleading projects. Validate each example in the current app and generated Odin output before removing or updating it. Keep the import-facing structure grouped as `sound-effects/`, `instruments/`, and `songs/`.
+
+- [ ] **BUG-AUDIO-ODDITIES-INVESTIGATION** - Weird or intermittent audio behavior is still being heard during real use, but the individual failure modes have not been isolated. Capture a minimal saved project, preview/export path, exact edit or playback sequence, expected sound, actual sound, and whether Stop/Play clears it. Check preview versus generated Odin separately before assigning a root cause.
+
+- [ ] **BUG-BPM-SETUP-UX** - The current BPM setup feels unintuitive. Analyse where tempo is owned and edited, how BPM sync is communicated on nodes, and whether preview, sequencer, saved session, and export all show and use the same value. Produce a small UX proposal before changing behavior so existing projects are not silently retimed.
+
+- [ ] **BUG-PARAM-DISPLAY-PRECISION** - Interactive controls such as ADSR expose noisy floating-point readings (for example `0.0000000000` or `30.02413252345235`). Display graph/slider values to at most two decimal places by default (for example `30.02`), while allowing a typed numeric field to accept and preserve more precise input when the user deliberately enters it. Formatting must not unintentionally quantize stored values, automation, or DSP calculations.
+
 Triage attempts performed:
 
 | Step | Command | Result |
