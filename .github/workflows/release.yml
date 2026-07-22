@@ -34,9 +34,10 @@ jobs:
         shell: pwsh
         run: |
           $release = 'dev-2025-02'
+          $archive = Join-Path $env:RUNNER_TEMP "odin-windows-amd64-$release.zip"
           $url = "https://github.com/odin-lang/Odin/releases/download/$release/odin-windows-amd64-$release.zip"
-          Invoke-WebRequest -Uri $url -OutFile odin.zip
-          Expand-Archive odin.zip -DestinationPath C:\odin-dist
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Expand-Archive $archive -DestinationPath C:\odin-dist
           $exe = Get-ChildItem C:\odin-dist -Recurse -Filter odin.exe -File | Select-Object -First 1
           if (-not $exe) { throw 'odin.exe not found in release archive' }
           Add-Content $env:GITHUB_PATH $exe.DirectoryName
