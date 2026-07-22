@@ -1,0 +1,249 @@
+{
+  "nodes": [
+    {
+      "id": "snare-instrument",
+      "type": "instrument",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "name": "Snare",
+        "label": "Snare",
+        "volume": 1,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "snare-noise",
+              "type": "noise",
+              "position": {
+                "x": -600,
+                "y": -180
+              },
+              "data": {
+                "label": "White Noise",
+                "type": "White",
+                "amplitude": 0.8,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "snare-highpass",
+              "type": "filter",
+              "position": {
+                "x": -340,
+                "y": -180
+              },
+              "data": {
+                "label": "Rattle Highpass",
+                "type": "Highpass",
+                "cutoff": 1800,
+                "resonance": 1,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ]
+              }
+            },
+            {
+              "id": "snare-rattle-envelope",
+              "type": "adsr",
+              "position": {
+                "x": -80,
+                "y": -180
+              },
+              "data": {
+                "label": "Rattle",
+                "attack": 0.001,
+                "decay": 0.18,
+                "sustain": 0,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ]
+              }
+            },
+            {
+              "id": "snare-oscillator",
+              "type": "oscillator",
+              "position": {
+                "x": -600,
+                "y": 180
+              },
+              "data": {
+                "label": "Thump Oscillator",
+                "frequency": 185,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ]
+              }
+            },
+            {
+              "id": "snare-thump-envelope",
+              "type": "adsr",
+              "position": {
+                "x": -340,
+                "y": 180
+              },
+              "data": {
+                "label": "Thump",
+                "attack": 0.001,
+                "decay": 0.09,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ]
+              }
+            },
+            {
+              "id": "snare-mixer",
+              "type": "mixer",
+              "position": {
+                "x": 200,
+                "y": 0
+              },
+              "data": {
+                "label": "Rattle + Thump",
+                "inputCount": 2,
+                "levels": [
+                  {
+                    "id": 1,
+                    "level": 0.8,
+                    "pan": 0
+                  },
+                  {
+                    "id": 2,
+                    "level": 0.6,
+                    "pan": 0
+                  }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "snare-output",
+              "type": "output",
+              "position": {
+                "x": 480,
+                "y": 0
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "snare-noise",
+              "from_port": "output",
+              "to_node": "snare-highpass",
+              "to_port": "input"
+            },
+            {
+              "from_node": "snare-highpass",
+              "from_port": "output",
+              "to_node": "snare-rattle-envelope",
+              "to_port": "input"
+            },
+            {
+              "from_node": "snare-rattle-envelope",
+              "from_port": "output",
+              "to_node": "snare-mixer",
+              "to_port": "input_1"
+            },
+            {
+              "from_node": "snare-oscillator",
+              "from_port": "output",
+              "to_node": "snare-thump-envelope",
+              "to_port": "input"
+            },
+            {
+              "from_node": "snare-thump-envelope",
+              "from_port": "output",
+              "to_node": "snare-mixer",
+              "to_port": "input_2"
+            },
+            {
+              "from_node": "snare-mixer",
+              "from_port": "output",
+              "to_node": "snare-output",
+              "to_port": "input"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": {
+    "x": 420,
+    "y": 260,
+    "zoom": 0.9
+  },
+  "sequencerTracks": [
+    {
+      "id": "snare-track",
+      "targetNodeId": "snare-instrument",
+      "name": "Snare",
+      "color": "#E2E8F0",
+      "steps": 16,
+      "notes": [
+        {
+          "step": 4,
+          "note": 38,
+          "velocity": 1,
+          "duration": 2,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 12,
+          "note": 38,
+          "velocity": 0.95,
+          "duration": 2,
+          "probability": 1,
+          "patchOverrides": {}
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": {
+    "bpm": 120,
+    "patternSteps": 16,
+    "masterVolume": 0.8
+  }
+}

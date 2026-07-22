@@ -67,19 +67,25 @@ export const useNodeComposition = ({
         const newInstrumentId = `${generateId()}`;
         const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
 
-        const avgPosition = selectedNodesForGrouping.reduce(
+        // Resolve FRESH node objects from graph state. The selection array
+        // holds snapshots captured when the selection was MADE — any param
+        // tweaked after selecting (but before clicking Create Instrument)
+        // would otherwise be baked into the instrument stale.
+        const selectedNodes = nodes.filter(n => selectedIds.has(n.id));
+
+        const avgPosition = selectedNodes.reduce(
             (acc, node) => ({ x: acc.x + node.position.x, y: acc.y + node.position.y }), { x: 0, y: 0 }
         );
-        if (selectedNodesForGrouping.length > 0) {
-            avgPosition.x /= selectedNodesForGrouping.length;
-            avgPosition.y /= selectedNodesForGrouping.length;
+        if (selectedNodes.length > 0) {
+            avgPosition.x /= selectedNodes.length;
+            avgPosition.y /= selectedNodes.length;
         }
 
         const oldIdToNewIdMap = new Map<string, string>();
         let subGraphNodeIdCounter = 1;
 
         // Store nodes relative to the center of the instrument
-        const subgraphNodes: Node[] = selectedNodesForGrouping.map(node => {
+        const subgraphNodes: Node[] = selectedNodes.map(node => {
             const newId = `${subGraphNodeIdCounter++}`;
             oldIdToNewIdMap.set(node.id, newId);
             return {
@@ -104,49 +110,69 @@ export const useNodeComposition = ({
         const externalEdges = edges.filter(edge => selectedIds.has(edge.source) !== selectedIds.has(edge.target));
         const newMainGraphEdges: Edge[] = edges.filter(e => !selectedIds.has(e.source) && !selectedIds.has(e.target));
 
-        const inputPorts = new Map<string, { id: string }>();
-        const outputPorts = new Map<string, { id: string }>();
+        // Ports are keyed by (internal node, handle) — NOT by handle name
+        // alone. Keying by name alone merged unrelated edges that happened to
+        // share a port name (e.g. two different sources into two different
+        // 'input' handles) onto ONE InstrumentInput, silently cross-wiring
+        // every source into every target.
+        const inputPorts = new Map<string, { id: string; portName: string }>();
+        const outputPorts = new Map<string, { id: string; portName: string }>();
+        const usedInputNames = new Set<string>();
+        const usedOutputNames = new Set<string>();
+        const uniqueName = (base: string, used: Set<string>) => {
+            let name = base;
+            let n = 2;
+            while (used.has(name)) name = `${base}_${n++}`;
+            used.add(name);
+            return name;
+        };
 
         externalEdges.forEach(edge => {
             if (selectedIds.has(edge.target)) {
-                const portName = edge.targetHandle || 'input';
-                if (!inputPorts.has(portName)) {
+                const handle = edge.targetHandle || 'input';
+                const key = `${edge.target}:${handle}`;
+                if (!inputPorts.has(key)) {
                     const newInputNodeId = `${subGraphNodeIdCounter++}`;
-                    inputPorts.set(portName, { id: newInputNodeId });
+                    const portName = uniqueName(handle, usedInputNames);
+                    inputPorts.set(key, { id: newInputNodeId, portName });
                     subgraphNodes.push({
                         id: newInputNodeId,
                         type: 'InstrumentInput',
                         position: { x: -200, y: (inputPorts.size + 1) * 70 - 100 }, // Relative pos
                         data: { label: `In: ${portName}`, name: portName },
                     });
+                    subgraphConnections.push({
+                        from_node: newInputNodeId,
+                        from_port: 'output',
+                        to_node: oldIdToNewIdMap.get(edge.target)!,
+                        to_port: handle,
+                    });
                 }
-                subgraphConnections.push({
-                    from_node: inputPorts.get(portName)!.id,
-                    from_port: 'output',
-                    to_node: oldIdToNewIdMap.get(edge.target)!,
-                    to_port: portName,
-                });
-                newMainGraphEdges.push({ ...edge, id: `e${edge.source}-${newInstrumentId}`, target: newInstrumentId, targetHandle: portName });
+                const port = inputPorts.get(key)!;
+                newMainGraphEdges.push({ ...edge, id: `e${edge.source}-${newInstrumentId}-${port.portName}-${generateId()}`, target: newInstrumentId, targetHandle: port.portName });
 
             } else {
-                const portName = edge.sourceHandle || 'output';
-                if (!outputPorts.has(portName)) {
+                const handle = edge.sourceHandle || 'output';
+                const key = `${edge.source}:${handle}`;
+                if (!outputPorts.has(key)) {
                     const newOutputNodeId = `${subGraphNodeIdCounter++}`;
-                    outputPorts.set(portName, { id: newOutputNodeId });
+                    const portName = uniqueName(handle, usedOutputNames);
+                    outputPorts.set(key, { id: newOutputNodeId, portName });
                     subgraphNodes.push({
                         id: newOutputNodeId,
                         type: 'InstrumentOutput',
                         position: { x: 200, y: (outputPorts.size + 1) * 70 - 100 }, // Relative pos
                         data: { label: `Out: ${portName}`, name: portName },
                     });
+                    subgraphConnections.push({
+                        from_node: oldIdToNewIdMap.get(edge.source)!,
+                        from_port: handle,
+                        to_node: newOutputNodeId,
+                        to_port: 'input',
+                    });
                 }
-                subgraphConnections.push({
-                    from_node: oldIdToNewIdMap.get(edge.source)!,
-                    from_port: portName,
-                    to_node: outputPorts.get(portName)!.id,
-                    to_port: 'input',
-                });
-                newMainGraphEdges.push({ ...edge, id: `e${newInstrumentId}-${edge.target}`, source: newInstrumentId, sourceHandle: portName });
+                const port = outputPorts.get(key)!;
+                newMainGraphEdges.push({ ...edge, id: `e${newInstrumentId}-${edge.target}-${port.portName}-${generateId()}`, source: newInstrumentId, sourceHandle: port.portName });
             }
         });
 
@@ -162,8 +188,8 @@ export const useNodeComposition = ({
                 glide: 0.05,
                 unison: 1,
                 detune: 5,
-                inputs: Array.from(inputPorts.keys()),
-                outputs: Array.from(outputPorts.keys()),
+                inputs: Array.from(inputPorts.values()).map(p => p.portName),
+                outputs: Array.from(outputPorts.values()).map(p => p.portName),
                 subgraph: {
                     nodes: subgraphNodes,
                     connections: subgraphConnections,
@@ -179,7 +205,9 @@ export const useNodeComposition = ({
     };
 
     const handleCreateInstrument = useCallback(() => {
-        if (selectedNodesForGrouping.length < 0) return;
+        // (was `< 0` — a dead guard that let an empty selection create an
+        // empty instrument)
+        if (selectedNodesForGrouping.length === 0) return;
         setIsNamePromptVisible(true);
     }, [selectedNodesForGrouping, setIsNamePromptVisible]);
 
@@ -229,7 +257,10 @@ export const useNodeComposition = ({
     }, [nodes, selectedNodesForGrouping, saveStateForUndo, setNodes]);
 
     const handleExplodeInstrument = useCallback(() => {
-        const instrumentNode = selectedNodesForGrouping.length === 1 ? selectedNodesForGrouping[0] : null;
+        const selectedSnapshot = selectedNodesForGrouping.length === 1 ? selectedNodesForGrouping[0] : null;
+        // Same staleness trap as Create Instrument: resolve the live node
+        // from graph state, not the selection-time snapshot.
+        const instrumentNode = selectedSnapshot ? nodes.find(n => n.id === selectedSnapshot.id) ?? selectedSnapshot : null;
         if (!instrumentNode || instrumentNode.type !== 'instrument') return;
 
         const instrumentData = instrumentNode.data as InstrumentParams;
@@ -374,19 +405,21 @@ export const useNodeComposition = ({
                 // Find inside: InstrumentInput node with name == portName
                 const inputNode = subgraph.nodes.find((n: any) => n.type === 'InstrumentInput' && n.data.name === portName);
                 if (inputNode) {
-                    // Find what that input node connects TO inside
-                    const internalConn = subgraph.connections.find((c: any) => c.from_node === inputNode.id);
-                    if (internalConn) {
+                    // Restore EVERY internal connection off this port —
+                    // .find() used to keep only the first and silently drop
+                    // fan-out edges.
+                    const internalConns = subgraph.connections.filter((c: any) => c.from_node === inputNode.id);
+                    internalConns.forEach((internalConn: any) => {
                         const targetNodeGlobalId = internalToGlobalIdMap.get(internalConn.to_node);
                         if (targetNodeGlobalId) {
                             newEdges.push({
                                 ...extEdge,
-                                id: `e${extEdge.source}-${targetNodeGlobalId}`,
+                                id: `e${extEdge.source}-${targetNodeGlobalId}-${generateId()}`,
                                 target: targetNodeGlobalId,
                                 targetHandle: internalConn.to_port
                             });
                         }
-                    }
+                    });
                 }
             } else if (extEdge.source === instrumentNode.id) {
                 // Output from Instrument
@@ -395,19 +428,18 @@ export const useNodeComposition = ({
                 // Find inside: InstrumentOutput node with name == portName
                 const outputNode = subgraph.nodes.find((n: any) => n.type === 'InstrumentOutput' && n.data.name === portName);
                 if (outputNode) {
-                    // Find what connects TO that output node inside
-                    const internalConn = subgraph.connections.find((c: any) => c.to_node === outputNode.id);
-                    if (internalConn) {
+                    const internalConns = subgraph.connections.filter((c: any) => c.to_node === outputNode.id);
+                    internalConns.forEach((internalConn: any) => {
                         const sourceNodeGlobalId = internalToGlobalIdMap.get(internalConn.from_node);
                         if (sourceNodeGlobalId) {
                             newEdges.push({
                                 ...extEdge,
-                                id: `e${sourceNodeGlobalId}-${extEdge.target}`,
+                                id: `e${sourceNodeGlobalId}-${extEdge.target}-${generateId()}`,
                                 source: sourceNodeGlobalId,
                                 sourceHandle: internalConn.from_port
                             });
                         }
-                    }
+                    });
                 }
             }
         });

@@ -1,0 +1,125 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-gold-midas-bells",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Gold Midas Bells",
+        "label": "GW Gold Midas Bells",
+        "volume": 0.6,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "midas-mod",
+              "type": "fmOperator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Mod",
+                "frequency": 3.5,
+                "modIndex": 0,
+                "exposedParameters": ["frequency"]
+              }
+            },
+            {
+              "id": "midas-carrier",
+              "type": "fmOperator",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Carrier",
+                "frequency": 1,
+                "modIndex": 5,
+                "exposedParameters": ["frequency", "modIndex"]
+              }
+            },
+            {
+              "id": "midas-strike",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Strike",
+                "attack": 0.002,
+                "decay": 0.7,
+                "sustain": 0,
+                "release": 1.1,
+                "depth": 1,
+                "velocitySensitivity": 0.9,
+                "exposedParameters": ["decay", "release"]
+              }
+            },
+            {
+              "id": "midas-sparkle",
+              "type": "delay",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Sparkle",
+                "delayTime": 0.234,
+                "feedback": 0.35,
+                "mix": 0.3,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "midas-reverb",
+              "type": "reverb",
+              "position": { "x": 1040, "y": 120 },
+              "data": {
+                "label": "Gilded Hall",
+                "decay": 2.5,
+                "preDelay": 0.01,
+                "mix": 0.3,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "midas-output",
+              "type": "output",
+              "position": { "x": 1300, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "midas-mod", "from_port": "output", "to_node": "midas-carrier", "to_port": "input_mod" },
+            { "from_node": "midas-carrier", "from_port": "output", "to_node": "midas-strike", "to_port": "input" },
+            { "from_node": "midas-strike", "from_port": "output", "to_node": "midas-sparkle", "to_port": "input" },
+            { "from_node": "midas-sparkle", "from_port": "output", "to_node": "midas-reverb", "to_port": "input" },
+            { "from_node": "midas-reverb", "from_port": "output", "to_node": "midas-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-gold-midas-bells",
+      "targetNodeId": "instrument-gw-gold-midas-bells",
+      "name": "GW Gold Midas Bells",
+      "color": "#F5C842",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 74, "velocity": 0.9, "duration": 2 },
+        { "step": 3, "note": 69, "velocity": 0.6, "duration": 1 },
+        { "step": 4, "note": 78, "velocity": 0.8, "duration": 2 },
+        { "step": 7, "note": 76, "velocity": 0.55, "duration": 1, "probability": 0.8 },
+        { "step": 8, "note": 71, "velocity": 0.75, "duration": 2 },
+        { "step": 11, "note": 74, "velocity": 0.6, "duration": 1 },
+        { "step": 12, "note": 81, "velocity": 0.85, "duration": 3 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}

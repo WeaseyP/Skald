@@ -227,29 +227,47 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <div>
                 <h2 style={sectionTitleStyles}>Nodes</h2>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'oscillator')} draggable>Oscillator</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'noise')} draggable>Noise</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'lfo')} draggable>LFO</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'sampleHold')} draggable>S & H</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'fmOperator')} draggable>FM Operator</div>
-                {/* BUG-WAVETABLE-PLACEHOLDER: hidden until codegen emits a real
-                    wavetable lookup instead of a sine. The Wavetable node code
-                    + node-definitions entry stay so saved patches still load.
-                    Re-add this entry when generate_wavetable_code is fleshed out. */}
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'adsr')} draggable>ADSR</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'filter')} draggable>Filter</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'delay')} draggable>Delay</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'reverb')} draggable>Reverb</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'distortion')} draggable>Distortion</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'mixer')} draggable>Mixer</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'mapper')} draggable>Mapper</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'panner')} draggable>Panner</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'gain')} draggable>VCA</div>
-                <div style={nodeStyles} onDragStart={(event) => onDragStart(event, 'output')} draggable>Output</div>
-                <div style={{ ...nodeStyles, borderColor: '#F6E05E', color: '#F6E05E' }} onDragStart={(event) => onDragStart(event, 'midiInput')} draggable>MIDI Input</div>
+                {paletteNodes.map(({ type, label, tip, style }) => (
+                    <div
+                        key={type}
+                        style={{ ...nodeStyles, ...style }}
+                        onDragStart={(event) => onDragStart(event, type)}
+                        draggable
+                        title={tip}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`${label}: ${tip}`}
+                    >
+                        {label}
+                    </div>
+                ))}
             </div>
         </div>
     );
 };
+
+// Palette entries with one-line tooltips — items used to carry no
+// description at all. Wavetable is back: codegen now generates a real
+// position-morphing wavetable (P4), so the old placeholder-hiding
+// workaround no longer applies.
+const paletteNodes: Array<{ type: string; label: string; tip: string; style?: React.CSSProperties }> = [
+    { type: 'oscillator', label: 'Oscillator', tip: 'Tone generator (sine/saw/triangle/PWM square). Pitch tracks the played note.' },
+    { type: 'noise', label: 'Noise', tip: 'White noise source.' },
+    { type: 'lfo', label: 'LFO', tip: 'Low-frequency oscillator for modulating parameters. Can sync to BPM.' },
+    { type: 'sampleHold', label: 'S & H', tip: 'Sample & hold — stepped random modulation. Can sync to BPM.' },
+    { type: 'fmOperator', label: 'FM Operator', tip: 'FM sine at a ratio of the played note. Feed input_mod for sidebands.' },
+    { type: 'wavetable', label: 'Wavetable', tip: 'Morphing wavetable: position sweeps sine → triangle → saw → square.' },
+    { type: 'adsr', label: 'ADSR', tip: 'Envelope: shapes a note over attack/decay/sustain/release. Scales with velocity.' },
+    { type: 'filter', label: 'Filter', tip: 'Lowpass/Highpass/Bandpass/Notch filter with cutoff + resonance (XY pad).' },
+    { type: 'delay', label: 'Delay', tip: 'Echo with feedback and wet/dry mix. Can sync to BPM.' },
+    { type: 'reverb', label: 'Reverb', tip: 'Room tail with decay time, pre-delay and wet/dry mix.' },
+    { type: 'distortion', label: 'Distortion', tip: 'Waveshaper (classic/soft/hard/asymmetric) with tone filter and mix.' },
+    { type: 'mixer', label: 'Mixer', tip: 'Sums several inputs with per-channel level sliders.' },
+    { type: 'mapper', label: 'Mapper', tip: 'Rescales a modulation signal from one range to another (clamped).' },
+    { type: 'panner', label: 'Panner', tip: 'Equal-power stereo panner.' },
+    { type: 'gain', label: 'VCA', tip: 'Gain stage — modulate the gain input for tremolo or volume control.' },
+    { type: 'output', label: 'Output', tip: 'Connects the patch to the master output.' },
+    { type: 'midiInput', label: 'MIDI Input', tip: 'Pitch (V/Oct), gate and velocity signals from your MIDI device.', style: { borderColor: '#F6E05E', color: '#F6E05E' } },
+];
 
 export default Sidebar;

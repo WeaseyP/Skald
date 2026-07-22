@@ -15,6 +15,12 @@ import ga "generated_audio"
 // fixture name.
 //
 //   acceptance.exe <fixture_name> [-rate:48000] [-dur:2.0] [-mode:smoke]
+//                  [-dump:<features_path>] [-wav:<wav_path>]
+//
+// Cross-fixture feature comparison (uses files written by -dump:):
+//   acceptance.exe __compare_features__ -a:<path> -b:<path>
+//                  [-expect-rms:raise|lower] [-expect-peak:raise|lower]
+//                  [-expect-centroid:raise|lower] [-min-delta:0.10]
 //
 // Fixture names map to assertions in the switch below. New fixtures
 // require a new case here AND a corresponding seed JSON in
@@ -33,6 +39,12 @@ main :: proc() {
 	sample_rate: f32 = 48000.0
 	duration_s: f32 = 2.0
 	smoke_mode := false
+	dump_path := ""
+	wav_path := ""
+	cmp_a_path := ""
+	cmp_b_path := ""
+	cmp_expect := Change_Expect{}
+	cmp_min_delta: f32 = 0.10
 
 	for arg in os.args[1:] {
 		switch {
@@ -47,6 +59,36 @@ main :: proc() {
 		case strings.has_prefix(arg, "-mode:"):
 			if arg[6:] == "smoke" {
 				smoke_mode = true
+			}
+		case strings.has_prefix(arg, "-dump:"):
+			dump_path = arg[6:]
+		case strings.has_prefix(arg, "-wav:"):
+			wav_path = arg[5:]
+		case strings.has_prefix(arg, "-a:"):
+			cmp_a_path = arg[3:]
+		case strings.has_prefix(arg, "-b:"):
+			cmp_b_path = arg[3:]
+		case strings.has_prefix(arg, "-expect-rms:"):
+			if d, ok := parse_direction(arg[12:]); ok {
+				cmp_expect.rms = d
+			} else {
+				fmt.eprintfln("warning: bad direction in %q", arg)
+			}
+		case strings.has_prefix(arg, "-expect-peak:"):
+			if d, ok := parse_direction(arg[13:]); ok {
+				cmp_expect.peak = d
+			} else {
+				fmt.eprintfln("warning: bad direction in %q", arg)
+			}
+		case strings.has_prefix(arg, "-expect-centroid:"):
+			if d, ok := parse_direction(arg[17:]); ok {
+				cmp_expect.centroid = d
+			} else {
+				fmt.eprintfln("warning: bad direction in %q", arg)
+			}
+		case strings.has_prefix(arg, "-min-delta:"):
+			if v, ok := strconv.parse_f32(arg[11:]); ok {
+				cmp_min_delta = v
 			}
 		case strings.has_prefix(arg, "-"):
 			fmt.eprintfln("warning: unknown flag %q", arg)
@@ -70,10 +112,31 @@ main :: proc() {
 	// No `defer delete(buf)` — main exits via os.exit() which doesn't run defers.
 
 	all_pass := true
+	did_render := true // false for modes that never fill `buf`
 
 	switch fixture {
 	case "__fft_self_test__":
 		run_fft_self_test(buf, sample_rate, &all_pass)
+
+	case "__compare_features__":
+		// Compare two feature vectors previously written with -dump:.
+		// This is how a direction is asserted ACROSS fixtures — the seed
+		// fixtures bake oscillator pitch in as a constant, so e.g.
+		// "sine_220 → sine_440 raises peak_freq" can only be proven by
+		// comparing two separate fixture renders.
+		did_render = false
+		if cmp_a_path == "" || cmp_b_path == "" {
+			fmt.eprintln("usage: acceptance.exe __compare_features__ -a:<path> -b:<path> [-expect-*:raise|lower]")
+			os.exit(2)
+		}
+		fa, ok_a := load_features(cmp_a_path)
+		fb, ok_b := load_features(cmp_b_path)
+		if !ok_a || !ok_b {
+			all_pass = false
+		} else {
+			label := fmt.tprintf("%s -> %s", cmp_a_path, cmp_b_path)
+			all_pass &= assert_features_change(fa, fb, label, cmp_min_delta, cmp_expect)
+		}
 
 	case "sine_440":
 		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
@@ -133,27 +196,22 @@ main :: proc() {
 				release_start_s = 0.60,
 			)
 			all_pass &= assert_silence_after(buf, sample_rate, 1.5)
-		}
-
-	case "fm_bell":
-		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
-		if smoke_mode {
-			all_pass &= run_smoke(buf, fixture)
-		} else {
-			all_pass &= assert_audible(buf, .Left)
-			// Carrier is A4 (440Hz) with FM ratio 3.5 / modIndex 200.
-			// Carrier-period bin should still be the strongest band but
-			// sidebands at 440 ± k*440 (modulator = ratio*carrier? Actually
-			// in this codegen, modulator runs at carrier_freq*ratio so
-			// sidebands appear at carrier ± n*(carrier*ratio). With ratio
-			// 3.5 and carrier 440, expect significant energy at ~1100Hz
-			// (first lower sideband from carrier_x_modulator interaction).
-			all_pass &= assert_fm_has_sidebands(
-				buf,
-				sample_rate,
-				carrier_hz = 440.0,
-				modulator_hz = 440.0 * 3.5,
-			)
+			// The release TAIL must actually ring: release=0.3s from t=0.6,
+			// so mid-release (t≈0.7) still has audible energy. Guards the
+			// instant-cut regression (release_level clobbered to 0 at
+			// note_off/auto-release).
+			{
+				s := int(0.65 * sample_rate)
+				e := int(0.80 * sample_rate)
+				tail_rms := compute_rms(buf[s:e], .Left)
+				if tail_rms < 0.01 {
+					fmt.eprintfln(
+						"FAIL adsr_sine release tail: RMS %.6f in [0.65,0.80]s — release is cutting to silence",
+						tail_rms,
+					)
+					all_pass = false
+				}
+			}
 		}
 
 	case "kick_loop_120bpm":
@@ -173,6 +231,18 @@ main :: proc() {
 			all_pass &= assert_onset_at(buf, sample_rate, 0.500, 0.060)
 			all_pass &= assert_onset_at(buf, sample_rate, 1.000, 0.060)
 			all_pass &= assert_onset_at(buf, sample_rate, 1.500, 0.060)
+			// Sound-changes primitive, start-vs-trigger path: one manual
+			// kick (trigger) vs the sequenced 4-kick loop (start) must
+			// raise total RMS.
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{kind = .Trigger, note = 36, velocity = 1.0, duration = 0.0},
+				Render_Spec{kind = .Start},
+				"kick_loop trigger-vs-start",
+				0.10,
+				Change_Expect{rms = .Raise},
+			)
 		}
 
 	case "filter_sweep":
@@ -199,6 +269,340 @@ main :: proc() {
 		} else {
 			all_pass &= assert_audible(buf, .Left)
 			all_pass &= assert_centroid_shifts(buf, sample_rate, 2.0)
+			// Sound-changes primitive, set_param path: rendering the same
+			// asset with cutoff held at 200Hz vs 4000Hz must raise the
+			// spectral centroid (filter opening = more high-end energy).
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{
+					kind = .Trigger,
+					note = 69,
+					velocity = 1.0,
+					duration = 0.0,
+					params = {{name = "cutoff", value = 200.0}},
+				},
+				Render_Spec{
+					kind = .Trigger,
+					note = 69,
+					velocity = 1.0,
+					duration = 0.0,
+					params = {{name = "cutoff", value = 4000.0}},
+				},
+				"param_modulation cutoff 200->4000",
+				0.10,
+				Change_Expect{centroid = .Raise},
+			)
+		}
+
+	// --- P0 compile-regression fixtures ---
+	// Each of these graph shapes used to generate Odin that failed to build
+	// (exposed-param collisions, digit-leading identifiers, duplicate chord
+	// switch cases). The load-bearing assertion is that codegen + build
+	// succeeded at all; the audibility check proves the signal path works.
+
+	case "dual_osc":
+		// Two oscillators, both exposing the UI-default param set (phase
+		// collision → renamed struct fields) into a 2-channel mixer.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "fm_patch":
+		// FM operator (exposed frequency=ratio colliding with the carrier's
+		// exposed frequency) modulating an oscillator's input_freq.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "reverb_adsr_exposure":
+		// ADSR and Reverb both exposing "decay" — the UI's default exposure
+		// set for that node pair.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.5)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "chord_step":
+		// Music Layer with a three-note chord on step 0 (used to emit
+		// duplicate switch cases) plus a single note on step 4.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_onset_at(buf, sample_rate, 0.000, 0.060)
+			all_pass &= assert_onset_at(buf, sample_rate, 0.500, 0.060)
+		}
+
+	case "numeric_ids":
+		// Unlabeled numeric-id nodes exposing the same params — the
+		// collision field names used to come out digit-leading (`2_pulseWidth`).
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "melody_8step":
+		// THE melody gate: C4-E4-G4-C5 on steps 0/2/4/6 at 120 BPM. Every
+		// note must come out at its OWN pitch — this is the fixture that
+		// fails if the oscillator ever again bakes `frequency` in as a
+		// constant and the piano roll collapses to one tone.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			// Steps 0/2/4/6 at 120 BPM = onsets at 0.0/0.25/0.5/0.75s; each
+			// note rings for ~0.175s (1 step + release), so the windows sit
+			// inside each note's sustain.
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.010, 0.120, 261.63, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.260, 0.370, 329.63, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.510, 0.620, 392.00, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.760, 0.870, 523.25, 15.0)
+		}
+
+	case "hostile_modulation":
+		// Stability gate: ±8 octave LFO into the oscillator's exponential
+		// FM input, ±30kHz into cutoff, ±40 into resonance, reverb at the
+		// UI-default decay=3.0, unison 3 — every historical NaN/blowup
+		// trigger at once. The bar: every sample finite, and it's audible
+		// (NaN latching silences the whole asset — silence here IS failure).
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		{
+			finite := true
+			for s, i in buf {
+				if !is_finite(s.l) || !is_finite(s.r) {
+					fmt.eprintfln(
+						"FAIL hostile_modulation: non-finite sample at %d (l=%v r=%v)",
+						i, s.l, s.r,
+					)
+					finite = false
+					break
+				}
+			}
+			all_pass &= finite
+		}
+		all_pass &= assert_audible(buf, .Left)
+		// Second half must still be audible: a mid-render NaN latch leaves
+		// permanent silence even if early samples were fine.
+		{
+			tail_rms := compute_rms(buf[len(buf)/2:], .Both)
+			if tail_rms < 0.005 {
+				fmt.eprintfln(
+					"FAIL hostile_modulation: second-half RMS %.6f — voice latched silent mid-render",
+					tail_rms,
+				)
+				all_pass = false
+			}
+		}
+
+	// --- P3 routing fixtures ---
+
+	case "panner_mono":
+		// Panner feeding a mono-input node (Gain). Used to be TOTAL silence:
+		// downstream read node_<id>_out, which the Panner never wrote.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.5)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 5.0, .Left)
+		}
+
+	case "dual_panner":
+		// Two hard-panned sources, BOTH wired into the GraphOutput. Only the
+		// first connection used to survive — the right channel was silently
+		// dropped from the mix.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.5)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_audible(buf, .Right)
+			all_pass &= assert_stereo_differs(buf, 0.01)
+		}
+
+	case "delay_tail":
+		// 0.5s delay, feedback 0.5, note dies by ~0.35s. The second echo at
+		// t≈1.0-1.3s must ring even though every voice is dead — the effect
+		// used to be gated behind voice.active and hard-cut the tail.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.25)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			{
+				s := int(1.05 * sample_rate)
+				e := int(1.30 * sample_rate)
+				tail_rms := compute_rms(buf[s:e], .Both)
+				if tail_rms < 0.003 {
+					fmt.eprintfln(
+						"FAIL delay_tail: echo RMS %.6f in [1.05,1.30]s — tail cut when voices died",
+						tail_rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "wavetable_morph":
+		// Wavetable at position 0 (sine) must track the note pitch, and
+		// sweeping position toward sawtooth must brighten the spectrum —
+		// this node used to discard position entirely and play a fixed
+		// 440Hz sine.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{
+					kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0,
+					params = {{name = "position", value = 0.0}},
+				},
+				Render_Spec{
+					kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0,
+					params = {{name = "position", value = 2.0}},
+				},
+				"wavetable position sine->saw",
+				0.10,
+				Change_Expect{centroid = .Raise},
+			)
+		}
+
+	case "graph_save_roundtrip":
+		// Raw React Flow save: instrument metadata and subgraph live under
+		// node.data, and internal nodes use UI type names. This used to fall
+		// back to Untitled with an empty graph, so the Asset_* harness symbols
+		// did not even compile.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.4)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+		}
+
+	case "legacy_loose_graph":
+		// Legacy loose graph: top-level nodes/edges with no Instrument wrapper.
+		// The importer wraps these as an Asset SFX so the old example library
+		// round-trips instead of generating an empty/no-instrument project.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.4)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+		}
+	case "dual_track":
+		// TWO sequencer tracks on one instrument (plus a muted third).
+		// Only tracks[0] used to be read — every extra track silently
+		// vanished from the export (the four_bar_song "Pad Third" data
+		// loss). Track "Lead": C4@0, E4@8. Track "Counter": C5@4, E5@12.
+		// Muted "MutedGhost": note@2 that must NOT sound.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			// First track's notes (steps 0/8 at 120 BPM = 0.0s/1.0s).
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.010, 0.120, 261.63, 15.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 1.010, 1.120, 329.63, 15.0)
+			// SECOND track's notes (steps 4/12 = 0.5s/1.5s) — the ones that
+			// used to be dropped.
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.510, 0.620, 523.25, 20.0)
+			all_pass &= assert_peak_freq_in_window(buf, sample_rate, 1.510, 1.620, 659.26, 25.0)
+			// Muted track's step-2 note (0.25s) must not sound: by 0.26s the
+			// step-0 note is fully released (0.125s gate + 0.05s release).
+			{
+				s := int(0.28 * sample_rate)
+				e := int(0.45 * sample_rate)
+				gap_rms := compute_rms(buf[s:e], .Both)
+				if gap_rms > 0.005 {
+					fmt.eprintfln(
+						"FAIL dual_track: muted track leaked audio (RMS %.6f in [0.28,0.45]s)",
+						gap_rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "effect_input":
+		// Effect instrument: GraphInput -> Lowpass(2000) -> GraphOutput, no
+		// oscillators, no notes. This shape used to hard-fail codegen
+		// ("unknown node type GraphInput") — the collapse-with-inputs UI flow
+		// was unexportable. Feed a 440Hz sine via the _feed_input API: it
+		// must pass through the filter audibly WITHOUT any voice triggered.
+		render_effect_feed(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_peak_freq(buf, sample_rate, 440.0, 8.0, .Left)
+			// And with nothing fed, an effect asset is silent (no leak from
+			// stale input state or phantom voices).
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				sum_sq: f32 = 0
+				for _ in 0 ..< len(buf) {
+					l, r := ga.Asset_process(p)
+					sum_sq += l * l + r * r
+				}
+				idle_rms := math.sqrt(sum_sq / f32(len(buf) * 2))
+				if idle_rms > 0.001 {
+					fmt.eprintfln(
+						"FAIL effect_input: unfed effect asset produced RMS %.6f (expected silence)",
+						idle_rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "fm_carrier_wire":
+		// The UI's FM "Carrier" handle (input_carrier): an LFO wired into it
+		// V/Oct-modulates the carrier frequency. This wire used to be
+		// REJECTED by the connection validator with a hint to use a port the
+		// FM node doesn't even show — the canonical UI patch was unexportable.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "plock_step":
+		// P-lock gate: a 16-step sawtooth loop through a Lowpass at 300Hz.
+		// Step 8 carries a "Filter:cutoff" P-lock to 8000Hz — cutoff is NOT
+		// in the node's exposedParameters, so this proves the codegen (a)
+		// auto-exposes P-locked params and (b) resolves the UI's
+		// "Label:param" key to the real set_param field name. Both used to
+		// fail silently: the whole render stayed dark at 300Hz.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			// Steps 0-7 (0.0-1.0s) at cutoff 300 vs steps 8-15 (1.0-2.0s)
+			// at cutoff 8000: the second half must be dramatically brighter.
+			all_pass &= assert_centroid_shifts(buf, sample_rate, 2.0)
 		}
 
 	case "sfx_oneshot":
@@ -210,11 +614,50 @@ main :: proc() {
 		} else {
 			all_pass &= assert_audible(buf, .Left)
 			all_pass &= assert_silence_after(buf, sample_rate, 1.5)
+			// Default-args trigger (duration=0) must be a one-shot, not a
+			// drone. This patch SUSTAINS at 0.9 — the old passthrough kept
+			// the voice (and is_playing) alive forever. Now: auto-release
+			// after attack+decay (0.1s), idle by ~0.6s, silent by 1.0s.
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				ga.Asset_trigger(p)
+				buf2 := make([]Stereo_Sample, len(buf))
+				defer delete(buf2)
+				for i in 0 ..< len(buf2) {
+					l, r := ga.Asset_process(p)
+					buf2[i] = {l, r}
+				}
+				all_pass &= assert_audible(buf2, .Left)
+				all_pass &= assert_silence_after(buf2, sample_rate, 1.0)
+				if ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL sfx_oneshot: is_playing still true after a default-duration trigger — stuck voice",
+					)
+					all_pass = false
+				}
+			}
 		}
 
 	case:
 		fmt.eprintfln("unknown fixture: %q", fixture)
 		os.exit(3)
+	}
+
+	if did_render && dump_path != "" {
+		if !save_features(dump_path, extract_features(buf, sample_rate, .Both)) {
+			fmt.eprintfln("FAIL: could not write feature vector to %q", dump_path)
+			all_pass = false
+		}
+	}
+	if did_render && wav_path != "" {
+		if write_wav16(wav_path, buf, u32(sample_rate)) {
+			fmt.printfln("WROTE %s", wav_path)
+		} else {
+			fmt.eprintfln("FAIL: could not write WAV to %q", wav_path)
+			all_pass = false
+		}
 	}
 
 	if all_pass {
@@ -234,21 +677,38 @@ render_sfx_one_shot :: proc(
 	velocity: f32,
 	duration: f32,
 ) {
-	p: ga.Asset_Processor
-	ga.Asset_init(&p, sample_rate)
-	ga.Asset_trigger(&p, note, velocity, duration)
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	ga.Asset_trigger(p, note, velocity, duration)
 	for i in 0 ..< len(buf) {
-		l, r := ga.Asset_process(&p)
+		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+}
+
+// Effect-asset path: no trigger, no sequencer — feed a 440Hz half-amplitude
+// sine into the external input every sample and pull the processed output.
+render_effect_feed :: proc(buf: []Stereo_Sample, sample_rate: f32) {
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	for i in 0 ..< len(buf) {
+		t := f32(i) / sample_rate
+		s := math.sin(f32(2.0) * f32(math.PI) * f32(440.0) * t) * f32(0.5)
+		ga.Asset_feed_input(p, s, s)
+		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}
 	}
 }
 
 render_music_layer :: proc(buf: []Stereo_Sample, sample_rate: f32) {
-	p: ga.Asset_Processor
-	ga.Asset_init(&p, sample_rate)
-	ga.Asset_start(&p)
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	ga.Asset_start(p)
 	for i in 0 ..< len(buf) {
-		l, r := ga.Asset_process(&p)
+		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}
 	}
 }
@@ -259,15 +719,20 @@ render_music_layer :: proc(buf: []Stereo_Sample, sample_rate: f32) {
 // any fixture, not just one that exposes cutoff — fixtures without an
 // exposed cutoff get a no-op set_param call and the assertion fails honestly.
 render_param_sweep :: proc(buf: []Stereo_Sample, sample_rate: f32) {
-	p: ga.Asset_Processor
-	ga.Asset_init(&p, sample_rate)
-	ga.Asset_trigger(&p, 69, 1.0, 0.0) // A4, infinite duration
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	// A4, held for the whole render. note_on(duration=0) is the manual
+	// "hold until note_off" API; _trigger now auto-releases a 0 duration
+	// after attack+decay (the one-shot contract), which would end this
+	// note long before the sweep finishes.
+	ga.Asset_note_on(p, 69, 1.0, 0.0)
 	n := len(buf)
 	for i in 0 ..< n {
 		t := f32(i) / f32(n - 1)
 		cutoff := f32(200.0) + t * f32(3800.0)
-		ga.Asset_set_param(&p, "cutoff", cutoff)
-		l, r := ga.Asset_process(&p)
+		ga.Asset_set_param(p, "cutoff", cutoff)
+		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}
 	}
 }
@@ -376,72 +841,10 @@ assert_centroid_shifts :: proc(buf: []Stereo_Sample, sample_rate: f32, min_ratio
 	return true
 }
 
-// FM bell sanity check: assert the carrier bin is audible AND that there
-// is non-trivial energy at one of the modulator-shifted bins (carrier ±
-// modulator_hz). Without sidebands, FM degenerates to a sine.
-assert_fm_has_sidebands :: proc(
-	buf: []Stereo_Sample,
-	sample_rate: f32,
-	carrier_hz: f32,
-	modulator_hz: f32,
-) -> bool {
-	spec := fft_channel(buf, .Left)
-	defer delete(spec)
-	if len(spec) < 4 {
-		fmt.eprintln("FAIL assert_fm_has_sidebands: buffer too short")
-		return false
-	}
-	bin_hz := sample_rate / f32(len(spec))
-	mag_at :: proc(s: []complex64, freq: f32, bin_width: f32) -> f32 {
-		k := int(freq / bin_width + 0.5)
-		if k < 1 || k >= len(s) / 2 {
-			return 0
-		}
-		// Average the bin and its two neighbors to soak up leakage.
-		acc: f32 = 0
-		count: int = 0
-		for d in -1 ..= 1 {
-			i := k + d
-			if i >= 1 && i < len(s) / 2 {
-				re := real(s[i])
-				im := imag(s[i])
-				acc += math.sqrt(re * re + im * im)
-				count += 1
-			}
-		}
-		if count == 0 {
-			return 0
-		}
-		return acc / f32(count)
-	}
-	carrier_mag := mag_at(spec, carrier_hz, bin_hz)
-	upper_sideband := mag_at(spec, carrier_hz + modulator_hz, bin_hz)
-	lower_sideband: f32 = 0
-	if carrier_hz > modulator_hz {
-		lower_sideband = mag_at(spec, carrier_hz - modulator_hz, bin_hz)
-	}
-	max_sideband := upper_sideband
-	if lower_sideband > max_sideband {
-		max_sideband = lower_sideband
-	}
-	if carrier_mag <= 0 {
-		fmt.eprintfln(
-			"FAIL assert_fm_has_sidebands: no energy at carrier %fHz",
-			carrier_hz,
-		)
-		return false
-	}
-	// Sidebands should be at least 10% of carrier magnitude.
-	if max_sideband < carrier_mag * 0.10 {
-		fmt.eprintfln(
-			"FAIL assert_fm_has_sidebands: sideband magnitude %.6f < 10%% of carrier %.6f",
-			max_sideband,
-			carrier_mag,
-		)
-		return false
-	}
-	return true
-}
+// (Dead `fm_bell` switch case removed: no fm_bell.json fixture exists —
+// the FM Operator path was never captured from the UI. Its
+// assert_fm_has_sidebands helper went with it; recover both from git
+// history if an fm_bell fixture is ever produced.)
 
 // ----- FFT self-test -----
 

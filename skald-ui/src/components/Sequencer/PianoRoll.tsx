@@ -4,7 +4,7 @@ import { useScale } from '../../contexts/ScaleContext';
 
 interface PianoRollProps {
     track: SequencerTrack;
-    onUpdateNote: (trackId: string, step: number, changes: Partial<NoteEvent>) => void;
+    onUpdateNote: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
     onToggleStep: (trackId: string, step: number, note?: number) => void;
     currentStep: number;
     steps?: number;
@@ -186,12 +186,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     }, []);
 
     const handleSnapToScale = () => {
-        // Iterate all notes and snap them
+        // Iterate all notes and snap them. The original pitch is passed as
+        // the note's identity so every chord member snaps independently —
+        // addressing by step alone could only ever move one note per step
+        // and wiped its chord siblings.
         track.notes.forEach(n => {
             const snapped = nearestInScale(n.note);
             if (snapped !== n.note) {
-                // Determine if we are just moving pitch
-                onUpdateNote(track.id, n.step, { note: snapped });
+                onUpdateNote(track.id, n.step, { note: snapped }, n.note);
             }
         });
     };

@@ -10,6 +10,7 @@ main :: proc() {
 	name := "Default"
 	input_file := ""
 	output_file := ""
+	wasm_shim_file := ""
 	package_name := "generated_audio"
 
 	for arg in os.args {
@@ -21,6 +22,9 @@ main :: proc() {
 		}
 		if len(arg) > 5 && arg[0:5] == "-out:" {
 			output_file = arg[5:]
+		}
+		if len(arg) > 11 && arg[0:11] == "-wasm-shim:" {
+			wasm_shim_file = arg[11:]
 		}
 		if len(arg) > 9 && arg[0:9] == "-package:" {
 			package_name = arg[9:]
@@ -93,6 +97,16 @@ main :: proc() {
 	if !write_bool {
 		fmt.eprintf("Error writing output file: %s\n", target_file)
 		os.exit(1)
+	}
+
+	// Editor-preview support: also emit the wasm export shim (same package,
+	// separate file) when asked. Game-facing generation never passes this.
+	if wasm_shim_file != "" {
+		shim_code := core.generate_wasm_shim_code(&project, package_name)
+		if !os.write_entire_file(wasm_shim_file, transmute([]byte)shim_code) {
+			fmt.eprintf("Error writing wasm shim file: %s\n", wasm_shim_file)
+			os.exit(1)
+		}
 	}
 
 	// Stdout used to carry just the literal "Package generated audio" status

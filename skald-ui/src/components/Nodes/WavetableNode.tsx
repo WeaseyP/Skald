@@ -1,66 +1,23 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { makeParamNode } from './ParamNode';
 
-const nodeStyles: React.CSSProperties = {
-    background: '#593E59',
-    padding: '10px 20px',
-    borderRadius: '8px',
-    border: '1px solid #795A79',
-    color: '#E0E0E0',
-    textAlign: 'center',
-    minWidth: '150px',
-};
+// Position morphs sine (0) → triangle (1) → saw (2) → square (3). Pitch
+// tracks the played note unless Fixed Pitch is on (same contract as the
+// Oscillator).
+export const WavetableNode = makeParamNode({
+    type: 'wavetable',
+    title: 'Wavetable',
+    inputs: [
+        { id: 'input_freq', label: 'Freq' },
+        { id: 'input_pos', label: 'Pos' },
+        { id: 'input_amp', label: 'Amp' },
+    ],
+    outputs: [{ id: 'output', label: 'Out' }],
+    fields: [
+        { key: 'position', label: 'Position', min: 0, max: 3, step: 0.01 },
+        { key: 'amplitude', label: 'Amp', min: 0, max: 1, step: 0.05 },
+        { key: 'fixedPitch', label: 'Fixed Pitch', kind: 'toggle' },
+        { key: 'frequency', label: 'Freq (Hz)', min: 20, max: 20000, step: 1, showIf: (d) => !!d.fixedPitch },
+    ],
+});
 
-const labelStyles: React.CSSProperties = {
-    display: 'block',
-    marginBottom: '10px',
-    fontWeight: 'bold',
-    fontSize: '1.1em',
-};
-
-const handleStyle: React.CSSProperties = {
-    width: '10px',
-    height: '10px',
-};
-
-const handleLabelStyle: React.CSSProperties = {
-    position: 'absolute',
-    top: '-18px',
-    fontSize: '10px',
-    color: '#A0AEC0',
-};
-
-
-export const WavetableNode: React.FC<NodeProps> = ({ data }) => {
-    return (
-        <div style={nodeStyles}>
-            <Handle
-                type="target"
-                position={Position.Top}
-                id="input_freq"
-                style={{ ...handleStyle, left: '25%' }}
-            >
-                 <span style={{...handleLabelStyle, left: '-10px'}}>Freq</span>
-            </Handle>
-             <Handle
-                type="target"
-                position={Position.Top}
-                id="input_pos"
-                style={{ ...handleStyle, left: '75%' }}
-            >
-                 <span style={{...handleLabelStyle, left: '-20px'}}>Position</span>
-            </Handle>
-            
-            <label style={labelStyles}>{data.label || 'Wavetable'}</label>
-            
-            <Handle
-                type="source"
-                position={Position.Bottom}
-                id="output"
-                style={handleStyle}
-            />
-        </div>
-    );
-};
-
-export default memo(WavetableNode);
+export default WavetableNode;

@@ -1,0 +1,3 @@
+# Transient scratch dir written by run_golden.bat during a `check`.
+# The goldens (*.odin.golden) ARE tracked; this fresh-emission output is not.
+.gen/

@@ -1,19 +1,33 @@
 {
-  "name": "skald-ui",
-  "productName": "skald-ui",
-  "version": "1.0.0",
-  "description": "My Electron application description",
+  "name": "skald",
+  "productName": "Skald",
+  "version": "0.1.0",
+  "description": "Visual audio programming and Odin code generation for games",
   "main": ".vite/build/main.js",
   "scripts": {
-    "prestart": "cd ../skald-backend && build_codegen.bat",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "vitest"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:codegen": "cd ../skald-backend && build_codegen.bat",
+    "start:rebuild": "npm run build:codegen && electron-forge start",
+    "setup:dev": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/setup-dev.ps1",
+    "release:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/build-release.ps1",
+    "make:win": "electron-forge make --platform=win32 --arch=x64"
   },
-  "keywords": [],
+  "keywords": [
+    "audio",
+    "odin",
+    "electron",
+    "synthesis"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "author": {
     "name": "Ryan Parsons",
     "email": "ryanparsons10101@gmail.com"
@@ -21,8 +35,6 @@
   "license": "MIT",
   "devDependencies": {
     "@electron-forge/cli": "^7.8.1",
-    "@electron-forge/maker-deb": "^7.8.1",
-    "@electron-forge/maker-rpm": "^7.8.1",
     "@electron-forge/maker-squirrel": "^7.8.1",
     "@electron-forge/maker-zip": "^7.8.1",
     "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
@@ -37,13 +49,13 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-react": "^4.5.2",
-    "electron": "^36.9.5",
+    "electron": "^43.2.0",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
     "happy-dom": "^20.0.11",
     "jsdom": "^27.4.0",
     "ts-node": "^10.9.2",
-    "typescript": "~4.5.4",
+    "typescript": "^5.9.3",
     "vite": "^6.3.5",
     "vitest": "^4.0.16"
   },

@@ -1,0 +1,145 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-random-acid-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Random Acid Bass",
+        "label": "Random Acid Bass",
+        "volume": 0.78,
+        "voiceCount": 1,
+        "voiceStealing": "oldest",
+        "glide": 0.04,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "acid-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Acid Saw",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "acid-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Acid Filter",
+                "type": "Lowpass",
+                "cutoff": 400,
+                "resonance": 4,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "acid-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.01,
+                "decay": 0.2,
+                "sustain": 0.9,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "acid-drive",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Acid Drive",
+                "shape": "classic",
+                "drive": 15,
+                "tone": 4000,
+                "mix": 0.3,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "acid-random",
+              "type": "sampleHold",
+              "position": { "x": 0, "y": 460 },
+              "data": {
+                "label": "Random 1/16",
+                "rate": 10,
+                "amplitude": 1,
+                "bpmSync": true,
+                "syncRate": "1/16",
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "acid-random-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 460 },
+              "data": {
+                "label": "Random 0-2500 Hz",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2500,
+                "exposedParameters": ["outMin", "outMax"]
+              }
+            },
+            {
+              "id": "acid-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "acid-osc", "from_port": "output", "to_node": "acid-filter", "to_port": "input" },
+            { "from_node": "acid-filter", "from_port": "output", "to_node": "acid-amp", "to_port": "input" },
+            { "from_node": "acid-amp", "from_port": "output", "to_node": "acid-drive", "to_port": "input" },
+            { "from_node": "acid-drive", "from_port": "output", "to_node": "acid-output", "to_port": "input" },
+            { "from_node": "acid-random", "from_port": "output", "to_node": "acid-random-map", "to_port": "input" },
+            { "from_node": "acid-random-map", "from_port": "output", "to_node": "acid-filter", "to_port": "input_cutoff" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-random-acid-bass",
+      "targetNodeId": "instrument-random-acid-bass",
+      "name": "Random Acid Bass",
+      "color": "#84CC16",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 36, "velocity": 0.92, "duration": 2 },
+        { "step": 2, "note": 36, "velocity": 0.72, "duration": 1 },
+        { "step": 3, "note": 39, "velocity": 0.86, "duration": 1 },
+        { "step": 5, "note": 31, "velocity": 0.8, "duration": 2 },
+        { "step": 8, "note": 34, "velocity": 0.9, "duration": 2 },
+        { "step": 11, "note": 39, "velocity": 0.78, "duration": 1 },
+        { "step": 12, "note": 41, "velocity": 0.88, "duration": 2 },
+        { "step": 15, "note": 34, "velocity": 0.75, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 126, "patternSteps": 16, "masterVolume": 0.72 }
+}

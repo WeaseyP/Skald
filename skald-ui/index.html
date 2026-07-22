@@ -2,11 +2,11 @@
 <html>
 
 <head>
-  <meta charset="UTF-T" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:;">
+  <meta charset="UTF-8" />
+  <!-- 'wasm-unsafe-eval' allows WebAssembly.compile() for the audio preview
+       without enabling JS eval(). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' data: blob:;">
   <title>Skald</title>
-  <!-- ADD THIS LINE: -->
-  <link rel="stylesheet" href="../node_modules/reactflow/dist/style.css" />
   <style>
     html,
     body,

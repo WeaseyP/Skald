@@ -1,24 +1,17 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { makeParamNode } from './ParamNode';
 
-const baseNodeStyles: React.CSSProperties = {
-    border: '1px solid #2f9e44',
-    borderRadius: '4px',
-    padding: '10px 15px',
-    width: 150,
-    textAlign: 'center'
-};
+const SYNC_RATES = ['1/1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/4t', '1/8t', '1/16t'];
 
-const delayNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#fff9db', borderColor: '#f08c00' };
-
-const DelayNodeComponent = ({ data }: NodeProps) => {
-  return (
-    <div style={delayNodeStyles}>
-      <Handle type="target" position={Position.Left} id="input" />
-      <div><strong>{data.label || 'Delay'}</strong></div>
-      <Handle type="source" position={Position.Right} id="output" />
-    </div>
-  );
-};
-
-export const DelayNode = memo(DelayNodeComponent);
+export const DelayNode = makeParamNode({
+    type: 'delay',
+    title: 'Delay',
+    inputs: [{ id: 'input', label: 'In' }],
+    outputs: [{ id: 'output', label: 'Out' }],
+    fields: [
+        { key: 'bpmSync', label: 'BPM Sync', kind: 'toggle' },
+        { key: 'syncRate', label: 'Time', kind: 'select', options: SYNC_RATES, showIf: (d) => !!d.bpmSync },
+        { key: 'delayTime', label: 'Time (s)', min: 0, max: 2, step: 0.01, showIf: (d) => !d.bpmSync },
+        { key: 'feedback', label: 'Feedback', min: 0, max: 0.95, step: 0.01 },
+        { key: 'mix', label: 'Mix', min: 0, max: 1, step: 0.05 },
+    ],
+});

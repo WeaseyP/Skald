@@ -8,7 +8,7 @@ interface StepPropertiesEditorProps {
     trackId: string;
     step: number; // 0-indexed
     track?: SequencerTrack;
-    onUpdateNote: (trackId: string, step: number, changes: Partial<NoteEvent>) => void;
+    onUpdateNote: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
     instrumentNode?: Node | null;
     onExport?: () => void;
 }
@@ -54,6 +54,16 @@ const LockIcon: React.FC<{ isLocked: boolean }> = ({ isLocked }) => (
 );
 
 export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trackId, step, track, onUpdateNote, instrumentNode }) => {
+    // All hooks must run before the conditional returns below (Rules of
+    // Hooks): toggling between a step with and without a note would
+    // otherwise change the hook count between renders and crash React.
+    const internalNodes = useMemo(() => {
+        if (instrumentNode && instrumentNode.type === 'instrument' && instrumentNode.data.subgraph) {
+            return instrumentNode.data.subgraph.nodes as Node[];
+        }
+        return [];
+    }, [instrumentNode]);
+
     if (!track) return <div>Track not found</div>;
 
     const note = track.notes.find(n => n.step === step);
@@ -66,14 +76,6 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
         );
     }
 
-    // Iterate through instrument subgraph nodes
-    const internalNodes = useMemo(() => {
-        if (instrumentNode && instrumentNode.type === 'instrument' && instrumentNode.data.subgraph) {
-            return instrumentNode.data.subgraph.nodes as Node[];
-        }
-        return [];
-    }, [instrumentNode]);
-
 
     const handleOverrideChange = (paramKey: string, newValue: any) => {
         // Auto-unlock (create override) on change
@@ -83,7 +85,7 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
     };
 
     const toggleLock = (paramKey: string, currentGlobalValue: any) => {
-        const isOverridden = note.patchOverrides && note.patchOverrides.hasOwnProperty(paramKey);
+        const isOverridden = note.patchOverrides && Object.prototype.hasOwnProperty.call(note.patchOverrides, paramKey);
         const newOverrides = { ...note.patchOverrides };
 
         if (isOverridden) {
@@ -111,7 +113,7 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
             const paramKey = `${label}:${paramName}`;
 
             // Check if overridden
-            const isOverridden = note.patchOverrides && note.patchOverrides.hasOwnProperty(paramKey);
+            const isOverridden = note.patchOverrides && Object.prototype.hasOwnProperty.call(note.patchOverrides, paramKey);
             const isLocked = !isOverridden;
 
             // If locked, we want to show global value.

@@ -1,0 +1,131 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-kick-warhead",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "GW Kick Warhead",
+        "label": "GW Kick Warhead",
+        "volume": 0.9,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "warhead-osc",
+              "type": "oscillator",
+              "position": { "x": -500, "y": -100 },
+              "data": {
+                "label": "Body",
+                "frequency": 48,
+                "waveform": "Sine",
+                "amplitude": 0.55,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "warhead-amp",
+              "type": "adsr",
+              "position": { "x": -230, "y": -100 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.001,
+                "decay": 0.28,
+                "sustain": 0,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "warhead-dist",
+              "type": "distortion",
+              "position": { "x": 40, "y": -100 },
+              "data": {
+                "label": "Warhead Punch",
+                "drive": 12,
+                "shape": "soft",
+                "tone": 2800,
+                "mix": 0.45,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "warhead-output",
+              "type": "output",
+              "position": { "x": 310, "y": -100 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "warhead-pitch",
+              "type": "adsr",
+              "position": { "x": -500, "y": 240 },
+              "data": {
+                "label": "Pitch",
+                "attack": 0.001,
+                "decay": 0.06,
+                "sustain": 0,
+                "release": 0.01,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "warhead-pitch-map",
+              "type": "mapper",
+              "position": { "x": -230, "y": 240 },
+              "data": {
+                "label": "Pitch Drop",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2.8,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "warhead-osc", "from_port": "output", "to_node": "warhead-amp", "to_port": "input" },
+            { "from_node": "warhead-amp", "from_port": "output", "to_node": "warhead-dist", "to_port": "input" },
+            { "from_node": "warhead-dist", "from_port": "output", "to_node": "warhead-output", "to_port": "input" },
+            { "from_node": "warhead-pitch", "from_port": "output", "to_node": "warhead-pitch-map", "to_port": "input" },
+            { "from_node": "warhead-pitch-map", "from_port": "output", "to_node": "warhead-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 420, "y": 260, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-kick-warhead",
+      "targetNodeId": "instrument-gw-kick-warhead",
+      "name": "GW Kick Warhead",
+      "color": "#FC8181",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 36, "velocity": 1, "duration": 2 },
+        { "step": 4, "note": 36, "velocity": 0.92, "duration": 2 },
+        { "step": 8, "note": 36, "velocity": 1, "duration": 2 },
+        { "step": 12, "note": 36, "velocity": 0.95, "duration": 2 },
+        { "step": 14, "note": 36, "velocity": 0.6, "duration": 1, "probability": 0.5 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}

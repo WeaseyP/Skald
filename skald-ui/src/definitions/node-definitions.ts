@@ -47,7 +47,10 @@ export interface NodeDefinition {
 // --- Default Parameter Objects ---
 
 const defaultFmOperatorParams: FmOperatorParams = {
-    frequency: 440,
+    // Ratio of the played note's frequency (golden-path semantics), NOT
+    // absolute Hz. The old default of 440 as a ratio put the carrier at
+    // ~190kHz — pure ultrasonic aliasing in the generated code.
+    frequency: 2,
     modIndex: 100,
     exposedParameters: ['frequency', 'modIndex']
 };
@@ -105,9 +108,6 @@ const defaultAdsrParams: AdsrParams = {
     release: 1.0,
     depth: 1.0,
     velocitySensitivity: 0.5,
-    attackCurve: 'linear',
-    decayCurve: 'linear',
-    releaseCurve: 'linear',
     exposedParameters: ['attack', 'decay', 'sustain', 'release', 'depth']
 };
 
@@ -161,6 +161,7 @@ const defaultOutputParams: OutputParams = {
 
 const defaultInstrumentParams: InstrumentParams = {
     name: 'New Instrument',
+    volume: 1.0,
     voiceCount: 8,
     voiceStealing: 'oldest',
     glide: 0.05,

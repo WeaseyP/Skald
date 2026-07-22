@@ -16,7 +16,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     showOscilloscope = true
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const requestRef = useRef<number>();
+    const requestRef = useRef<number | undefined>(undefined);
 
     useEffect(() => {
         if (!analyser || !canvasRef.current) return;

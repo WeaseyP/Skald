@@ -114,7 +114,7 @@ main :: proc() {
 	}
 	defer ma.device_uninit(&app_state.device)
 	fmt.printf("Audio device initialized: %s\n", app_state.device.playback.name)
-    fmt.println("Starting playback of 3 tracks (Kick, Snare, Sax)...")
+    fmt.println("Starting playback of generated_audio project...")
 
 	thread.run_with_data(&app_state, sample_generator_thread_proc)
 

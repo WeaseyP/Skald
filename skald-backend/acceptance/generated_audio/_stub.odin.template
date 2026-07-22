@@ -35,12 +35,27 @@ Asset_trigger :: proc(p: ^Asset_Processor, note: u8 = 60, velocity: f32 = 1.0, d
 	p.voice_active = true
 }
 
+Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
+	p.voice_active = true
+}
+
+Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
+	p.voice_active = false
+}
+
+Asset_feed_input :: proc(p: ^Asset_Processor, in_left: f32, in_right: f32) {
+}
+
 Asset_start :: proc(p: ^Asset_Processor) {
 	p.playing = true
 }
 
 Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 	return 0, 0
+}
+
+Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
+	return p.playing || p.voice_active
 }
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {

@@ -1,47 +1,22 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
-import { commonNodeStyles, nodeHeaderStyles, handleContainerStyles, labelStyles, NodeTheme } from './NodeStyles';
+import { makeParamNode } from './ParamNode';
 
-const OscillatorNodeComponent: React.FC<NodeProps> = ({ data }) => {
-    return (
-        <div style={commonNodeStyles}>
-            <div style={nodeHeaderStyles}>
-                {data.label || 'Oscillator'}
-            </div>
-
-            <div style={handleContainerStyles}>
-                <Handle
-                    type="target"
-                    position={Position.Left}
-                    id="input_freq"
-                    style={{ background: NodeTheme.colors.handleIn }}
-                />
-                <span style={{ marginLeft: '12px', ...labelStyles }}>Freq</span>
-            </div>
-            <div style={handleContainerStyles}>
-                <Handle
-                    type="target"
-                    position={Position.Left}
-                    id="input_amp"
-                    style={{ background: NodeTheme.colors.handleIn }}
-                />
-                <span style={{ marginLeft: '12px', ...labelStyles }}>Amp</span>
-            </div>
-
-            {/* Spacer */}
-            <div style={{ height: '10px' }}></div>
-
-            <div style={{ ...handleContainerStyles, justifyContent: 'flex-end' }}>
-                <span style={{ marginRight: '12px', ...labelStyles }}>Out</span>
-                <Handle
-                    type="source"
-                    position={Position.Right}
-                    id="output"
-                    style={{ background: NodeTheme.colors.handleOut }}
-                />
-            </div>
-        </div>
-    );
-};
-
-export const OscillatorNode = memo(OscillatorNodeComponent);
+// Pitch tracks the played note by default; the frequency box only appears
+// when Fixed Pitch is on (an editable-but-inert control is a lie), and the
+// pulse width only when the waveform is Square.
+export const OscillatorNode = makeParamNode({
+    type: 'oscillator',
+    title: 'Oscillator',
+    inputs: [
+        { id: 'input_freq', label: 'Freq' },
+        { id: 'input_amp', label: 'Amp' },
+        { id: 'input_pulseWidth', label: 'PW' },
+    ],
+    outputs: [{ id: 'output', label: 'Out' }],
+    fields: [
+        { key: 'waveform', label: 'Wave', kind: 'select', options: ['Sine', 'Sawtooth', 'Square', 'Triangle'] },
+        { key: 'amplitude', label: 'Amp', min: 0, max: 1, step: 0.05 },
+        { key: 'pulseWidth', label: 'PW', min: 0.01, max: 0.99, step: 0.01, showIf: (d) => d.waveform === 'Square' },
+        { key: 'fixedPitch', label: 'Fixed Pitch', kind: 'toggle' },
+        { key: 'frequency', label: 'Freq (Hz)', min: 20, max: 20000, step: 1, showIf: (d) => !!d.fixedPitch },
+    ],
+});

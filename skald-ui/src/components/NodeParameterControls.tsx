@@ -4,6 +4,7 @@ import { CustomSlider } from './controls/CustomSlider';
 import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
+import { NumberInput } from './common/NumberInput';
 
 interface NodeParameterControlsProps {
     node: Node;
@@ -40,14 +41,46 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         </select>
     );
 
-    // Helpers to cleanup common patterns
+    const numberBoxStyles: React.CSSProperties = {
+        width: '64px',
+        padding: '4px 6px',
+        borderRadius: '4px',
+        border: '1px solid #555',
+        background: '#1A202C',
+        color: '#E0E0E0',
+        fontSize: '0.85em',
+    };
+
+    // Helpers to cleanup common patterns. Every slider is paired with a
+    // typed number box — dragging is for exploring, typing is for landing
+    // on the exact value you meant.
     const slider = (param: string, min: number, max: number, def: number, scale?: 'log' | 'linear', step?: number) => (
-        <CustomSlider
-            min={min} max={max}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <CustomSlider
+                    min={min} max={max}
+                    value={data[param] ?? def}
+                    onChange={val => onChange(param, val)}
+                    scale={scale}
+                    step={step}
+                    defaultValue={def}
+                />
+            </div>
+            <NumberInput
+                min={min} max={max} step={step ?? 0.01}
+                value={data[param] ?? def}
+                onChange={val => onChange(param, val)}
+                style={numberBoxStyles}
+            />
+        </div>
+    );
+
+    const numberField = (param: string, def: number, opts: { min?: number; max?: number; step?: number } = {}) => (
+        <NumberInput
+            min={opts.min} max={opts.max} step={opts.step ?? 0.1}
             value={data[param] ?? def}
             onChange={val => onChange(param, val)}
-            scale={scale}
-            step={step}
+            style={{ ...numberBoxStyles, width: '100px' }}
         />
     );
 
@@ -63,6 +96,14 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                         onChange('release', newAdsr.release);
                     }}
                 />
+                {/* Keep the envelope graph for quick shaping, then provide
+                    exact-value entry for landing on precise musical timings.
+                    Each field stays inside the normal wrapper so parameter
+                    exposure works exactly like it does for other controls. */}
+                {renderControlWrapper('attack', 'Attack (s)', numberField('attack', 0.1, { min: 0, max: 10, step: 0.001 }))}
+                {renderControlWrapper('decay', 'Decay (s)', numberField('decay', 0.2, { min: 0, max: 10, step: 0.001 }))}
+                {renderControlWrapper('sustain', 'Sustain', numberField('sustain', 0.5, { min: 0, max: 1, step: 0.01 }))}
+                {renderControlWrapper('release', 'Release (s)', numberField('release', 1, { min: 0, max: 10, step: 0.001 }))}
                 {renderControlWrapper('depth', 'Depth', slider('depth', 0, 1, 1))}
                 {renderControlWrapper('velocitySensitivity', 'Velocity Sens.', slider('velocitySensitivity', 0, 1, 0.5))}
             </>);
@@ -79,10 +120,9 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     }}
                     xScale="log" yScale="log"
                 />
-                <div style={{ fontSize: '0.8em', color: '#888' }}>
-                    Cutoff: {(data.cutoff ?? 1000).toFixed(2)} Hz <br />
-                    Resonance: {(data.resonance ?? 1).toFixed(2)}
-                </div>
+                {/* The pad is for exploring by ear; these land exact values. */}
+                {renderControlWrapper('cutoff', 'Cutoff (Hz)', numberField('cutoff', 800, { min: 20, max: 20000, step: 1 }))}
+                {renderControlWrapper('resonance', 'Resonance', numberField('resonance', 1, { min: 0.1, max: 30, step: 0.1 }))}
             </>);
         case 'lfo':
             return (<>
@@ -125,19 +165,35 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             </>);
         case 'fmOperator':
             return (<>
-                {renderControlWrapper('frequency', 'Carrier Freq (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {/* The backend treats `frequency` as a carrier ratio (× note
+                    frequency), clamped to 0.01–32. The old label said
+                    "Carrier Freq (Hz)" with a 20–20000 range — every value
+                    above 32 silently clamped. */}
+                {renderControlWrapper('frequency', 'Ratio (× note freq)', slider('frequency', 0.01, 32, 1, 'log'))}
                 {renderControlWrapper('modIndex', 'Modulation Index', slider('modIndex', 0, 1000, 100))}
             </>);
         case 'wavetable':
             return (<>
-                {renderControlWrapper('tableName', 'Table', createSelect('tableName', ['Sine', 'Triangle', 'Sawtooth', 'Square']), false)}
-                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {/* (Table dropdown removed: the generated code reads only
+                    `position` — the morph IS the table selection, and a
+                    dropdown that changes nothing is a lie.) */}
+                <div style={{ margin: '10px 0' }}>
+                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
+                    <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
+                </div>
+                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
                 {renderControlWrapper('position', 'Table Position', slider('position', 0, 3, 0, undefined, 0.01))}
             </>);
         case 'oscillator':
             return (<>
                 {renderControlWrapper('waveform', 'Waveform', createSelect('waveform', ['Sawtooth', 'Sine', 'Triangle', 'Square']), false)}
-                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {/* Pitch follows the played note unless Fixed Pitch is on —
+                    only then does the frequency slider do anything. */}
+                <div style={{ margin: '10px 0' }}>
+                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
+                    <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
+                </div>
+                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
                 {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 0.5))}
                 {data.waveform === 'Square' && renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5))}
                 {renderControlWrapper('phase', 'Phase', slider('phase', 0, 360, 0))}
@@ -156,9 +212,60 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'distortion':
             return (<>
                 {renderControlWrapper('drive', 'Drive', slider('drive', 1, 100, 20))}
+                {renderControlWrapper('shape', 'Shape', createSelect('shape', ['classic', 'soft', 'hard', 'asymmetric']), false)}
                 {renderControlWrapper('tone', 'Tone (Hz)', slider('tone', 100, 10000, 4000, 'log'))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
             </>);
+        case 'mapper':
+            return (<>
+                {renderControlWrapper('inMin', 'Input Min', numberField('inMin', 0), false)}
+                {renderControlWrapper('inMax', 'Input Max', numberField('inMax', 1), false)}
+                {renderControlWrapper('outMin', 'Output Min', numberField('outMin', 0), false)}
+                {renderControlWrapper('outMax', 'Output Max', numberField('outMax', 1), false)}
+            </>);
+        case 'mixer': {
+            const inputCount = Math.min(Math.max(Number(data.inputCount) || 4, 1), 32);
+            const mixerLevels: Array<{ id: number; level: number; pan: number }> =
+                Array.isArray(data.levels) ? data.levels : [];
+            const channelOf = (ch: number) => {
+                const existing = mixerLevels.find(l => l?.id === ch);
+                return { id: ch, level: typeof existing?.level === 'number' ? existing.level : 0.75, pan: existing?.pan ?? 0 };
+            };
+            const withLevel = (ch: number, level: number) =>
+                Array.from({ length: inputCount }, (_, i) =>
+                    i + 1 === ch ? { ...channelOf(i + 1), level } : channelOf(i + 1));
+            return (<>
+                {renderControlWrapper('inputCount', 'Inputs', (
+                    <NumberInput min={1} max={32} step={1}
+                        value={inputCount}
+                        onChange={val => {
+                            const count = Math.min(Math.max(Math.round(val), 1), 32);
+                            onChange('inputCount', count);
+                            onChange('levels', Array.from({ length: count }, (_, i) => channelOf(i + 1)));
+                        }}
+                        style={numberBoxStyles}
+                    />
+                ), false)}
+                {Array.from({ length: inputCount }, (_, i) => i + 1).map(ch =>
+                    renderControlWrapper(`level${ch}`, `Level ${ch}`, (
+                        <div key={ch} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <CustomSlider min={0} max={2} step={0.05}
+                                    value={channelOf(ch).level}
+                                    onChange={val => onChange('levels', withLevel(ch, val))}
+                                    defaultValue={0.75}
+                                />
+                            </div>
+                            <NumberInput min={0} max={2} step={0.05}
+                                value={channelOf(ch).level}
+                                onChange={val => onChange('levels', withLevel(ch, val))}
+                                style={numberBoxStyles}
+                            />
+                        </div>
+                    ), false)
+                )}
+            </>);
+        }
         case 'panner':
             return (<>
                 {renderControlWrapper('pan', 'Pan', slider('pan', -1, 1, 0))}
@@ -172,6 +279,15 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         // but simple Instrument params (non-subgraph) can go here
         case 'instrument':
             return (<>
+                {renderControlWrapper('name', 'Name', (
+                    <input
+                        type="text"
+                        value={data.name ?? ''}
+                        onChange={e => onChange('name', e.target.value)}
+                        style={inputStyles}
+                    />
+                ), false)}
+                {renderControlWrapper('volume', 'Volume', slider('volume', 0, 1, 1))}
                 {renderControlWrapper('voiceCount', 'Voice Count', slider('voiceCount', 1, 32, 8, undefined, 1))}
                 {renderControlWrapper('glide', 'Glide (s)', slider('glide', 0, 2, 0.05))}
                 {renderControlWrapper('unison', 'Unison Voices', slider('unison', 1, 16, 1, undefined, 1))}

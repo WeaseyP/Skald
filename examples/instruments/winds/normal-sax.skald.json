@@ -1,0 +1,242 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-normal-sax",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Normal Sax",
+        "label": "Normal Sax",
+        "volume": 0.72,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0.04,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "sax-reed",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 220 },
+              "data": {
+                "label": "Reed",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.55,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "sax-body",
+              "type": "filter",
+              "position": { "x": 260, "y": 60 },
+              "data": {
+                "label": "Body",
+                "type": "Lowpass",
+                "cutoff": 1600,
+                "resonance": 1.2,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "sax-formant",
+              "type": "filter",
+              "position": { "x": 260, "y": 340 },
+              "data": {
+                "label": "Formant",
+                "type": "Bandpass",
+                "cutoff": 1100,
+                "resonance": 2.5,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "sax-breath",
+              "type": "noise",
+              "position": { "x": 0, "y": 600 },
+              "data": {
+                "label": "Breath",
+                "type": "Pink",
+                "amplitude": 0.15,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "sax-air",
+              "type": "filter",
+              "position": { "x": 260, "y": 600 },
+              "data": {
+                "label": "Air",
+                "type": "Bandpass",
+                "cutoff": 4500,
+                "resonance": 1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "sax-puff",
+              "type": "adsr",
+              "position": { "x": 520, "y": 600 },
+              "data": {
+                "label": "Puff",
+                "attack": 0.01,
+                "decay": 0.12,
+                "sustain": 0.25,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "sax-mixer",
+              "type": "mixer",
+              "position": { "x": 790, "y": 260 },
+              "data": {
+                "label": "Body + Formant + Air",
+                "inputCount": 3,
+                "levels": [
+                  { "id": 1, "level": 0.8, "pan": 0 },
+                  { "id": 2, "level": 0.5, "pan": 0 },
+                  { "id": 3, "level": 0.35, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "sax-drive",
+              "type": "distortion",
+              "position": { "x": 1060, "y": 260 },
+              "data": {
+                "label": "Expression",
+                "shape": "soft",
+                "drive": 4,
+                "tone": 5000,
+                "mix": 0.25,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "sax-amp",
+              "type": "adsr",
+              "position": { "x": 1320, "y": 260 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.05,
+                "decay": 0.18,
+                "sustain": 0.8,
+                "release": 0.14,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "sax-reverb",
+              "type": "reverb",
+              "position": { "x": 1580, "y": 260 },
+              "data": {
+                "label": "Room",
+                "decay": 1.5,
+                "preDelay": 0.01,
+                "mix": 0.15,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "sax-output",
+              "type": "output",
+              "position": { "x": 1840, "y": 260 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "sax-scoop",
+              "type": "adsr",
+              "position": { "x": 0, "y": 900 },
+              "data": {
+                "label": "Scoop",
+                "attack": 0.07,
+                "decay": 0.2,
+                "sustain": 1,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0,
+                "exposedParameters": ["attack", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "sax-scoop-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 900 },
+              "data": {
+                "label": "Scoop -0.12 to 0",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": -0.12,
+                "outMax": 0,
+                "exposedParameters": ["outMin"]
+              }
+            },
+            {
+              "id": "sax-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 1160 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 5.5,
+                "amplitude": 0.02,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "sax-reed", "from_port": "output", "to_node": "sax-body", "to_port": "input" },
+            { "from_node": "sax-body", "from_port": "output", "to_node": "sax-mixer", "to_port": "input_1" },
+            { "from_node": "sax-reed", "from_port": "output", "to_node": "sax-formant", "to_port": "input" },
+            { "from_node": "sax-formant", "from_port": "output", "to_node": "sax-mixer", "to_port": "input_2" },
+            { "from_node": "sax-breath", "from_port": "output", "to_node": "sax-air", "to_port": "input" },
+            { "from_node": "sax-air", "from_port": "output", "to_node": "sax-puff", "to_port": "input" },
+            { "from_node": "sax-puff", "from_port": "output", "to_node": "sax-mixer", "to_port": "input_3" },
+            { "from_node": "sax-mixer", "from_port": "output", "to_node": "sax-drive", "to_port": "input" },
+            { "from_node": "sax-drive", "from_port": "output", "to_node": "sax-amp", "to_port": "input" },
+            { "from_node": "sax-amp", "from_port": "output", "to_node": "sax-reverb", "to_port": "input" },
+            { "from_node": "sax-reverb", "from_port": "output", "to_node": "sax-output", "to_port": "input" },
+            { "from_node": "sax-scoop", "from_port": "output", "to_node": "sax-scoop-map", "to_port": "input" },
+            { "from_node": "sax-scoop-map", "from_port": "output", "to_node": "sax-reed", "to_port": "input_freq" },
+            { "from_node": "sax-vibrato", "from_port": "output", "to_node": "sax-reed", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-normal-sax",
+      "targetNodeId": "instrument-normal-sax",
+      "name": "Normal Sax",
+      "color": "#C2410C",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 43, "velocity": 0.75, "duration": 3 },
+        { "step": 4, "note": 50, "velocity": 0.86, "duration": 3 },
+        { "step": 8, "note": 55, "velocity": 0.8, "duration": 3 },
+        { "step": 12, "note": 62, "velocity": 0.92, "duration": 3 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 100, "patternSteps": 16, "masterVolume": 0.75 }
+}

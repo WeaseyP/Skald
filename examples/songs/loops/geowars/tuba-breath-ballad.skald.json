@@ -1,0 +1,182 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-tuba-ballad",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Tuba Breath Ballad",
+        "label": "GW Tuba Breath Ballad",
+        "volume": 0.6,
+        "voiceCount": 3,
+        "voiceStealing": "oldest",
+        "glide": 0.08,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "ballad-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Soft Reed",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.45,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "ballad-body",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Warm Body",
+                "type": "Lowpass",
+                "cutoff": 210,
+                "resonance": 0.6,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "ballad-breath",
+              "type": "noise",
+              "position": { "x": 0, "y": 440 },
+              "data": {
+                "label": "Breath",
+                "type": "Pink",
+                "amplitude": 0.1,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "ballad-air",
+              "type": "filter",
+              "position": { "x": 260, "y": 440 },
+              "data": {
+                "label": "Air",
+                "type": "Bandpass",
+                "cutoff": 1800,
+                "resonance": 1,
+                "exposedParameters": ["cutoff"]
+              }
+            },
+            {
+              "id": "ballad-puff",
+              "type": "adsr",
+              "position": { "x": 520, "y": 440 },
+              "data": {
+                "label": "Puff",
+                "attack": 0.1,
+                "decay": 0.2,
+                "sustain": 0.5,
+                "release": 0.3,
+                "depth": 1,
+                "velocitySensitivity": 0.4,
+                "exposedParameters": ["sustain"]
+              }
+            },
+            {
+              "id": "ballad-mixer",
+              "type": "mixer",
+              "position": { "x": 790, "y": 260 },
+              "data": {
+                "label": "Body + Air",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.9, "pan": 0 },
+                  { "id": 2, "level": 0.35, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "ballad-amp",
+              "type": "adsr",
+              "position": { "x": 1060, "y": 260 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.14,
+                "decay": 0.2,
+                "sustain": 0.8,
+                "release": 0.5,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "release"]
+              }
+            },
+            {
+              "id": "ballad-reverb",
+              "type": "reverb",
+              "position": { "x": 1320, "y": 260 },
+              "data": {
+                "label": "Quiet Hall",
+                "decay": 2.8,
+                "preDelay": 0.01,
+                "mix": 0.28,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "ballad-output",
+              "type": "output",
+              "position": { "x": 1580, "y": 260 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "ballad-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 720 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 4.2,
+                "amplitude": 0.014,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "ballad-osc", "from_port": "output", "to_node": "ballad-body", "to_port": "input" },
+            { "from_node": "ballad-body", "from_port": "output", "to_node": "ballad-mixer", "to_port": "input_1" },
+            { "from_node": "ballad-breath", "from_port": "output", "to_node": "ballad-air", "to_port": "input" },
+            { "from_node": "ballad-air", "from_port": "output", "to_node": "ballad-puff", "to_port": "input" },
+            { "from_node": "ballad-puff", "from_port": "output", "to_node": "ballad-mixer", "to_port": "input_2" },
+            { "from_node": "ballad-mixer", "from_port": "output", "to_node": "ballad-amp", "to_port": "input" },
+            { "from_node": "ballad-amp", "from_port": "output", "to_node": "ballad-reverb", "to_port": "input" },
+            { "from_node": "ballad-reverb", "from_port": "output", "to_node": "ballad-output", "to_port": "input" },
+            { "from_node": "ballad-vibrato", "from_port": "output", "to_node": "ballad-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-tuba-ballad",
+      "targetNodeId": "instrument-gw-tuba-ballad",
+      "name": "GW Tuba Breath Ballad",
+      "color": "#7E9CD8",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 38, "velocity": 0.8, "duration": 5 },
+        { "step": 6, "note": 41, "velocity": 0.7, "duration": 3 },
+        { "step": 10, "note": 33, "velocity": 0.75, "duration": 5 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 84, "patternSteps": 16, "masterVolume": 0.7 }
+}

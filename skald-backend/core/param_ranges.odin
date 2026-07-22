@@ -17,7 +17,32 @@ Param_Range :: struct {
 	unit:    string,
 }
 
-lookup_param_range :: proc(name: string) -> Param_Range {
+import "core:strings"
+
+lookup_param_range :: proc(name: string, node_type := "") -> Param_Range {
+	// Node-type-specific overrides first: the name-keyed table below is
+	// wrong for these (an exposed FM ratio got a Hz-calibrated [20,20000]
+	// setter; an exposed LFO frequency clamped to audio range).
+	switch node_type {
+	case "FmOperator":
+		if name == "frequency" do return {0.01, 32.0, 1.0, "ratio"}
+	case "LFO":
+		if name == "frequency" do return {0.01, 100.0, 5.0, "Hz"}
+		if name == "amplitude" do return {0.0, 20000.0, 1.0, ""}
+	case "SampleHold":
+		if name == "rate" do return {0.1, 1000.0, 10.0, "Hz"}
+	case "Wavetable":
+		if name == "position" do return {0.0, 3.0, 0.0, ""}
+	case "Distortion":
+		if name == "tone" do return {100.0, 20000.0, 4000.0, "Hz"}
+	}
+
+	// Mixer channel levels: level1, level2, ... Default 1.0 (unity), NOT the
+	// wide-open unknown fallback — an exposed channel used to initialize to
+	// 0.0 (silently muted) with a ±1e6 clamp.
+	if strings.has_prefix(name, "level") && len(name) > 5 {
+		return {0.0, 2.0, 1.0, "x"}
+	}
 	switch name {
 	// Pitch / spectrum
 	case "frequency":

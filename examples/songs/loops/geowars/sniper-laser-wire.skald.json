@@ -1,0 +1,131 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-sniper-wire",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Sniper Laser Wire",
+        "label": "GW Sniper Laser Wire",
+        "volume": 0.5,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "wire-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Wire",
+                "waveform": "Square",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.35,
+                "pulseWidth": 0.22,
+                "phase": 0,
+                "exposedParameters": ["amplitude", "pulseWidth"]
+              }
+            },
+            {
+              "id": "wire-jitter",
+              "type": "sampleHold",
+              "position": { "x": 0, "y": 440 },
+              "data": {
+                "label": "Nerves",
+                "rate": 8,
+                "amplitude": 1,
+                "bpmSync": true,
+                "syncRate": "1/16",
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "wire-jitter-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 440 },
+              "data": {
+                "label": "Jitter Depth",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 0.08,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "wire-aim",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Aim Riser",
+                "type": "Bandpass",
+                "cutoff": 2200,
+                "resonance": 3,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "wire-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Tick",
+                "attack": 0.001,
+                "decay": 0.07,
+                "sustain": 0.25,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["decay", "sustain"]
+              }
+            },
+            {
+              "id": "wire-output",
+              "type": "output",
+              "position": { "x": 780, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "wire-osc", "from_port": "output", "to_node": "wire-aim", "to_port": "input" },
+            { "from_node": "wire-aim", "from_port": "output", "to_node": "wire-amp", "to_port": "input" },
+            { "from_node": "wire-amp", "from_port": "output", "to_node": "wire-output", "to_port": "input" },
+            { "from_node": "wire-jitter", "from_port": "output", "to_node": "wire-jitter-map", "to_port": "input" },
+            { "from_node": "wire-jitter-map", "from_port": "output", "to_node": "wire-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-sniper-wire",
+      "targetNodeId": "instrument-gw-sniper-wire",
+      "name": "GW Sniper Laser Wire",
+      "color": "#F04050",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 69, "velocity": 0.85, "duration": 1 },
+        { "step": 2, "note": 69, "velocity": 0.5, "duration": 1, "probability": 0.7 },
+        { "step": 4, "note": 74, "velocity": 0.9, "duration": 1 },
+        { "step": 7, "note": 69, "velocity": 0.6, "duration": 1, "probability": 0.6 },
+        { "step": 8, "note": 69, "velocity": 0.8, "duration": 1 },
+        { "step": 11, "note": 76, "velocity": 0.7, "duration": 1, "probability": 0.8 },
+        { "step": 12, "note": 74, "velocity": 0.85, "duration": 1 },
+        { "step": 14, "note": 69, "velocity": 0.5, "duration": 1, "probability": 0.5 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}

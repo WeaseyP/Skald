@@ -1,10 +1,10 @@
 import React, { memo, useMemo } from 'react';
-import { Handle, Position, NodeProps, useStore } from 'reactflow';
+import { Handle, Position, NodeProps, useStore, ReactFlowState } from 'reactflow';
 
 // This selector efficiently grabs the latest nodes and edges from the React Flow store.
 // Using a selector is more performant than accessing the entire store object.
-const allNodesAndEdgesSelector = (s) => ({
-    nodes: s.nodes,
+const allNodesAndEdgesSelector = (s: ReactFlowState) => ({
+    nodes: s.getNodes(),
     edges: s.edges,
 });
 

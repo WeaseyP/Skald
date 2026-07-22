@@ -1,0 +1,108 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-fm-bell",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "FM Bell",
+        "label": "FM Bell",
+        "volume": 0.7,
+        "voiceCount": 12,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "bell-mod",
+              "type": "fmOperator",
+              "position": { "x": 0, "y": 360 },
+              "data": {
+                "label": "Mod",
+                "frequency": 3.5,
+                "modIndex": 0,
+                "exposedParameters": ["frequency"]
+              }
+            },
+            {
+              "id": "bell-carrier",
+              "type": "fmOperator",
+              "position": { "x": 280, "y": 120 },
+              "data": {
+                "label": "Carrier",
+                "frequency": 1,
+                "modIndex": 4,
+                "exposedParameters": ["frequency", "modIndex"]
+              }
+            },
+            {
+              "id": "bell-amp",
+              "type": "adsr",
+              "position": { "x": 540, "y": 120 },
+              "data": {
+                "label": "Strike",
+                "attack": 0.002,
+                "decay": 0.8,
+                "sustain": 0,
+                "release": 1.2,
+                "depth": 1,
+                "velocitySensitivity": 0.9,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "bell-reverb",
+              "type": "reverb",
+              "position": { "x": 800, "y": 120 },
+              "data": {
+                "label": "Bell Space",
+                "decay": 2,
+                "preDelay": 0.01,
+                "mix": 0.2,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "bell-output",
+              "type": "output",
+              "position": { "x": 1060, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "bell-mod", "from_port": "output", "to_node": "bell-carrier", "to_port": "input_mod" },
+            { "from_node": "bell-carrier", "from_port": "output", "to_node": "bell-amp", "to_port": "input" },
+            { "from_node": "bell-amp", "from_port": "output", "to_node": "bell-reverb", "to_port": "input" },
+            { "from_node": "bell-reverb", "from_port": "output", "to_node": "bell-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-fm-bell",
+      "targetNodeId": "instrument-fm-bell",
+      "name": "FM Bell",
+      "color": "#EC4899",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 72, "velocity": 0.92, "duration": 1 },
+        { "step": 3, "note": 79, "velocity": 0.7, "duration": 1 },
+        { "step": 6, "note": 75, "velocity": 0.82, "duration": 1 },
+        { "step": 10, "note": 82, "velocity": 0.76, "duration": 1 },
+        { "step": 13, "note": 79, "velocity": 0.65, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 100, "patternSteps": 16, "masterVolume": 0.8 }
+}

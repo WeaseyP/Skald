@@ -1,0 +1,236 @@
+{
+  "nodes": [
+    {
+      "id": "kick-instrument",
+      "type": "instrument",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "name": "Kick",
+        "label": "Kick",
+        "volume": 1,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "kick-oscillator",
+              "type": "oscillator",
+              "position": {
+                "x": -500,
+                "y": -100
+              },
+              "data": {
+                "label": "Body",
+                "frequency": 50,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude",
+                  "pulseWidth",
+                  "phase"
+                ]
+              }
+            },
+            {
+              "id": "kick-amp-envelope",
+              "type": "adsr",
+              "position": {
+                "x": -230,
+                "y": -100
+              },
+              "data": {
+                "label": "Amp",
+                "attack": 0.001,
+                "decay": 0.25,
+                "sustain": 0,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ]
+              }
+            },
+            {
+              "id": "kick-distortion",
+              "type": "distortion",
+              "position": {
+                "x": 40,
+                "y": -100
+              },
+              "data": {
+                "label": "Soft Punch",
+                "drive": 8,
+                "shape": "soft",
+                "tone": 3000,
+                "mix": 0.4,
+                "exposedParameters": [
+                  "drive",
+                  "tone",
+                  "mix"
+                ]
+              }
+            },
+            {
+              "id": "kick-output",
+              "type": "output",
+              "position": {
+                "x": 310,
+                "y": -100
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "kick-pitch-envelope",
+              "type": "adsr",
+              "position": {
+                "x": -500,
+                "y": 240
+              },
+              "data": {
+                "label": "Pitch",
+                "attack": 0.001,
+                "decay": 0.06,
+                "sustain": 0,
+                "release": 0.01,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "attack",
+                  "decay",
+                  "sustain",
+                  "release",
+                  "depth"
+                ]
+              }
+            },
+            {
+              "id": "kick-pitch-mapper",
+              "type": "mapper",
+              "position": {
+                "x": -230,
+                "y": 240
+              },
+              "data": {
+                "label": "Pitch Drop",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2.5,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "kick-oscillator",
+              "from_port": "output",
+              "to_node": "kick-amp-envelope",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-amp-envelope",
+              "from_port": "output",
+              "to_node": "kick-distortion",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-distortion",
+              "from_port": "output",
+              "to_node": "kick-output",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-pitch-envelope",
+              "from_port": "output",
+              "to_node": "kick-pitch-mapper",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-pitch-mapper",
+              "from_port": "output",
+              "to_node": "kick-oscillator",
+              "to_port": "input_freq"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": {
+    "x": 420,
+    "y": 260,
+    "zoom": 0.9
+  },
+  "sequencerTracks": [
+    {
+      "id": "kick-track",
+      "targetNodeId": "kick-instrument",
+      "name": "Kick",
+      "color": "#FC8181",
+      "steps": 16,
+      "notes": [
+        {
+          "step": 0,
+          "note": 36,
+          "velocity": 1,
+          "duration": 2,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 4,
+          "note": 36,
+          "velocity": 0.92,
+          "duration": 2,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 8,
+          "note": 36,
+          "velocity": 1,
+          "duration": 2,
+          "probability": 1,
+          "patchOverrides": {}
+        },
+        {
+          "step": 12,
+          "note": 36,
+          "velocity": 0.95,
+          "duration": 2,
+          "probability": 1,
+          "patchOverrides": {}
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": {
+    "bpm": 120,
+    "patternSteps": 16,
+    "masterVolume": 0.8
+  }
+}

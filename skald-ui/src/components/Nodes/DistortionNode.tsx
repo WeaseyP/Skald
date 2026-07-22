@@ -1,25 +1,14 @@
-// src/components/Nodes/DistortionNode.tsx
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { makeParamNode } from './ParamNode';
 
-const baseNodeStyles: React.CSSProperties = {
-    border: '1px solid #2f9e44',
-    borderRadius: '4px',
-    padding: '10px 15px',
-    width: 150,
-    textAlign: 'center'
-};
-
-const distortionNodeStyles: React.CSSProperties = { ...baseNodeStyles, background: '#ffc9c9', borderColor: '#e03131' };
-
-const DistortionNodeComponent = ({ data }: NodeProps) => {
-  return (
-    <div style={distortionNodeStyles}>
-      <Handle type="target" position={Position.Left} id="input" />
-      <div><strong>{data.label || 'Distortion'}</strong></div>
-      <Handle type="source" position={Position.Right} id="output" />
-    </div>
-  );
-};
-
-export const DistortionNode = memo(DistortionNodeComponent);
+export const DistortionNode = makeParamNode({
+    type: 'distortion',
+    title: 'Distortion',
+    inputs: [{ id: 'input', label: 'In' }],
+    outputs: [{ id: 'output', label: 'Out' }],
+    fields: [
+        { key: 'drive', label: 'Drive', min: 1, max: 100, step: 1 },
+        { key: 'shape', label: 'Shape', kind: 'select', options: ['classic', 'soft', 'hard', 'asymmetric'] },
+        { key: 'tone', label: 'Tone (Hz)', min: 100, max: 20000, step: 50 },
+        { key: 'mix', label: 'Mix', min: 0, max: 1, step: 0.05 },
+    ],
+});

@@ -1,4 +1,4 @@
-package skald_core
+﻿package skald_core
 
 import json "core:encoding/json"
 
@@ -11,6 +11,12 @@ Note_Event :: struct {
 	start_time: f32, // Kept for compatibility, might be unused if step is used
     step:       int,
 	duration:   f32,
+	// 0..1 chance the step fires each loop; <=0 (absent in old fixtures)
+	// means "always" - the UI serializes explicit values from 0.001 up.
+	probability: f32,
+	// Per-step parameter changes (P-locks): exposed-param name -> value,
+	// applied via set_param just before the step's note_on.
+	patch_overrides: map[string]f32,
 }
 
 Node :: struct {
@@ -24,7 +30,26 @@ Node_Raw :: struct {
 	id:         string,
 	type:       string,
 	parameters: json.Object,
+	// React Flow saves store node parameters under `data`; Project JSON uses
+	// `parameters`. The parser normalizes either shape into Node.parameters.
+	data:       json.Object,
 	subgraph:   json.Object,
+}
+
+React_Flow_Edge_Raw :: struct {
+	source:       string,
+	sourceHandle: string,
+	target:       string,
+	targetHandle: string,
+}
+
+Sequencer_Track_Raw :: struct {
+	targetNodeId: string,
+	name:         string,
+	notes:        []Note_Event,
+	isMuted:      bool,
+	isSolo:       bool,
+	steps:        int,
 }
 
 Connection :: struct {
@@ -72,8 +97,12 @@ Graph :: struct {
 Graph_Raw :: struct {
 	nodes:            []Node_Raw,
 	connections:      []Connection,
+	// React Flow save files use `edges` with source/target field names.
+	edges:            []React_Flow_Edge_Raw,
 	events:           []Note_Event,
 	sequencer_tracks: []Sequencer_Track,
+	// React Flow save files use camelCase `sequencerTracks`.
+	sequencerTracks:  []Sequencer_Track_Raw,
 }
 
 // --- Project Level Structures (New for UI Integration) ---
@@ -91,6 +120,7 @@ Project_Instrument_Raw :: struct {
 	glide:       f32,
 	unison:      int,
 	detune:      f32,
+	volume:      f32,
 	midi_config: Midi_Config,
 	audio_graph: Graph_Raw,
 }
@@ -98,6 +128,9 @@ Project_Instrument_Raw :: struct {
 Project_Data_Raw :: struct {
 	bpm:           f32,
 	master_volume: f32,
+	// Global loop length in steps (the UI's Pattern Steps control). Tracks
+	// shorter than this wrap polyrhythmically. 0 = fall back to track length.
+	pattern_steps: int,
 	instruments:   []Project_Instrument_Raw,
 }
 
@@ -114,6 +147,11 @@ Project_Instrument :: struct {
 	glide:       f32,
 	unison:      int,
 	detune:      f32,
+	// Instrument output level, 0..1, baked into the generated process proc.
+	// 0 means "absent from the JSON" and defaults to 1.0 at parse time (the
+	// UI serializes an explicit floor of 0.001 instead of a true 0; muting
+	// is the `mute` flag's job).
+	volume:      f32,
 	midi_config: Midi_Config,
 	graph:       Graph,
 }
@@ -121,6 +159,7 @@ Project_Instrument :: struct {
 Project :: struct {
 	bpm:           f32,
 	master_volume: f32,
+	pattern_steps: int,
 	instruments:   []Project_Instrument,
 	sequencer_tracks: []Sequencer_Track,
 }
@@ -132,4 +171,3 @@ Asset_Type :: enum {
 	SFX,
 	Music_Layer,
 }
-

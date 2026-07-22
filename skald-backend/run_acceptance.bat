@@ -16,7 +16,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-odin build . -file -out:codegen.exe
+odin build main.odin -file -out:codegen.exe
 if errorlevel 1 (
     echo [SKALD] CODEGEN BUILD FAILED.
     exit /b 1
@@ -35,6 +35,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM ---- Feature-vector dumps (tests\out\*.features) feed the ----
+REM ---- cross-fixture comparisons after the per-fixture loop. ----
+if not exist tests\out mkdir tests\out
+del /q tests\out\*.features >nul 2>&1
+
 set FAILED=0
 set TOTAL=0
 set HAS_FIXTURES=0
@@ -51,6 +56,22 @@ if !HAS_FIXTURES! equ 0 (
     echo [SKALD] FFT self-test passed. Add seed fixtures per
     echo         tests\fixtures\SEED_FIXTURE_INSTRUCTIONS.md.
     exit /b 0
+)
+
+REM ---- Cross-fixture direction check: the sine fixtures bake pitch in ----
+REM ---- as a constant, so "220 -^> 440 raises peak_freq" is proven by ----
+REM ---- comparing the feature vectors the two fixture runs dumped. ----
+if exist tests\out\sine_220.features if exist tests\out\sine_440.features (
+    echo.
+    echo --- Cross-fixture: sine_220 -^> sine_440 must raise peak_freq ---
+    set /a TOTAL+=1
+    .\acceptance.exe __compare_features__ -a:tests\out\sine_220.features -b:tests\out\sine_440.features -expect-peak:raise
+    if errorlevel 1 (
+        echo CROSS-FIXTURE PITCH CHECK FAILED
+        set /a FAILED+=1
+    ) else (
+        echo PASS cross-fixture pitch direction
+    )
 )
 
 echo.
@@ -77,7 +98,7 @@ if errorlevel 1 (
     set /a FAILED+=1
     goto :eof
 )
-.\acceptance.exe %~2
+.\acceptance.exe %~2 -dump:tests\out\%~2.features
 if errorlevel 1 (
     echo ASSERTIONS FAILED FOR %~2
     set /a FAILED+=1

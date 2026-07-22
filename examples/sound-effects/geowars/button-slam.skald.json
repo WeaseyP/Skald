@@ -1,0 +1,157 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-sfx-slam",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "GW SFX Button Slam",
+        "label": "GW SFX Button Slam",
+        "volume": 0.7,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "slam-thud",
+              "type": "oscillator",
+              "position": { "x": -500, "y": -100 },
+              "data": {
+                "label": "Thud",
+                "frequency": 55,
+                "waveform": "Sine",
+                "amplitude": 0.9,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "slam-pitch",
+              "type": "adsr",
+              "position": { "x": -500, "y": 240 },
+              "data": {
+                "label": "Drop",
+                "attack": 0.001,
+                "decay": 0.1,
+                "sustain": 0,
+                "release": 0.01,
+                "depth": 1,
+                "velocitySensitivity": 0,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "slam-pitch-map",
+              "type": "mapper",
+              "position": { "x": -230, "y": 240 },
+              "data": {
+                "label": "Pitch Drop",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2.2,
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "slam-crunch",
+              "type": "noise",
+              "position": { "x": -500, "y": -300 },
+              "data": {
+                "label": "Crunch",
+                "type": "White",
+                "amplitude": 0.6,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "slam-crunch-env",
+              "type": "adsr",
+              "position": { "x": -230, "y": -300 },
+              "data": {
+                "label": "Crunch Env",
+                "attack": 0.001,
+                "decay": 0.05,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "slam-mixer",
+              "type": "mixer",
+              "position": { "x": 40, "y": -180 },
+              "data": {
+                "label": "Thud + Crunch",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.95, "pan": 0 },
+                  { "id": 2, "level": 0.5, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "slam-amp",
+              "type": "adsr",
+              "position": { "x": 310, "y": -180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.001,
+                "decay": 0.35,
+                "sustain": 0,
+                "release": 0.12,
+                "depth": 1,
+                "velocitySensitivity": 0.4,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "slam-dist",
+              "type": "distortion",
+              "position": { "x": 580, "y": -180 },
+              "data": {
+                "label": "Industrial",
+                "drive": 18,
+                "shape": "classic",
+                "tone": 2500,
+                "mix": 0.4,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "slam-output",
+              "type": "output",
+              "position": { "x": 850, "y": -180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "slam-thud", "from_port": "output", "to_node": "slam-mixer", "to_port": "input_1" },
+            { "from_node": "slam-crunch", "from_port": "output", "to_node": "slam-crunch-env", "to_port": "input" },
+            { "from_node": "slam-crunch-env", "from_port": "output", "to_node": "slam-mixer", "to_port": "input_2" },
+            { "from_node": "slam-pitch", "from_port": "output", "to_node": "slam-pitch-map", "to_port": "input" },
+            { "from_node": "slam-pitch-map", "from_port": "output", "to_node": "slam-thud", "to_port": "input_freq" },
+            { "from_node": "slam-mixer", "from_port": "output", "to_node": "slam-amp", "to_port": "input" },
+            { "from_node": "slam-amp", "from_port": "output", "to_node": "slam-dist", "to_port": "input" },
+            { "from_node": "slam-dist", "from_port": "output", "to_node": "slam-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 420, "y": 260, "zoom": 0.9 },
+  "sequencerTracks": [],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}

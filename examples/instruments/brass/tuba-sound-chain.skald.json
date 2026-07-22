@@ -1,0 +1,121 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-tuba",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Tuba",
+        "label": "Tuba",
+        "volume": 0.85,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.04,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "tuba-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Buzz",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "tuba-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Dark Brass",
+                "type": "Lowpass",
+                "cutoff": 220,
+                "resonance": 0.8,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "tuba-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.08,
+                "decay": 0.1,
+                "sustain": 0.85,
+                "release": 0.18,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "tuba-output",
+              "type": "output",
+              "position": { "x": 800, "y": 120 },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "tuba-osc",
+              "from_port": "output",
+              "to_node": "tuba-filter",
+              "to_port": "input"
+            },
+            {
+              "from_node": "tuba-filter",
+              "from_port": "output",
+              "to_node": "tuba-amp",
+              "to_port": "input"
+            },
+            {
+              "from_node": "tuba-amp",
+              "from_port": "output",
+              "to_node": "tuba-output",
+              "to_port": "input"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-tuba",
+      "targetNodeId": "instrument-tuba",
+      "name": "Tuba",
+      "color": "#D97706",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 36, "velocity": 0.82, "duration": 3 },
+        { "step": 4, "note": 31, "velocity": 0.75, "duration": 3 },
+        { "step": 8, "note": 34, "velocity": 0.88, "duration": 3 },
+        { "step": 12, "note": 29, "velocity": 0.78, "duration": 3 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": {
+    "bpm": 96,
+    "patternSteps": 16,
+    "masterVolume": 0.8
+  }
+}

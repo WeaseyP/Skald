@@ -107,20 +107,21 @@ export const useSequencerState = () => {
         }));
     }, [tracks, saveHistory]);
 
-    const updateNote = useCallback((trackId: string, step: number, changes: Partial<NoteEvent>) => {
+    // notePitch identifies WHICH note on the step to edit — without it, a
+    // chord could only ever have its first note addressed, and the cleanup
+    // below deleted every sibling on the step (the "Snap to Scale destroys
+    // chords" bug).
+    const updateNote = useCallback((trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => {
         const track = tracks.find(t => t.id === trackId);
         if (!track) return;
-        // Optimization: check if changes actually change anything? 
-        // Logic below handles cleanup etc. safest to save.
-        // But drag updates are frequent. Ideally we save ONLY on drag start/end?
-        // Drag updates happen in StepGrid local state, committed on MouseUp.
-        // So updateNote is called once per drag end. That's fine.
 
         saveHistory();
         setTracks(prev => prev.map(t => {
             if (t.id !== trackId) return t;
 
-            const targetNote = t.notes.find(n => n.step === step);
+            const targetNote = t.notes.find(n =>
+                n.step === step && (notePitch === undefined || n.note === notePitch)
+            );
             if (!targetNote) return t;
 
             const updatedNote = { ...targetNote, ...changes };
@@ -132,8 +133,10 @@ export const useSequencerState = () => {
             }
 
             const cleanedNotes = t.notes.filter(n => {
-                if (n.step === step) return false;
-                if (coveredSteps.has(n.step)) return false;
+                if (n === targetNote) return false; // the note being replaced
+                // Tie cleanup applies per pitch lane: a long C4 swallows the
+                // C4s under it, but leaves the E4/G4 chord siblings alone.
+                if (coveredSteps.has(n.step) && n.note === updatedNote.note) return false;
                 return true;
             });
 

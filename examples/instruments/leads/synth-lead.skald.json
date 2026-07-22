@@ -1,0 +1,116 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-synth-lead",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Synth Lead",
+        "label": "Synth Lead",
+        "volume": 0.75,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.06,
+        "unison": 3,
+        "detune": 10,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "lead-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Saw Lead",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "lead-filter",
+              "type": "filter",
+              "position": { "x": 250, "y": 120 },
+              "data": {
+                "label": "Lead Tone",
+                "type": "Lowpass",
+                "cutoff": 1200,
+                "resonance": 2.5,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "lead-amp",
+              "type": "adsr",
+              "position": { "x": 500, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.01,
+                "decay": 0.2,
+                "sustain": 0.6,
+                "release": 0.25,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "lead-delay",
+              "type": "delay",
+              "position": { "x": 750, "y": 120 },
+              "data": {
+                "label": "Eighth Delay",
+                "delayTime": 0.25,
+                "feedback": 0.35,
+                "mix": 0.25,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "lead-output",
+              "type": "output",
+              "position": { "x": 1000, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "lead-osc", "from_port": "output", "to_node": "lead-filter", "to_port": "input" },
+            { "from_node": "lead-filter", "from_port": "output", "to_node": "lead-amp", "to_port": "input" },
+            { "from_node": "lead-amp", "from_port": "output", "to_node": "lead-delay", "to_port": "input" },
+            { "from_node": "lead-delay", "from_port": "output", "to_node": "lead-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-synth-lead",
+      "targetNodeId": "instrument-synth-lead",
+      "name": "Synth Lead",
+      "color": "#F59E0B",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 60, "velocity": 0.9, "duration": 2 },
+        { "step": 3, "note": 63, "velocity": 0.78, "duration": 1 },
+        { "step": 5, "note": 67, "velocity": 0.88, "duration": 2 },
+        { "step": 8, "note": 70, "velocity": 0.95, "duration": 2 },
+        { "step": 11, "note": 67, "velocity": 0.82, "duration": 1 },
+        { "step": 13, "note": 63, "velocity": 0.76, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 126, "patternSteps": 16, "masterVolume": 0.8 }
+}

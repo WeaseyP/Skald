@@ -1,0 +1,129 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-gold-fanfare",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Gold Gilded Fanfare",
+        "label": "GW Gold Gilded Fanfare",
+        "volume": 0.6,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 2,
+        "detune": 12,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "fanfare-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Brass",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "fanfare-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Bell of the Horn",
+                "type": "Lowpass",
+                "cutoff": 1300,
+                "resonance": 1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "fanfare-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Blare",
+                "attack": 0.04,
+                "decay": 0.12,
+                "sustain": 0.75,
+                "release": 0.12,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "sustain", "release"]
+              }
+            },
+            {
+              "id": "fanfare-shine",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Shine",
+                "shape": "soft",
+                "drive": 5,
+                "tone": 4000,
+                "mix": 0.15,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "fanfare-reverb",
+              "type": "reverb",
+              "position": { "x": 1040, "y": 120 },
+              "data": {
+                "label": "Stage",
+                "decay": 1.8,
+                "preDelay": 0.01,
+                "mix": 0.18,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "fanfare-output",
+              "type": "output",
+              "position": { "x": 1300, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "fanfare-osc", "from_port": "output", "to_node": "fanfare-filter", "to_port": "input" },
+            { "from_node": "fanfare-filter", "from_port": "output", "to_node": "fanfare-amp", "to_port": "input" },
+            { "from_node": "fanfare-amp", "from_port": "output", "to_node": "fanfare-shine", "to_port": "input" },
+            { "from_node": "fanfare-shine", "from_port": "output", "to_node": "fanfare-reverb", "to_port": "input" },
+            { "from_node": "fanfare-reverb", "from_port": "output", "to_node": "fanfare-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-gold-fanfare",
+      "targetNodeId": "instrument-gw-gold-fanfare",
+      "name": "GW Gold Gilded Fanfare",
+      "color": "#E8B62A",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 62, "velocity": 0.9, "duration": 1 },
+        { "step": 2, "note": 62, "velocity": 0.7, "duration": 1 },
+        { "step": 4, "note": 62, "velocity": 0.8, "duration": 1 },
+        { "step": 6, "note": 66, "velocity": 0.9, "duration": 2 },
+        { "step": 8, "note": 69, "velocity": 1, "duration": 4 },
+        { "step": 13, "note": 71, "velocity": 0.7, "duration": 1 },
+        { "step": 14, "note": 69, "velocity": 0.9, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}

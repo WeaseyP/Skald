@@ -1,0 +1,128 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-boss-chrome-pad",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Boss Chrome Pad",
+        "label": "GW Boss Chrome Pad",
+        "volume": 0.5,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "chrome-wave",
+              "type": "wavetable",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Chrome",
+                "tableName": "Sine",
+                "frequency": 440,
+                "position": 2.3,
+                "amplitude": 0.8,
+                "fixedPitch": false,
+                "exposedParameters": ["position", "amplitude"]
+              }
+            },
+            {
+              "id": "chrome-shimmer",
+              "type": "lfo",
+              "position": { "x": 0, "y": 440 },
+              "data": {
+                "label": "Shimmer",
+                "waveform": "Sine",
+                "frequency": 0.12,
+                "amplitude": 0.5,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "chrome-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Haze",
+                "type": "Lowpass",
+                "cutoff": 850,
+                "resonance": 1.1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "chrome-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Swell",
+                "attack": 1.2,
+                "decay": 0.5,
+                "sustain": 0.8,
+                "release": 2.2,
+                "depth": 1,
+                "velocitySensitivity": 0.4,
+                "exposedParameters": ["attack", "release"]
+              }
+            },
+            {
+              "id": "chrome-reverb",
+              "type": "reverb",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Void",
+                "decay": 4,
+                "preDelay": 0.01,
+                "mix": 0.35,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "chrome-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "chrome-wave", "from_port": "output", "to_node": "chrome-filter", "to_port": "input" },
+            { "from_node": "chrome-shimmer", "from_port": "output", "to_node": "chrome-wave", "to_port": "input_pos" },
+            { "from_node": "chrome-filter", "from_port": "output", "to_node": "chrome-amp", "to_port": "input" },
+            { "from_node": "chrome-amp", "from_port": "output", "to_node": "chrome-reverb", "to_port": "input" },
+            { "from_node": "chrome-reverb", "from_port": "output", "to_node": "chrome-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-boss-chrome-pad",
+      "targetNodeId": "instrument-gw-boss-chrome-pad",
+      "name": "GW Boss Chrome Pad",
+      "color": "#9EA7B8",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 50, "velocity": 0.8, "duration": 8 },
+        { "step": 0, "note": 57, "velocity": 0.75, "duration": 8 },
+        { "step": 0, "note": 62, "velocity": 0.7, "duration": 8 },
+        { "step": 8, "note": 46, "velocity": 0.8, "duration": 8 },
+        { "step": 8, "note": 53, "velocity": 0.75, "duration": 8 },
+        { "step": 8, "note": 58, "velocity": 0.7, "duration": 8 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 112, "patternSteps": 16, "masterVolume": 0.75 }
+}

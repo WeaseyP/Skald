@@ -1,0 +1,115 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-wind",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Wind",
+        "label": "Wind",
+        "volume": 0.72,
+        "voiceCount": 1,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "wind-noise",
+              "type": "noise",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Pink Air",
+                "type": "Pink",
+                "amplitude": 0.5,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "wind-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Wind Body",
+                "type": "Bandpass",
+                "cutoff": 600,
+                "resonance": 1.2,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "wind-gain",
+              "type": "gain",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Gust Level",
+                "gain": 0.65,
+                "exposedParameters": ["gain"]
+              }
+            },
+            {
+              "id": "wind-reverb",
+              "type": "reverb",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Open Space",
+                "decay": 5,
+                "preDelay": 0.01,
+                "mix": 0.5,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "wind-gust",
+              "type": "lfo",
+              "position": { "x": 260, "y": 430 },
+              "data": {
+                "label": "Slow Gust",
+                "waveform": "Sine",
+                "frequency": 0.1,
+                "amplitude": 0.25,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "wind-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "wind-noise", "from_port": "output", "to_node": "wind-filter", "to_port": "input" },
+            { "from_node": "wind-filter", "from_port": "output", "to_node": "wind-gain", "to_port": "input" },
+            { "from_node": "wind-gain", "from_port": "output", "to_node": "wind-reverb", "to_port": "input" },
+            { "from_node": "wind-reverb", "from_port": "output", "to_node": "wind-output", "to_port": "input" },
+            { "from_node": "wind-gust", "from_port": "output", "to_node": "wind-gain", "to_port": "input_gain" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-wind",
+      "targetNodeId": "instrument-wind",
+      "name": "Wind",
+      "color": "#38BDF8",
+      "steps": 64,
+      "notes": [
+        { "step": 0, "note": 60, "velocity": 1, "duration": 64 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 72, "patternSteps": 64, "masterVolume": 0.7 }
+}

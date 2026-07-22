@@ -1,5 +1,198 @@
 # Skald Changelog
 
+## [0.1.0] - 2026-07-22
+
+First public game-production preview.
+
+- Added a reproducible Windows developer setup with Node 22 and Odin dev-2025-02.
+- Upgraded the packaged runtime to Electron 43 and verified zero production dependency audit findings.
+- Added verified Squirrel installer and portable ZIP release packaging.
+- Added organized import examples for sound effects, instruments, and songs.
+- Documented prerelease limitations: unsigned Windows binaries, default Electron icon, and pre-1.0 compatibility changes.
+- Release gates: backend acceptance and golden snapshots; UI lint, typecheck, and tests.
+
+## Live-edit hot-swap fix + unified node UI (2026-07-18)
+
+Gates: UI 67/67, typecheck + lint clean. Backend untouched.
+
+- ✅ **Live edits actually apply while playing/looping** — root cause found
+  by instrumenting the worklet port: the hot-swap message carried a
+  compiled `WebAssembly.Module`, which Chromium SILENTLY DROPS when posted
+  to an AudioWorklet port (survives `processorOptions` at construction —
+  why initial Play worked — but fails structured deserialization in
+  transit, with only an unobserved `messageerror`). Every rebuild logged
+  "Hot-swapped" while the old DSP kept playing; the user's edits only
+  registered after Stop/Play. Swaps now ship raw wasm BYTES (transferable)
+  and the worklet compiles them itself; both port ends listen for
+  `messageerror` so a dropped message can never again be silent.
+  Verified live: BPM 120→240 mid-loop halves the step interval
+  (125ms→63ms), pattern length 16→6→12 re-wraps immediately.
+- ✅ **Playhead follows pattern-length changes mid-play** — the step
+  handler read `patternSteps` from a stale closure captured at Play.
+- ✅ **Every node is now built on one visual system** (the ADSR/Filter
+  style): dark card, labeled port rows, and INLINE editable controls on
+  the node itself — waveform/type selects, BPM-sync toggles, numeric
+  fields — for Oscillator, LFO, S&H, Noise, FM, Wavetable, Delay, Reverb,
+  Distortion, Mixer (per-channel levels), Panner, VCA, Mapper, Filter
+  (incl. type select), ADSR (incl. depth + velocity), Output and MIDI In.
+  Mode-dependent fields hide when inert (frequency without Fixed Pitch,
+  free-run rate under BPM sync).
+- ✅ **One fixed accent color per node type** (NODE_ACCENTS): warm =
+  sources, purple = modulators, green = envelopes, blue/teal = tone & time,
+  red = drive, grey/yellow = utilities, indigo = structure.
+- ✅ **Side panel: every slider gained a typed number box**; the Filter's
+  read-only cutoff/resonance text became editable fields (XY pad for
+  exploring, numbers for landing); Mapper and Mixer gained full panels;
+  the Wavetable's dead Table dropdown was removed (position IS the table).
+- ✅ **Instruments are renameable** — double-click the node title (or use
+  the new Name field in the side panel); the name flows into the generated
+  asset prefix on the next Generate.
+
+## Multi-track export + save/load hardening (2026-07-17)
+
+Gates: **26/26 acceptance** (new dual_track fixture), **25/25 goldens**
+(regenerated — Music Layer emission gained per-track blocks), **67/67 UI
+tests** (10 new), typecheck + lint clean.
+
+- ✅ **Every sequencer track exports** — data-loss fix. Only `tracks[0]`
+  per instrument was ever read (serializer `.find()`, codegen
+  `sequencer_tracks[0]`); any additional track targeting the same
+  instrument silently vanished from both preview and export (proven:
+  four_bar_song's "Pad Third"). The serializer now ships ALL matching
+  tracks and the codegen emits one switch block per active track on the
+  shared step clock, each wrapping at its own length (polyrhythm), with
+  per-track mute honored and intra-instrument solo silencing non-soloed
+  siblings. Instrument-level mute now requires every track muted; solo
+  bubbles up from any track. Fixture: dual_track (both tracks' pitches
+  assert at their onsets; a muted third track must stay silent).
+- ✅ **Save reports its outcome**: the IPC returns `{saved, path, error}`,
+  a green "Saved to <path>" banner confirms success, and a disk-write
+  failure shows "Save FAILED — nothing was written" instead of the old
+  fire-and-forget silence.
+- ✅ **Load/Import validate before touching state**: corrupt JSON, foreign
+  files, and unreadable paths surface a visible error and leave the
+  current graph untouched (a bad file used to either throw at the error
+  boundary or silently clobber the canvas).
+
+Gates: **25/25 acceptance** (3 new fixtures), **24/24 goldens** (regenerated —
+every asset gained `_feed_input`/`ext_in_*` and the new trigger semantics),
+**57/57 UI tests** (5 new), typecheck + lint clean.
+
+- ✅ **P-locks actually export**: the serializer now ships node labels, the
+  codegen auto-exposes P-locked params (they need a live processor field)
+  and resolves the UI's `"Label:param"` key to the collision-free
+  `set_param` field name — every step override used to be a silent no-op.
+  Unresolvable keys (renamed/deleted node) are a loud codegen error.
+  Non-numeric overrides are filtered at serialization (f32 API). Fixture:
+  plock_step (cutoff P-lock audibly brightens the second half).
+- ✅ **`_trigger` duration<=0 is a real one-shot**: holds through
+  attack+decay then releases (1s cap for envelope-less patches) — the
+  default call on a sustaining patch used to drone forever and leak the
+  voice. `note_on(duration=0)` keeps its manual hold-until-note_off
+  contract. sfx_oneshot now pins silence + is_playing=false after a
+  default trigger.
+- ✅ **Effect instruments export**: `GraphInput` (collapse-with-inputs)
+  seeds the bus domain and reads a new per-asset external input bus fed by
+  `<Foo>_feed_input(p, l, r)` — the shape used to hard-fail codegen.
+  Fixture: effect_input (fed 440Hz passes the filter audibly with zero
+  voices; unfed is silent).
+- ✅ **FM "Carrier" wire works**: `input_carrier` validates and V/Oct-
+  modulates the carrier frequency (alias: legacy `input_freq`) — the only
+  wire the UI could draw into that port used to be rejected with a hint to
+  use a port the node doesn't show. Fixture: fm_carrier_wire.
+- ✅ **Master volume exports honestly**: owned by the app, not the dock —
+  Generate while stopped used to bake a hardcoded 0.8 (and slider-at-0 hit
+  the `|| 0.8` falsy trap).
+- ✅ **Saves carry BPM / pattern length / master volume** (`session` block;
+  older saves keep current settings on load).
+- ✅ **Default scale is Chromatic**: C Minor was silently repitching placed
+  notes at preview AND export while the piano roll showed the raw pitch.
+- ✅ **Preview failures are visible**: a canvas banner shows Play/build
+  errors (red) and the "preview out of date — last edit failed to build,
+  you're hearing the previous module" state (amber), clearing on the next
+  successful build. Both were console-only.
+
+## Full-system review fixes, P0–P8 (2026-07-05)
+
+Eight phases on branch `review-fixes`, one commit per phase, driven by the
+290-agent review (findings + synthesis in `review-checkpoints/`). Gates:
+**20/20 acceptance fixtures** (11 new adversarial ones), **53/53 UI tests**.
+
+- ✅ **P0 — everything the UI produces compiles**: exposed-param collision
+  resolution fixed at every call site, identifier sanitization for any
+  node id / instrument name, chord switch-case dedup, constant-division
+  guards. Fixtures: dual_osc, fm_patch, reverb_adsr_exposure, chord_step,
+  numeric_ids.
+- ✅ **P1 — generated code plays music**: note-driven pitch (piano-roll
+  melodies work), real ADSR release tails, velocity sensitivity,
+  oldest-voice stealing, steal-glide, per-note note_off. Fixture:
+  melody_8step pins four sequenced pitches.
+- ✅ **P2 — no NaN ever**: clamps at point of use for FM exponent, SVF
+  cutoff/damping, delay feedback, pan; per-voice DSP state reset on
+  note_on; reverb decay is real seconds (RT60-mapped gain). Fixture:
+  hostile_modulation (±8 oct pitch LFO, ±30kHz cutoff LFO) stays finite
+  for 60s at 44.1k/48k.
+- ✅ **P3 — nothing silently disappears**: Delay/Reverb run once per
+  sample on a post-voice bus (tails ring after voices die), cycles are a
+  loud codegen error, every input port sums all its wires, GraphOutput
+  sums all connections port-aware, Panner feeds mono consumers, mixer
+  reads the UI's real level keys, master limiter ceiling is truly 1.0,
+  mute/solo/master_volume honored. Fixtures: panner_mono, dual_panner,
+  delay_tail.
+- ✅ **P4 — node DSP fidelity**: true PWM square, real morphing wavetable
+  (position 0–3, matches the preview worklet), full distortion contract
+  (classic/soft/hard/asymmetric + tone + mix), FM ratio semantics,
+  live MIDI gate, drift-free fractional step clock. Fixture:
+  wavetable_morph.
+- ✅ **P5 — exports carry the whole song**: probability, P-locks,
+  scale-quantized pitches, BPM-synced LFO/S&H/Delay rates, global
+  pattern_steps, honored track mute, correct duration/start_time.
+  Serializer contract test pins every field.
+- ✅ **P6 — preview parity**: exponential V/Oct FM in the preview,
+  V/Oct MIDI pitch, note-tracking FM ratio, working modIndex knob,
+  filter/pan/wavetable modulation wires actually connect, multiplicative
+  amp modulation, live pan edits, clamped Mapper, schema-aligned
+  defaults, and `skaldType` dispatch replacing `constructor.name`
+  (which minified builds mangled — all modulation died in production).
+- ✅ **P7 — UI state integrity**: collapse/explode edge fidelity (no more
+  cross-wiring or dropped fan-out), handle-aware edge ids, delta-based
+  param updates (ADSR editor / XY pad no longer clobber themselves,
+  instrument params editable), undo fixed (load resets, drags coalesce,
+  depth 50), paste deep-clones, error boundary, engine per-node fault
+  isolation, Output delete no longer silences everything, Snap-to-Scale
+  preserves chords, XY pad tunes live, StepGrid modifier-drags work.
+- ✅ **P8 — UX conventions**: Delete key deletes, shortcut legend (?),
+  palette tooltips, double-click slider reset, 24px hit targets,
+  Wavetable back in the palette.
+
+## Test harness generalization (2026-07-04)
+
+- ✅ **Acceptance: 8/8 fixtures green + FFT self-test** (honest baseline
+  re-run; the "2/2" claim below was from when only two fixtures existed).
+- ✅ **New reusable "sound changes" primitive** in `acceptance/soundchange.odin`:
+  `assert_sound_changes` renders two buffers from the same generated Asset
+  under different inputs (MIDI note / `Asset_set_param` / start-vs-trigger),
+  extracts `[RMS, peak_freq, spectral_centroid]`, and asserts the vectors
+  differ beyond a relative threshold plus optional per-feature direction.
+  Wired into `param_modulation` (cutoff 200→4000 must raise centroid) and
+  `kick_loop_120bpm` (trigger-vs-start must raise RMS).
+- ✅ **Cross-fixture pitch direction check**: fixtures dump feature vectors
+  (`-dump:<path>`), and the runner compares `sine_220` → `sine_440` with
+  `acceptance.exe __compare_features__ -expect-peak:raise`. Cross-fixture
+  because the seed fixtures bake oscillator pitch in as a constant —
+  trigger note cannot change their pitch in-process (see finding below).
+- ✅ **WAV export** (`-wav:<path>`): dependency-free 16-bit PCM stereo RIFF
+  writer in `acceptance/wav.odin`, for future model-based (CLAP) judging.
+- 🧹 Removed the dead `fm_bell` switch case (no `fm_bell.json` exists) and
+  its `assert_fm_has_sidebands` helper; recover from git if the fixture is
+  ever captured from the UI.
+- 🔎 **Finding (not fixed, codegen untouched by design)**: when an
+  Oscillator node has a `frequency` parameter (the UI always serializes
+  one), codegen inlines it as a constant, so `Asset_trigger`'s MIDI note
+  never affects pitch; `velocity` is likewise stored on the voice but
+  never read (ADSR `velocitySensitivity` is dropped). All current
+  fixtures therefore ignore note and velocity.
+
 ## Overnight progress (2026-05-02)
 
 **TL;DR for the morning**:

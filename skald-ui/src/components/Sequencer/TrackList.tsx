@@ -21,7 +21,7 @@ const listContainerStyles: React.CSSProperties = {
 };
 
 const trackHeaderStyles: React.CSSProperties = {
-    height: '30px', // Fixed row height
+    height: '34px', // Fixed row height (fits 24px hit targets)
     display: 'flex',
     alignItems: 'center',
     borderBottom: '1px solid #2A2A2A',
@@ -32,15 +32,16 @@ const trackHeaderStyles: React.CSSProperties = {
     boxSizing: 'border-box'
 };
 
+// 24×24 minimum hit target (WCAG 2.2 / touch guidance) — these were 20px.
 const iconBtnStyles: React.CSSProperties = {
     background: 'none',
     border: '1px solid #444',
     color: '#888',
     cursor: 'pointer',
-    width: '20px',
-    height: '20px',
+    width: '24px',
+    height: '24px',
     padding: 0,
-    fontSize: '10px',
+    fontSize: '11px',
     marginLeft: '3px',
     borderRadius: '2px'
 };

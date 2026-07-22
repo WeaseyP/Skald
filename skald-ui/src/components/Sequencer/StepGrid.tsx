@@ -20,7 +20,7 @@ const gridContainerStyles: React.CSSProperties = {
 };
 
 const rowStyles: React.CSSProperties = {
-    height: '30px', // Matches TrackList header height
+    height: '34px', // Matches TrackList header height
     display: 'flex',
     borderBottom: '1px solid #2A2A2A',
     boxSizing: 'border-box'
@@ -29,7 +29,7 @@ const rowStyles: React.CSSProperties = {
 const cellStyles: React.CSSProperties = {
     flex: '0 0 40px', // Fixed width per step
     width: '40px',
-    height: '30px',
+    height: '34px',
     borderRight: '1px solid #2A2A2A',
     cursor: 'pointer',
     position: 'relative',
@@ -76,7 +76,7 @@ const Playhead: React.FC<{ step: number; bpm: number }> = ({ step, bpm }) => {
 };
 
 export const StepGrid: React.FC<StepGridProps & {
-    onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>) => void;
+    onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
     onStepContext?: (trackId: string, step: number, x: number, y: number) => void;
 }> = ({ tracks, currentStep, steps = 16, onToggleStep, onUpdateNote, bpm, onStepContext }) => {
     // Calculate max steps based on tracks
@@ -205,6 +205,46 @@ export const StepGrid: React.FC<StepGridProps & {
         }
         // If no modifier, let event bubble to Cell's handleMouseDown for Select/Context logic
     };
+
+    // Drive + commit the modifier-drag. The drag state used to be set on
+    // mousedown and then... nothing: no mousemove updated it and no mouseup
+    // committed it — the gesture the tooltip advertises did literally
+    // nothing. Vertical drag edits velocity/probability, horizontal edits
+    // duration; mouseup commits through onUpdateNote.
+    React.useEffect(() => {
+        if (!dragState) return;
+
+        const handleMove = (e: MouseEvent) => {
+            setDragState(prev => {
+                if (!prev) return prev;
+                let value = prev.currentValue;
+                if (prev.type === 'duration') {
+                    const dx = e.clientX - prev.startX;
+                    value = Math.max(1, Math.min(16, Math.round(prev.initialValue + dx / 20)));
+                } else {
+                    const dy = prev.startY - e.clientY; // up = louder / more likely
+                    value = Math.max(0, Math.min(1, prev.initialValue + dy / 100));
+                }
+                return { ...prev, currentValue: value };
+            });
+        };
+
+        const handleUp = () => {
+            setDragState(prev => {
+                if (prev && onUpdateNote) {
+                    onUpdateNote(prev.trackId, prev.step, { [prev.type]: prev.currentValue });
+                }
+                return null;
+            });
+        };
+
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', handleUp);
+        };
+    }, [dragState !== null, onUpdateNote]);
 
     return (
         <div style={gridContainerStyles} onContextMenu={(e) => e.preventDefault()}>

@@ -1,94 +1,108 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
+import { NumberInput } from './common/NumberInput';
+import {
+    nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
+    inputGroupStyles, numberInputStyles, NodeTheme, accentFor,
+} from './Nodes/NodeStyles';
+import { useNodeParamUpdater } from './Nodes/ParamNode';
 
-// This is a basic representation. We'll expand this later to dynamically
-// render handles based on the instrument's subgraph.
-const InstrumentNode = ({ data }: NodeProps) => {
-  // Collect all inputs and outputs.
-  // data.inputs and data.outputs are arrays of strings (port names).
-  // If they aren't present (legacy instruments?), we can fallback to default.
-  const inputs = data.inputs || [];
-  const outputs = data.outputs || [];
+const accent = accentFor('instrument');
 
-  // Helper for handle styling
-  const handleContainerStyle: React.CSSProperties = {
-    position: 'relative',
-    height: '20px',
-    display: 'flex',
-    alignItems: 'center',
-    margin: '5px 0'
-  };
+const InstrumentNode = ({ id, data }: NodeProps) => {
+    const update = useNodeParamUpdater(id);
+    const inputs: string[] = data.inputs || [];
+    const outputs: string[] = data.outputs || [];
 
-  const labelStyle: React.CSSProperties = {
-    fontSize: '0.8em',
-    color: '#CBD5E0'
-  };
+    // Double-click the title to rename. The name flows into the generated
+    // asset prefix (TestSynth_trigger etc.) on the next Generate — it was
+    // only settable once, in the creation modal.
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const startEditing = () => {
+        setDraft(data.name || 'Instrument');
+        setEditing(true);
+    };
+    const commit = () => {
+        const name = draft.trim();
+        if (name) update({ name });
+        setEditing(false);
+    };
 
-  return (
-    <div style={{
-      background: '#2D3748',
-      border: '2px solid #5A67D8', // Distinct border for instruments
-      borderRadius: '8px',
-      padding: '10px',
-      color: 'white',
-      minWidth: '150px',
-      fontFamily: 'sans-serif',
-      boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
-    }}>
-      <div style={{ textAlign: 'center', marginBottom: '10px', fontWeight: 'bold', borderBottom: '1px solid #4A5568', paddingBottom: '5px' }}>
-        {data.name || 'Instrument'}
-      </div>
+    return (
+        <div style={{ ...nodeShellStyles(accent), minWidth: '180px' }}>
+            {editing ? (
+                <input
+                    className="nodrag"
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={commit}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') commit();
+                        if (e.key === 'Escape') setEditing(false);
+                    }}
+                    style={{
+                        ...numberInputStyles,
+                        width: '100%',
+                        textAlign: 'center',
+                        marginBottom: '10px',
+                        fontWeight: 600,
+                    }}
+                />
+            ) : (
+                <div
+                    style={{ ...nodeHeaderStylesFor(accent), cursor: 'text' }}
+                    onDoubleClick={startEditing}
+                    title="Double-click to rename"
+                >
+                    {data.name || 'Instrument'}
+                </div>
+            )}
 
-      {/* Inputs Section */}
-      {inputs.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          {inputs.map((portName: string, index: number) => (
-            <div key={`in-${portName}`} style={handleContainerStyle}>
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={portName}
-                style={{ left: '-10px', width: '8px', height: '8px', background: '#90CDF4' }}
-              />
-              <span style={{ marginLeft: '10px', ...labelStyle }}>{portName}</span>
+            {inputs.length > 0 ? (
+                inputs.map((portName: string) => (
+                    <div key={`in-${portName}`} style={handleContainerStyles}>
+                        <Handle type="target" position={Position.Left} id={portName}
+                            style={{ background: NodeTheme.colors.handleIn }} />
+                        <span style={{ marginLeft: '12px', ...labelStyles }}>{portName}</span>
+                    </div>
+                ))
+            ) : (
+                <div style={handleContainerStyles}>
+                    <Handle type="target" position={Position.Left} id="input"
+                        style={{ background: NodeTheme.colors.handleIn }} />
+                    <span style={{ marginLeft: '12px', ...labelStyles }}>In</span>
+                </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', margin: '10px 0' }}>
+                <div style={inputGroupStyles}>
+                    <label style={{ color: NodeTheme.colors.textMuted, marginRight: '8px' }}>Volume</label>
+                    <NumberInput className="nodrag" style={numberInputStyles}
+                        min={0} max={1} step={0.05}
+                        value={typeof data.volume === 'number' ? data.volume : 1.0}
+                        onChange={(val) => update({ volume: val })} />
+                </div>
             </div>
-          ))}
-        </div>
-      ) : (
-        /* Fallback for basic testing if no inputs defined yet */
-        <div style={handleContainerStyle}>
-          <Handle type="target" position={Position.Left} id="input" style={{ left: '-10px' }} />
-          <span style={{ marginLeft: '10px', ...labelStyle }}>In</span>
-        </div>
-      )}
 
-      {/* Spacer/Divider if both exist */}
-      {inputs.length > 0 && outputs.length > 0 && <div style={{ height: '5px' }} />}
-
-      {/* Outputs Section */}
-      {outputs.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-          {outputs.map((portName: string, index: number) => (
-            <div key={`out-${portName}`} style={handleContainerStyle}>
-              <span style={{ marginRight: '10px', ...labelStyle }}>{portName}</span>
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={portName}
-                style={{ right: '-10px', width: '8px', height: '8px', background: '#68D391' }}
-              />
-            </div>
-          ))}
+            {outputs.length > 0 ? (
+                outputs.map((portName: string) => (
+                    <div key={`out-${portName}`} style={{ ...handleContainerStyles, justifyContent: 'flex-end' }}>
+                        <span style={{ marginRight: '12px', ...labelStyles }}>{portName}</span>
+                        <Handle type="source" position={Position.Right} id={portName}
+                            style={{ background: NodeTheme.colors.handleOut }} />
+                    </div>
+                ))
+            ) : (
+                <div style={{ ...handleContainerStyles, justifyContent: 'flex-end' }}>
+                    <span style={{ marginRight: '12px', ...labelStyles }}>Out</span>
+                    <Handle type="source" position={Position.Right} id="output"
+                        style={{ background: NodeTheme.colors.handleOut }} />
+                </div>
+            )}
         </div>
-      ) : (
-        /* Fallback */
-        <div style={{ ...handleContainerStyle, justifyContent: 'flex-end' }}>
-          <span style={{ marginRight: '10px', ...labelStyle }}>Out</span>
-          <Handle type="source" position={Position.Right} id="output" style={{ right: '-10px' }} />
-        </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default memo(InstrumentNode);

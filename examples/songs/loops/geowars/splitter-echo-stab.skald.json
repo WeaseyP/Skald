@@ -1,0 +1,116 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-gw-splitter-stab",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "GW Splitter Echo Stab",
+        "label": "GW Splitter Echo Stab",
+        "volume": 0.58,
+        "voiceCount": 5,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "split-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Stab",
+                "waveform": "Square",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.45,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude", "pulseWidth"]
+              }
+            },
+            {
+              "id": "split-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Shell",
+                "type": "Lowpass",
+                "cutoff": 1500,
+                "resonance": 1.8,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "split-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Pluck",
+                "attack": 0.003,
+                "decay": 0.16,
+                "sustain": 0,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["decay", "release"]
+              }
+            },
+            {
+              "id": "split-echo",
+              "type": "delay",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Split Echo",
+                "delayTime": 0.234,
+                "feedback": 0.35,
+                "mix": 0.3,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "split-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "split-osc", "from_port": "output", "to_node": "split-filter", "to_port": "input" },
+            { "from_node": "split-filter", "from_port": "output", "to_node": "split-amp", "to_port": "input" },
+            { "from_node": "split-amp", "from_port": "output", "to_node": "split-echo", "to_port": "input" },
+            { "from_node": "split-echo", "from_port": "output", "to_node": "split-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-gw-splitter-stab",
+      "targetNodeId": "instrument-gw-splitter-stab",
+      "name": "GW Splitter Echo Stab",
+      "color": "#D98C40",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 50, "velocity": 0.9, "duration": 1 },
+        { "step": 3, "note": 53, "velocity": 0.75, "duration": 1 },
+        { "step": 6, "note": 50, "velocity": 0.85, "duration": 1 },
+        { "step": 10, "note": 45, "velocity": 0.8, "duration": 1 },
+        { "step": 12, "note": 48, "velocity": 0.9, "duration": 1 },
+        { "step": 15, "note": 50, "velocity": 0.6, "duration": 1, "probability": 0.6 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.75 }
+}
