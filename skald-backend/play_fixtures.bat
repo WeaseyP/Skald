@@ -12,7 +12,7 @@ if not exist tests\fixtures (
 )
 
 REM Build codegen first.
-odin build . -file -out:codegen.exe
+odin build main.odin -file -out:codegen.exe
 if errorlevel 1 (
     echo [SKALD] CODEGEN BUILD FAILED.
     exit /b 1

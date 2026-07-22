@@ -36,7 +36,7 @@ jobs:
         working-directory: skald-backend
         run: .\run_acceptance.bat
 
-      - name: Golden-file snapshot check (emitted code is byte-stable)
+      - name: Golden-file snapshot check (emitted code is text-stable)
         working-directory: skald-backend
         run: .\run_golden.bat check
 

@@ -1,7 +1,7 @@
 # Compiled Executables
 *.exe
 *.out
-main
+/main
 # Exception: the UI spawns this at runtime and it ships as an Electron
 # extraResource; contributors without Odin still need the app to work.
 !skald-ui/skald_codegen.exe

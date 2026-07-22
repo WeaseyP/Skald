@@ -31,7 +31,7 @@ if not exist tests\fixtures (
 )
 
 echo [GOLDEN] Building codegen.exe...
-odin build . -file -out:codegen.exe
+odin build main.odin -file -out:codegen.exe
 if errorlevel 1 (
     echo [GOLDEN] CODEGEN BUILD FAILED.
     exit /b 1
@@ -62,7 +62,9 @@ for %%f in (tests\fixtures\*.json) do (
                 echo MISSING GOLDEN for !NAME!  ^(run: run_golden.bat update^)
                 set /a FAILED+=1
             ) else (
-                fc /b "!GOLD!" "!GEN!" >nul
+                REM Text comparison deliberately normalizes CRLF/LF across
+                REM contributor machines and GitHub's Windows checkout.
+                fc "!GOLD!" "!GEN!" >nul
                 if errorlevel 1 (
                     echo DIFF !NAME!  ^(current emission differs from golden^)
                     set /a FAILED+=1

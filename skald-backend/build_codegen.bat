@@ -11,7 +11,7 @@ if not defined ODIN_BIN set "ODIN_BIN=odin"
 :: Build the Odin executable and output it directly into the skald-ui project folder.
 :: The ..\skald-ui\ path assumes this script is run from the skald-backend directory.
 echo [SKALD] Using Odin: %ODIN_BIN%
-"%ODIN_BIN%" build . -file -out:..\skald-ui\skald_codegen.exe
+"%ODIN_BIN%" build main.odin -file -out:..\skald-ui\skald_codegen.exe
 if errorlevel 1 (
     echo [SKALD] CLI build FAILED. Exiting.
     exit /b 1
