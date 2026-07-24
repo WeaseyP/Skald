@@ -1,0 +1,194 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-slap-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Slap Bass",
+        "label": "Slap Bass",
+        "volume": 0.78,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "sl-string",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 40 },
+              "data": {
+                "label": "String",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "sl-sub",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "Sub",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "sl-thumb",
+              "type": "noise",
+              "position": { "x": 0, "y": 600 },
+              "data": {
+                "label": "Thumb Snap",
+                "type": "White",
+                "amplitude": 0.6,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "sl-thumb-env",
+              "type": "adsr",
+              "position": { "x": 260, "y": 600 },
+              "data": {
+                "label": "Snap Env",
+                "attack": 0.0005,
+                "decay": 0.015,
+                "sustain": 0,
+                "release": 0.01,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "sl-mixer",
+              "type": "mixer",
+              "position": { "x": 300, "y": 180 },
+              "data": {
+                "label": "String + Sub + Snap",
+                "inputCount": 3,
+                "levels": [
+                  { "id": 1, "level": 0.55, "pan": 0 },
+                  { "id": 2, "level": 0.55, "pan": 0 },
+                  { "id": 3, "level": 0.45, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "sl-filter",
+              "type": "filter",
+              "position": { "x": 560, "y": 180 },
+              "data": {
+                "label": "Quack",
+                "type": "Lowpass",
+                "cutoff": 240,
+                "resonance": 2.6,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "sl-filter-env",
+              "type": "adsr",
+              "position": { "x": 300, "y": 880 },
+              "data": {
+                "label": "Snap Filter Env",
+                "attack": 0.001,
+                "decay": 0.06,
+                "sustain": 0.15,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.75,
+                "exposedParameters": ["attack", "decay", "sustain", "release"]
+              }
+            },
+            {
+              "id": "sl-filter-map",
+              "type": "mapper",
+              "position": { "x": 560, "y": 880 },
+              "data": {
+                "label": "Env 0-4000 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 4000,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "sl-amp",
+              "type": "adsr",
+              "position": { "x": 820, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.002,
+                "decay": 0.15,
+                "sustain": 0.4,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "sl-output",
+              "type": "output",
+              "position": { "x": 1080, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "sl-string", "from_port": "output", "to_node": "sl-mixer", "to_port": "input_1" },
+            { "from_node": "sl-sub", "from_port": "output", "to_node": "sl-mixer", "to_port": "input_2" },
+            { "from_node": "sl-thumb", "from_port": "output", "to_node": "sl-thumb-env", "to_port": "input" },
+            { "from_node": "sl-thumb-env", "from_port": "output", "to_node": "sl-mixer", "to_port": "input_3" },
+            { "from_node": "sl-mixer", "from_port": "output", "to_node": "sl-filter", "to_port": "input" },
+            { "from_node": "sl-filter-env", "from_port": "output", "to_node": "sl-filter-map", "to_port": "input" },
+            { "from_node": "sl-filter-map", "from_port": "output", "to_node": "sl-filter", "to_port": "input_cutoff" },
+            { "from_node": "sl-filter", "from_port": "output", "to_node": "sl-amp", "to_port": "input" },
+            { "from_node": "sl-amp", "from_port": "output", "to_node": "sl-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-slap-bass",
+      "targetNodeId": "instrument-slap-bass",
+      "name": "Slap Bass",
+      "color": "#F59E0B",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 28, "velocity": 0.95, "duration": 1 },
+        { "step": 2, "note": 40, "velocity": 0.85, "duration": 1 },
+        { "step": 4, "note": 28, "velocity": 0.68, "duration": 1 },
+        { "step": 6, "note": 43, "velocity": 0.9, "duration": 1 },
+        { "step": 7, "note": 40, "velocity": 0.78, "duration": 1 },
+        { "step": 9, "note": 28, "velocity": 0.92, "duration": 1 },
+        { "step": 11, "note": 38, "velocity": 0.82, "duration": 1 },
+        { "step": 12, "note": 40, "velocity": 0.9, "duration": 1 },
+        { "step": 14, "note": 33, "velocity": 0.8, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 100, "patternSteps": 16, "masterVolume": 0.78 }
+}

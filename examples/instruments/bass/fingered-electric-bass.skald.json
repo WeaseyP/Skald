@@ -1,0 +1,164 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-fingered-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Fingered Electric Bass",
+        "label": "Fingered Electric Bass",
+        "volume": 0.82,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0.015,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "fb-body",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 40 },
+              "data": {
+                "label": "Body",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.42,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "fb-sub",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 340 },
+              "data": {
+                "label": "Sub",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "fb-mixer",
+              "type": "mixer",
+              "position": { "x": 280, "y": 180 },
+              "data": {
+                "label": "Body + Sub",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.65, "pan": 0 },
+                  { "id": 2, "level": 0.7, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "fb-filter",
+              "type": "filter",
+              "position": { "x": 540, "y": 180 },
+              "data": {
+                "label": "Tone",
+                "type": "Lowpass",
+                "cutoff": 340,
+                "resonance": 1.2,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "fb-filter-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 640 },
+              "data": {
+                "label": "Filter Env",
+                "attack": 0.01,
+                "decay": 0.18,
+                "sustain": 0.25,
+                "release": 0.12,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release"]
+              }
+            },
+            {
+              "id": "fb-filter-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 640 },
+              "data": {
+                "label": "Env 0-1200 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1200,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "fb-amp",
+              "type": "adsr",
+              "position": { "x": 800, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.008,
+                "decay": 0.12,
+                "sustain": 0.7,
+                "release": 0.14,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "fb-output",
+              "type": "output",
+              "position": { "x": 1060, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "fb-body", "from_port": "output", "to_node": "fb-mixer", "to_port": "input_1" },
+            { "from_node": "fb-sub", "from_port": "output", "to_node": "fb-mixer", "to_port": "input_2" },
+            { "from_node": "fb-mixer", "from_port": "output", "to_node": "fb-filter", "to_port": "input" },
+            { "from_node": "fb-filter-env", "from_port": "output", "to_node": "fb-filter-map", "to_port": "input" },
+            { "from_node": "fb-filter-map", "from_port": "output", "to_node": "fb-filter", "to_port": "input_cutoff" },
+            { "from_node": "fb-filter", "from_port": "output", "to_node": "fb-amp", "to_port": "input" },
+            { "from_node": "fb-amp", "from_port": "output", "to_node": "fb-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-fingered-bass",
+      "targetNodeId": "instrument-fingered-bass",
+      "name": "Fingered Bass",
+      "color": "#0EA5E9",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 33, "velocity": 0.9, "duration": 2 },
+        { "step": 3, "note": 33, "velocity": 0.7, "duration": 1 },
+        { "step": 4, "note": 40, "velocity": 0.82, "duration": 1 },
+        { "step": 6, "note": 33, "velocity": 0.85, "duration": 2 },
+        { "step": 8, "note": 36, "velocity": 0.86, "duration": 2 },
+        { "step": 10, "note": 38, "velocity": 0.75, "duration": 1 },
+        { "step": 12, "note": 40, "velocity": 0.9, "duration": 2 },
+        { "step": 14, "note": 31, "velocity": 0.72, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 100, "patternSteps": 16, "masterVolume": 0.8 }
+}
