@@ -86,6 +86,24 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         return ((localValue - min) / (max - min)) * 100;
     }, [localValue, min, max, scale]);
 
+    // Snap a committed value onto the control's `step` grid, anchored at `min`,
+    // then clamp. Integer controls (step === 1) therefore commit only whole
+    // numbers; fractional controls land on clean multiples of their step rather
+    // than the floating-point noise a raw pointer position produces. This is the
+    // fix for BUG-INTEGER-CONTROLS-EMIT-FLOATS: a 1..32 Voice Count slider at
+    // pointer position 52.1% used to commit 1 + 31 * 0.521 = 17.151, which the
+    // Odin backend refuses to unmarshal into an `int` field.
+    const quantizeToStep = useCallback((raw: number): number => {
+        if (!Number.isFinite(raw)) return raw;
+        if (!Number.isFinite(step) || step <= 0) return Math.max(min, Math.min(max, raw));
+        const snapped = Math.round((raw - min) / step) * step + min;
+        const clamped = Math.max(min, Math.min(max, snapped));
+        // Strip binary FP dust from the divide/multiply so integer steps yield
+        // exact integers and fractional steps keep only their own precision.
+        const decimals = (String(step).split('.')[1] ?? '').length;
+        return parseFloat(clamped.toFixed(Math.min(decimals, 12)));
+    }, [min, max, step]);
+
     const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newPosition = parseFloat(e.target.value);
         let newValue: number;
@@ -94,10 +112,10 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         } else {
             newValue = min + (max - min) * (newPosition / 100);
         }
-        // Clamp and format the value to avoid floating point inaccuracies
-        const clampedValue = Math.max(min, Math.min(max, newValue));
-        const finalValue = parseFloat(clampedValue.toPrecision(5));
-        
+        // Quantize to `step` (and clamp) so pointer drags commit only on-grid
+        // values — an integer control must never emit a fractional value.
+        const finalValue = quantizeToStep(newValue);
+
         setLocalValue(finalValue);
         setTextValue(finalValue.toString());
         onChange(finalValue);
@@ -118,10 +136,12 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
             setTextValue(defaultValue.toString());
             onChange(defaultValue);
         } else {
-            const clampedValue = Math.max(min, Math.min(max, parsed));
-            setLocalValue(clampedValue);
-            setTextValue(clampedValue.toString());
-            onChange(clampedValue);
+            // Quantize to `step` (and clamp) so a typed value like "17.151"
+            // commits as a whole, on-grid value for integer controls.
+            const finalValue = quantizeToStep(parsed);
+            setLocalValue(finalValue);
+            setTextValue(finalValue.toString());
+            onChange(finalValue);
         }
     };
 
@@ -132,10 +152,12 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         }
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
-            const smallStep = step * (e.shiftKey ? 0.1 : 1);
+            // Nudge by whole `step` units (Shift = x10 coarse jump) and re-snap
+            // to the grid. Sub-step nudging is intentionally gone: an integer
+            // control must not drift to a fractional value via the arrow keys.
+            const magnitude = step * (e.shiftKey ? 10 : 1);
             const direction = e.key === 'ArrowUp' ? 1 : -1;
-            const newValue = Math.max(min, Math.min(max, localValue + smallStep * direction));
-            const finalValue = parseFloat(newValue.toPrecision(5));
+            const finalValue = quantizeToStep(localValue + magnitude * direction);
 
             setLocalValue(finalValue);
             setTextValue(finalValue.toString());

@@ -6,6 +6,11 @@ interface NumberInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEleme
     min?: number;
     max?: number;
     step?: number;
+    // Snap the committed value onto the `step` grid. Set for fields backed by
+    // an integer contract in the codegen JSON (Voice Count, Unison, ...) so a
+    // typed "17.151" commits as a whole number. Fractional fields leave this
+    // off so precise typed input (0.055 glide, 30.024 detune) is preserved.
+    quantize?: boolean;
 }
 
 export const NumberInput: React.FC<NumberInputProps> = ({
@@ -14,6 +19,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({
     min,
     max,
     step,
+    quantize,
     onBlur,
     onKeyDown,
     className,
@@ -58,6 +64,14 @@ export const NumberInput: React.FC<NumberInputProps> = ({
         // Clamp
         if (min !== undefined && parsed < min) parsed = min;
         if (max !== undefined && parsed > max) parsed = max;
+
+        // Quantize integer-contract fields to their step grid (round + snap).
+        if (quantize && step !== undefined && Number.isFinite(step) && step > 0) {
+            const anchor = min ?? 0;
+            const snapped = Math.round((parsed - anchor) / step) * step + anchor;
+            const decimals = (String(step).split('.')[1] ?? '').length;
+            parsed = parseFloat(snapped.toFixed(Math.min(decimals, 12)));
+        }
 
         // Apply
         setLocalValue(parsed.toString());
