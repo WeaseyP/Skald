@@ -1,0 +1,207 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-picked-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Picked Rock Bass",
+        "label": "Picked Rock Bass",
+        "volume": 0.8,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "pb-pick",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 40 },
+              "data": {
+                "label": "Pick",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pb-sub",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "Sub",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.45,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pb-click",
+              "type": "noise",
+              "position": { "x": 0, "y": 600 },
+              "data": {
+                "label": "Pick Click",
+                "type": "White",
+                "amplitude": 0.55,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pb-click-env",
+              "type": "adsr",
+              "position": { "x": 260, "y": 600 },
+              "data": {
+                "label": "Click Env",
+                "attack": 0.001,
+                "decay": 0.03,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "pb-mixer",
+              "type": "mixer",
+              "position": { "x": 300, "y": 180 },
+              "data": {
+                "label": "Pick + Sub + Click",
+                "inputCount": 3,
+                "levels": [
+                  { "id": 1, "level": 0.6, "pan": 0 },
+                  { "id": 2, "level": 0.6, "pan": 0 },
+                  { "id": 3, "level": 0.35, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "pb-filter",
+              "type": "filter",
+              "position": { "x": 560, "y": 180 },
+              "data": {
+                "label": "Tone",
+                "type": "Lowpass",
+                "cutoff": 650,
+                "resonance": 1.3,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "pb-filter-env",
+              "type": "adsr",
+              "position": { "x": 300, "y": 880 },
+              "data": {
+                "label": "Filter Env",
+                "attack": 0.002,
+                "decay": 0.1,
+                "sustain": 0.3,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "decay", "sustain"]
+              }
+            },
+            {
+              "id": "pb-filter-map",
+              "type": "mapper",
+              "position": { "x": 560, "y": 880 },
+              "data": {
+                "label": "Env 0-1600 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1600,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "pb-dist",
+              "type": "distortion",
+              "position": { "x": 820, "y": 180 },
+              "data": {
+                "label": "Grit",
+                "shape": "soft",
+                "drive": 8,
+                "tone": 3500,
+                "mix": 0.25,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "pb-amp",
+              "type": "adsr",
+              "position": { "x": 1080, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.004,
+                "decay": 0.1,
+                "sustain": 0.6,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.55,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "pb-output",
+              "type": "output",
+              "position": { "x": 1340, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "pb-pick", "from_port": "output", "to_node": "pb-mixer", "to_port": "input_1" },
+            { "from_node": "pb-sub", "from_port": "output", "to_node": "pb-mixer", "to_port": "input_2" },
+            { "from_node": "pb-click", "from_port": "output", "to_node": "pb-click-env", "to_port": "input" },
+            { "from_node": "pb-click-env", "from_port": "output", "to_node": "pb-mixer", "to_port": "input_3" },
+            { "from_node": "pb-mixer", "from_port": "output", "to_node": "pb-filter", "to_port": "input" },
+            { "from_node": "pb-filter-env", "from_port": "output", "to_node": "pb-filter-map", "to_port": "input" },
+            { "from_node": "pb-filter-map", "from_port": "output", "to_node": "pb-filter", "to_port": "input_cutoff" },
+            { "from_node": "pb-filter", "from_port": "output", "to_node": "pb-dist", "to_port": "input" },
+            { "from_node": "pb-dist", "from_port": "output", "to_node": "pb-amp", "to_port": "input" },
+            { "from_node": "pb-amp", "from_port": "output", "to_node": "pb-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-picked-bass",
+      "targetNodeId": "instrument-picked-bass",
+      "name": "Picked Bass",
+      "color": "#DC2626",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 28, "velocity": 0.95, "duration": 2 },
+        { "step": 2, "note": 28, "velocity": 0.8, "duration": 1 },
+        { "step": 4, "note": 28, "velocity": 0.85, "duration": 1 },
+        { "step": 6, "note": 40, "velocity": 0.9, "duration": 1 },
+        { "step": 8, "note": 28, "velocity": 0.9, "duration": 2 },
+        { "step": 10, "note": 28, "velocity": 0.8, "duration": 1 },
+        { "step": 12, "note": 31, "velocity": 0.88, "duration": 1 },
+        { "step": 14, "note": 33, "velocity": 0.92, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 130, "patternSteps": 16, "masterVolume": 0.78 }
+}

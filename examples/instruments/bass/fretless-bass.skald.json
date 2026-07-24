@@ -1,0 +1,178 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-fretless-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Fretless Bass",
+        "label": "Fretless Bass",
+        "volume": 0.82,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0.08,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "fl-body",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 40 },
+              "data": {
+                "label": "Body",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "fl-sub",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 340 },
+              "data": {
+                "label": "Sub",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "fl-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 640 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 5,
+                "amplitude": 0.015,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "fl-mixer",
+              "type": "mixer",
+              "position": { "x": 280, "y": 180 },
+              "data": {
+                "label": "Body + Sub",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.6, "pan": 0 },
+                  { "id": 2, "level": 0.7, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "fl-filter",
+              "type": "filter",
+              "position": { "x": 540, "y": 180 },
+              "data": {
+                "label": "Mwah",
+                "type": "Lowpass",
+                "cutoff": 420,
+                "resonance": 1.5,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "fl-filter-env",
+              "type": "adsr",
+              "position": { "x": 280, "y": 640 },
+              "data": {
+                "label": "Mwah Env",
+                "attack": 0.06,
+                "decay": 0.3,
+                "sustain": 0.4,
+                "release": 0.2,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release"]
+              }
+            },
+            {
+              "id": "fl-filter-map",
+              "type": "mapper",
+              "position": { "x": 540, "y": 640 },
+              "data": {
+                "label": "Env 0-1000 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1000,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "fl-amp",
+              "type": "adsr",
+              "position": { "x": 800, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.03,
+                "decay": 0.2,
+                "sustain": 0.75,
+                "release": 0.25,
+                "depth": 1,
+                "velocitySensitivity": 0.45,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "fl-output",
+              "type": "output",
+              "position": { "x": 1060, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "fl-body", "from_port": "output", "to_node": "fl-mixer", "to_port": "input_1" },
+            { "from_node": "fl-sub", "from_port": "output", "to_node": "fl-mixer", "to_port": "input_2" },
+            { "from_node": "fl-vibrato", "from_port": "output", "to_node": "fl-body", "to_port": "input_freq" },
+            { "from_node": "fl-vibrato", "from_port": "output", "to_node": "fl-sub", "to_port": "input_freq" },
+            { "from_node": "fl-mixer", "from_port": "output", "to_node": "fl-filter", "to_port": "input" },
+            { "from_node": "fl-filter-env", "from_port": "output", "to_node": "fl-filter-map", "to_port": "input" },
+            { "from_node": "fl-filter-map", "from_port": "output", "to_node": "fl-filter", "to_port": "input_cutoff" },
+            { "from_node": "fl-filter", "from_port": "output", "to_node": "fl-amp", "to_port": "input" },
+            { "from_node": "fl-amp", "from_port": "output", "to_node": "fl-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-fretless-bass",
+      "targetNodeId": "instrument-fretless-bass",
+      "name": "Fretless Bass",
+      "color": "#059669",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 38, "velocity": 0.8, "duration": 3 },
+        { "step": 4, "note": 33, "velocity": 0.74, "duration": 2 },
+        { "step": 7, "note": 36, "velocity": 0.72, "duration": 2 },
+        { "step": 10, "note": 41, "velocity": 0.78, "duration": 2 },
+        { "step": 12, "note": 40, "velocity": 0.7, "duration": 1 },
+        { "step": 13, "note": 38, "velocity": 0.76, "duration": 3 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 85, "patternSteps": 16, "masterVolume": 0.8 }
+}

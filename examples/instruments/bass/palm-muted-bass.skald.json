@@ -1,0 +1,165 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-palm-muted-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Palm-Muted Bass",
+        "label": "Palm-Muted Bass",
+        "volume": 0.82,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "pm-chug",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 40 },
+              "data": {
+                "label": "Chug",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.45,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pm-sub",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 340 },
+              "data": {
+                "label": "Sub",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pm-mixer",
+              "type": "mixer",
+              "position": { "x": 280, "y": 180 },
+              "data": {
+                "label": "Chug + Sub",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.65, "pan": 0 },
+                  { "id": 2, "level": 0.6, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "pm-filter",
+              "type": "filter",
+              "position": { "x": 540, "y": 180 },
+              "data": {
+                "label": "Muted Tone",
+                "type": "Lowpass",
+                "cutoff": 380,
+                "resonance": 1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "pm-filter-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 640 },
+              "data": {
+                "label": "Mute Env",
+                "attack": 0.001,
+                "decay": 0.05,
+                "sustain": 0.1,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain"]
+              }
+            },
+            {
+              "id": "pm-filter-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 640 },
+              "data": {
+                "label": "Env 0-650 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 650,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "pm-amp",
+              "type": "adsr",
+              "position": { "x": 800, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.003,
+                "decay": 0.09,
+                "sustain": 0.15,
+                "release": 0.06,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "pm-output",
+              "type": "output",
+              "position": { "x": 1060, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "pm-chug", "from_port": "output", "to_node": "pm-mixer", "to_port": "input_1" },
+            { "from_node": "pm-sub", "from_port": "output", "to_node": "pm-mixer", "to_port": "input_2" },
+            { "from_node": "pm-mixer", "from_port": "output", "to_node": "pm-filter", "to_port": "input" },
+            { "from_node": "pm-filter-env", "from_port": "output", "to_node": "pm-filter-map", "to_port": "input" },
+            { "from_node": "pm-filter-map", "from_port": "output", "to_node": "pm-filter", "to_port": "input_cutoff" },
+            { "from_node": "pm-filter", "from_port": "output", "to_node": "pm-amp", "to_port": "input" },
+            { "from_node": "pm-amp", "from_port": "output", "to_node": "pm-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-palm-muted-bass",
+      "targetNodeId": "instrument-palm-muted-bass",
+      "name": "Palm-Muted Bass",
+      "color": "#7C3AED",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 28, "velocity": 0.9, "duration": 1 },
+        { "step": 2, "note": 28, "velocity": 0.82, "duration": 1 },
+        { "step": 4, "note": 28, "velocity": 0.88, "duration": 1 },
+        { "step": 5, "note": 28, "velocity": 0.68, "duration": 1 },
+        { "step": 6, "note": 28, "velocity": 0.84, "duration": 1 },
+        { "step": 8, "note": 31, "velocity": 0.9, "duration": 1 },
+        { "step": 10, "note": 31, "velocity": 0.78, "duration": 1 },
+        { "step": 12, "note": 38, "velocity": 0.9, "duration": 1 },
+        { "step": 14, "note": 28, "velocity": 0.85, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 140, "patternSteps": 16, "masterVolume": 0.8 }
+}
