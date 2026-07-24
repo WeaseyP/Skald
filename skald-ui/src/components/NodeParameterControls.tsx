@@ -5,12 +5,18 @@ import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
 import { NumberInput } from './common/NumberInput';
+import { formatSyncTime } from '../definitions/bpm';
 
 interface NodeParameterControlsProps {
     node: Node;
     values?: Record<string, any>; // If provided, overrides node.data
     onChange: (paramName: string, value: any) => void;
     renderControlWrapper: (paramKey: string, label: string, control: React.ReactNode, isExposable?: boolean) => React.ReactNode;
+    // Project tempo, for display only: BPM-synced controls annotate their
+    // sync rate with the effective time at this tempo so the user can see
+    // what the node actually follows. Optional — callers without a tempo
+    // (e.g. isolated step editors) simply get no annotation.
+    bpm?: number;
 }
 
 const inputStyles: React.CSSProperties = {
@@ -31,9 +37,29 @@ const labelStyles: React.CSSProperties = {
     marginBottom: '5px'
 }
 
-export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, renderControlWrapper }) => {
+export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, renderControlWrapper, bpm }) => {
     const { type, data: nodeData } = node;
     const data = values || nodeData;
+
+    // Display-only annotation for BPM-synced controls: the concrete time the
+    // selected division resolves to at the current project tempo (mirrors the
+    // backend's runtime 60/bpm math — nothing here feeds the DSP).
+    const syncTimeHint = (syncRate: string) =>
+        Number.isFinite(bpm) && (bpm as number) > 0 ? (
+            <div data-testid="sync-time-hint" style={{ color: '#8a939f', fontSize: '0.8em', marginTop: '4px' }}>
+                {formatSyncTime(syncRate, bpm as number)}
+            </div>
+        ) : null;
+
+    const syncRateControl = (defaultRate: string) => {
+        const rate = data.syncRate ?? defaultRate;
+        return (
+            <>
+                <BpmSyncControl value={rate} onChange={val => onChange('syncRate', val)} />
+                {syncTimeHint(rate)}
+            </>
+        );
+    };
 
     const createSelect = (paramKey: string, options: string[]) => (
         <select name={paramKey} value={data[paramKey]} onChange={(e) => onChange(paramKey, e.target.value)} style={inputStyles}>
@@ -130,7 +156,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             return (<>
                 {renderControlWrapper('waveform', 'Waveform', createSelect('waveform', ['Sine', 'Sawtooth', 'Triangle', 'Square']), false)}
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', <BpmSyncControl value={data.syncRate ?? '1/4'} onChange={val => onChange('syncRate', val)} />)
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/4'))
                     : renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 0.1, 50, 5, 'log'))
                 }
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
@@ -143,7 +169,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'delay':
             return (<>
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', <BpmSyncControl value={data.syncRate ?? '1/8'} onChange={val => onChange('syncRate', val)} />)
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'))
                     : renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0.001, 5, 0.5))
                 }
                 {renderControlWrapper('feedback', 'Feedback', slider('feedback', 0, 1, 0.5))}
@@ -156,7 +182,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'sampleHold':
             return (<>
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', <BpmSyncControl value={data.syncRate ?? '1/8'} onChange={val => onChange('syncRate', val)} />)
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'))
                     : renderControlWrapper('rate', 'Rate (Hz)', slider('rate', 0.1, 50, 10, 'log'))
                 }
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}

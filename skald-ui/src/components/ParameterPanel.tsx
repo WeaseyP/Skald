@@ -303,6 +303,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                         node={node}
                         onChange={handleControlChange}
                         renderControlWrapper={wrapper}
+                        bpm={bpm}
                     />
 
                     {/* Sub-Node Rendering (Specific to Panel) */}
@@ -382,6 +383,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 node={node}
                 onChange={handleControlChange}
                 renderControlWrapper={wrapper}
+                bpm={bpm}
             />
         );
     };

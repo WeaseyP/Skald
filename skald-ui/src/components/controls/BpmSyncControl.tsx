@@ -1,4 +1,5 @@
 import React from 'react';
+import { SYNC_RATE_OPTIONS } from '../../definitions/bpm';
 
 // --- STYLES ---
 
@@ -20,12 +21,10 @@ interface BpmSyncControlProps {
     onChange: (newDivision: string) => void;
 }
 
-// --- Note Divisions ---
-// These are common musical subdivisions.
-const noteDivisions = [
-    "1/64t", "1/64", "1/32t", "1/32", "1/16t", "1/16", "1/8t", "1/8", 
-    "1/4t", "1/4", "1/2t", "1/2", "1/1"
-];
+// Note divisions come from the shared SYNC_RATE_OPTIONS constant so this
+// dropdown and the on-node sync-rate selects always offer the same list —
+// they edit the same stored `syncRate` value.
+const noteDivisions = SYNC_RATE_OPTIONS;
 
 
 // --- MAIN COMPONENT ---

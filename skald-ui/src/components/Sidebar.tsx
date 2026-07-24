@@ -1,4 +1,6 @@
 import React from 'react';
+import { NumberInput } from './common/NumberInput';
+import { BPM_MIN, BPM_MAX, clampBpm } from '../definitions/bpm';
 
 // --- STYLES ---
 
@@ -149,13 +151,21 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div>
                 <h2 style={sectionTitleStyles}>Global</h2>
                 <label style={{ display: 'block', textAlign: 'center', marginBottom: '5px' }}>BPM</label>
-                <input
-                    type="number"
+                {/* Guarded number input: the old raw <input> pushed
+                    parseInt(NaN) into project state when the field was
+                    cleared — NaN reached the playhead math, the preview
+                    build and the exported JSON (as null → bpm 0 backend-
+                    side). Same clamp as the Sequencer toolbar: this and
+                    that field edit the SAME project tempo. */}
+                <NumberInput
+                    aria-label="BPM"
                     value={bpm}
-                    onChange={(e) => onBpmChange(parseInt(e.target.value, 10))}
+                    onChange={(val) => onBpmChange(clampBpm(val))}
                     style={bpmInputStyles}
-                    min="20"
-                    max="300"
+                    min={BPM_MIN}
+                    max={BPM_MAX}
+                    step={1}
+                    title="Project tempo — shared by the preview engine, sequencer and exported code"
                 />
             </div>
 

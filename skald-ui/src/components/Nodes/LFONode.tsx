@@ -1,6 +1,7 @@
 import { makeParamNode } from './ParamNode';
-
-const SYNC_RATES = ['1/1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/4t', '1/8t', '1/16t'];
+// Shared list: the parameter panel's sync-rate dropdown edits the same
+// stored value — a mismatched list rendered panel-picked rates as blank here.
+import { SYNC_RATE_OPTIONS as SYNC_RATES } from '../../definitions/bpm';
 
 // Heads-up for Freq targets: modulation into a Freq port is in OCTAVES
 // (V/Oct), so vibrato wants tiny amplitudes (~0.02). Free-run frequency is
