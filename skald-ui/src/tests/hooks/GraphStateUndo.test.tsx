@@ -2,7 +2,7 @@
 import React from 'react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
-import { ReactFlowProvider, Node, NodeChange } from 'reactflow';
+import { ReactFlowProvider, Node, NodeChange } from '@xyflow/react';
 import { useGraphState } from '../../hooks/nodeEditor/useGraphState';
 
 // useNodeComposition (pulled in by useGraphState) calls useReactFlow, so the

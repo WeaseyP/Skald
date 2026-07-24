@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import {
     buildProjectData,
     topologySignature,

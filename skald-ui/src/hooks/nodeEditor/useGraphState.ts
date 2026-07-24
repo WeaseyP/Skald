@@ -19,8 +19,8 @@ import {
     applyNodeChanges,
     applyEdgeChanges,
     OnSelectionChangeParams,
-} from 'reactflow';
-import { NodeParams } from '../../definitions/types';
+} from '@xyflow/react';
+import { NodeParams, SkaldGraphNode } from '../../definitions/types';
 import { useNodeComposition } from './useNodeComposition';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
@@ -95,7 +95,7 @@ export const useGraphState = () => {
         // Handles are part of the id: `e{source}-{target}` alone collided
         // when two edges targeted different ports of the same node, so the
         // second wire silently replaced the first.
-        const edge = {
+        const edge: Edge = {
             ...connection,
             id: `e${connection.source}${connection.sourceHandle ?? ''}-${connection.target}${connection.targetHandle ?? ''}-${generateId()}`,
             sourceHandle: connection.sourceHandle,
@@ -113,7 +113,7 @@ export const useGraphState = () => {
                 // OWN params (voiceCount/glide/unison/detune) were hunted
                 // inside its subgraph, never found, and silently dropped.
                 if (subNodeId && subNodeId !== nodeId && 'subgraph' in node.data && node.data.subgraph?.nodes) {
-                    const newSubgraphNodes = node.data.subgraph.nodes.map(subNode => {
+                    const newSubgraphNodes = node.data.subgraph.nodes.map((subNode: SkaldGraphNode) => {
                         if (subNode.id === subNodeId) {
                             return { ...subNode, data: { ...subNode.data, ...data } };
                         }

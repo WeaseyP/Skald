@@ -8,8 +8,8 @@
 ================================================================================
 */
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowInstance, ReactFlowProvider, Node } from 'reactflow';
-import 'reactflow/dist/style.css';
+import { ReactFlow, Background, Controls, ReactFlowInstance, ReactFlowProvider, Node } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 
 // Import your components
 import Sidebar from './components/Sidebar';

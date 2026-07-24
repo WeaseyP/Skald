@@ -1,10 +1,11 @@
 import React, { memo, useMemo } from 'react';
-import { Handle, Position, NodeProps, useStore, ReactFlowState } from 'reactflow';
+import { Handle, Position, NodeProps, useStore, ReactFlowState, Node } from '@xyflow/react';
+import { NodeParams } from '../../definitions/types';
 
 // This selector efficiently grabs the latest nodes and edges from the React Flow store.
 // Using a selector is more performant than accessing the entire store object.
-const allNodesAndEdgesSelector = (s: ReactFlowState) => ({
-    nodes: s.getNodes(),
+const allNodesAndEdgesSelector = (s: ReactFlowState<Node<NodeParams>>) => ({
+    nodes: s.nodes,
     edges: s.edges,
 });
 
@@ -48,7 +49,7 @@ const rightHandleLabelStyle: React.CSSProperties = {
 };
 
 // Use a named export 'export const' instead of 'export default'
-export const GroupNode: React.FC<NodeProps> = memo(({ id, data }) => {
+export const GroupNode: React.FC<NodeProps<Node<NodeParams>>> = memo(({ id, data }) => {
     // We use the selector to get the latest nodes and edges from the store.
     // This ensures the component re-renders when connections change.
     const { nodes: allNodes, edges: allEdges } = useStore(allNodesAndEdgesSelector);
@@ -56,7 +57,7 @@ export const GroupNode: React.FC<NodeProps> = memo(({ id, data }) => {
     // Memoize the calculation of child nodes to avoid re-computation on every render.
     // ADDED a fallback to an empty array `|| []` to prevent crash on initial render.
     const childNodeIds = useMemo(() => 
-        (allNodes || []).filter(n => n.parentNode === id).map(n => n.id), 
+        (allNodes || []).filter(n => n.parentId === id).map(n => n.id),
     [allNodes, id]);
 
     // This is the core logic for "Intelligent I/O".

@@ -1,5 +1,6 @@
 import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { InstrumentParams } from '../definitions/types';
 import { NumberInput } from './common/NumberInput';
 import {
     nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
@@ -9,7 +10,7 @@ import { useNodeParamUpdater } from './Nodes/ParamNode';
 
 const accent = accentFor('instrument');
 
-const InstrumentNode = ({ id, data }: NodeProps) => {
+const InstrumentNode = ({ id, data }: NodeProps<Node<InstrumentParams>>) => {
     const update = useNodeParamUpdater(id);
     const inputs: string[] = data.inputs || [];
     const outputs: string[] = data.outputs || [];
