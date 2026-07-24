@@ -1,0 +1,190 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-ambient-clean",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Ambient Clean",
+        "label": "Ambient Clean",
+        "volume": 0.72,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.02,
+        "unison": 2,
+        "detune": 4,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "am-fund",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "Fundamental",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.32,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "am-shimmer",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "Shimmer",
+                "waveform": "Triangle",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.28,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "am-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 580 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 4.8,
+                "amplitude": 0.008,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "am-tone",
+              "type": "filter",
+              "position": { "x": 280, "y": 180 },
+              "data": {
+                "label": "Soft Tone",
+                "type": "Lowpass",
+                "cutoff": 1500,
+                "resonance": 0.8,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "am-swell-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 840 },
+              "data": {
+                "label": "Swell Env",
+                "attack": 0.3,
+                "decay": 1,
+                "sustain": 0.5,
+                "release": 1,
+                "depth": 1,
+                "velocitySensitivity": 0.3,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "am-swell-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 840 },
+              "data": {
+                "label": "Swell 0-1200 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1200,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "am-amp",
+              "type": "adsr",
+              "position": { "x": 560, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.02,
+                "decay": 0.8,
+                "sustain": 0.6,
+                "release": 1.4,
+                "depth": 1,
+                "velocitySensitivity": 0.4,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "am-echo",
+              "type": "delay",
+              "position": { "x": 840, "y": 180 },
+              "data": {
+                "label": "Quarter Echo",
+                "delayTime": 0.5,
+                "feedback": 0.4,
+                "mix": 0.28,
+                "bpmSync": true,
+                "syncRate": "1/4",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "am-space",
+              "type": "reverb",
+              "position": { "x": 1120, "y": 180 },
+              "data": {
+                "label": "Space",
+                "decay": 2.8,
+                "preDelay": 0.01,
+                "mix": 0.3,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "am-output",
+              "type": "output",
+              "position": { "x": 1400, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "am-fund", "from_port": "output", "to_node": "am-tone", "to_port": "input" },
+            { "from_node": "am-shimmer", "from_port": "output", "to_node": "am-tone", "to_port": "input" },
+            { "from_node": "am-vibrato", "from_port": "output", "to_node": "am-fund", "to_port": "input_freq" },
+            { "from_node": "am-vibrato", "from_port": "output", "to_node": "am-shimmer", "to_port": "input_freq" },
+            { "from_node": "am-swell-env", "from_port": "output", "to_node": "am-swell-map", "to_port": "input" },
+            { "from_node": "am-swell-map", "from_port": "output", "to_node": "am-tone", "to_port": "input_cutoff" },
+            { "from_node": "am-tone", "from_port": "output", "to_node": "am-amp", "to_port": "input" },
+            { "from_node": "am-amp", "from_port": "output", "to_node": "am-echo", "to_port": "input" },
+            { "from_node": "am-echo", "from_port": "output", "to_node": "am-space", "to_port": "input" },
+            { "from_node": "am-space", "from_port": "output", "to_node": "am-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-ambient-clean",
+      "targetNodeId": "instrument-ambient-clean",
+      "name": "Ambient Clean",
+      "color": "#155E75",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 52, "velocity": 0.72, "duration": 8 },
+        { "step": 4, "note": 59, "velocity": 0.62, "duration": 6 },
+        { "step": 8, "note": 64, "velocity": 0.68, "duration": 5 },
+        { "step": 12, "note": 67, "velocity": 0.6, "duration": 4 },
+        { "step": 14, "note": 66, "velocity": 0.55, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 72, "patternSteps": 16, "masterVolume": 0.75 }
+}

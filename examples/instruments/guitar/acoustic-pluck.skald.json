@@ -1,0 +1,206 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-acoustic-pluck",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Acoustic Pluck",
+        "label": "Acoustic Pluck",
+        "volume": 0.8,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 2,
+        "detune": 5,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "ac-string",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "String",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.42,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "ac-body",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "Body",
+                "waveform": "Triangle",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.3,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "ac-tone",
+              "type": "filter",
+              "position": { "x": 280, "y": 60 },
+              "data": {
+                "label": "String Tone",
+                "type": "Lowpass",
+                "cutoff": 500,
+                "resonance": 0.9,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "ac-pluck-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 580 },
+              "data": {
+                "label": "Pluck Env",
+                "attack": 0.002,
+                "decay": 0.35,
+                "sustain": 0.12,
+                "release": 0.2,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "ac-pluck-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 580 },
+              "data": {
+                "label": "Pluck 0-2600 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2600,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "ac-pick-noise",
+              "type": "noise",
+              "position": { "x": 0, "y": 840 },
+              "data": {
+                "label": "Pick Noise",
+                "type": "White",
+                "amplitude": 0.5,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "ac-pick-bp",
+              "type": "filter",
+              "position": { "x": 280, "y": 840 },
+              "data": {
+                "label": "Pick Click",
+                "type": "Bandpass",
+                "cutoff": 3200,
+                "resonance": 1.5,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "ac-pick-env",
+              "type": "adsr",
+              "position": { "x": 560, "y": 840 },
+              "data": {
+                "label": "Pick Env",
+                "attack": 0.001,
+                "decay": 0.025,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "ac-mixer",
+              "type": "mixer",
+              "position": { "x": 560, "y": 220 },
+              "data": {
+                "label": "String + Body + Pick",
+                "inputCount": 3,
+                "levels": [
+                  { "id": 1, "level": 0.75, "pan": 0 },
+                  { "id": 2, "level": 0.4, "pan": 0 },
+                  { "id": 3, "level": 0.22, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "ac-amp",
+              "type": "adsr",
+              "position": { "x": 840, "y": 220 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.004,
+                "decay": 1.1,
+                "sustain": 0,
+                "release": 0.3,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "ac-output",
+              "type": "output",
+              "position": { "x": 1120, "y": 220 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "ac-string", "from_port": "output", "to_node": "ac-tone", "to_port": "input" },
+            { "from_node": "ac-pluck-env", "from_port": "output", "to_node": "ac-pluck-map", "to_port": "input" },
+            { "from_node": "ac-pluck-map", "from_port": "output", "to_node": "ac-tone", "to_port": "input_cutoff" },
+            { "from_node": "ac-tone", "from_port": "output", "to_node": "ac-mixer", "to_port": "input_1" },
+            { "from_node": "ac-body", "from_port": "output", "to_node": "ac-mixer", "to_port": "input_2" },
+            { "from_node": "ac-pick-noise", "from_port": "output", "to_node": "ac-pick-bp", "to_port": "input" },
+            { "from_node": "ac-pick-bp", "from_port": "output", "to_node": "ac-pick-env", "to_port": "input" },
+            { "from_node": "ac-pick-env", "from_port": "output", "to_node": "ac-mixer", "to_port": "input_3" },
+            { "from_node": "ac-mixer", "from_port": "output", "to_node": "ac-amp", "to_port": "input" },
+            { "from_node": "ac-amp", "from_port": "output", "to_node": "ac-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-acoustic-pluck",
+      "targetNodeId": "instrument-acoustic-pluck",
+      "name": "Acoustic Pluck",
+      "color": "#B45309",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 43, "velocity": 0.82, "duration": 2 },
+        { "step": 2, "note": 59, "velocity": 0.6, "duration": 2 },
+        { "step": 4, "note": 50, "velocity": 0.68, "duration": 2 },
+        { "step": 6, "note": 55, "velocity": 0.62, "duration": 2 },
+        { "step": 8, "note": 40, "velocity": 0.85, "duration": 2 },
+        { "step": 10, "note": 59, "velocity": 0.58, "duration": 2 },
+        { "step": 12, "note": 47, "velocity": 0.7, "duration": 2 },
+        { "step": 14, "note": 55, "velocity": 0.64, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 100, "patternSteps": 16, "masterVolume": 0.78 }
+}

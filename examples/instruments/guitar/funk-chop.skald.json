@@ -1,0 +1,193 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-funk-chop",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Funk Chop",
+        "label": "Funk Chop",
+        "volume": 0.8,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "fk-string",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "Single Coil",
+                "waveform": "Square",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.42,
+                "pulseWidth": 0.28,
+                "phase": 0,
+                "exposedParameters": ["amplitude", "pulseWidth"]
+              }
+            },
+            {
+              "id": "fk-quack",
+              "type": "filter",
+              "position": { "x": 280, "y": 60 },
+              "data": {
+                "label": "Quack",
+                "type": "Bandpass",
+                "cutoff": 1400,
+                "resonance": 2,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "fk-snap-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 340 },
+              "data": {
+                "label": "Snap Env",
+                "attack": 0.001,
+                "decay": 0.08,
+                "sustain": 0.1,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "fk-snap-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 340 },
+              "data": {
+                "label": "Snap 0-1800 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1800,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "fk-pick-noise",
+              "type": "noise",
+              "position": { "x": 0, "y": 620 },
+              "data": {
+                "label": "Pick Scratch",
+                "type": "White",
+                "amplitude": 0.45,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "fk-pick-bp",
+              "type": "filter",
+              "position": { "x": 280, "y": 620 },
+              "data": {
+                "label": "Scratch Band",
+                "type": "Bandpass",
+                "cutoff": 4500,
+                "resonance": 1.3,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "fk-pick-env",
+              "type": "adsr",
+              "position": { "x": 560, "y": 620 },
+              "data": {
+                "label": "Scratch Env",
+                "attack": 0.001,
+                "decay": 0.018,
+                "sustain": 0,
+                "release": 0.015,
+                "depth": 1,
+                "velocitySensitivity": 0.9,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "fk-mixer",
+              "type": "mixer",
+              "position": { "x": 560, "y": 180 },
+              "data": {
+                "label": "Quack + Scratch",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.85, "pan": 0 },
+                  { "id": 2, "level": 0.25, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "fk-amp",
+              "type": "adsr",
+              "position": { "x": 840, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.002,
+                "decay": 0.11,
+                "sustain": 0,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.9,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "fk-output",
+              "type": "output",
+              "position": { "x": 1120, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "fk-string", "from_port": "output", "to_node": "fk-quack", "to_port": "input" },
+            { "from_node": "fk-snap-env", "from_port": "output", "to_node": "fk-snap-map", "to_port": "input" },
+            { "from_node": "fk-snap-map", "from_port": "output", "to_node": "fk-quack", "to_port": "input_cutoff" },
+            { "from_node": "fk-quack", "from_port": "output", "to_node": "fk-mixer", "to_port": "input_1" },
+            { "from_node": "fk-pick-noise", "from_port": "output", "to_node": "fk-pick-bp", "to_port": "input" },
+            { "from_node": "fk-pick-bp", "from_port": "output", "to_node": "fk-pick-env", "to_port": "input" },
+            { "from_node": "fk-pick-env", "from_port": "output", "to_node": "fk-mixer", "to_port": "input_2" },
+            { "from_node": "fk-mixer", "from_port": "output", "to_node": "fk-amp", "to_port": "input" },
+            { "from_node": "fk-amp", "from_port": "output", "to_node": "fk-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-funk-chop",
+      "targetNodeId": "instrument-funk-chop",
+      "name": "Funk Chop",
+      "color": "#A21CAF",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 52, "velocity": 0.9, "duration": 1 },
+        { "step": 1, "note": 52, "velocity": 0.35, "duration": 1 },
+        { "step": 3, "note": 56, "velocity": 0.8, "duration": 1 },
+        { "step": 4, "note": 59, "velocity": 0.85, "duration": 1 },
+        { "step": 6, "note": 59, "velocity": 0.4, "duration": 1 },
+        { "step": 7, "note": 62, "velocity": 0.8, "duration": 1 },
+        { "step": 8, "note": 52, "velocity": 0.9, "duration": 1 },
+        { "step": 10, "note": 52, "velocity": 0.4, "duration": 1 },
+        { "step": 11, "note": 56, "velocity": 0.75, "duration": 1 },
+        { "step": 12, "note": 64, "velocity": 0.85, "duration": 1 },
+        { "step": 14, "note": 62, "velocity": 0.6, "duration": 1 },
+        { "step": 15, "note": 59, "velocity": 0.5, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 104, "patternSteps": 16, "masterVolume": 0.78 }
+}

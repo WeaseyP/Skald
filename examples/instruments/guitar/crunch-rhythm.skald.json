@@ -1,0 +1,194 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-crunch-rhythm",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Crunch Rhythm",
+        "label": "Crunch Rhythm",
+        "volume": 0.7,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 2,
+        "detune": 9,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "cr-string",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "String",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "cr-grit",
+              "type": "fmOperator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "String Grit",
+                "frequency": 3,
+                "modIndex": 0,
+                "exposedParameters": ["frequency", "modIndex"]
+              }
+            },
+            {
+              "id": "cr-grit-env",
+              "type": "adsr",
+              "position": { "x": 280, "y": 320 },
+              "data": {
+                "label": "Grit Env",
+                "attack": 0.001,
+                "decay": 0.06,
+                "sustain": 0,
+                "release": 0.03,
+                "depth": 0.2,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "cr-pre-filter",
+              "type": "filter",
+              "position": { "x": 280, "y": 60 },
+              "data": {
+                "label": "Pre Shape",
+                "type": "Lowpass",
+                "cutoff": 900,
+                "resonance": 0.9,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "cr-atk-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 600 },
+              "data": {
+                "label": "Attack Env",
+                "attack": 0.002,
+                "decay": 0.25,
+                "sustain": 0.45,
+                "release": 0.15,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "cr-atk-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 600 },
+              "data": {
+                "label": "Bite 0-1600 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1600,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "cr-mixer",
+              "type": "mixer",
+              "position": { "x": 560, "y": 180 },
+              "data": {
+                "label": "String + Grit",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.85, "pan": 0 },
+                  { "id": 2, "level": 0.6, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "cr-drive",
+              "type": "distortion",
+              "position": { "x": 840, "y": 180 },
+              "data": {
+                "label": "Crunch",
+                "shape": "classic",
+                "drive": 35,
+                "tone": 3200,
+                "mix": 0.85,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "cr-amp",
+              "type": "adsr",
+              "position": { "x": 1120, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.004,
+                "decay": 0.25,
+                "sustain": 0.6,
+                "release": 0.12,
+                "depth": 0.8,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "cr-output",
+              "type": "output",
+              "position": { "x": 1400, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "cr-string", "from_port": "output", "to_node": "cr-pre-filter", "to_port": "input" },
+            { "from_node": "cr-atk-env", "from_port": "output", "to_node": "cr-atk-map", "to_port": "input" },
+            { "from_node": "cr-atk-map", "from_port": "output", "to_node": "cr-pre-filter", "to_port": "input_cutoff" },
+            { "from_node": "cr-pre-filter", "from_port": "output", "to_node": "cr-mixer", "to_port": "input_1" },
+            { "from_node": "cr-grit", "from_port": "output", "to_node": "cr-grit-env", "to_port": "input" },
+            { "from_node": "cr-grit-env", "from_port": "output", "to_node": "cr-mixer", "to_port": "input_2" },
+            { "from_node": "cr-mixer", "from_port": "output", "to_node": "cr-drive", "to_port": "input" },
+            { "from_node": "cr-drive", "from_port": "output", "to_node": "cr-amp", "to_port": "input" },
+            { "from_node": "cr-amp", "from_port": "output", "to_node": "cr-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-crunch-rhythm",
+      "targetNodeId": "instrument-crunch-rhythm",
+      "name": "Crunch Rhythm",
+      "color": "#991B1B",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 40, "velocity": 0.88, "duration": 3 },
+        { "step": 0, "note": 47, "velocity": 0.8, "duration": 3 },
+        { "step": 4, "note": 40, "velocity": 0.8, "duration": 1 },
+        { "step": 4, "note": 47, "velocity": 0.72, "duration": 1 },
+        { "step": 6, "note": 43, "velocity": 0.85, "duration": 2 },
+        { "step": 6, "note": 50, "velocity": 0.76, "duration": 2 },
+        { "step": 8, "note": 45, "velocity": 0.88, "duration": 3 },
+        { "step": 8, "note": 52, "velocity": 0.8, "duration": 3 },
+        { "step": 12, "note": 43, "velocity": 0.84, "duration": 2 },
+        { "step": 12, "note": 50, "velocity": 0.75, "duration": 2 },
+        { "step": 14, "note": 40, "velocity": 0.78, "duration": 2 },
+        { "step": 14, "note": 47, "velocity": 0.7, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 96, "patternSteps": 16, "masterVolume": 0.75 }
+}
