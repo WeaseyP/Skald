@@ -104,7 +104,11 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
                     this.instantiate(m.bytes, m.stepAsset ?? this.stepAsset, true);
                     break;
                 case 'set-param': {
-                    if (!this.ex || !m.nameBytes || m.nameBytes.length === 0) break;
+                    // 64 = the generated shim's skald_name_buf size. The wasm
+                    // side rejects oversized names, but only AFTER the host
+                    // wrote the bytes — writing more than 64 here would
+                    // corrupt whatever wasm global follows the name buffer.
+                    if (!this.ex || !m.nameBytes || m.nameBytes.length === 0 || m.nameBytes.length > 64) break;
                     new Uint8Array(this.ex.memory.buffer, this.nameBufPtr, m.nameBytes.length)
                         .set(m.nameBytes);
                     this.ex.skald_set_param(m.asset, m.nameBytes.length, m.value);
