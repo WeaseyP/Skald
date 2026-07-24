@@ -16,6 +16,47 @@ These are open observations from using the release candidate. They need reproduc
 
 - [ ] **BUG-PARAM-DISPLAY-PRECISION** - Interactive controls such as ADSR expose noisy floating-point readings (for example `0.0000000000` or `30.02413252345235`). Display graph/slider values to at most two decimal places by default (for example `30.02`), while allowing a typed numeric field to accept and preserve more precise input when the user deliberately enters it. Formatting must not unintentionally quantize stored values, automation, or DSP calculations.
 
+- [ ] **BUG-INTEGER-CONTROLS-EMIT-FLOATS** - Integer-valued controls can store fractional values and make preview/export JSON impossible for the Odin backend to parse. The captured 17.151 value is produced exactly by the Voice Count slider at position 52.1%: 1 + (32 - 1) * 0.521 = 17.151. CustomSlider accepts step={1} but does not apply it to pointer or text-blur values, and buildProjectData forwards voiceCount unchanged into integer voice_count. Normalize and validate every integer contract (voice_count, unison, pattern_steps, track num_steps, event step/MIDI note, and MIDI channel) before invoking codegen. Add UI and serializer tests covering pointer, typed, loaded, and imported values.
+
+- [ ] **BUG-REACTFLOW-002-STRICTMODE** - Development startup reports React Flow error 002 twice even though nodeTypes is a module-level constant and is memoized in EditorLayout. The locked combination is React 19.1, reactflow 11.11.4, and React.StrictMode. The installed React Flow hook mutates a ref inside a useMemo calculation and warns when the previous/current type-key arrays are equal; React 19's Strict Mode double calculation therefore produces one false warning for node types and one for default edge types. Validate migration to the current @xyflow/react package/version first. Do not remove Strict Mode merely to hide the warning.
+
+- [ ] **BUG-PREVIEW-CONSOLE-NOISE** - Normal preview lifecycle transitions look like faults: stopped playback deliberately has a null master GainNode, every volume slider input is logged, and a failed Play is logged by both the structured logger and console.error. Keep actionable build failures in the UI/error logger, but remove or debug-gate null/connected/per-input chatter and duplicate error output.
+
+### Runtime console report analysis (2026-07-22)
+
+#### Confirmed playback/export blocker: fractional integer JSON
+
+The backend message Unsupported_Type_Error{id = int, kind = Float, text = 17.151} means the destination type was an Odin int; it does not identify a JSON field named id.
+
+The value identifies the source:
+
+- NodeParameterControls renders Voice Count as a CustomSlider from 1 through 32 with semantic step 1.
+- CustomSlider drives an internal 0-through-100 range at 0.1 increments. Pointer position 52.1 produces exactly 17.151, matching the captured token. Pointer and text-blur handling clamp but never quantize to the semantic step.
+- projectSerializer assigns voice_count from data.voiceCount without integer normalization.
+- core/types.odin declares Project_Instrument_Raw.voice_count as int, so unmarshalling fails before code generation.
+
+The first failed hot rebuild intentionally keeps the last valid wasm module. After Stop, Play cannot recover because every fresh build contains the same invalid graph. Moving Voice Count back to a whole number is the current workaround.
+
+Acceptance criteria:
+
+1. Voice Count and Unison only commit whole, in-range values for pointer and typed edits.
+2. Pattern length, track length, event step/note, and MIDI channel serialize as finite, in-range integers, including after load/import.
+3. Serializer tests reject or deterministically normalize voiceCount 17.151 before IPC.
+4. Fractional fields such as BPM, duration, velocity, probability, glide, detune, and DSP parameters retain their intended precision.
+
+#### React Flow warning: dependency/dev-mode false positive
+
+React Flow says error 002 should mean a new nodeTypes or edgeTypes object was passed after initial render. Skald already follows the documented solution: definitions/nodeTypes.ts exports one module-level object and EditorLayout passes a stable memoized reference. The two warnings correspond to the installed library's node and edge type hooks during Strict Mode's development double calculation, not two unstable objects created in Skald render code.
+
+Reference: https://reactflow.dev/learn/troubleshooting/common-errors#it-looks-like-you-have-created-a-new-nodetypes-or-edgetypes-object
+
+#### Expected or intentional messages
+
+- Master Gain Node is NULL before playback and after AudioContext closed is expected because the GainNode exists only while preview is playing.
+- No instruments on the canvas is intentional validation and is also exposed through previewError for the editor banner.
+- Preview rebuild failed; keeping last module is intentional continuity behavior; previewStale should remain visible until a successful rebuild or Stop.
+- Hot-swapped rebuilt wasm module, Play requested, Stop requested, and AudioContext closed are successful status messages.
+
 Triage attempts performed:
 
 | Step | Command | Result |
@@ -126,3 +167,5 @@ The Electron app was not started because the codegen pipeline is broken in enoug
 3. **The prompt's Phase 1c flow has a chicken-and-egg with Phase 0**: Phase 1 says fixtures must come from a working UI. Phase 0 has not (and should not) verified the UI by clicking through it. I exercised the codegen-emission paths via vitest, which passed — but that does not prove the Generate button in the running Electron app produces a JSON that matches the codegen's expectation. There is significant evidence from this triage (BUG-EXPOSED-PARAMS-WIRING dead path, BUG-TWO-IDS-IN-JSON, BUG-GRAPH-PARAMETERS-VS-DATA) that the UI ↔ backend JSON contract is partially shimmed. Worth a 10-minute manual smoke test by the human (drag two nodes, connect, click Generate, inspect the produced .odin file) before formally entering Phase 1.
 
 4. **Triage did not run a full round-trip for any single patch**, because the only viable input formats are either (a) the v2 Project shape produced by `useCodeGeneration` at runtime (not on disk anywhere I could find) or (b) the v1 graph save of an instrument-with-subgraph patch, which fails at BUG-GRAPH-PARAMETERS-VS-DATA. The closest thing to a working round-trip is the pre-existing `tester/generated_audio/generated_audio.odin` which compiles. I did not run it through the speakers.
+
+There is also an issue where I noticed that Tuba, most of the settings seem to apply quickly, and filter makes some cool effects. Now sax has multiple filters but I couldnt get it to change live it would only change on the next pass. That is Normal Sax and Tuba from the examples. 

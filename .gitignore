@@ -133,6 +133,19 @@ typings/
 # Vite
 .vite/
 
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Standalone web build output
+skald-ui/dist-web/
+
+# Local cloud credentials
+secrets/
+*service-account*.json
+
 # Electron-Forge
 out/
 
