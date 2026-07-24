@@ -8,7 +8,7 @@ Repo paths are relative to the Skald project root (`./skald-backend/...`, `./ska
 
 These are open observations from using the release candidate. They need reproduction and design work; no fix is claimed yet.
 
-- [ ] **BUG-EXAMPLES-LEGACY-CLEANUP** - Audit the example library for old-schema, duplicate, placeholder, or misleading projects. Validate each example in the current app and generated Odin output before removing or updating it. Keep the import-facing structure grouped as `sound-effects/`, `instruments/`, and `songs/`.
+- [x] **BUG-EXAMPLES-LEGACY-CLEANUP** - *Audited in multi-agent run (2026-07-24); see `examples/AUDIT.md`.* All 62 pre-existing examples codegen'd AND the emitted Odin compile-checked: 36 valid current-schema, 22 valid legacy loose-graph (supported fallback), 1 fixed (stale `integration_demo/generated_audio` regenerated + full build verified), 3 delete-candidates pending human deletion (`winds/midi-setup/Sax2.json` dup of `sax3.json`, `sound-effects/synth/AlarmPulse.json` dup of `Alarm.json`, `sound-effects/cosmic/PulsarBeam.json` broken-since-creation invalid `input_delayTime` port). The `songs/loops/to implement/` long-filename WIP loop validates (3 instruments) — kept, but consider renaming. Recommendation: relocate `examples/integration_demo/` to a top-level `demo/`.
 
 - [ ] **BUG-AUDIO-ODDITIES-INVESTIGATION** - Weird or intermittent audio behavior is still being heard during real use, but the individual failure modes have not been isolated. Capture a minimal saved project, preview/export path, exact edit or playback sequence, expected sound, actual sound, and whether Stop/Play clears it. Check preview versus generated Odin separately before assigning a root cause.
 
