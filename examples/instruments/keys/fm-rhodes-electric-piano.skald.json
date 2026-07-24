@@ -1,0 +1,172 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-fm-ep",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "FM Electric Piano",
+        "label": "FM Electric Piano",
+        "volume": 0.8,
+        "voiceCount": 12,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "ep-tine-mod",
+              "type": "fmOperator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "Tine Mod",
+                "frequency": 14,
+                "modIndex": 0,
+                "exposedParameters": ["frequency"]
+              }
+            },
+            {
+              "id": "ep-tine-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "Tine Env",
+                "attack": 0.001,
+                "decay": 0.12,
+                "sustain": 0,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.85,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "ep-tine-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 320 },
+              "data": {
+                "label": "Tine 0-1",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "ep-tine-gain",
+              "type": "gain",
+              "position": { "x": 260, "y": 60 },
+              "data": {
+                "label": "Tine VCA",
+                "gain": 0,
+                "exposedParameters": ["gain"]
+              }
+            },
+            {
+              "id": "ep-body-mod",
+              "type": "fmOperator",
+              "position": { "x": 260, "y": -200 },
+              "data": {
+                "label": "Body Mod",
+                "frequency": 1,
+                "modIndex": 0,
+                "exposedParameters": ["frequency"]
+              }
+            },
+            {
+              "id": "ep-carrier",
+              "type": "fmOperator",
+              "position": { "x": 540, "y": 60 },
+              "data": {
+                "label": "Carrier",
+                "frequency": 1,
+                "modIndex": 1.5,
+                "exposedParameters": ["frequency", "modIndex"]
+              }
+            },
+            {
+              "id": "ep-amp",
+              "type": "adsr",
+              "position": { "x": 820, "y": 60 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.003,
+                "decay": 1.6,
+                "sustain": 0.22,
+                "release": 0.6,
+                "depth": 0.22,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "ep-reverb",
+              "type": "reverb",
+              "position": { "x": 1080, "y": 60 },
+              "data": {
+                "label": "Room",
+                "decay": 1.6,
+                "preDelay": 0.01,
+                "mix": 0.16,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "ep-output",
+              "type": "output",
+              "position": { "x": 1340, "y": 60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "ep-tine-mod", "from_port": "output", "to_node": "ep-tine-gain", "to_port": "input" },
+            { "from_node": "ep-tine-env", "from_port": "output", "to_node": "ep-tine-map", "to_port": "input" },
+            { "from_node": "ep-tine-map", "from_port": "output", "to_node": "ep-tine-gain", "to_port": "input_gain" },
+            { "from_node": "ep-tine-gain", "from_port": "output", "to_node": "ep-carrier", "to_port": "input_mod" },
+            { "from_node": "ep-body-mod", "from_port": "output", "to_node": "ep-carrier", "to_port": "input_mod" },
+            { "from_node": "ep-carrier", "from_port": "output", "to_node": "ep-amp", "to_port": "input" },
+            { "from_node": "ep-amp", "from_port": "output", "to_node": "ep-reverb", "to_port": "input" },
+            { "from_node": "ep-reverb", "from_port": "output", "to_node": "ep-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.8 },
+  "sequencerTracks": [
+    {
+      "id": "track-fm-ep",
+      "targetNodeId": "instrument-fm-ep",
+      "name": "FM Electric Piano",
+      "color": "#8B5CF6",
+      "steps": 32,
+      "notes": [
+        { "step": 0, "note": 53, "velocity": 0.82, "duration": 8 },
+        { "step": 0, "note": 57, "velocity": 0.76, "duration": 8 },
+        { "step": 0, "note": 60, "velocity": 0.72, "duration": 8 },
+        { "step": 0, "note": 64, "velocity": 0.7, "duration": 8 },
+        { "step": 8, "note": 50, "velocity": 0.82, "duration": 8 },
+        { "step": 8, "note": 53, "velocity": 0.76, "duration": 8 },
+        { "step": 8, "note": 57, "velocity": 0.72, "duration": 8 },
+        { "step": 8, "note": 60, "velocity": 0.7, "duration": 8 },
+        { "step": 16, "note": 55, "velocity": 0.82, "duration": 8 },
+        { "step": 16, "note": 58, "velocity": 0.76, "duration": 8 },
+        { "step": 16, "note": 62, "velocity": 0.72, "duration": 8 },
+        { "step": 16, "note": 65, "velocity": 0.7, "duration": 8 },
+        { "step": 24, "note": 48, "velocity": 0.82, "duration": 8 },
+        { "step": 24, "note": 52, "velocity": 0.76, "duration": 8 },
+        { "step": 24, "note": 55, "velocity": 0.72, "duration": 8 },
+        { "step": 24, "note": 58, "velocity": 0.7, "duration": 8 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 88, "patternSteps": 32, "masterVolume": 0.8 }
+}

@@ -1,0 +1,156 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-glass-pluck",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Glassy FM Pluck",
+        "label": "Glassy FM Pluck",
+        "volume": 0.8,
+        "voiceCount": 12,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "glass-mod",
+              "type": "fmOperator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "Glass Mod",
+                "frequency": 4,
+                "modIndex": 0,
+                "exposedParameters": ["frequency"]
+              }
+            },
+            {
+              "id": "glass-carrier",
+              "type": "fmOperator",
+              "position": { "x": 280, "y": 120 },
+              "data": {
+                "label": "Carrier",
+                "frequency": 1,
+                "modIndex": 3.5,
+                "exposedParameters": ["frequency", "modIndex"]
+              }
+            },
+            {
+              "id": "glass-amp",
+              "type": "adsr",
+              "position": { "x": 540, "y": 120 },
+              "data": {
+                "label": "Pluck Env",
+                "attack": 0.001,
+                "decay": 0.5,
+                "sustain": 0,
+                "release": 0.4,
+                "depth": 0.5,
+                "velocitySensitivity": 0.75,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "glass-filter",
+              "type": "filter",
+              "position": { "x": 800, "y": 120 },
+              "data": {
+                "label": "Glass Top",
+                "type": "Lowpass",
+                "cutoff": 6000,
+                "resonance": 0.6,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "glass-delay",
+              "type": "delay",
+              "position": { "x": 1060, "y": 120 },
+              "data": {
+                "label": "Sparkle Delay",
+                "delayTime": 0.25,
+                "feedback": 0.32,
+                "mix": 0.28,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "glass-autopan",
+              "type": "lfo",
+              "position": { "x": 1060, "y": 400 },
+              "data": {
+                "label": "Auto Pan",
+                "waveform": "Sine",
+                "frequency": 0.3,
+                "amplitude": 0.7,
+                "bpmSync": false,
+                "syncRate": "1/1",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "glass-panner",
+              "type": "panner",
+              "position": { "x": 1320, "y": 120 },
+              "data": {
+                "label": "Stereo",
+                "pan": 0,
+                "exposedParameters": ["pan"]
+              }
+            },
+            {
+              "id": "glass-output",
+              "type": "output",
+              "position": { "x": 1580, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "glass-mod", "from_port": "output", "to_node": "glass-carrier", "to_port": "input_mod" },
+            { "from_node": "glass-carrier", "from_port": "output", "to_node": "glass-amp", "to_port": "input" },
+            { "from_node": "glass-amp", "from_port": "output", "to_node": "glass-filter", "to_port": "input" },
+            { "from_node": "glass-filter", "from_port": "output", "to_node": "glass-delay", "to_port": "input" },
+            { "from_node": "glass-delay", "from_port": "output", "to_node": "glass-panner", "to_port": "input" },
+            { "from_node": "glass-autopan", "from_port": "output", "to_node": "glass-panner", "to_port": "input_pan" },
+            { "from_node": "glass-panner", "from_port": "output", "to_node": "glass-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.75 },
+  "sequencerTracks": [
+    {
+      "id": "track-glass-pluck",
+      "targetNodeId": "instrument-glass-pluck",
+      "name": "Glassy FM Pluck",
+      "color": "#06B6D4",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 64, "velocity": 0.85, "duration": 1 },
+        { "step": 2, "note": 68, "velocity": 0.78, "duration": 1 },
+        { "step": 3, "note": 71, "velocity": 0.8, "duration": 1 },
+        { "step": 4, "note": 76, "velocity": 0.88, "duration": 1 },
+        { "step": 6, "note": 71, "velocity": 0.74, "duration": 1 },
+        { "step": 7, "note": 73, "velocity": 0.8, "duration": 1 },
+        { "step": 8, "note": 68, "velocity": 0.82, "duration": 1 },
+        { "step": 10, "note": 64, "velocity": 0.76, "duration": 1 },
+        { "step": 11, "note": 71, "velocity": 0.8, "duration": 1 },
+        { "step": 12, "note": 75, "velocity": 0.86, "duration": 1 },
+        { "step": 14, "note": 71, "velocity": 0.74, "duration": 1 },
+        { "step": 15, "note": 76, "velocity": 0.84, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 120, "patternSteps": 16, "masterVolume": 0.8 }
+}

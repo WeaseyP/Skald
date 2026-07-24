@@ -1,0 +1,154 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-acid",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Acid Squelch",
+        "label": "Acid Squelch",
+        "volume": 0.8,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0.06,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "acid-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "303 Saw",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.55,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "acid-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Squelch LP",
+                "type": "Lowpass",
+                "cutoff": 180,
+                "resonance": 2.6,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "acid-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.004,
+                "decay": 0.2,
+                "sustain": 0.55,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "acid-drive",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Overdrive",
+                "drive": 22,
+                "tone": 3200,
+                "mix": 0.45,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "acid-filter-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 440 },
+              "data": {
+                "label": "Squelch Env",
+                "attack": 0.004,
+                "decay": 0.16,
+                "sustain": 0.12,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "acid-env-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 440 },
+              "data": {
+                "label": "Env 0-2600 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2600,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "acid-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "acid-osc", "from_port": "output", "to_node": "acid-filter", "to_port": "input" },
+            { "from_node": "acid-filter", "from_port": "output", "to_node": "acid-amp", "to_port": "input" },
+            { "from_node": "acid-amp", "from_port": "output", "to_node": "acid-drive", "to_port": "input" },
+            { "from_node": "acid-drive", "from_port": "output", "to_node": "acid-output", "to_port": "input" },
+            { "from_node": "acid-filter-env", "from_port": "output", "to_node": "acid-env-map", "to_port": "input" },
+            { "from_node": "acid-env-map", "from_port": "output", "to_node": "acid-filter", "to_port": "input_cutoff" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.85 },
+  "sequencerTracks": [
+    {
+      "id": "track-acid",
+      "targetNodeId": "instrument-acid",
+      "name": "Acid Squelch",
+      "color": "#22C55E",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 45, "velocity": 0.95, "duration": 1 },
+        { "step": 1, "note": 45, "velocity": 0.6, "duration": 1 },
+        { "step": 2, "note": 57, "velocity": 0.9, "duration": 1 },
+        { "step": 3, "note": 45, "velocity": 0.65, "duration": 1 },
+        { "step": 4, "note": 48, "velocity": 0.92, "duration": 1 },
+        { "step": 5, "note": 45, "velocity": 0.6, "duration": 1 },
+        { "step": 6, "note": 52, "velocity": 0.88, "duration": 1 },
+        { "step": 7, "note": 57, "velocity": 0.9, "duration": 1 },
+        { "step": 8, "note": 45, "velocity": 0.95, "duration": 1 },
+        { "step": 9, "note": 60, "velocity": 0.9, "duration": 1 },
+        { "step": 10, "note": 57, "velocity": 0.8, "duration": 1 },
+        { "step": 11, "note": 45, "velocity": 0.6, "duration": 1 },
+        { "step": 12, "note": 55, "velocity": 0.9, "duration": 1 },
+        { "step": 13, "note": 45, "velocity": 0.65, "duration": 1 },
+        { "step": 14, "note": 52, "velocity": 0.85, "duration": 1 },
+        { "step": 15, "note": 48, "velocity": 0.8, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 130, "patternSteps": 16, "masterVolume": 0.8 }
+}
