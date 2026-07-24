@@ -239,6 +239,14 @@ build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
 build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 	project: Project
 	project.bpm = project_raw.project.bpm
+	// bpm <= 0 means the field was absent or null (older/hand-written JSON,
+	// or a UI NaN serialized as null). A raw 0 reached the generated
+	// `samples_per_step_f := p.sample_rate * 60.0 / (p.bpm * 4.0)` as a
+	// division by zero — the sequence never advanced and every note duration
+	// went infinite. Default to 120, matching build_project_from_graph and
+	// the param_ranges table. Valid projects (bpm > 0) are never touched, so
+	// no existing save is retimed.
+	if project.bpm <= 0 do project.bpm = 120.0
 	project.master_volume = project_raw.project.master_volume
 	project.pattern_steps = project_raw.project.pattern_steps
 	project.instruments = make([]Project_Instrument, len(project_raw.project.instruments))

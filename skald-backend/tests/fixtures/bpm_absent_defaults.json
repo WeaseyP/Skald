@@ -1,0 +1,53 @@
+{
+  "project": {
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "bpmabsent1",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 8,
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "midi_config": {
+          "device": "All",
+          "channel": 1
+        },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "position": { "x": 0, "y": 0 },
+              "parameters": {
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "2",
+              "type": "GraphOutput",
+              "position": { "x": 300, "y": 0 },
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input"
+            }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}
