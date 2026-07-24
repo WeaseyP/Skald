@@ -1,5 +1,6 @@
 import React from 'react';
 import { NumberInput } from '../common/NumberInput';
+import { BPM_MIN, BPM_MAX, clampBpm } from '../../definitions/bpm';
 
 interface SequencerToolbarProps {
     isPlaying: boolean;
@@ -96,10 +97,11 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
                 <label>BPM:</label>
                 <NumberInput
                     value={bpm}
-                    onChange={(val) => onBpmChange(Math.max(20, Math.min(300, val)))}
+                    onChange={(val) => onBpmChange(clampBpm(val))}
                     style={inputStyles}
-                    min={20}
-                    max={300}
+                    min={BPM_MIN}
+                    max={BPM_MAX}
+                    title="Project tempo — shared by the preview engine, sequencer and exported code (same field as the sidebar BPM)"
                 />
             </div>
 
