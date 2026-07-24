@@ -7,6 +7,11 @@ interface NumberInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEleme
     min?: number;
     max?: number;
     step?: number;
+    // Snap the committed value onto the `step` grid. Set for fields backed by
+    // an integer contract in the codegen JSON (Voice Count, Unison, ...) so a
+    // typed "17.151" commits as a whole number. Fractional fields leave this
+    // off so precise typed input (0.055 glide, 30.024 detune) is preserved.
+    quantize?: boolean;
 }
 
 export const NumberInput: React.FC<NumberInputProps> = ({
@@ -15,6 +20,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({
     min,
     max,
     step,
+    quantize,
     onBlur,
     onKeyDown,
     className,
@@ -34,19 +40,33 @@ export const NumberInput: React.FC<NumberInputProps> = ({
         }
     }, [value, isfocused]);
 
+    // Snap integer-contract fields to their step grid (round + snap). No-op
+    // unless `quantize` is set, so fractional fields keep exact typed input.
+    const applyQuantize = (parsed: number): number => {
+        if (quantize && step !== undefined && Number.isFinite(step) && step > 0) {
+            const anchor = min ?? 0;
+            const snapped = Math.round((parsed - anchor) / step) * step + anchor;
+            const decimals = (String(step).split('.')[1] ?? '').length;
+            return parseFloat(snapped.toFixed(Math.min(decimals, 12)));
+        }
+        return parsed;
+    };
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newVal = e.target.value;
         setLocalValue(newVal);
 
-        // Optional: Trigger change immediately if valid? 
-        // Or wait for blur? User requested "can highlight and type over", 
+        // Optional: Trigger change immediately if valid?
+        // Or wait for blur? User requested "can highlight and type over",
         // implying immediate updates are nice, but empty state must be valid locally.
 
-        // Let's try attempting update if it is a valid number, 
-        // but NOT reverting if it's invalid (until blur).
+        // Let's try attempting update if it is a valid number,
+        // but NOT reverting if it's invalid (until blur). Quantized fields
+        // snap even mid-typing so an integer contract never sees a
+        // transient fractional value through the live-update path.
         const parsed = parseFloat(newVal);
         if (!isNaN(parsed) && newVal.trim() !== '') {
-            onChange(parsed);
+            onChange(applyQuantize(parsed));
         }
     };
 
@@ -63,9 +83,12 @@ export const NumberInput: React.FC<NumberInputProps> = ({
         if (min !== undefined && parsed < min) parsed = min;
         if (max !== undefined && parsed > max) parsed = max;
 
-        // Apply. `onChange` always gets the exact parsed number (whatever
-        // precision the user typed) — only the redisplayed string is
-        // rounded, so the stored value is never quantized by this.
+        // Quantize integer-contract fields to their step grid (round + snap).
+        parsed = applyQuantize(parsed);
+
+        // Apply. `onChange` gets the exact committed number — snapped only
+        // when `quantize` is set; fractional fields keep whatever precision
+        // the user typed. Only the redisplayed string is rounded to 2dp.
         setLocalValue(formatDisplayValue(parsed));
         onChange(parsed);
     };

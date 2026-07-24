@@ -54,7 +54,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
     // Helpers to cleanup common patterns. Every slider is paired with a
     // typed number box — dragging is for exploring, typing is for landing
     // on the exact value you meant.
-    const slider = (param: string, min: number, max: number, def: number, scale?: 'log' | 'linear', step?: number) => (
+    const slider = (param: string, min: number, max: number, def: number, scale?: 'log' | 'linear', step?: number, integer = false) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
                 <CustomSlider
@@ -63,11 +63,13 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     onChange={val => onChange(param, val)}
                     scale={scale}
                     step={step}
+                    quantize={integer}
                     defaultValue={def}
                 />
             </div>
             <NumberInput
                 min={min} max={max} step={step ?? 0.01}
+                quantize={integer}
                 value={data[param] ?? def}
                 onChange={val => onChange(param, val)}
                 style={numberBoxStyles}
@@ -288,9 +290,9 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     />
                 ), false)}
                 {renderControlWrapper('volume', 'Volume', slider('volume', 0, 1, 1))}
-                {renderControlWrapper('voiceCount', 'Voice Count', slider('voiceCount', 1, 32, 8, undefined, 1))}
+                {renderControlWrapper('voiceCount', 'Voice Count', slider('voiceCount', 1, 32, 8, undefined, 1, true))}
                 {renderControlWrapper('glide', 'Glide (s)', slider('glide', 0, 2, 0.05))}
-                {renderControlWrapper('unison', 'Unison Voices', slider('unison', 1, 16, 1, undefined, 1))}
+                {renderControlWrapper('unison', 'Unison Voices', slider('unison', 1, 16, 1, undefined, 1, true))}
                 {renderControlWrapper('detune', 'Detune (cents)', slider('detune', 0, 100, 5))}
             </>);
         default:

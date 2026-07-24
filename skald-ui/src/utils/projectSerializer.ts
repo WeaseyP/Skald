@@ -21,6 +21,21 @@ export interface ProjectStructure {
     }
 }
 
+// Last line of defense for BUG-INTEGER-CONTROLS-EMIT-FLOATS. Every field that
+// maps to an `int`/`u8` in skald-backend/core/types.odin MUST cross IPC as a
+// finite whole number in range — the Odin json unmarshaller hard-fails on a
+// fractional value for an int field (Unsupported_Type_Error{id = int, kind =
+// Float}), which kills the whole codegen/preview build. This normalizes even
+// when the value arrives fractional from a stale saved project or an import,
+// not only from a live control. Fractional fields (bpm, volume, glide, detune,
+// velocity, duration, probability, DSP params) never pass through here — they
+// keep their full precision.
+const toInt = (value: unknown, fallback: number, min: number, max: number): number => {
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.round(n)));
+};
+
 // Helper: Recursively format nodes, handling subgraphs
 const formatNodesForCodegen = (nodeList: Node<NodeParams>[]): any[] => {
     return nodeList.map(node => {
@@ -93,7 +108,10 @@ export const buildProjectData = (
         project: {
             bpm: bpm,
             master_volume: masterVolume,
-            pattern_steps: patternSteps,
+            // pattern_steps is an int loop length; never let a fractional value
+            // reach the backend. Min 1 (0 = "fall back to track length" is a
+            // backend concept the UI never emits explicitly here).
+            pattern_steps: toInt(patternSteps, 16, 1, 1024),
             instruments: []
         }
     };
@@ -117,7 +135,9 @@ export const buildProjectData = (
             if (sourceNode && sourceNode.type === 'midiInput') {
                 midiConfig = {
                     device: (sourceNode.data as any).device || "All",
-                    channel: 1 // TODO: Add channel param to MidiInput node
+                    // channel is an int (Midi_Config.channel). Normalize any
+                    // value a MidiInput node might carry to a whole 1..16.
+                    channel: toInt((sourceNode.data as any).channel, 1, 1, 16)
                 };
             }
         }
@@ -131,14 +151,17 @@ export const buildProjectData = (
                 name: track.name,
                 mute: track.isMuted,
                 solo: track.isSolo,
-                num_steps: track.steps,
+                // num_steps is an int track length (Sequencer_Track.num_steps).
+                num_steps: toInt(track.steps, 16, 1, 1024),
                 events: track.notes.map(n => ({
                     // Quantize at export with the same function the
                     // preview uses at schedule time — what you hear in
-                    // the browser is what ships.
-                    note: nearestInScale ? nearestInScale(n.note) : n.note,
+                    // the browser is what ships. `note` is a u8 (0..127
+                    // MIDI); force it whole and in range so it unmarshals.
+                    note: toInt(nearestInScale ? nearestInScale(n.note) : n.note, 60, 0, 127),
                     velocity: n.velocity,
-                    step: n.step,
+                    // step is an int grid index (Note_Event.step).
+                    step: toInt(n.step, 0, 0, 1023),
                     // Seconds, BPM-derived (16th-note steps). The old
                     // value hardcoded 0.25s/step regardless of tempo.
                     start_time: n.step * (60.0 / bpm / 4.0),
@@ -174,9 +197,13 @@ export const buildProjectData = (
             // Floor at 0.001, never 0: the backend reads an exact 0 as
             // "field absent" (older saves) and substitutes unity.
             volume: Math.max(data.volume ?? 1.0, 0.001),
-            voice_count: data.voiceCount || 8,
+            // voice_count and unison are ints (Project_Instrument_Raw). A
+            // fractional value here — e.g. 17.151 from a stale save or an old
+            // slider — is exactly what broke unmarshalling. Round + clamp to
+            // the UI's valid ranges (1..32 voices, 1..16 unison).
+            voice_count: toInt(data.voiceCount, 8, 1, 32),
             glide: data.glide ?? 0.05,
-            unison: data.unison ?? 1,
+            unison: toInt(data.unison, 1, 1, 16),
             detune: data.detune ?? 5.0,
             midi_config: midiConfig,
             audio_graph: subgraph
