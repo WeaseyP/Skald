@@ -40,6 +40,15 @@ const parseSaveFile = (graphJson: string): { flow?: any; error?: string } => {
     if (flow.sequencerTracks !== undefined && !Array.isArray(flow.sequencerTracks)) {
         return { error: 'not a Skald save file (sequencerTracks is not an array)' };
     }
+    // React Flow v11 saves stored a group child's parent as `parentNode`;
+    // v12 reads `parentId`. Rehydrate the old key here so pre-migration
+    // grouped saves keep their grouping instead of silently flattening.
+    for (const n of flow.nodes) {
+        if (n && typeof n === 'object' && n.parentId === undefined && typeof n.parentNode === 'string') {
+            n.parentId = n.parentNode;
+            delete n.parentNode;
+        }
+    }
     return { flow };
 };
 
