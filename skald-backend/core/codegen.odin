@@ -943,6 +943,30 @@ effective_exposed_params :: proc(node: Node, plock_targets: []Plock_Target) -> [
 	return names
 }
 
+// Node ids are user data embedded verbatim inside a generated Odin string
+// literal for the "<node_id>::<param>" set/get_param alias. Only plain
+// printable ASCII without quote/backslash is embeddable — anything else
+// simply loses its alias (the field-name key still works) instead of
+// emitting a literal that won't compile.
+node_key_emittable :: proc(id: string) -> bool {
+	if len(id) == 0 do return false
+	for i in 0 ..< len(id) {
+		c := id[i]
+		if c < 0x20 || c > 0x7e || c == '"' || c == '\\' do return false
+	}
+	return true
+}
+
+// One switch case for an exposed param: the collision-resolved field name,
+// plus the node-scoped "<raw node id>::<param>" alias (empty alias = none).
+emit_param_case :: proc(sb: ^strings.Builder, res: Exposed_Resolution, alias: string) {
+	if alias != "" {
+		fmt.sbprintf(sb, "\tcase \"%s\", \"%s\":\n", res.field_name, alias)
+	} else {
+		fmt.sbprintf(sb, "\tcase \"%s\":\n", res.field_name)
+	}
+}
+
 generate_processor_code :: proc(
 	graph: ^Graph,
 	instrument: ^Project_Instrument,
@@ -1188,13 +1212,14 @@ generate_processor_code :: proc(
 
                 key := fmt.aprintf("%s::%s", node.id, p_name)
                 resolutions[key] = Exposed_Resolution{
-                    field_name = field_name,
-                    param_name = p_name,
-                    node_id    = node.id,
-                    default    = def_val,
-                    range_min  = rng.min,
-                    range_max  = rng.max,
-                    unit       = rng.unit,
+                    field_name  = field_name,
+                    param_name  = p_name,
+                    node_id     = node.id,
+                    node_raw_id = node.raw_id,
+                    default     = def_val,
+                    range_min   = rng.min,
+                    range_max   = rng.max,
+                    unit        = rng.unit,
                 }
             }
         }
@@ -1571,6 +1596,36 @@ generate_processor_code :: proc(
 
 	// String-keyed setter for tooling. Switch dispatch — O(N) over a small
 	// param count is fine; per the prompt, hot game code uses typed setters.
+	//
+	// Every param is reachable by TWO keys: the collision-resolved field name
+	// (the public <Foo>_PARAMS contract) and a "<raw node id>::<param>"
+	// alias. The alias is what the editor's live preview sends: when several
+	// nodes expose the SAME param name (e.g. three filters all exposing
+	// `cutoff`) the field names are label-prefixed/deduped in ways the UI
+	// cannot reproduce, and without a stable key those edits had to fall
+	// back to a debounced rebuild — a knob drag on the second filter only
+	// landed at the next note instead of instantly. Keys use the id exactly
+	// as written in the project JSON (pre-sanitization), because that is the
+	// only id the editor knows.
+	param_aliases := make([]string, len(stable_resolutions))
+	defer delete(param_aliases)
+	{
+		seen_aliases := make(map[string]bool)
+		defer delete(seen_aliases)
+		for res, i in stable_resolutions {
+			raw := res.node_raw_id
+			if raw == "" do raw = res.node_id
+			// Unembeddable ids (quote/backslash/non-printable) and raw-id
+			// duplicates lose their alias — the field-name key still works —
+			// instead of emitting a broken or duplicate switch case.
+			if !node_key_emittable(raw) do continue
+			alias := fmt.aprintf("%s::%s", raw, res.param_name)
+			if seen_aliases[alias] do continue
+			seen_aliases[alias] = true
+			param_aliases[i] = alias
+		}
+	}
+
 	fmt.sbprintf(
 		&sb,
 		"%s_set_param :: proc(p: ^%s_Processor, name: string, value: f32) -> bool {{\n",
@@ -1579,8 +1634,8 @@ generate_processor_code :: proc(
 	)
 	if len(stable_resolutions) > 0 {
 		fmt.sbprint(&sb, "\tswitch name {\n")
-		for res in stable_resolutions {
-			fmt.sbprintf(&sb, "\tcase \"%s\":\n", res.field_name)
+		for res, i in stable_resolutions {
+			emit_param_case(&sb, res, param_aliases[i])
 			fmt.sbprintf(&sb, "\t\t%s_set_%s(p, value)\n", namespace_prefix, res.field_name)
 			fmt.sbprint(&sb, "\t\treturn true\n")
 		}
@@ -1589,7 +1644,8 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\treturn false\n")
 	fmt.sbprint(&sb, "}\n\n")
 
-	// String-keyed getter (mirrors set_param). Returns (value, ok).
+	// String-keyed getter (mirrors set_param, including the node-id alias).
+	// Returns (value, ok).
 	fmt.sbprintf(
 		&sb,
 		"%s_get_param :: proc(p: ^%s_Processor, name: string) -> (f32, bool) {{\n",
@@ -1598,8 +1654,8 @@ generate_processor_code :: proc(
 	)
 	if len(stable_resolutions) > 0 {
 		fmt.sbprint(&sb, "\tswitch name {\n")
-		for res in stable_resolutions {
-			fmt.sbprintf(&sb, "\tcase \"%s\":\n", res.field_name)
+		for res, i in stable_resolutions {
+			emit_param_case(&sb, res, param_aliases[i])
 			fmt.sbprintf(&sb, "\t\treturn p.%s, true\n", res.field_name)
 		}
 		fmt.sbprint(&sb, "\t}\n")
@@ -2361,7 +2417,9 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> stri
     fmt.sbprint(&sb, "SKALD_WASM_BLOCK :: 128\n")
     fmt.sbprint(&sb, "@(private=\"file\") skald_left: [SKALD_WASM_BLOCK]f32\n")
     fmt.sbprint(&sb, "@(private=\"file\") skald_right: [SKALD_WASM_BLOCK]f32\n")
-    fmt.sbprint(&sb, "@(private=\"file\") skald_name_buf: [64]u8\n\n")
+    // 128, not 64: the preview addresses params as "<node_id>::<param>",
+    // and user node ids can push a key well past a bare field name.
+    fmt.sbprint(&sb, "@(private=\"file\") skald_name_buf: [128]u8\n\n")
 
     fmt.sbprint(&sb, "@(export)\nskald_left_ptr :: proc \"c\" () -> rawptr { return &skald_left[0] }\n\n")
     fmt.sbprint(&sb, "@(export)\nskald_right_ptr :: proc \"c\" () -> rawptr { return &skald_right[0] }\n\n")
@@ -2444,7 +2502,8 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> stri
 
     // Host writes the param name's UTF-8 bytes into skald_name_buf first.
     // Reuses the generated string-keyed <Foo>_set_param, so the name
-    // contract is exactly the exposed-param field names in <Foo>_PARAMS.
+    // contract is the exposed-param field names in <Foo>_PARAMS plus the
+    // node-scoped "<node_id>::<param>" aliases the editor preview sends.
     fmt.sbprint(&sb, "@(export)\nskald_set_param :: proc \"c\" (asset: i32, name_len: i32, value: f32) -> i32 {\n")
     fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
     fmt.sbprint(&sb, "\tif name_len <= 0 || int(name_len) > len(skald_name_buf) do return 0\n")

@@ -213,37 +213,32 @@ export const buildProjectData = (
     return projectData;
 };
 
-// Names exposed exactly once across an instrument's subgraph. Only these are
-// safe for the instant (no-recompile) set_param path: the codegen suffixes
-// COLLIDING exposed names into unique field names the UI can't predict, so
-// collisions must go through the rebuild path instead.
-export const getUniqueExposedParams = (instNode: Node<NodeParams>): Map<string, number> => {
-    const counts = new Map<string, number>();
-    const subgraph = (instNode.data as any)?.subgraph;
-    for (const sn of subgraph?.nodes ?? []) {
-        for (const name of (sn.data?.exposedParameters ?? []) as string[]) {
-            counts.set(name, (counts.get(name) ?? 0) + 1);
-        }
-    }
-    return counts;
-};
+// The key the generated set_param dispatch accepts for ANY exposed param,
+// unique or not: the codegen emits a "<nodeId>::<param>" alias next to every
+// collision-resolved field name. Addressing by node id is what lets several
+// nodes exposing the SAME name (e.g. three filters all exposing `cutoff`)
+// take the instant path individually — by bare name only the uniquely-exposed
+// ones were addressable, and everything else fell back to a full rebuild.
+export const liveParamKey = (nodeId: string, param: string): string => `${nodeId}::${param}`;
+
+// The generated wasm shim's param-name mailbox is 128 bytes; a key that
+// doesn't fit can't be applied live and must go through the rebuild path.
+const MAX_PARAM_KEY_BYTES = 128;
+export const canApplyParamLive = (nodeId: string, param: string): boolean =>
+    new TextEncoder().encode(liveParamKey(nodeId, param)).length <= MAX_PARAM_KEY_BYTES;
 
 // A stable fingerprint of everything that requires a re-codegen when it
-// changes. Uniquely-exposed parameter VALUES are masked out — those apply
-// live through skald_set_param without rebuilding the module.
+// changes. Exposed parameter VALUES are masked out — those apply live
+// through skald_set_param (keyed by liveParamKey) without rebuilding the
+// module. Masking and live-applicability MUST agree: a param masked here but
+// skipped by the instant path would change nothing until an unrelated
+// rebuild.
 export const topologySignature = (projectData: ProjectStructure): string => {
     const clone = JSON.parse(JSON.stringify(projectData)) as ProjectStructure;
     for (const inst of clone.project.instruments) {
-        const nodes = inst.audio_graph?.nodes ?? [];
-        const counts = new Map<string, number>();
-        for (const n of nodes) {
+        for (const n of inst.audio_graph?.nodes ?? []) {
             for (const name of (n.parameters?.exposedParameters ?? []) as string[]) {
-                counts.set(name, (counts.get(name) ?? 0) + 1);
-            }
-        }
-        for (const n of nodes) {
-            for (const name of (n.parameters?.exposedParameters ?? []) as string[]) {
-                if (counts.get(name) === 1 && name in n.parameters) {
+                if (name in n.parameters && canApplyParamLive(n.id, name)) {
                     n.parameters[name] = null;
                 }
             }

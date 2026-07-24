@@ -227,7 +227,7 @@ Asset_PARAMS := []Skald_Param_Info{
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	switch name {
-	case "cutoff":
+	case "cutoff", "2::cutoff":
 		Asset_set_cutoff(p, value)
 		return true
 	}
@@ -236,7 +236,7 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 	switch name {
-	case "cutoff":
+	case "cutoff", "2::cutoff":
 		return p.cutoff, true
 	}
 	return 0.0, false

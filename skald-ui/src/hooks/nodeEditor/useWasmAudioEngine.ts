@@ -19,8 +19,9 @@ import useDeepCompareEffect from 'use-deep-compare-effect';
 import { skaldWasmProcessorString } from './audioWorklets/skaldWasm.worklet';
 import {
     buildProjectData,
+    canApplyParamLive,
     getInstrumentNodes,
-    getUniqueExposedParams,
+    liveParamKey,
     topologySignature,
 } from '../../utils/projectSerializer';
 import { SequencerTrack } from '../../definitions/types';
@@ -219,8 +220,15 @@ export const useWasmAudioEngine = (
         }
     }, [isPlaying, buildModule, isLooping, setCurrentStep, patternSteps, nodes]);
 
-    // Instant path: uniquely-exposed param edits go straight to the running
-    // module via skald_set_param — no recompile, no audio interruption.
+    // Instant path: exposed param edits go straight to the running module
+    // via skald_set_param — no recompile, no audio interruption. Params are
+    // addressed as "<nodeId>::<param>" (the codegen emits that alias next to
+    // every collision-resolved field name), so instruments where several
+    // nodes expose the SAME name — e.g. the Normal Sax's three filters all
+    // exposing `cutoff`/`resonance` — hit the instant path too. They used to
+    // be skipped here (only uniquely-exposed names were addressable) and fell
+    // back to the debounced rebuild, so a filter knob drag killed the
+    // sounding voices and only became audible at the next note.
     const sendChangedExposedParams = useCallback((instrumentNodes: Node[]) => {
         const port = workletNode.current?.port;
         if (!port) return;
@@ -228,7 +236,6 @@ export const useWasmAudioEngine = (
         instrumentNodes.forEach((inst, assetIdx) => {
             const prevInst = prev.find(p => p.id === inst.id);
             if (!prevInst || prevInst === inst) return;
-            const counts = getUniqueExposedParams(inst);
             const prevSubnodes = new Map<string, any>(
                 ((prevInst.data as any)?.subgraph?.nodes ?? []).map((sn: any) => [sn.id, sn])
             );
@@ -236,17 +243,21 @@ export const useWasmAudioEngine = (
                 const prevSn = prevSubnodes.get(sn.id);
                 if (!prevSn || prevSn.data === sn.data) continue;
                 for (const name of (sn.data?.exposedParameters ?? []) as string[]) {
-                    if (counts.get(name) !== 1) continue;
+                    // Keys past the shim's name-buffer limit can't be applied
+                    // live; topologySignature leaves them unmasked so they
+                    // take the rebuild path instead of silently no-oping.
+                    if (!canApplyParamLive(sn.id, name)) continue;
                     const value = Number(sn.data?.[name]);
                     const prevValue = Number(prevSn.data?.[name]);
                     if (Number.isFinite(value) && value !== prevValue) {
+                        const key = liveParamKey(sn.id, name);
                         port.postMessage({
                             type: 'set-param',
                             asset: assetIdx,
-                            nameBytes: new TextEncoder().encode(name),
+                            nameBytes: new TextEncoder().encode(key),
                             value,
                         });
-                        logger.debug('WasmAudioEngine', `set-param ${name}=${value} (asset ${assetIdx})`);
+                        logger.debug('WasmAudioEngine', `set-param ${key}=${value} (asset ${assetIdx})`);
                     }
                 }
             }

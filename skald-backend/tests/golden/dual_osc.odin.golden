@@ -345,43 +345,43 @@ Asset_PARAMS := []Skald_Param_Info{
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	switch name {
-	case "Osc_A_amplitude":
+	case "Osc_A_amplitude", "1::amplitude":
 		Asset_set_Osc_A_amplitude(p, value)
 		return true
-	case "Osc_A_frequency":
+	case "Osc_A_frequency", "1::frequency":
 		Asset_set_Osc_A_frequency(p, value)
 		return true
-	case "Osc_A_phase":
+	case "Osc_A_phase", "1::phase":
 		Asset_set_Osc_A_phase(p, value)
 		return true
-	case "Osc_A_pulseWidth":
+	case "Osc_A_pulseWidth", "1::pulseWidth":
 		Asset_set_Osc_A_pulseWidth(p, value)
 		return true
-	case "Osc_B_amplitude":
+	case "Osc_B_amplitude", "2::amplitude":
 		Asset_set_Osc_B_amplitude(p, value)
 		return true
-	case "Osc_B_frequency":
+	case "Osc_B_frequency", "2::frequency":
 		Asset_set_Osc_B_frequency(p, value)
 		return true
-	case "Osc_B_phase":
+	case "Osc_B_phase", "2::phase":
 		Asset_set_Osc_B_phase(p, value)
 		return true
-	case "Osc_B_pulseWidth":
+	case "Osc_B_pulseWidth", "2::pulseWidth":
 		Asset_set_Osc_B_pulseWidth(p, value)
 		return true
-	case "attack":
+	case "attack", "4::attack":
 		Asset_set_attack(p, value)
 		return true
-	case "decay":
+	case "decay", "4::decay":
 		Asset_set_decay(p, value)
 		return true
-	case "depth":
+	case "depth", "4::depth":
 		Asset_set_depth(p, value)
 		return true
-	case "release":
+	case "release", "4::release":
 		Asset_set_release(p, value)
 		return true
-	case "sustain":
+	case "sustain", "4::sustain":
 		Asset_set_sustain(p, value)
 		return true
 	}
@@ -390,31 +390,31 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 	switch name {
-	case "Osc_A_amplitude":
+	case "Osc_A_amplitude", "1::amplitude":
 		return p.Osc_A_amplitude, true
-	case "Osc_A_frequency":
+	case "Osc_A_frequency", "1::frequency":
 		return p.Osc_A_frequency, true
-	case "Osc_A_phase":
+	case "Osc_A_phase", "1::phase":
 		return p.Osc_A_phase, true
-	case "Osc_A_pulseWidth":
+	case "Osc_A_pulseWidth", "1::pulseWidth":
 		return p.Osc_A_pulseWidth, true
-	case "Osc_B_amplitude":
+	case "Osc_B_amplitude", "2::amplitude":
 		return p.Osc_B_amplitude, true
-	case "Osc_B_frequency":
+	case "Osc_B_frequency", "2::frequency":
 		return p.Osc_B_frequency, true
-	case "Osc_B_phase":
+	case "Osc_B_phase", "2::phase":
 		return p.Osc_B_phase, true
-	case "Osc_B_pulseWidth":
+	case "Osc_B_pulseWidth", "2::pulseWidth":
 		return p.Osc_B_pulseWidth, true
-	case "attack":
+	case "attack", "4::attack":
 		return p.attack, true
-	case "decay":
+	case "decay", "4::decay":
 		return p.decay, true
-	case "depth":
+	case "depth", "4::depth":
 		return p.depth, true
-	case "release":
+	case "release", "4::release":
 		return p.release, true
-	case "sustain":
+	case "sustain", "4::sustain":
 		return p.sustain, true
 	}
 	return 0.0, false
