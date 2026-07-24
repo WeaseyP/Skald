@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { useWasmAudioEngine } from '../../hooks/nodeEditor/useWasmAudioEngine';
 import { SequencerTrack } from '../../definitions/types';
 

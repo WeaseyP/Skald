@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCodeGeneration } from '../../hooks/useCodeGeneration';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { SequencerTrack } from '../../definitions/types';
 
 // Mock window.electron

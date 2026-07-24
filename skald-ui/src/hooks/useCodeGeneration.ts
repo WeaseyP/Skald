@@ -9,7 +9,7 @@
 ================================================================================
 */
 import { useState } from 'react';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { NodeParams, SequencerTrack } from '../definitions/types';
 import { buildProjectData } from '../utils/projectSerializer';
 

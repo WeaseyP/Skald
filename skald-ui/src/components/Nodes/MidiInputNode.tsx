@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { MidiInputParams } from '../../definitions/types';
 import {
     nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
@@ -8,7 +8,7 @@ import {
 
 const accent = accentFor('midiInput');
 
-const MidiInputNode = ({ data }: NodeProps<MidiInputParams>) => {
+const MidiInputNode = ({ data }: NodeProps<Node<MidiInputParams>>) => {
     const outputs = [
         { id: 'pitch', label: 'Pitch' },
         { id: 'gate', label: 'Gate' },

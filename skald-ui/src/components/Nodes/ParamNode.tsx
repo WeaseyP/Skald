@@ -11,7 +11,8 @@
 ================================================================================
 */
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
+import { NodeParams } from '../../definitions/types';
 import { NumberInput } from '../common/NumberInput';
 import {
     nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
@@ -109,7 +110,7 @@ const FieldControl: React.FC<{
 
 export const makeParamNode = (cfg: ParamNodeConfig) => {
     const accent = accentFor(cfg.type);
-    const Component: React.FC<NodeProps> = ({ id, data }) => {
+    const Component: React.FC<NodeProps<Node<NodeParams>>> = ({ id, data }) => {
         const update = useNodeParamUpdater(id);
         const visibleFields = (cfg.fields ?? []).filter(f => !f.showIf || f.showIf(data));
         return (

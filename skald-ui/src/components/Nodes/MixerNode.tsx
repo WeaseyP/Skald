@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { MixerParams } from '../../definitions/types';
 import { NumberInput } from '../common/NumberInput';
 import {
     nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
@@ -13,7 +14,7 @@ type ChannelLevel = { id: number; level: number; pan: number };
 
 // Custom (not makeParamNode) because the input handles AND the per-channel
 // level fields are dynamic — one row per channel, dot and level side by side.
-const MixerNodeComponent = ({ id, data }: NodeProps) => {
+const MixerNodeComponent = ({ id, data }: NodeProps<Node<MixerParams>>) => {
     const update = useNodeParamUpdater(id);
     const inputCount = Math.min(Math.max(Number(data.inputCount) || 4, 1), 32);
     const levels: ChannelLevel[] = Array.isArray(data.levels) ? data.levels : [];

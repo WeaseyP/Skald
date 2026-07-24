@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
+import { NodeParams } from '../../definitions/types';
 import { useSequencerState } from './useSequencerState';
 
 export const useInstrumentRegistry = (
-    nodes: Node[],
+    nodes: Node<NodeParams>[],
     sequencerActions: ReturnType<typeof useSequencerState>
 ) => {
     // Keep track of processed IDs to avoid loops if needed, 

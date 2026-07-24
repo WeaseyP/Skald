@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import { NumberInput } from '../common/NumberInput';
-import { SequencerTrack, NoteEvent } from '../../definitions/types';
+import { SequencerTrack, NoteEvent, NodeParams } from '../../definitions/types';
 import { NodeParameterControls } from '../NodeParameterControls';
 
 interface StepPropertiesEditorProps {
@@ -9,7 +9,7 @@ interface StepPropertiesEditorProps {
     step: number; // 0-indexed
     track?: SequencerTrack;
     onUpdateNote: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
-    instrumentNode?: Node | null;
+    instrumentNode?: Node<NodeParams> | null;
     onExport?: () => void;
 }
 
@@ -59,7 +59,7 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
     // otherwise change the hook count between renders and crash React.
     const internalNodes = useMemo(() => {
         if (instrumentNode && instrumentNode.type === 'instrument' && instrumentNode.data.subgraph) {
-            return instrumentNode.data.subgraph.nodes as Node[];
+            return instrumentNode.data.subgraph.nodes as Node<NodeParams>[];
         }
         return [];
     }, [instrumentNode]);
@@ -100,7 +100,7 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
         onUpdateNote(trackId, step, { patchOverrides: newOverrides });
     };
 
-    const renderNodeOverrides = (node: Node) => {
+    const renderNodeOverrides = (node: Node<NodeParams>) => {
         const { id, data } = node;
         const label = data.label || node.type;
 

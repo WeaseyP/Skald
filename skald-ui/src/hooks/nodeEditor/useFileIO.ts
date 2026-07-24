@@ -7,7 +7,7 @@
 ================================================================================
 */
 import { useCallback } from 'react';
-import { Node, Edge, ReactFlowInstance } from 'reactflow';
+import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import { SequencerTrack } from '../../definitions/types';
 
 // Song-level settings that live outside the graph/tracks but shape how the

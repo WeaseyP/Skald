@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { OutputParams } from '../../definitions/types';
 import { AudioVisualizer } from '../Visualization/AudioVisualizer';
 import {
     nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
@@ -8,7 +9,7 @@ import {
 
 const accent = accentFor('output');
 
-const GraphOutputNodeComponent = ({ data }: NodeProps) => {
+const GraphOutputNodeComponent = ({ data }: NodeProps<Node<OutputParams>>) => {
     return (
         <div style={nodeShellStyles(accent)}>
             <div style={nodeHeaderStylesFor(accent)}>{data.label || 'Output'}</div>

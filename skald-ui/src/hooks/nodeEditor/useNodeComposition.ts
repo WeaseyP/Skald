@@ -13,7 +13,7 @@ import {
     Node,
     Edge,
     useReactFlow,
-} from 'reactflow';
+} from '@xyflow/react';
 import { NODE_DEFINITIONS } from '../../definitions/node-definitions';
 import { NodeParams, InstrumentParams } from '../../definitions/types';
 
@@ -242,7 +242,7 @@ export const useNodeComposition = ({
             if (selectedIds.has(n.id)) {
                 return {
                     ...n,
-                    parentNode: newGroupId,
+                    parentId: newGroupId,
                     extent: 'parent' as const,
                     position: {
                         x: n.position.x - groupNodePosition.x,

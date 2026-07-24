@@ -20,6 +20,12 @@ export interface BaseNodeParams {
   label?: string;
   exposedParameters?: string[];
   analyser?: any; // AnalyserNode instance for visualization
+  // React Flow v12 (@xyflow/react) constrains a node's data to
+  // `Record<string, unknown>`. This index signature lets every NodeParams
+  // variant satisfy `Node<NodeParams>` while keeping the named fields typed.
+  // `any` (not `unknown`) preserves the loose `data.<x>` access the app relied
+  // on under v11, where the default `Node` type carried `data: any`.
+  [key: string]: any;
 }
 
 /**

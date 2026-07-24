@@ -1,10 +1,10 @@
 import React from 'react';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { CustomSlider } from './controls/CustomSlider';
 import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
-import { GainParams , SequencerTrack, NoteEvent } from '../definitions/types';
+import { GainParams , SequencerTrack, NoteEvent, NodeParams } from '../definitions/types';
 import { StepPropertiesEditor } from './Sequencer/StepPropertiesEditor';
 
 import { NodeParameterControls } from './NodeParameterControls';
@@ -92,9 +92,9 @@ const LinkIcon: React.FC<{ isExposed: boolean }> = ({ isExposed }) => (
 // --- PROPS INTERFACE ---
 
 interface ParameterPanelProps {
-    selectedNode: Node | null;
+    selectedNode: Node<NodeParams> | null;
     onUpdateNode: (nodeId: string, data: object, subNodeId?: string) => void;
-    allNodes: Node[];
+    allNodes: Node<NodeParams>[];
     allEdges: Edge[];
     bpm: number;
     // Step Editing
@@ -169,7 +169,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
     const handleMixerChange = (channelId: number, newLevel: number, subNodeId?: string) => {
         const nodeToUpdate = subNodeId
-            ? (allNodes.find((n: Node) => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find((n: Node) => n.id === subNodeId))
+            ? (allNodes.find((n: Node<NodeParams>) => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find((n: Node<NodeParams>) => n.id === subNodeId))
             : selectedNode;
 
         if (!nodeToUpdate || nodeToUpdate.type !== 'mixer') return;
@@ -196,7 +196,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
     const toggleParameterExposure = (paramKey: string, subNodeId?: string) => {
         const nodeIdToUpdate = subNodeId || selectedNode.id;
-        const nodeToUpdate = allNodes.find((n: Node) => n.id === nodeIdToUpdate) || selectedNode.data.subgraph?.nodes.find((n: Node) => n.id === nodeIdToUpdate);
+        const nodeToUpdate = allNodes.find((n: Node<NodeParams>) => n.id === nodeIdToUpdate) || selectedNode.data.subgraph?.nodes.find((n: Node<NodeParams>) => n.id === nodeIdToUpdate);
         if (!nodeToUpdate) return;
 
         const currentExposed: string[] = nodeToUpdate.data.exposedParameters || [];
@@ -240,7 +240,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         );
     };
 
-    const renderBpmSyncToggle = (node: Node, subNodeId?: string) => {
+    const renderBpmSyncToggle = (node: Node<NodeParams>, subNodeId?: string) => {
         const { data } = node;
         const isBpmSyncExposed = data.exposedParameters?.includes('bpmSync') || false;
         const uniqueId = `bpmSyncCheckbox-${subNodeId || node.id}`;
@@ -271,7 +271,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         );
     };
 
-    const renderNodeParameters = (node: Node, subNodeId?: string) => {
+    const renderNodeParameters = (node: Node<NodeParams>, subNodeId?: string) => {
         const { type, data } = node;
 
         const handleControlChange = (paramKey: string, value: any) => {
@@ -294,7 +294,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         if (type === 'instrument' || type === 'group') {
             const childNodes = type === 'instrument'
                 ? data.subgraph?.nodes
-                : allNodes.filter(n => n.parentNode === node.id);
+                : allNodes.filter(n => n.parentId === node.id);
 
             return (
                 <>
@@ -308,7 +308,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
                     {/* Sub-Node Rendering (Specific to Panel) */}
                     {type === 'instrument' && <h4 style={subHeaderStyles}>Internal Nodes</h4>}
-                    {childNodes?.map((subNode: Node) => (
+                    {childNodes?.map((subNode: Node<NodeParams>) => (
                         <div key={subNode.id}>
                             <h4 style={subHeaderStyles}>{subNode.data.label || subNode.type}</h4>
                             {renderNodeParameters(subNode, subNode.id)}

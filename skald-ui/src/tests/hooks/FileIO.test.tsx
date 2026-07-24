@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { Node, Edge, ReactFlowInstance } from 'reactflow';
+import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import { useFileIO, FileStatus, SessionSettings } from '../../hooks/nodeEditor/useFileIO';
 import { SequencerTrack } from '../../definitions/types';
 

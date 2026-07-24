@@ -14,7 +14,7 @@
 ================================================================================
 */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import useDeepCompareEffect from 'use-deep-compare-effect';
 import { skaldWasmProcessorString } from './audioWorklets/skaldWasm.worklet';
 import {

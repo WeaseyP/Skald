@@ -8,7 +8,7 @@
 | shipped export are fed byte-identical project descriptions.                 |
 ================================================================================
 */
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { NODE_DEFINITIONS } from '../definitions/node-definitions';
 import { NodeParams, SequencerTrack, InstrumentParams } from '../definitions/types';
 

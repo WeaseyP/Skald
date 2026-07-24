@@ -1,5 +1,5 @@
 import React from 'react';
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import { CustomSlider } from './controls/CustomSlider';
 import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
