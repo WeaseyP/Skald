@@ -206,9 +206,11 @@ export const useWasmAudioEngine = (
             setIsPlaying(true);
             logger.info('WasmAudioEngine', 'Playing generated wasm module');
         } catch (e) {
+            // Structured logger only — this used to also go through
+            // console.error directly, which doubled up every failed-Play
+            // message in the console (BUG-PREVIEW-CONSOLE-NOISE).
             const message = cleanIpcError(e);
             logger.error('WasmAudioEngine', 'Failed to start wasm preview', message);
-            console.error('Failed to start wasm preview:', e);
             setPreviewError(message);
             audioContext.current?.close();
             audioContext.current = null;

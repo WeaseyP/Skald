@@ -59,6 +59,7 @@ const contentAreaStyles: React.CSSProperties = {
 import { AudioVisualizer } from '../Visualization/AudioVisualizer';
 import { PianoRoll } from './PianoRoll';
 import { NumberInput } from '../common/NumberInput';
+import { logger } from '../../utils/logger';
 
 
 
@@ -98,20 +99,26 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
         const val = parseFloat(e.target.value);
         setMasterVolume(val);
         if (masterGainNode) {
-            console.log('[SequencerDock] Setting Master Gain:', val);
+            // Fires on every slider input event (i.e. continuously while
+            // dragging) — debug-only, not actionable status.
+            logger.debug('SequencerDock', `Setting master gain: ${val}`);
             masterGainNode.gain.setTargetAtTime(val, masterGainNode.context.currentTime, 0.01);
         } else {
-            console.warn('[SequencerDock] Master Gain Node is missing!');
+            // Expected while preview is stopped (no GainNode exists outside
+            // an active playback session) — not a fault, debug-only.
+            logger.debug('SequencerDock', 'Master gain node missing (preview not playing); slider value stored only');
         }
     };
 
     // Sync volume when node becomes available
     React.useEffect(() => {
         if (masterGainNode) {
-            console.log('[SequencerDock] Master Gain Node connected. Syncing volume:', masterVolume);
+            logger.debug('SequencerDock', `Master gain node connected; syncing volume to ${masterVolume}`);
             masterGainNode.gain.setValueAtTime(masterVolume, masterGainNode.context.currentTime); // Use setValueAtTime for immediate sync
         } else {
-            console.log('[SequencerDock] Master Gain Node is NULL');
+            // Null before Play and after Stop/AudioContext close — expected
+            // lifecycle state, not an error. See BUGS.md BUG-PREVIEW-CONSOLE-NOISE.
+            logger.debug('SequencerDock', 'Master gain node is null (preview not playing)');
         }
     }, [masterGainNode]); // masterVolume excluded to avoid reset loops if logic changes, though safe here.
 
