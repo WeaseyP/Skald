@@ -1,0 +1,179 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-sync",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Sync Aggro Lead",
+        "label": "Sync Aggro Lead",
+        "volume": 0.78,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0.015,
+        "unison": 2,
+        "detune": 16,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "sync-osc-a",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "Sync Square",
+                "waveform": "Square",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.3,
+                "pulseWidth": 0.35,
+                "phase": 0,
+                "exposedParameters": ["amplitude", "pulseWidth"]
+              }
+            },
+            {
+              "id": "sync-osc-b",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 300 },
+              "data": {
+                "label": "Sync Saw",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.28,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "sync-filter",
+              "type": "filter",
+              "position": { "x": 300, "y": 120 },
+              "data": {
+                "label": "Sync Sweep LP",
+                "type": "Lowpass",
+                "cutoff": 400,
+                "resonance": 1.9,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "sync-amp",
+              "type": "adsr",
+              "position": { "x": 820, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.006,
+                "decay": 0.25,
+                "sustain": 0.7,
+                "release": 0.2,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "sync-drive",
+              "type": "distortion",
+              "position": { "x": 1080, "y": 120 },
+              "data": {
+                "label": "Grit",
+                "drive": 16,
+                "tone": 4200,
+                "mix": 0.4,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "sync-filter-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 560 },
+              "data": {
+                "label": "Sync Env",
+                "attack": 0.008,
+                "decay": 0.4,
+                "sustain": 0.25,
+                "release": 0.2,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "sync-env-map",
+              "type": "mapper",
+              "position": { "x": 300, "y": 560 },
+              "data": {
+                "label": "Env 0-4200 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 4200,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "sync-sweep-lfo",
+              "type": "lfo",
+              "position": { "x": 0, "y": 820 },
+              "data": {
+                "label": "Sweep Motion",
+                "waveform": "Triangle",
+                "frequency": 0.9,
+                "amplitude": 700,
+                "bpmSync": false,
+                "syncRate": "1/2",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "sync-output",
+              "type": "output",
+              "position": { "x": 1340, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "sync-osc-a", "from_port": "output", "to_node": "sync-filter", "to_port": "input" },
+            { "from_node": "sync-osc-b", "from_port": "output", "to_node": "sync-filter", "to_port": "input" },
+            { "from_node": "sync-filter", "from_port": "output", "to_node": "sync-amp", "to_port": "input" },
+            { "from_node": "sync-amp", "from_port": "output", "to_node": "sync-drive", "to_port": "input" },
+            { "from_node": "sync-drive", "from_port": "output", "to_node": "sync-output", "to_port": "input" },
+            { "from_node": "sync-filter-env", "from_port": "output", "to_node": "sync-env-map", "to_port": "input" },
+            { "from_node": "sync-env-map", "from_port": "output", "to_node": "sync-filter", "to_port": "input_cutoff" },
+            { "from_node": "sync-sweep-lfo", "from_port": "output", "to_node": "sync-filter", "to_port": "input_cutoff" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.8 },
+  "sequencerTracks": [
+    {
+      "id": "track-sync",
+      "targetNodeId": "instrument-sync",
+      "name": "Sync Aggro Lead",
+      "color": "#DC2626",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 52, "velocity": 0.95, "duration": 3 },
+        { "step": 3, "note": 59, "velocity": 0.82, "duration": 1 },
+        { "step": 4, "note": 64, "velocity": 0.9, "duration": 2 },
+        { "step": 6, "note": 62, "velocity": 0.8, "duration": 1 },
+        { "step": 7, "note": 59, "velocity": 0.78, "duration": 1 },
+        { "step": 8, "note": 52, "velocity": 0.95, "duration": 3 },
+        { "step": 11, "note": 62, "velocity": 0.82, "duration": 1 },
+        { "step": 12, "note": 67, "velocity": 0.92, "duration": 2 },
+        { "step": 14, "note": 64, "velocity": 0.85, "duration": 1 },
+        { "step": 15, "note": 71, "velocity": 0.9, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 140, "patternSteps": 16, "masterVolume": 0.8 }
+}

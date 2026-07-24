@@ -1,0 +1,149 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-supersaw",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Supersaw Lead",
+        "label": "Supersaw Lead",
+        "volume": 0.8,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0.02,
+        "unison": 7,
+        "detune": 30,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "saw-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Saws",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.55,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "saw-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Bright Lowpass",
+                "type": "Lowpass",
+                "cutoff": 1100,
+                "resonance": 1.1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "saw-amp",
+              "type": "adsr",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.01,
+                "decay": 0.2,
+                "sustain": 0.8,
+                "release": 0.3,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "saw-filter-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 440 },
+              "data": {
+                "label": "Filter Env",
+                "attack": 0.02,
+                "decay": 0.35,
+                "sustain": 0.4,
+                "release": 0.25,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "saw-env-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 440 },
+              "data": {
+                "label": "Env 0-3500 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 3500,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "saw-vibrato",
+              "type": "lfo",
+              "position": { "x": 0, "y": 720 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 5.5,
+                "amplitude": 0.03,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "saw-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "saw-osc", "from_port": "output", "to_node": "saw-filter", "to_port": "input" },
+            { "from_node": "saw-filter", "from_port": "output", "to_node": "saw-amp", "to_port": "input" },
+            { "from_node": "saw-amp", "from_port": "output", "to_node": "saw-output", "to_port": "input" },
+            { "from_node": "saw-filter-env", "from_port": "output", "to_node": "saw-env-map", "to_port": "input" },
+            { "from_node": "saw-env-map", "from_port": "output", "to_node": "saw-filter", "to_port": "input_cutoff" },
+            { "from_node": "saw-vibrato", "from_port": "output", "to_node": "saw-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.85 },
+  "sequencerTracks": [
+    {
+      "id": "track-supersaw",
+      "targetNodeId": "instrument-supersaw",
+      "name": "Supersaw Lead",
+      "color": "#2563EB",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 69, "velocity": 0.9, "duration": 2 },
+        { "step": 2, "note": 64, "velocity": 0.78, "duration": 2 },
+        { "step": 4, "note": 67, "velocity": 0.82, "duration": 2 },
+        { "step": 6, "note": 69, "velocity": 0.85, "duration": 1 },
+        { "step": 7, "note": 72, "velocity": 0.88, "duration": 1 },
+        { "step": 8, "note": 71, "velocity": 0.86, "duration": 2 },
+        { "step": 10, "note": 64, "velocity": 0.76, "duration": 2 },
+        { "step": 12, "note": 74, "velocity": 0.92, "duration": 2 },
+        { "step": 14, "note": 69, "velocity": 0.8, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 128, "patternSteps": 16, "masterVolume": 0.8 }
+}
