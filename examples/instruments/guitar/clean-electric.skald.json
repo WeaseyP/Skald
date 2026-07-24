@@ -1,0 +1,204 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-clean-electric",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Clean Electric",
+        "label": "Clean Electric",
+        "volume": 0.78,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "cl-fund",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "Fundamental",
+                "waveform": "Triangle",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.45,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "cl-edge",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "String Edge",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.18,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "cl-tone",
+              "type": "filter",
+              "position": { "x": 280, "y": 180 },
+              "data": {
+                "label": "Pickup Tone",
+                "type": "Lowpass",
+                "cutoff": 1200,
+                "resonance": 1.1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "cl-pluck-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 580 },
+              "data": {
+                "label": "Pluck Env",
+                "attack": 0.001,
+                "decay": 0.28,
+                "sustain": 0.2,
+                "release": 0.15,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "cl-pluck-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 580 },
+              "data": {
+                "label": "Pluck 0-2200 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2200,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "cl-pick-noise",
+              "type": "noise",
+              "position": { "x": 0, "y": 840 },
+              "data": {
+                "label": "Pick Noise",
+                "type": "White",
+                "amplitude": 0.35,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "cl-pick-bp",
+              "type": "filter",
+              "position": { "x": 280, "y": 840 },
+              "data": {
+                "label": "Pick Click",
+                "type": "Bandpass",
+                "cutoff": 4200,
+                "resonance": 1.4,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "cl-pick-env",
+              "type": "adsr",
+              "position": { "x": 560, "y": 840 },
+              "data": {
+                "label": "Pick Env",
+                "attack": 0.001,
+                "decay": 0.02,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "cl-amp-warmth",
+              "type": "distortion",
+              "position": { "x": 560, "y": 180 },
+              "data": {
+                "label": "Amp Warmth",
+                "shape": "soft",
+                "drive": 2,
+                "tone": 5200,
+                "mix": 0.18,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "cl-amp",
+              "type": "adsr",
+              "position": { "x": 840, "y": 180 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.004,
+                "decay": 0.5,
+                "sustain": 0.35,
+                "release": 0.22,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "cl-output",
+              "type": "output",
+              "position": { "x": 1120, "y": 180 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "cl-fund", "from_port": "output", "to_node": "cl-tone", "to_port": "input" },
+            { "from_node": "cl-edge", "from_port": "output", "to_node": "cl-tone", "to_port": "input" },
+            { "from_node": "cl-pluck-env", "from_port": "output", "to_node": "cl-pluck-map", "to_port": "input" },
+            { "from_node": "cl-pluck-map", "from_port": "output", "to_node": "cl-tone", "to_port": "input_cutoff" },
+            { "from_node": "cl-tone", "from_port": "output", "to_node": "cl-amp-warmth", "to_port": "input" },
+            { "from_node": "cl-pick-noise", "from_port": "output", "to_node": "cl-pick-bp", "to_port": "input" },
+            { "from_node": "cl-pick-bp", "from_port": "output", "to_node": "cl-pick-env", "to_port": "input" },
+            { "from_node": "cl-pick-env", "from_port": "output", "to_node": "cl-amp-warmth", "to_port": "input" },
+            { "from_node": "cl-amp-warmth", "from_port": "output", "to_node": "cl-amp", "to_port": "input" },
+            { "from_node": "cl-amp", "from_port": "output", "to_node": "cl-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-clean-electric",
+      "targetNodeId": "instrument-clean-electric",
+      "name": "Clean Electric",
+      "color": "#0E7490",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 45, "velocity": 0.8, "duration": 2 },
+        { "step": 2, "note": 52, "velocity": 0.66, "duration": 2 },
+        { "step": 4, "note": 57, "velocity": 0.72, "duration": 2 },
+        { "step": 6, "note": 60, "velocity": 0.68, "duration": 2 },
+        { "step": 8, "note": 64, "velocity": 0.78, "duration": 2 },
+        { "step": 10, "note": 60, "velocity": 0.62, "duration": 2 },
+        { "step": 12, "note": 57, "velocity": 0.68, "duration": 2 },
+        { "step": 14, "note": 52, "velocity": 0.6, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 92, "patternSteps": 16, "masterVolume": 0.78 }
+}

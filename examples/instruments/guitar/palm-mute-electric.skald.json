@@ -1,0 +1,188 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-palm-mute",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "Palm Mute Electric",
+        "label": "Palm Mute Electric",
+        "volume": 0.75,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "pm-string",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 60 },
+              "data": {
+                "label": "String",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pm-mute-filter",
+              "type": "filter",
+              "position": { "x": 280, "y": 60 },
+              "data": {
+                "label": "Palm Damp",
+                "type": "Lowpass",
+                "cutoff": 300,
+                "resonance": 1.2,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "pm-chug-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": 340 },
+              "data": {
+                "label": "Chug Env",
+                "attack": 0.001,
+                "decay": 0.07,
+                "sustain": 0.05,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "pm-chug-map",
+              "type": "mapper",
+              "position": { "x": 280, "y": 340 },
+              "data": {
+                "label": "Chug 0-1100 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 1100,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "pm-thump-noise",
+              "type": "noise",
+              "position": { "x": 0, "y": 620 },
+              "data": {
+                "label": "Palm Thump",
+                "type": "White",
+                "amplitude": 0.4,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pm-thump-bp",
+              "type": "filter",
+              "position": { "x": 280, "y": 620 },
+              "data": {
+                "label": "Thump Body",
+                "type": "Bandpass",
+                "cutoff": 900,
+                "resonance": 1.6,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "pm-thump-env",
+              "type": "adsr",
+              "position": { "x": 560, "y": 620 },
+              "data": {
+                "label": "Thump Env",
+                "attack": 0.001,
+                "decay": 0.03,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "pm-drive",
+              "type": "distortion",
+              "position": { "x": 560, "y": 200 },
+              "data": {
+                "label": "Amp Drive",
+                "shape": "classic",
+                "drive": 14,
+                "tone": 2800,
+                "mix": 0.6,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "pm-amp",
+              "type": "adsr",
+              "position": { "x": 840, "y": 200 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.002,
+                "decay": 0.13,
+                "sustain": 0,
+                "release": 0.06,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "pm-output",
+              "type": "output",
+              "position": { "x": 1120, "y": 200 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "pm-string", "from_port": "output", "to_node": "pm-mute-filter", "to_port": "input" },
+            { "from_node": "pm-chug-env", "from_port": "output", "to_node": "pm-chug-map", "to_port": "input" },
+            { "from_node": "pm-chug-map", "from_port": "output", "to_node": "pm-mute-filter", "to_port": "input_cutoff" },
+            { "from_node": "pm-mute-filter", "from_port": "output", "to_node": "pm-drive", "to_port": "input" },
+            { "from_node": "pm-thump-noise", "from_port": "output", "to_node": "pm-thump-bp", "to_port": "input" },
+            { "from_node": "pm-thump-bp", "from_port": "output", "to_node": "pm-thump-env", "to_port": "input" },
+            { "from_node": "pm-thump-env", "from_port": "output", "to_node": "pm-drive", "to_port": "input" },
+            { "from_node": "pm-drive", "from_port": "output", "to_node": "pm-amp", "to_port": "input" },
+            { "from_node": "pm-amp", "from_port": "output", "to_node": "pm-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 1 },
+  "sequencerTracks": [
+    {
+      "id": "track-palm-mute",
+      "targetNodeId": "instrument-palm-mute",
+      "name": "Palm Mute Electric",
+      "color": "#7C2D12",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 40, "velocity": 0.9, "duration": 1 },
+        { "step": 2, "note": 40, "velocity": 0.62, "duration": 1 },
+        { "step": 4, "note": 40, "velocity": 0.85, "duration": 1 },
+        { "step": 6, "note": 43, "velocity": 0.8, "duration": 1 },
+        { "step": 8, "note": 40, "velocity": 0.9, "duration": 1 },
+        { "step": 10, "note": 40, "velocity": 0.62, "duration": 1 },
+        { "step": 12, "note": 45, "velocity": 0.85, "duration": 1 },
+        { "step": 14, "note": 43, "velocity": 0.72, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 126, "patternSteps": 16, "masterVolume": 0.78 }
+}
