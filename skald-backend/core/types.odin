@@ -21,6 +21,12 @@ Note_Event :: struct {
 
 Node :: struct {
 	id:         string,
+	// The id exactly as it appears in the project JSON, BEFORE
+	// sanitize_identifier (and before duplicate-id renaming). The editor's
+	// live preview addresses params as "<raw_id>::<param>" — it only knows
+	// the ids it wrote, so the set/get_param aliases must be keyed by this,
+	// not by the identifier-safe `id`.
+	raw_id:     string,
 	type:       string,
 	parameters: json.Object,
 	subgraph:   ^Graph,
@@ -72,13 +78,16 @@ Sequencer_Track :: struct {
 // `field_name` is the resolved name on the processor struct (collision-free,
 // possibly node-label-prefixed). `param_name` is the original UI-side name.
 Exposed_Resolution :: struct {
-	field_name: string,
-	param_name: string,
-	node_id:    string,
-	default:    f32,
-	range_min:  f32,
-	range_max:  f32,
-	unit:       string,
+	field_name:  string,
+	param_name:  string,
+	node_id:     string,
+	// Raw (unsanitized) node id — see Node.raw_id. Keys the node-scoped
+	// "<raw_id>::<param>" alias in the generated set/get_param dispatch.
+	node_raw_id: string,
+	default:     f32,
+	range_min:   f32,
+	range_max:   f32,
+	unit:        string,
 }
 
 Graph :: struct {

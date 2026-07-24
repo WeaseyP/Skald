@@ -172,6 +172,7 @@ build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
 
 		node := Node {
 			id = sanitize_identifier(raw_node.id, true),
+			raw_id = raw_node.id,
 			type = node_type,
 			parameters = params,
 			subgraph = nil,

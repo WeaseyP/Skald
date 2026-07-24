@@ -325,37 +325,37 @@ Asset_PARAMS := []Skald_Param_Info{
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	switch name {
-	case "Env_decay":
+	case "Env_decay", "2::decay":
 		Asset_set_Env_decay(p, value)
 		return true
-	case "Verb_decay":
+	case "Verb_decay", "3::decay":
 		Asset_set_Verb_decay(p, value)
 		return true
-	case "amplitude":
+	case "amplitude", "1::amplitude":
 		Asset_set_amplitude(p, value)
 		return true
-	case "attack":
+	case "attack", "2::attack":
 		Asset_set_attack(p, value)
 		return true
-	case "depth":
+	case "depth", "2::depth":
 		Asset_set_depth(p, value)
 		return true
-	case "frequency":
+	case "frequency", "1::frequency":
 		Asset_set_frequency(p, value)
 		return true
-	case "mix":
+	case "mix", "3::mix":
 		Asset_set_mix(p, value)
 		return true
-	case "phase":
+	case "phase", "1::phase":
 		Asset_set_phase(p, value)
 		return true
-	case "pulseWidth":
+	case "pulseWidth", "1::pulseWidth":
 		Asset_set_pulseWidth(p, value)
 		return true
-	case "release":
+	case "release", "2::release":
 		Asset_set_release(p, value)
 		return true
-	case "sustain":
+	case "sustain", "2::sustain":
 		Asset_set_sustain(p, value)
 		return true
 	}
@@ -364,27 +364,27 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 	switch name {
-	case "Env_decay":
+	case "Env_decay", "2::decay":
 		return p.Env_decay, true
-	case "Verb_decay":
+	case "Verb_decay", "3::decay":
 		return p.Verb_decay, true
-	case "amplitude":
+	case "amplitude", "1::amplitude":
 		return p.amplitude, true
-	case "attack":
+	case "attack", "2::attack":
 		return p.attack, true
-	case "depth":
+	case "depth", "2::depth":
 		return p.depth, true
-	case "frequency":
+	case "frequency", "1::frequency":
 		return p.frequency, true
-	case "mix":
+	case "mix", "3::mix":
 		return p.mix, true
-	case "phase":
+	case "phase", "1::phase":
 		return p.phase, true
-	case "pulseWidth":
+	case "pulseWidth", "1::pulseWidth":
 		return p.pulseWidth, true
-	case "release":
+	case "release", "2::release":
 		return p.release, true
-	case "sustain":
+	case "sustain", "2::sustain":
 		return p.sustain, true
 	}
 	return 0.0, false
