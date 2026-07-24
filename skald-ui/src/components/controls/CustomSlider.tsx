@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatDisplayValue } from '../../utils/formatDisplayValue';
 
 // --- STYLES ---
 
@@ -72,14 +73,21 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
 }) => {
     // Internal state for immediate UI feedback
     const [localValue, setLocalValue] = useState(value);
-    // Separate state for the text input to allow temporary invalid strings
-    const [textValue, setTextValue] = useState(value.toString());
+    // Separate state for the text input to allow temporary invalid strings.
+    // Displayed text is rounded to at most 2dp (BUG-PARAM-DISPLAY-PRECISION)
+    // — display only; `localValue`/`onChange` always carry the exact number.
+    const [textValue, setTextValue] = useState(formatDisplayValue(value));
+    const [isTextFocused, setIsTextFocused] = useState(false);
 
-    // Sync local state if the incoming prop changes
+    // Sync local state if the incoming prop changes. Skip the text field
+    // while the user is actively editing it so an external value change
+    // doesn't clobber what they're typing.
     useEffect(() => {
         setLocalValue(value);
-        setTextValue(value.toString());
-    }, [value]);
+        if (!isTextFocused) {
+            setTextValue(formatDisplayValue(value));
+        }
+    }, [value, isTextFocused]);
 
     const getSliderPosition = useCallback(() => {
         if (scale === 'log') return fromLogValue(localValue, min, max);
@@ -99,15 +107,25 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         const finalValue = parseFloat(clampedValue.toPrecision(5));
         
         setLocalValue(finalValue);
-        setTextValue(finalValue.toString());
+        setTextValue(formatDisplayValue(finalValue));
         onChange(finalValue);
     };
-    
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setTextValue(e.target.value);
     };
 
+    const handleInputFocus = () => {
+        setIsTextFocused(true);
+        // Show full precision while editing so the user can see/refine
+        // digits beyond the 2dp display, and so focusing+blurring without
+        // an edit re-commits the exact original value rather than the
+        // rounded display string.
+        setTextValue(localValue.toString());
+    };
+
     const handleInputBlur = () => {
+        setIsTextFocused(false);
         let parsed = parseFloat(textValue);
         if (textValue.toLowerCase().includes('k')) {
             parsed = parseFloat(textValue.replace(/k/i, '')) * 1000;
@@ -115,12 +133,12 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
 
         if (isNaN(parsed)) {
             setLocalValue(defaultValue);
-            setTextValue(defaultValue.toString());
+            setTextValue(formatDisplayValue(defaultValue));
             onChange(defaultValue);
         } else {
             const clampedValue = Math.max(min, Math.min(max, parsed));
             setLocalValue(clampedValue);
-            setTextValue(clampedValue.toString());
+            setTextValue(formatDisplayValue(clampedValue));
             onChange(clampedValue);
         }
     };
@@ -138,7 +156,7 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
             const finalValue = parseFloat(newValue.toPrecision(5));
 
             setLocalValue(finalValue);
-            setTextValue(finalValue.toString());
+            setTextValue(formatDisplayValue(finalValue));
             onChange(finalValue);
         }
     };
@@ -148,7 +166,7 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
     // onChange, so even when triggered it didn't actually reset the param.)
     const handleDoubleClick = () => {
         setLocalValue(defaultValue);
-        setTextValue(defaultValue.toString());
+        setTextValue(formatDisplayValue(defaultValue));
         onChange(defaultValue);
         onReset?.();
     };
@@ -169,6 +187,7 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
                 type="text"
                 value={textValue}
                 onChange={handleInputChange}
+                onFocus={handleInputFocus}
                 onBlur={handleInputBlur}
                 onKeyDown={handleInputKeyDown}
                 style={numberInputStyles}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, FocusEvent, KeyboardEvent } from 'react';
+import { formatDisplayValue } from '../../utils/formatDisplayValue';
 
 interface NumberInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
     value: number;
@@ -19,14 +20,17 @@ export const NumberInput: React.FC<NumberInputProps> = ({
     className,
     ...props
 }) => {
-    // Local state stores string to allow empty/intermediate states
-    const [localValue, setLocalValue] = useState<string>(value.toString());
+    // Local state stores string to allow empty/intermediate states.
+    // Display is rounded to at most 2dp (BUG-PARAM-DISPLAY-PRECISION) — this
+    // is purely cosmetic, `value` itself (and what we hand back via
+    // onChange) is never touched by the rounding.
+    const [localValue, setLocalValue] = useState<string>(formatDisplayValue(value));
     const [isfocused, setIsFocused] = useState(false);
 
     // Sync only when not focused to avoid interfering with typing
     useEffect(() => {
         if (!isfocused) {
-            setLocalValue(value.toString());
+            setLocalValue(formatDisplayValue(value));
         }
     }, [value, isfocused]);
 
@@ -51,7 +55,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({
 
         if (isNaN(parsed) || localValue.trim() === '') {
             // Revert to last known valid prop
-            setLocalValue(value.toString());
+            setLocalValue(formatDisplayValue(value));
             return;
         }
 
@@ -59,8 +63,10 @@ export const NumberInput: React.FC<NumberInputProps> = ({
         if (min !== undefined && parsed < min) parsed = min;
         if (max !== undefined && parsed > max) parsed = max;
 
-        // Apply
-        setLocalValue(parsed.toString());
+        // Apply. `onChange` always gets the exact parsed number (whatever
+        // precision the user typed) — only the redisplayed string is
+        // rounded, so the stored value is never quantized by this.
+        setLocalValue(formatDisplayValue(parsed));
         onChange(parsed);
     };
 
@@ -72,6 +78,11 @@ export const NumberInput: React.FC<NumberInputProps> = ({
 
     const handleFocus = () => {
         setIsFocused(true);
+        // Show full precision while actively editing, so (a) the user can
+        // see/refine digits beyond the 2dp display and (b) focusing then
+        // blurring without any edit re-commits the exact original value
+        // instead of silently rounding it down to the display precision.
+        setLocalValue(value.toString());
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
