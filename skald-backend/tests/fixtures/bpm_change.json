@@ -1,0 +1,124 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "asset-instrument",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 8,
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "midi_config": {
+          "device": "All",
+          "channel": 1
+        },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "position": {
+                "x": 100,
+                "y": 200
+              },
+              "parameters": {
+                "frequency": 60,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "2",
+              "type": "ADSR",
+              "position": {
+                "x": 400,
+                "y": 200
+              },
+              "parameters": {
+                "attack": 0.001,
+                "decay": 0.08,
+                "sustain": 0,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "attackCurve": "linear",
+                "decayCurve": "linear",
+                "releaseCurve": "linear",
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "3",
+              "type": "GraphOutput",
+              "position": {
+                "x": 700,
+                "y": 200
+              },
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "1",
+              "from_port": "output",
+              "to_node": "2",
+              "to_port": "input"
+            },
+            {
+              "from_node": "2",
+              "from_port": "output",
+              "to_node": "3",
+              "to_port": "input"
+            }
+          ],
+          "sequencer_tracks": [
+            {
+              "target_node_id": "asset-instrument",
+              "name": "Asset",
+              "mute": false,
+              "solo": false,
+              "num_steps": 16,
+              "events": [
+                {
+                  "note": 36,
+                  "velocity": 1,
+                  "step": 0,
+                  "start_time": 0,
+                  "duration": 1
+                },
+                {
+                  "note": 36,
+                  "velocity": 1,
+                  "step": 4,
+                  "start_time": 1,
+                  "duration": 1
+                },
+                {
+                  "note": 36,
+                  "velocity": 1,
+                  "step": 8,
+                  "start_time": 2,
+                  "duration": 1
+                },
+                {
+                  "note": 36,
+                  "velocity": 1,
+                  "step": 12,
+                  "start_time": 3,
+                  "duration": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

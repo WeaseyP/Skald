@@ -21,6 +21,10 @@ Skald_Param_Info :: struct {
 
 Asset_Processor :: struct {
 	sample_rate:  f32,
+	// Transport fields are part of every generated processor's uniform
+	// surface; the bpm_change acceptance case reads/writes them directly.
+	bpm:          f32,
+	current_step: u64,
 	playing:      bool,
 	voice_active: bool,
 }

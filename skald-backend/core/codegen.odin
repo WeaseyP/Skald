@@ -252,7 +252,9 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// Denominators wrapped in math.max: a literal 0 for attack/decay/release
 	// would emit a constant division by zero (compile error) even though the
 	// `> 0` branch guards it at runtime.
-	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.age / math.max(f32(%s), 0.000001); else do envelope = 1.0;\n", attack_str, attack_str)
+	// The ramp starts at attack_start (0 for fresh voices; the stolen voice's
+	// captured live level on a steal) so retriggers are click-free.
+	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_attack_start + (1.0 - voice.adsr_%s_attack_start) * (voice.age / math.max(f32(%s), 0.000001)); else do envelope = 1.0;\n", attack_str, node.id, node.id, attack_str)
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
 	fmt.sbprintf(sb, "\t\t\t\tif voice.age >= (%s) {{\n", attack_str)
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Decay;\n", node.id)
@@ -1066,6 +1068,10 @@ generate_processor_code :: proc(
 			// copy it into release_level, killing every release tail.)
 			fmt.sbprintf(&sb, "\tadsr_%s_stage: ADSR_Stage,\n", node.id)
             fmt.sbprintf(&sb, "\tadsr_%s_release_level: f32,\n", node.id)
+            // Attack ramps FROM this level (0 for a fresh voice). On a voice
+            // steal it carries the stolen voice's live envelope value so the
+            // retrigger is continuous instead of snapping to zero (click).
+            fmt.sbprintf(&sb, "\tadsr_%s_attack_start: f32,\n", node.id)
 		} else if node.type == "Filter" {
 			fmt.sbprintf(&sb, "\tfilter_%s_low: f32,\n", node.id)
 			fmt.sbprintf(&sb, "\tfilter_%s_band: f32,\n", node.id)
@@ -1349,6 +1355,30 @@ generate_processor_code :: proc(
 
 	fmt.sbprint(&sb, "\tv := &p.voices[voice_idx]\n")
 	fmt.sbprint(&sb, "\tprev_freq := v.current_freq\n")
+	// Capture the stolen voice's LIVE envelope level per ADSR before age /
+	// time_released are zeroed below. release_level tracks the live value in
+	// Attack/Decay/Sustain but is the release ANCHOR during Release, so the
+	// Release case rescales it by the remaining release fraction. Fresh
+	// voices (and Idle stages) capture 0 — attack ramps from silence exactly
+	// as before.
+	for node in all_nodes {
+		if node.type != "ADSR" || bus_nodes[node.id] do continue
+		release_str := get_f32_param(graph, node, "release", "", 0.1)
+		fmt.sbprintf(&sb, "\tadsr_%s_prev_level: f32 = 0.0\n", node.id)
+		fmt.sbprintf(&sb, "\tif stolen && v.adsr_%s_stage != .Idle {{\n", node.id)
+		fmt.sbprintf(&sb, "\t\tadsr_%s_prev_level = v.adsr_%s_release_level\n", node.id, node.id)
+		fmt.sbprintf(&sb, "\t\tif v.adsr_%s_stage == .Release {{\n", node.id)
+		emit_f32_local(&sb, "\t\t\t", fmt.tprintf("rel_t_%s", node.id), fmt.tprintf("(%s)", release_str))
+		fmt.sbprintf(&sb, "\t\t\tif rel_t_%s > 0.0 {{\n", node.id)
+		fmt.sbprintf(&sb, "\t\t\t\trf_%s := 1.0 - (v.age - v.time_released) / math.max(rel_t_%s, 0.000001)\n", node.id, node.id)
+		fmt.sbprintf(&sb, "\t\t\t\tif rf_%s < 0.0 do rf_%s = 0.0\n", node.id, node.id)
+		fmt.sbprintf(&sb, "\t\t\t\tadsr_%s_prev_level *= rf_%s\n", node.id, node.id)
+		fmt.sbprint(&sb, "\t\t\t} else {\n")
+		fmt.sbprintf(&sb, "\t\t\t\tadsr_%s_prev_level = 0.0\n", node.id)
+		fmt.sbprint(&sb, "\t\t\t}\n")
+		fmt.sbprint(&sb, "\t\t}\n")
+		fmt.sbprint(&sb, "\t}\n")
+	}
 	fmt.sbprint(&sb, "\tv.active = true\n")
 	fmt.sbprint(&sb, "\tv.note = note\n")
 	fmt.sbprint(&sb, "\tv.velocity = velocity\n")
@@ -1368,27 +1398,45 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\t}\n")
     fmt.sbprint(&sb, "\tv.duration = duration\n")
 
-    // Reset per-voice DSP state. Filter state carried over between notes on
-    // voice reuse — worse, a single NaN blowup latched the voice silent
-    // forever. Phases reset too so retriggers are deterministic. Bus-domain
-    // node state lives on the processor and is never reset per note.
+    // Envelopes always re-enter Attack. attack_start seeds the ramp with the
+    // captured pre-steal level (0 for fresh voices), and release_level starts
+    // there too so an immediate note_off releases from the right level.
 	for node in all_nodes {
 		if bus_nodes[node.id] do continue
-		switch node.type {
-		case "ADSR":
-			fmt.sbprintf(&sb, "\tv.adsr_%s_stage = .Attack\n", node.id)
-			fmt.sbprintf(&sb, "\tv.adsr_%s_release_level = 0.0\n", node.id)
-		case "Filter":
-			fmt.sbprintf(&sb, "\tv.filter_%s_low = 0.0\n", node.id)
-			fmt.sbprintf(&sb, "\tv.filter_%s_band = 0.0\n", node.id)
-		case "Oscillator":
-			fmt.sbprintf(&sb, "\tv.osc_%s_phase = {{}}\n", node.id)
-		case "FmOperator":
-			fmt.sbprintf(&sb, "\tv.fm_%s_phase = 0.0\n", node.id)
-		case "Wavetable":
-			fmt.sbprintf(&sb, "\tv.wavetable_%s_phase = 0.0\n", node.id)
-		case "Distortion":
-			fmt.sbprintf(&sb, "\tv.dist_%s_tone = 0.0\n", node.id)
+		if node.type != "ADSR" do continue
+		fmt.sbprintf(&sb, "\tv.adsr_%s_stage = .Attack\n", node.id)
+		fmt.sbprintf(&sb, "\tv.adsr_%s_attack_start = adsr_%s_prev_level\n", node.id, node.id)
+		fmt.sbprintf(&sb, "\tv.adsr_%s_release_level = adsr_%s_prev_level\n", node.id, node.id)
+	}
+    // Reset per-voice DSP state — FRESH voices only. A stolen voice keeps its
+    // oscillator/filter/tone state so the retrigger is sample-continuous: the
+    // old hard reset (phase and filter to zero mid-waveform) was an audible
+    // click on every steal. Fresh voices were silent, so for them the reset
+    // is inaudible and keeps retriggers deterministic. Bus-domain node state
+    // lives on the processor and is never reset per note.
+	{
+		reset_sb := strings.builder_make()
+		defer strings.builder_destroy(&reset_sb)
+		for node in all_nodes {
+			if bus_nodes[node.id] do continue
+			switch node.type {
+			case "Filter":
+				fmt.sbprintf(&reset_sb, "\t\tv.filter_%s_low = 0.0\n", node.id)
+				fmt.sbprintf(&reset_sb, "\t\tv.filter_%s_band = 0.0\n", node.id)
+			case "Oscillator":
+				fmt.sbprintf(&reset_sb, "\t\tv.osc_%s_phase = {{}}\n", node.id)
+			case "FmOperator":
+				fmt.sbprintf(&reset_sb, "\t\tv.fm_%s_phase = 0.0\n", node.id)
+			case "Wavetable":
+				fmt.sbprintf(&reset_sb, "\t\tv.wavetable_%s_phase = 0.0\n", node.id)
+			case "Distortion":
+				fmt.sbprintf(&reset_sb, "\t\tv.dist_%s_tone = 0.0\n", node.id)
+			}
+		}
+		if strings.builder_len(reset_sb) > 0 {
+			fmt.sbprint(&sb, "\tif !stolen {\n")
+			fmt.sbprint(&sb, strings.to_string(reset_sb))
+			fmt.sbprint(&sb, "\t}\n")
 		}
 	}
 	fmt.sbprint(&sb, "}\n\n")
