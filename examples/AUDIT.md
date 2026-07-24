@@ -43,7 +43,7 @@ by hand from parameter-for-parameter comparison (see notes below).
 | VALID (current Instrument-wrapped schema) | 36 |
 | VALID (project-schema, integration demo) | 1 (was FIXABLE — stale generated artifact, now regenerated) |
 | VALID (legacy loose-graph schema, still supported) | 22 |
-| DELETE-CANDIDATE | 3 |
+| DELETE-CANDIDATE | 3 (since moved to `examples/archive/` — see `archive/README.md`) |
 | **Total** | **62** |
 
 Zero examples are broken by a codegen bug. The one hard failure
