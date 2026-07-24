@@ -763,6 +763,31 @@ main :: proc() {
 			}
 		}
 
+	case "bpm_absent_defaults":
+		// Project JSON with NO bpm field at all. build_project_from_raw must
+		// default it to 120 — a raw 0 used to reach the generated
+		// samples_per_step math as a divide-by-zero time base. The fixture has
+		// no sequencer tracks on purpose: this is purely a data-defaulting
+		// gate, plus a smoke render proving the patch still makes sound.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			if p.bpm != 120.0 {
+				fmt.eprintfln(
+					"FAIL bpm_absent_defaults: p.bpm = %.6f after init (expected 120 for a bpm-less project)",
+					p.bpm,
+				)
+				all_pass = false
+			}
+			ga.Asset_note_on(p, 69, 1.0, 0.5)
+			for i in 0 ..< len(buf) {
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			all_pass &= assert_audible(buf, .Left)
+		}
+
 	case:
 		fmt.eprintfln("unknown fixture: %q", fixture)
 		os.exit(3)
