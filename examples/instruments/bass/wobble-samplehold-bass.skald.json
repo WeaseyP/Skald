@@ -1,0 +1,170 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-wobble-sh-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "S&H Wobble Bass",
+        "label": "S&H Wobble Bass",
+        "volume": 0.7,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0.01,
+        "unison": 2,
+        "detune": 12,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "wob-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Saw",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.65,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "wob-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Wobble LP",
+                "type": "Lowpass",
+                "cutoff": 160,
+                "resonance": 3,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "wob-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.008,
+                "decay": 0.15,
+                "sustain": 0.85,
+                "release": 0.2,
+                "depth": 1,
+                "velocitySensitivity": 0.4,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "wob-drive",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Dubstep Grit",
+                "shape": "classic",
+                "drive": 12,
+                "tone": 3600,
+                "mix": 0.38,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "wob-sh",
+              "type": "sampleHold",
+              "position": { "x": 0, "y": 460 },
+              "data": {
+                "label": "Stepped 1/8",
+                "rate": 8,
+                "amplitude": 1,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "wob-sh-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 460 },
+              "data": {
+                "label": "Steps 150-1900 Hz",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": 150,
+                "outMax": 1900,
+                "exposedParameters": ["outMin", "outMax"]
+              }
+            },
+            {
+              "id": "wob-lfo",
+              "type": "lfo",
+              "position": { "x": 0, "y": 760 },
+              "data": {
+                "label": "Smooth 1/4",
+                "waveform": "Triangle",
+                "frequency": 2,
+                "amplitude": 1,
+                "bpmSync": true,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "wob-lfo-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 760 },
+              "data": {
+                "label": "Sweep 0-900 Hz",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 900,
+                "exposedParameters": ["outMin", "outMax"]
+              }
+            },
+            {
+              "id": "wob-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "wob-osc", "from_port": "output", "to_node": "wob-filter", "to_port": "input" },
+            { "from_node": "wob-filter", "from_port": "output", "to_node": "wob-amp", "to_port": "input" },
+            { "from_node": "wob-amp", "from_port": "output", "to_node": "wob-drive", "to_port": "input" },
+            { "from_node": "wob-drive", "from_port": "output", "to_node": "wob-output", "to_port": "input" },
+            { "from_node": "wob-sh", "from_port": "output", "to_node": "wob-sh-map", "to_port": "input" },
+            { "from_node": "wob-sh-map", "from_port": "output", "to_node": "wob-filter", "to_port": "input_cutoff" },
+            { "from_node": "wob-lfo", "from_port": "output", "to_node": "wob-lfo-map", "to_port": "input" },
+            { "from_node": "wob-lfo-map", "from_port": "output", "to_node": "wob-filter", "to_port": "input_cutoff" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.85 },
+  "sequencerTracks": [
+    {
+      "id": "track-wobble-sh-bass",
+      "targetNodeId": "instrument-wobble-sh-bass",
+      "name": "S&H Wobble Bass",
+      "color": "#F59E0B",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 28, "velocity": 0.92, "duration": 8 },
+        { "step": 8, "note": 33, "velocity": 0.9, "duration": 4 },
+        { "step": 12, "note": 31, "velocity": 0.85, "duration": 2 },
+        { "step": 14, "note": 28, "velocity": 0.82, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 140, "patternSteps": 16, "masterVolume": 0.7 }
+}

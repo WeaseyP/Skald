@@ -1,0 +1,156 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-fm-growl-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "FM Growl Bass",
+        "label": "FM Growl Bass",
+        "volume": 0.68,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0.02,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "growl-mod-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Modulator",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 1,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "growl-fm",
+              "type": "fmOperator",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "FM Carrier",
+                "frequency": 1,
+                "modIndex": 190,
+                "fixedPitch": false,
+                "exposedParameters": ["frequency", "modIndex"]
+              }
+            },
+            {
+              "id": "growl-filter",
+              "type": "filter",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Lowpass",
+                "type": "Lowpass",
+                "cutoff": 480,
+                "resonance": 1.1,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "growl-amp",
+              "type": "adsr",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.005,
+                "decay": 0.2,
+                "sustain": 0.8,
+                "release": 0.18,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "growl-drive",
+              "type": "distortion",
+              "position": { "x": 1040, "y": 120 },
+              "data": {
+                "label": "Grit",
+                "shape": "soft",
+                "drive": 7,
+                "tone": 3200,
+                "mix": 0.4,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "growl-lfo",
+              "type": "lfo",
+              "position": { "x": 0, "y": 460 },
+              "data": {
+                "label": "Growl LFO",
+                "waveform": "Sine",
+                "frequency": 6,
+                "amplitude": 1,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "growl-lfo-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 460 },
+              "data": {
+                "label": "Mod Depth 0.3-1.0",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": 0.3,
+                "outMax": 1,
+                "exposedParameters": ["outMin", "outMax"]
+              }
+            },
+            {
+              "id": "growl-output",
+              "type": "output",
+              "position": { "x": 1300, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "growl-mod-osc", "from_port": "output", "to_node": "growl-fm", "to_port": "input_mod" },
+            { "from_node": "growl-fm", "from_port": "output", "to_node": "growl-filter", "to_port": "input" },
+            { "from_node": "growl-filter", "from_port": "output", "to_node": "growl-amp", "to_port": "input" },
+            { "from_node": "growl-amp", "from_port": "output", "to_node": "growl-drive", "to_port": "input" },
+            { "from_node": "growl-drive", "from_port": "output", "to_node": "growl-output", "to_port": "input" },
+            { "from_node": "growl-lfo", "from_port": "output", "to_node": "growl-lfo-map", "to_port": "input" },
+            { "from_node": "growl-lfo-map", "from_port": "output", "to_node": "growl-mod-osc", "to_port": "input_amp" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.85 },
+  "sequencerTracks": [
+    {
+      "id": "track-fm-growl-bass",
+      "targetNodeId": "instrument-fm-growl-bass",
+      "name": "FM Growl Bass",
+      "color": "#DC2626",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 28, "velocity": 0.92, "duration": 4 },
+        { "step": 4, "note": 28, "velocity": 0.72, "duration": 2 },
+        { "step": 8, "note": 33, "velocity": 0.88, "duration": 4 },
+        { "step": 12, "note": 31, "velocity": 0.85, "duration": 2 },
+        { "step": 14, "note": 35, "velocity": 0.8, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 140, "patternSteps": 16, "masterVolume": 0.7 }
+}

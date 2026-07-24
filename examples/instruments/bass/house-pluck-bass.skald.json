@@ -1,0 +1,162 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-house-pluck-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "House Pluck Bass",
+        "label": "House Pluck Bass",
+        "volume": 0.74,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "pluck-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Saw",
+                "waveform": "Sawtooth",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.7,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pluck-sub",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 320 },
+              "data": {
+                "label": "Sub Sine",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.35,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "pluck-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Pluck LP",
+                "type": "Lowpass",
+                "cutoff": 220,
+                "resonance": 1.8,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "pluck-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Punch Amp",
+                "attack": 0.003,
+                "decay": 0.12,
+                "sustain": 0.2,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "pluck-fenv",
+              "type": "adsr",
+              "position": { "x": 0, "y": 520 },
+              "data": {
+                "label": "Filter Env",
+                "attack": 0.001,
+                "decay": 0.09,
+                "sustain": 0.1,
+                "release": 0.07,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth"]
+              }
+            },
+            {
+              "id": "pluck-fenv-map",
+              "type": "mapper",
+              "position": { "x": 260, "y": 520 },
+              "data": {
+                "label": "Env 0-2100 Hz",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2100,
+                "exposedParameters": ["outMax"]
+              }
+            },
+            {
+              "id": "pluck-drive",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "Punch",
+                "shape": "soft",
+                "drive": 5,
+                "tone": 5000,
+                "mix": 0.2,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "pluck-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "pluck-osc", "from_port": "output", "to_node": "pluck-filter", "to_port": "input" },
+            { "from_node": "pluck-sub", "from_port": "output", "to_node": "pluck-filter", "to_port": "input" },
+            { "from_node": "pluck-filter", "from_port": "output", "to_node": "pluck-amp", "to_port": "input" },
+            { "from_node": "pluck-amp", "from_port": "output", "to_node": "pluck-drive", "to_port": "input" },
+            { "from_node": "pluck-drive", "from_port": "output", "to_node": "pluck-output", "to_port": "input" },
+            { "from_node": "pluck-fenv", "from_port": "output", "to_node": "pluck-fenv-map", "to_port": "input" },
+            { "from_node": "pluck-fenv-map", "from_port": "output", "to_node": "pluck-filter", "to_port": "input_cutoff" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-house-pluck-bass",
+      "targetNodeId": "instrument-house-pluck-bass",
+      "name": "House Pluck Bass",
+      "color": "#10B981",
+      "steps": 16,
+      "notes": [
+        { "step": 2, "note": 40, "velocity": 0.88, "duration": 1 },
+        { "step": 4, "note": 40, "velocity": 0.8, "duration": 1 },
+        { "step": 6, "note": 43, "velocity": 0.85, "duration": 1 },
+        { "step": 8, "note": 40, "velocity": 0.9, "duration": 1 },
+        { "step": 10, "note": 35, "velocity": 0.82, "duration": 1 },
+        { "step": 12, "note": 38, "velocity": 0.86, "duration": 1 },
+        { "step": 14, "note": 40, "velocity": 0.8, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 125, "patternSteps": 16, "masterVolume": 0.74 }
+}
