@@ -252,6 +252,17 @@ export const useWasmAudioEngine = (
         prevInstruments.current = instrumentNodes;
     }, []);
 
+    // Latest-graph accessor for the debounced/queued rebuild below. Those
+    // closures outlive renders: a rebuild QUEUED while an older build was in
+    // flight used to re-run through the scheduleRebuild instance that started
+    // that build — whose buildModule had captured the OLD nodes. The preview
+    // then permanently played a graph that was no longer on screen, with
+    // lastSignature matching the stale build, so no further rebuild fired and
+    // no previewStale warning showed. The ref always points at the current
+    // render's builder, so a queued rebuild serializes what's on screen NOW.
+    const buildModuleRef = useRef(buildModule);
+    buildModuleRef.current = buildModule;
+
     const scheduleRebuild = useCallback(() => {
         if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
         rebuildTimer.current = setTimeout(async () => {
@@ -263,7 +274,7 @@ export const useWasmAudioEngine = (
             }
             buildInFlight.current = true;
             try {
-                const { bytes, signature, stepAsset } = await buildModule();
+                const { bytes, signature, stepAsset } = await buildModuleRef.current();
                 if (!workletNode.current) return; // stopped while building
                 // Raw bytes, transferred: a compiled WebAssembly.Module here is
                 // silently dropped by the port and the edit never lands.
@@ -288,7 +299,10 @@ export const useWasmAudioEngine = (
                 }
             }
         }, REBUILD_DEBOUNCE_MS);
-    }, [buildModule]);
+        // Stable identity (state lives in refs): the queued-rebuild recursion
+        // in `finally` must call a scheduleRebuild that reads the LATEST
+        // buildModuleRef, never one pinned to the render that started a build.
+    }, []);
 
     // React to edits while playing: instant param path first, then decide
     // whether the change needs a re-codegen (topology signature changed).

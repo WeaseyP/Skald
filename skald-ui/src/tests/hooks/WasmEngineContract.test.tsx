@@ -224,6 +224,41 @@ describe('useWasmAudioEngine — live edits while playing', () => {
         expect(result.current.previewError).toContain('Odin compiler not found');
     });
 
+    it('a rebuild queued during a slow in-flight build uses the LATEST graph, not the graph captured when the slow build started', async () => {
+        vi.useFakeTimers();
+        const { rerender } = await startPlaying([makeInstrument(440)]);
+
+        // Park the next build (the first rebuild) so edits land mid-flight.
+        let resolveSlow!: (b: ArrayBuffer) => void;
+        buildWasmPreview.mockImplementationOnce(
+            () => new Promise<ArrayBuffer>((res) => { resolveSlow = res; })
+        );
+
+        // Edit 1: freq 220 → debounce fires → slow build starts (it captured
+        // the 220 graph).
+        await act(async () => { rerender({ n: [makeInstrument(220)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+        expect(buildWasmPreview).toHaveBeenCalledTimes(2);
+
+        // Edit 2 while that build is still in flight: freq 330. Its debounce
+        // fires during the flight, so the rebuild gets QUEUED.
+        await act(async () => { rerender({ n: [makeInstrument(330)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+        expect(buildWasmPreview).toHaveBeenCalledTimes(2); // still queued
+
+        // Slow build resolves; the queued rebuild then runs after its
+        // debounce. It MUST serialize the 330 graph — the stale-closure bug
+        // rebuilt the 220 graph here, leaving the preview permanently playing
+        // a graph that is not on screen, with no stale warning.
+        await act(async () => { resolveSlow(new ArrayBuffer(8)); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+        expect(buildWasmPreview).toHaveBeenCalledTimes(3);
+        const lastPayload = String(buildWasmPreview.mock.calls[2][0]);
+        expect(lastPayload).toContain('"frequency":330');
+        expect(lastPayload).not.toContain('"frequency":220');
+    });
+
     it('a uniquely-exposed param edit applies via set-param WITHOUT rebuilding', async () => {
         vi.useFakeTimers();
         const { result, rerender } = await startPlaying([makeInstrument(440, 800)]);
