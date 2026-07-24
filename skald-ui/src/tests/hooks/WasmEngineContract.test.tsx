@@ -64,7 +64,7 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-// An instrument whose filter uniquely exposes 'cutoff' (instant set-param path)
+// An instrument whose filter exposes 'cutoff' (instant set-param path)
 // and whose oscillator frequency is NOT exposed (rebuild path).
 const makeInstrument = (freq = 440, cutoff = 800): Node => ({
     id: 'inst-1',
@@ -230,7 +230,7 @@ describe('useWasmAudioEngine — live edits while playing', () => {
         const port = createdWorklets[0].port;
         port.postMessage.mockClear();
 
-        // Change only the exposed 'cutoff'. The signature masks uniquely-exposed
+        // Change only the exposed 'cutoff'. The signature masks exposed
         // values, so this must take the instant set-param channel, not a rebuild.
         await act(async () => { rerender({ n: [makeInstrument(440, 4000)] }); });
         await act(async () => { await vi.advanceTimersByTimeAsync(250); });
@@ -241,6 +241,60 @@ describe('useWasmAudioEngine — live edits while playing', () => {
             .filter((m: { type: string }) => m.type === 'set-param');
         expect(setParamCalls).toHaveLength(1);
         expect(setParamCalls[0].value).toBe(4000);
+        // Node-scoped key: the generated set_param dispatch accepts
+        // "<nodeId>::<param>" for every exposed param.
+        expect(new TextDecoder().decode(setParamCalls[0].nameBytes)).toBe('flt::cutoff');
         void result;
+    });
+
+    // Regression: BUGS.md "Normal Sax" — multiple filters exposing the SAME
+    // param names (cutoff/resonance). These edits used to be skipped by the
+    // instant path (only uniquely-exposed names were addressable) and fell
+    // back to a debounced rebuild, so a filter knob only became audible at
+    // the next note/pass. Node-scoped keys make every instance live.
+    it('a COLLIDING exposed param edit (multi-filter sax shape) still applies instantly, no rebuild', async () => {
+        vi.useFakeTimers();
+        // Sax-shaped instrument: two filters, both exposing cutoff+resonance.
+        const makeSax = (formantCutoff: number): Node => ({
+            id: 'inst-sax',
+            type: 'instrument',
+            position: { x: 0, y: 0 },
+            data: {
+                name: 'Sax',
+                voiceCount: 4,
+                subgraph: {
+                    nodes: [
+                        { id: 'reed', type: 'oscillator', position: { x: 0, y: 0 }, data: { label: 'Reed', waveform: 'Sawtooth', frequency: 440, amplitude: 0.5, exposedParameters: ['amplitude'] } },
+                        { id: 'body', type: 'filter', position: { x: 0, y: 0 }, data: { label: 'Body', type: 'Lowpass', cutoff: 1600, resonance: 1.2, exposedParameters: ['cutoff', 'resonance'] } },
+                        { id: 'formant', type: 'filter', position: { x: 0, y: 0 }, data: { label: 'Formant', type: 'Bandpass', cutoff: formantCutoff, resonance: 2.5, exposedParameters: ['cutoff', 'resonance'] } },
+                        { id: 'out', type: 'InstrumentOutput', position: { x: 0, y: 0 }, data: { label: 'Out', name: 'output' } },
+                    ],
+                    connections: [
+                        { from_node: 'reed', from_port: 'output', to_node: 'body', to_port: 'input' },
+                        { from_node: 'reed', from_port: 'output', to_node: 'formant', to_port: 'input' },
+                        { from_node: 'body', from_port: 'output', to_node: 'out', to_port: 'input' },
+                        { from_node: 'formant', from_port: 'output', to_node: 'out', to_port: 'input' },
+                    ],
+                },
+            },
+        } as unknown as Node);
+
+        const { rerender } = await startPlaying([makeSax(1100)]);
+        const port = createdWorklets[0].port;
+        port.postMessage.mockClear();
+
+        // Drag the SECOND filter's cutoff while playing.
+        await act(async () => { rerender({ n: [makeSax(2200)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+        // No rebuild: the edit must not kill sounding voices or wait for
+        // codegen — it applies through the running module.
+        expect(buildWasmPreview).toHaveBeenCalledTimes(1);
+        const setParamCalls = port.postMessage.mock.calls
+            .map((c) => c[0])
+            .filter((m: { type: string }) => m.type === 'set-param');
+        expect(setParamCalls).toHaveLength(1);
+        expect(new TextDecoder().decode(setParamCalls[0].nameBytes)).toBe('formant::cutoff');
+        expect(setParamCalls[0].value).toBe(2200);
     });
 });

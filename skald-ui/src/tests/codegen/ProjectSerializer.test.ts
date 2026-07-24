@@ -3,7 +3,8 @@ import { Node } from 'reactflow';
 import {
     buildProjectData,
     topologySignature,
-    getUniqueExposedParams,
+    liveParamKey,
+    canApplyParamLive,
 } from '../../utils/projectSerializer';
 
 const makeInstrument = (overrides: { filterData?: Record<string, unknown>, oscData?: Record<string, unknown> } = {}): Node => ({
@@ -48,9 +49,11 @@ describe('projectSerializer topology signature', () => {
         expect(a).not.toBe(b);
     });
 
-    it('does NOT mask collided exposed names (codegen suffixes them unpredictably)', () => {
-        // Second node exposing 'cutoff' too -> collision -> value changes
-        // must trigger a rebuild instead of the instant path.
+    it('also masks COLLIDED exposed names — node-keyed set_param applies them live (sax multi-filter bug)', () => {
+        // Second node exposing 'cutoff' too. These edits are applied live via
+        // the "<nodeId>::<param>" alias, so they must NOT change the
+        // signature (a signature change forced a rebuild that killed the
+        // sounding voices — the edit was only audible at the next note).
         const collided = (cutoff: number) => {
             const inst = makeInstrument({ filterData: { cutoff } });
             (inst.data as any).subgraph.nodes.push({
@@ -59,20 +62,30 @@ describe('projectSerializer topology signature', () => {
             });
             return topologySignature(build(inst));
         };
-        expect(collided(800)).not.toBe(collided(4000));
+        expect(collided(800)).toBe(collided(4000));
+    });
+
+    it('does NOT mask an exposed param whose live key exceeds the wasm name buffer', () => {
+        // Masked-but-not-live-appliable would mean the edit changes nothing
+        // until an unrelated rebuild; oversized keys must keep rebuilding.
+        const hugeId = 'n'.repeat(200);
+        expect(canApplyParamLive(hugeId, 'cutoff')).toBe(false);
+        const withHugeNode = (cutoff: number) => {
+            const inst = makeInstrument();
+            (inst.data as any).subgraph.nodes.push({
+                id: hugeId, type: 'filter', position: { x: 0, y: 0 },
+                data: { label: 'Far', type: 'Lowpass', cutoff, resonance: 1, exposedParameters: ['cutoff'] },
+            });
+            return topologySignature(build(inst));
+        };
+        expect(withHugeNode(800)).not.toBe(withHugeNode(4000));
     });
 });
 
-describe('getUniqueExposedParams', () => {
-    it('counts exposures across the whole subgraph', () => {
-        const inst = makeInstrument();
-        (inst.data as any).subgraph.nodes.push({
-            id: 'flt2', type: 'filter', position: { x: 0, y: 0 },
-            data: { label: 'Filter2', cutoff: 500, exposedParameters: ['cutoff', 'resonance'] },
-        });
-        const counts = getUniqueExposedParams(inst);
-        expect(counts.get('cutoff')).toBe(2);
-        expect(counts.get('resonance')).toBe(1);
+describe('liveParamKey', () => {
+    it('builds the node-scoped key the generated set_param dispatch accepts', () => {
+        expect(liveParamKey('sax-formant', 'cutoff')).toBe('sax-formant::cutoff');
+        expect(canApplyParamLive('sax-formant', 'cutoff')).toBe(true);
     });
 });
 
