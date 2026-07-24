@@ -20,7 +20,7 @@ These are open observations from using the release candidate. They need reproduc
 
 - [ ] **BUG-REACTFLOW-002-STRICTMODE** - Development startup reports React Flow error 002 twice even though nodeTypes is a module-level constant and is memoized in EditorLayout. The locked combination is React 19.1, reactflow 11.11.4, and React.StrictMode. The installed React Flow hook mutates a ref inside a useMemo calculation and warns when the previous/current type-key arrays are equal; React 19's Strict Mode double calculation therefore produces one false warning for node types and one for default edge types. Validate migration to the current @xyflow/react package/version first. Do not remove Strict Mode merely to hide the warning.
 
-- [ ] **BUG-PREVIEW-CONSOLE-NOISE** - Normal preview lifecycle transitions look like faults: stopped playback deliberately has a null master GainNode, every volume slider input is logged, and a failed Play is logged by both the structured logger and console.error. Keep actionable build failures in the UI/error logger, but remove or debug-gate null/connected/per-input chatter and duplicate error output.
+- [x] **BUG-PREVIEW-CONSOLE-NOISE** - *Fixed in multi-agent run (2026-07-24).* `logger.ts` now level-gates `debug` output behind an opt-in flag (`localStorage['skald:debug'] = '1'`). Master-gain null/connected/slider chatter in `SequencerDock` and the per-step-toggle log in `useSequencerState` route through `logger.debug`; the duplicate `console.error` for failed Play in `useWasmAudioEngine` was removed (structured `logger.error` remains and still drives `previewError`). `previewStale`/banner behavior unchanged.
 
 ### Runtime console report analysis (2026-07-22)
 

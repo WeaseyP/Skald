@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { SequencerTrack, NoteEvent, SequencerState } from '../../definitions/types';
+import { logger } from '../../utils/logger';
 // Helper to generate a unique ID if uuid not available
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -75,7 +76,7 @@ export const useSequencerState = () => {
         // Toggle always changes state if track exists
         const track = tracks.find(t => t.id === trackId);
         if (!track) return;
-        console.log('[useSequencerState] toggleStep', { trackId, step, note });
+        logger.debug('useSequencerState', `toggleStep track=${trackId} step=${step} note=${note}`);
 
         saveHistory();
         setTracks(prev => prev.map(t => {
