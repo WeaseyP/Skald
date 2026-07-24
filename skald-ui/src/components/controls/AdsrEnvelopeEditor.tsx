@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { formatDisplayValue } from '../../utils/formatDisplayValue';
 
 // --- PROPS INTERFACE ---
 
@@ -186,10 +187,10 @@ export const AdsrEnvelopeEditor: React.FC<AdsrEnvelopeEditorProps> = ({
                 <text x={points.p5.x > 15 ? points.p5.x - 10 : 5} y={height - 5} style={textLabelStyle}>R</text>
             </svg>
             <div style={readoutContainerStyle}>
-                <div>A: {attack.toFixed(2)}s</div>
-                <div>D: {decay.toFixed(2)}s</div>
-                <div>S: {sustain.toFixed(2)}</div>
-                <div>R: {release.toFixed(2)}s</div>
+                <div>A: {formatDisplayValue(attack)}s</div>
+                <div>D: {formatDisplayValue(decay)}s</div>
+                <div>S: {formatDisplayValue(sustain)}</div>
+                <div>R: {formatDisplayValue(release)}s</div>
             </div>
         </div>
     );
