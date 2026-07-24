@@ -1,0 +1,114 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-808-glide-bass",
+      "type": "instrument",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "name": "808 Glide Sub",
+        "label": "808 Glide Sub",
+        "volume": 0.78,
+        "voiceCount": 1,
+        "voiceStealing": "oldest",
+        "glide": 0.09,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "sub-osc",
+              "type": "oscillator",
+              "position": { "x": 0, "y": 120 },
+              "data": {
+                "label": "Sine Sub",
+                "waveform": "Sine",
+                "frequency": 440,
+                "fixedPitch": false,
+                "amplitude": 0.8,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "sub-filter",
+              "type": "filter",
+              "position": { "x": 260, "y": 120 },
+              "data": {
+                "label": "Tame Highs",
+                "type": "Lowpass",
+                "cutoff": 180,
+                "resonance": 0.8,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "sub-amp",
+              "type": "adsr",
+              "position": { "x": 520, "y": 120 },
+              "data": {
+                "label": "Long Amp",
+                "attack": 0.004,
+                "decay": 0.35,
+                "sustain": 0.9,
+                "release": 0.5,
+                "depth": 1,
+                "velocitySensitivity": 0.4,
+                "exposedParameters": ["attack", "decay", "sustain", "release", "depth", "velocitySensitivity"]
+              }
+            },
+            {
+              "id": "sub-sat",
+              "type": "distortion",
+              "position": { "x": 780, "y": 120 },
+              "data": {
+                "label": "808 Saturation",
+                "shape": "soft",
+                "drive": 3,
+                "tone": 2200,
+                "mix": 0.22,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "sub-output",
+              "type": "output",
+              "position": { "x": 1040, "y": 120 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "sub-osc", "from_port": "output", "to_node": "sub-filter", "to_port": "input" },
+            { "from_node": "sub-filter", "from_port": "output", "to_node": "sub-amp", "to_port": "input" },
+            { "from_node": "sub-amp", "from_port": "output", "to_node": "sub-sat", "to_port": "input" },
+            { "from_node": "sub-sat", "from_port": "output", "to_node": "sub-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 80, "y": 80, "zoom": 0.95 },
+  "sequencerTracks": [
+    {
+      "id": "track-808-glide-bass",
+      "targetNodeId": "instrument-808-glide-bass",
+      "name": "808 Glide Sub",
+      "color": "#0EA5E9",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 24, "velocity": 0.95, "duration": 6 },
+        { "step": 6, "note": 31, "velocity": 0.7, "duration": 2 },
+        { "step": 8, "note": 24, "velocity": 0.92, "duration": 4 },
+        { "step": 12, "note": 29, "velocity": 0.78, "duration": 2 },
+        { "step": 14, "note": 36, "velocity": 0.72, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 140, "patternSteps": 16, "masterVolume": 0.75 }
+}
