@@ -88,8 +88,10 @@ Asset_Voice_State :: struct {
 	osc_2_phase: [1]f32,
 	adsr_5_stage: ADSR_Stage,
 	adsr_5_release_level: f32,
+	adsr_5_attack_start: f32,
 	adsr_6_stage: ADSR_Stage,
 	adsr_6_release_level: f32,
+	adsr_6_attack_start: f32,
 }
 
 Asset_Processor :: struct {
@@ -136,6 +138,34 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 
 	v := &p.voices[voice_idx]
 	prev_freq := v.current_freq
+	adsr_5_prev_level: f32 = 0.0
+	if stolen && v.adsr_5_stage != .Idle {
+		adsr_5_prev_level = v.adsr_5_release_level
+		if v.adsr_5_stage == .Release {
+			rel_t_5: f32 = (f32(0.200000000));
+			if rel_t_5 > 0.0 {
+				rf_5 := 1.0 - (v.age - v.time_released) / math.max(rel_t_5, 0.000001)
+				if rf_5 < 0.0 do rf_5 = 0.0
+				adsr_5_prev_level *= rf_5
+			} else {
+				adsr_5_prev_level = 0.0
+			}
+		}
+	}
+	adsr_6_prev_level: f32 = 0.0
+	if stolen && v.adsr_6_stage != .Idle {
+		adsr_6_prev_level = v.adsr_6_release_level
+		if v.adsr_6_stage == .Release {
+			rel_t_6: f32 = (f32(0.200000000));
+			if rel_t_6 > 0.0 {
+				rf_6 := 1.0 - (v.age - v.time_released) / math.max(rel_t_6, 0.000001)
+				if rf_6 < 0.0 do rf_6 = 0.0
+				adsr_6_prev_level *= rf_6
+			} else {
+				adsr_6_prev_level = 0.0
+			}
+		}
+	}
 	v.active = true
 	v.note = note
 	v.velocity = velocity
@@ -150,12 +180,16 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 		v.current_freq = freq
 	}
 	v.duration = duration
-	v.osc_1_phase = {}
-	v.osc_2_phase = {}
 	v.adsr_5_stage = .Attack
-	v.adsr_5_release_level = 0.0
+	v.adsr_5_attack_start = adsr_5_prev_level
+	v.adsr_5_release_level = adsr_5_prev_level
 	v.adsr_6_stage = .Attack
-	v.adsr_6_release_level = 0.0
+	v.adsr_6_attack_start = adsr_6_prev_level
+	v.adsr_6_release_level = adsr_6_prev_level
+	if !stolen {
+		v.osc_1_phase = {}
+		v.osc_2_phase = {}
+	}
 }
 
 Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
@@ -306,7 +340,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			case .Idle:
 				envelope = 0.0;
 			case .Attack:
-				if (f32(0.020000000)) > 0 do envelope = voice.age / math.max(f32(f32(0.020000000)), 0.000001); else do envelope = 1.0;
+				if (f32(0.020000000)) > 0 do envelope = voice.adsr_5_attack_start + (1.0 - voice.adsr_5_attack_start) * (voice.age / math.max(f32(f32(0.020000000)), 0.000001)); else do envelope = 1.0;
 				voice.adsr_5_release_level = envelope;
 				if voice.age >= (f32(0.020000000)) {
 					voice.adsr_5_stage = .Decay;
@@ -341,7 +375,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			case .Idle:
 				envelope = 0.0;
 			case .Attack:
-				if (f32(0.020000000)) > 0 do envelope = voice.age / math.max(f32(f32(0.020000000)), 0.000001); else do envelope = 1.0;
+				if (f32(0.020000000)) > 0 do envelope = voice.adsr_6_attack_start + (1.0 - voice.adsr_6_attack_start) * (voice.age / math.max(f32(f32(0.020000000)), 0.000001)); else do envelope = 1.0;
 				voice.adsr_6_release_level = envelope;
 				if voice.age >= (f32(0.020000000)) {
 					voice.adsr_6_stage = .Decay;

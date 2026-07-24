@@ -605,6 +605,129 @@ main :: proc() {
 			all_pass &= assert_centroid_shifts(buf, sample_rate, 2.0)
 		}
 
+	case "bpm_change":
+		// BUG-SEQ-RATE regression, exercised where it actually bites:
+		// 44.1kHz @ 120 BPM is 5512.5 samples/step (fractional — the carry
+		// path), and a LIVE p.bpm write mid-play must take effect on the
+		// next step boundary with the new exact spacing.
+		render_music_layer(buf, sample_rate)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			{
+				sr: f32 = 44100.0 // deliberately independent of -rate:
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sr)
+				ga.Asset_start(p)
+				expected1 := f64(sr) * 60.0 / (120.0 * 4.0) // 5512.50
+				expected2 := f64(sr) * 60.0 / (240.0 * 4.0) // 2756.25
+				transitions: [dynamic]int
+				defer delete(transitions)
+				last_step := p.current_step
+				total := int(sr * 6.0)
+				switch_at := int(sr * 3.0)
+				for i in 0 ..< total {
+					if i == switch_at {
+						p.bpm = 240.0
+					}
+					_, _ = ga.Asset_process(p)
+					if p.current_step != last_step {
+						last_step = p.current_step
+						append(&transitions, i)
+					}
+				}
+				sum1, sum2: f64
+				n1, n2: int
+				worst1, worst2: f64
+				for k in 1 ..< len(transitions) {
+					d := f64(transitions[k] - transitions[k - 1])
+					if transitions[k] < switch_at {
+						sum1 += d
+						n1 += 1
+						if e := math.abs(d - expected1); e > worst1 do worst1 = e
+					} else if transitions[k - 1] > switch_at + int(expected1) {
+						sum2 += d
+						n2 += 1
+						if e := math.abs(d - expected2); e > worst2 do worst2 = e
+					}
+				}
+				if n1 < 8 || n2 < 8 {
+					fmt.eprintfln("FAIL bpm_change: too few step transitions (n1=%d n2=%d)", n1, n2)
+					all_pass = false
+				} else {
+					mean1 := sum1 / f64(n1)
+					mean2 := sum2 / f64(n2)
+					// Mean spacing must hit the exact fractional value (the
+					// carry keeps long-run drift at zero); individual steps
+					// may quantize by ±1 sample.
+					if math.abs(mean1 - expected1) > 0.05 || worst1 > 1.0 {
+						fmt.eprintfln(
+							"FAIL bpm_change @120: mean step %.4f (expected %.4f), worst single-step err %.2f",
+							mean1, expected1, worst1,
+						)
+						all_pass = false
+					}
+					if math.abs(mean2 - expected2) > 0.05 || worst2 > 1.0 {
+						fmt.eprintfln(
+							"FAIL bpm_change @240 (live change): mean step %.4f (expected %.4f), worst single-step err %.2f",
+							mean2, expected2, worst2,
+						)
+						all_pass = false
+					}
+				}
+			}
+		}
+
+	case "steal_click":
+		// Voice-steal continuity gate: voice_count=1 patch holds A4, then a
+		// second note_on steals the only voice. The retrigger must be
+		// sample-continuous — the old hard state reset (osc phase + filter
+		// zeroed, envelope snapped to 0 mid-waveform) was an audible click on
+		// every steal (measured 0.28 sample-to-sample jump vs 0.06 normal).
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			// +41 keeps the steal off any zero-crossing alignment between the
+			// held note's period and the render position.
+			n_pre := int(0.5 * sample_rate) + 41
+			if n_pre >= len(buf) - 1024 {
+				n_pre = len(buf) / 2
+			}
+			ga.Asset_note_on(p, 69, 1.0, 0.0) // hold A4
+			for i in 0 ..< n_pre {
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			ga.Asset_note_on(p, 81, 1.0, 0.0) // steal -> A5
+			for i in n_pre ..< len(buf) {
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			all_pass &= assert_audible(buf, .Left)
+			steal_max: f32 = 0.0
+			for i in n_pre - 8 ..< n_pre + 8 {
+				d := abs(buf[i].l - buf[i - 1].l)
+				if d > steal_max do steal_max = d
+			}
+			other_max: f32 = 0.0
+			for i in 1000 ..< len(buf) {
+				if i >= n_pre - 8 && i < n_pre + 8 do continue
+				d := abs(buf[i].l - buf[i - 1].l)
+				if d > other_max do other_max = d
+			}
+			if steal_max > 0.12 || steal_max > 2.0 * other_max {
+				fmt.eprintfln(
+					"FAIL steal_click: discontinuity %.4f at voice steal (elsewhere max %.4f) — hard state-reset click is back",
+					steal_max,
+					other_max,
+				)
+				all_pass = false
+			}
+		}
+
 	case "sfx_oneshot":
 		// SFX with ADSR but no sequencer track. Trigger once with finite
 		// duration, then assert silence after release ends.
