@@ -49,3 +49,18 @@
   - `nodes/reverb.md`, **Terms introduced**, Pre-delay: Skald now implements it.
   - `nodes/reverb.md`, **Code-vs-intent notes**, items 1 and 2: the dead control and nonsense exposed range are fixed.
   - `EDITORIAL-REPORT.md`, **BLOCKERS**, B5: Pre-Delay is implemented and runtime-exposable.
+
+## P2 / B3 - Parameter range alignment
+
+- Aligned the VCA Gain panel with the established 0-4 node-card/backend contract.
+- Aligned both Filter Resonance panel controls (number entry and XY pad) with the established 0.1-20 node-card/backend contract.
+- Aligned the Distortion Tone panel with the established 100-20,000 Hz node-card/backend contract.
+- Aligned free-running Delay Time with the 0-2 s node-card/backend/buffer contract. A stored 0 remains deliberate: DSP resolves it to the safe one-sample minimum rather than reading a full buffer wrap ago.
+- Aligned the dormant backend `voiceCount` range metadata with the editor/serializer's compile-time 1-32 contract. Instrument-level expose buttons still produce no setter or `PARAMS` row.
+- Stale chapter/editorial sections:
+  - `00-foundations.md`, **The controls** (`voiceCount`, VCA `gain` rows); **Code-vs-intent notes** items 2, 7, and 8.
+  - `60-complexity-ladder.md`, **The controls** (`voiceCount` row); **Code-vs-intent notes** item 6.
+  - `EDITORIAL-REPORT.md`, **Corrections required before publication / Severity 4** range-table guidance.
+  - `EDITORIAL-REPORT.md`, **B3** evidence rows for Gain, Filter resonance, Distortion tone, Delay time, and `voiceCount`.
+  - `EDITORIAL-REPORT.md`, **C15** Delay-time panel finding.
+  - `EDITORIAL-REPORT.md`, **R6** remains correct about dormant Instrument exposure, but its 1-64 range premise is stale.

@@ -141,7 +141,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 <XYPad
                     xValue={data.cutoff}
                     yValue={data.resonance}
-                    minX={20} maxX={20000} minY={0.1} maxY={30}
+                    minX={20} maxX={20000} minY={0.1} maxY={20}
                     onChange={({ x, y }) => {
                         onChange('cutoff', x);
                         onChange('resonance', y);
@@ -150,7 +150,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 />
                 {/* The pad is for exploring by ear; these land exact values. */}
                 {renderControlWrapper('cutoff', 'Cutoff (Hz)', numberField('cutoff', 800, { min: 20, max: 20000, step: 1 }))}
-                {renderControlWrapper('resonance', 'Resonance', numberField('resonance', 1, { min: 0.1, max: 30, step: 0.1 }))}
+                {renderControlWrapper('resonance', 'Resonance', numberField('resonance', 1, { min: 0.1, max: 20, step: 0.1 }))}
             </>);
         case 'lfo':
             return (<>
@@ -170,7 +170,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             return (<>
                 {data.bpmSync
                     ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'))
-                    : renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0.001, 5, 0.5))
+                    : renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0, 2, 0.5))
                 }
                 {renderControlWrapper('feedback', 'Feedback', slider('feedback', 0, 1, 0.5))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
@@ -241,7 +241,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             return (<>
                 {renderControlWrapper('drive', 'Drive', slider('drive', 1, 100, 20))}
                 {renderControlWrapper('shape', 'Shape', createSelect('shape', ['classic', 'soft', 'hard', 'asymmetric']), false)}
-                {renderControlWrapper('tone', 'Tone (Hz)', slider('tone', 100, 10000, 4000, 'log'))}
+                {renderControlWrapper('tone', 'Tone (Hz)', slider('tone', 100, 20000, 4000, 'log'))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
             </>);
         case 'mapper':
@@ -301,7 +301,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'gain':
         case 'VisualGainNode':
             return (<>
-                {renderControlWrapper('gain', 'Gain', slider('gain', 0, 1, 0.75))}
+                {renderControlWrapper('gain', 'Gain', slider('gain', 0, 4, 0.75))}
             </>);
         // Complex types (mixer, instrument, group) are handled by Parent usually, 
         // but simple Instrument params (non-subgraph) can go here

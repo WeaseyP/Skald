@@ -105,8 +105,11 @@ lookup_param_range :: proc(name: string, node_type := "") -> Param_Range {
 	// Global / project
 	case "bpm":
 		return {20.0, 999.0, 120.0, "bpm"}
+	// Instrument-level exposure is currently dormant: these values do not
+	// produce setters/PARAMS rows. Keep this fallback aligned with the
+	// editor/serializer's compile-time polyphony contract.
 	case "voiceCount":
-		return {1.0, 64.0, 8.0, ""}
+		return {1.0, 32.0, 8.0, ""}
 	case "unison":
 		return {1.0, 16.0, 1.0, ""}
 	case "detune":
