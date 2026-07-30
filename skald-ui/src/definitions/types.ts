@@ -115,6 +115,7 @@ export interface ReverbParams extends BaseNodeParams {
 
 export interface DistortionParams extends BaseNodeParams {
   drive: number;
+  shape: 'classic' | 'soft' | 'hard' | 'asymmetric';
   tone: number;
   mix: number;
 }

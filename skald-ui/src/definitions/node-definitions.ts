@@ -129,6 +129,7 @@ const defaultReverbParams: ReverbParams = {
 
 const defaultDistortionParams: DistortionParams = {
     drive: 20,
+    shape: 'classic',
     tone: 4000,
     mix: 0.5,
     exposedParameters: ['drive', 'tone', 'mix']
