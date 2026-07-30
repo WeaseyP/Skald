@@ -25,3 +25,13 @@
   - `50-bass-teardown.md`, **Exercise 4**, step 6: the Piano Roll no longer hides notes below C2, and low bass notes can now be painted directly at their displayed pitches. The statement that painting a new step gives MIDI 60 must be narrowed to the Step Grid, as corrected by `EDITORIAL-REPORT.md`.
   - `50-bass-teardown.md`, **Code-vs-intent notes**, items 2 and 3: the Piano Roll now reaches A0; only the Step Grid defaults newly painted notes to MIDI 60.
   - `EDITORIAL-REPORT.md`, **Code-vs-intent findings**, C15 Piano Roll row: its MIDI 36 minimum and workaround guidance are now stale.
+
+## P3 / B4 - Mixer exposed-level default
+
+- Exposed Mixer `levelN` parameters now initialize from that channel's authored `levels`-array fader instead of the generic unity fallback.
+- The generated processor field, `<Asset>_PARAMS` default, preview rebuild, and exported DSP now preserve the authored balance when exposure is enabled; runtime setters retain the existing 0.0-2.0 range.
+- Added a focused backend fixture and behavioral assertion proving an authored 0.25 fader survives exposure and can still be raised to 1.0 at runtime.
+- Stale chapter/editorial sections:
+  - `nodes/mixer.md`, **What "expose" does**, final warning paragraph: exposed channels no longer start at 1.0 or discard the fader.
+  - `nodes/mixer.md`, **Code-vs-intent notes**, item 1: the blocker is fixed.
+  - `EDITORIAL-REPORT.md`, **BLOCKERS**, B4: exposure now preserves the authored Mixer level in preview and export.

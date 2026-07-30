@@ -599,6 +599,62 @@ generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
+mixer_channel_level :: proc(node: Node, channel: int, fallback: f32) -> f32 {
+	if channel < 1 do return fallback
+
+	levels: []json.Value
+	if lv, ok := node.parameters["levels"]; ok {
+		if arr, is_arr := lv.(json.Array); is_arr {
+			levels = arr[:]
+		}
+	}
+	if channel - 1 >= len(levels) do return fallback
+
+	level := fallback
+	#partial switch v in levels[channel-1] {
+	case json.Float:
+		level = f32(v)
+	case json.Integer:
+		level = f32(v)
+	case json.Object:
+		// The UI serializes levels as [{id, level, pan}, ...].
+		if lv, ok := v["level"]; ok {
+			#partial switch l in lv {
+			case json.Float:   level = f32(l)
+			case json.Integer: level = f32(l)
+			}
+		}
+	}
+	return level
+}
+
+mixer_level_channel :: proc(param_name: string) -> (int, bool) {
+	if !strings.has_prefix(param_name, "level") || len(param_name) <= len("level") {
+		return 0, false
+	}
+	channel, ok := strconv.parse_int(param_name[len("level"):])
+	return channel, ok && channel >= 1
+}
+
+exposed_param_default :: proc(node: Node, param_name: string, fallback: f32) -> f32 {
+	if val, found := node.parameters[param_name]; found {
+		#partial switch v in val {
+		case json.Float:   return f32(v)
+		case json.Integer: return f32(v)
+		}
+	}
+
+	// Mixer faders are authored inside `levels`, while their public names are
+	// `level1`, `level2`, ... . Resolve the nested value before falling back
+	// to the generic range-table default so exposure preserves the mix.
+	if node.type == "Mixer" {
+		if channel, ok := mixer_level_channel(param_name); ok {
+			return mixer_channel_level(node, channel, fallback)
+		}
+	}
+	return fallback
+}
+
 generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// BUG-MIXER-CHANNEL-LIMIT: read inputCount from node params instead of
 	// hardcoding 8. The UI's MixerParams supports variable input counts;
@@ -623,12 +679,6 @@ generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// as `level<i>`. The old key here (`input_<i>_gain`) exists NOWHERE in
 	// the UI, so every channel slider was dead and exposed channels were
 	// silent no-op params.
-	levels: []json.Value
-	if lv, ok := node.parameters["levels"]; ok {
-		if arr, is_arr := lv.(json.Array); is_arr {
-			levels = arr[:]
-		}
-	}
 
 	fmt.sbprintf(sb, "\t\t// --- Mixer Node %s (%d inputs) ---\n", node.id, input_count)
 	fmt.sbprint(sb, "\t\t{\n")
@@ -639,21 +689,7 @@ generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 		defer delete(sources)
 		if len(sources) == 0 do continue
 
-		default_gain: f32 = 1.0
-		if i - 1 < len(levels) {
-			#partial switch v in levels[i-1] {
-			case json.Float:   default_gain = f32(v)
-			case json.Integer: default_gain = f32(v)
-			case json.Object:
-				// The UI serializes levels as [{id, level}, ...]
-				if lv, ok := v["level"]; ok {
-					#partial switch l in lv {
-					case json.Float:   default_gain = f32(l)
-					case json.Integer: default_gain = f32(l)
-					}
-				}
-			}
-		}
+		default_gain := mixer_channel_level(node, i, 1.0)
 		gain_param := fmt.tprintf("level%d", i)
 		gain_str := get_f32_param(graph, node, gain_param, "", default_gain)
 		for src in sources {
@@ -1189,13 +1225,7 @@ generate_processor_code :: proc(
             defer delete(names)
             for p_name in names {
                 rng := lookup_param_range(p_name, node.type)
-                def_val := rng.default
-                if val, found := node.parameters[p_name]; found {
-                    #partial switch v in val {
-                    case json.Float:   def_val = f32(v)
-                    case json.Integer: def_val = f32(v)
-                    }
-                }
+                def_val := exposed_param_default(node, p_name, rng.default)
 
                 field_name := p_name
                 if counts[p_name] > 1 {

@@ -311,6 +311,70 @@ main :: proc() {
 			all_pass &= assert_audible(buf, .Left)
 		}
 
+	case "mixer_exposed_default":
+		// An exposed Mixer level is named `level1`, but its authored fader is
+		// nested in the `levels` array. Exposure must initialize both the
+		// processor field and its public metadata from that authored 0.25,
+		// not from the range table's unity fallback.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			default_rms := compute_rms(buf, .Left)
+			if default_rms < 0.01 {
+				fmt.eprintfln(
+					"FAIL mixer_exposed_default: authored 0.25 level produced RMS %.6f, expected >= 0.01",
+					default_rms,
+				)
+				all_pass = false
+			}
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				if value, ok := ga.Asset_get_param(p, "level1"); !ok || abs(value - 0.25) > 1e-6 {
+					fmt.eprintfln(
+						"FAIL mixer_exposed_default: initialized level1=%.9f ok=%v, expected authored 0.25",
+						value,
+						ok,
+					)
+					all_pass = false
+				}
+				found_metadata := false
+				for info in ga.Asset_PARAMS {
+					if info.name == "level1" {
+						found_metadata = true
+						if abs(info.default - 0.25) > 1e-6 {
+							fmt.eprintfln(
+								"FAIL mixer_exposed_default: PARAMS default=%.9f, expected authored 0.25",
+								info.default,
+							)
+							all_pass = false
+						}
+					}
+				}
+				if !found_metadata {
+					fmt.eprintln("FAIL mixer_exposed_default: level1 missing from Asset_PARAMS")
+					all_pass = false
+				}
+			}
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0},
+				Render_Spec{
+					kind = .Trigger,
+					note = 69,
+					velocity = 1.0,
+					duration = 0.0,
+					params = {{name = "level1", value = 1.0}},
+				},
+				"mixer exposed authored 0.25->runtime 1.0",
+				0.50,
+				Change_Expect{rms = .Raise},
+			)
+		}
+
 	case "fm_patch":
 		// FM operator (exposed frequency=ratio colliding with the carrier's
 		// exposed frequency) modulating an oscillator's input_freq.

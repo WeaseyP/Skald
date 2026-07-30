@@ -1,0 +1,71 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 1.0,
+    "instruments": [
+      {
+        "id": "mixerexposeddefault",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 8,
+        "glide": 0.05,
+        "unison": 1,
+        "detune": 5,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "osc",
+              "type": "Oscillator",
+              "parameters": {
+                "label": "Sine",
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "mix",
+              "type": "Mixer",
+              "parameters": {
+                "label": "Authored Quarter",
+                "inputCount": 1,
+                "levels": [
+                  { "id": 1, "level": 0.25, "pan": 0 }
+                ],
+                "exposedParameters": ["level1"]
+              }
+            },
+            {
+              "id": "env",
+              "type": "ADSR",
+              "parameters": {
+                "attack": 0.01,
+                "decay": 0.05,
+                "sustain": 0.9,
+                "release": 0.1,
+                "depth": 1,
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "out",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "osc", "from_port": "output", "to_node": "mix", "to_port": "input_1" },
+            { "from_node": "mix", "from_port": "output", "to_node": "env", "to_port": "input" },
+            { "from_node": "env", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}
