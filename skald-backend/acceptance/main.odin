@@ -395,6 +395,62 @@ main :: proc() {
 			all_pass &= assert_audible(buf, .Left)
 		}
 
+	case "reverb_predelay":
+		// Wet-only impulse response: the direct path is deliberately absent
+		// from the measurement, so the first non-zero sample is the comb's
+		// fixed 75ms tap plus the authored/runtime pre-delay.
+		if smoke_mode {
+			render_reverb_impulse(buf, sample_rate, 0.02, false)
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			comb_samples := int(0.075 * sample_rate)
+
+			// Zero pre-delay preserves the old comb timing exactly.
+			if !render_reverb_impulse(buf, sample_rate, 0.0, true) {
+				fmt.eprintln("FAIL reverb_predelay: runtime setter rejected preDelay=0")
+				all_pass = false
+			}
+			all_pass &= assert_impulse_onset(buf, comb_samples, "reverb pre-delay zero")
+
+			// The fixture's authored 20ms value must create a measurable gap.
+			render_reverb_impulse(buf, sample_rate, 0.02, false)
+			all_pass &= assert_impulse_onset(
+				buf,
+				comb_samples + int(0.02 * sample_rate),
+				"reverb pre-delay authored 20ms",
+			)
+
+			// Change an already-initialized processor through the public API.
+			if !render_reverb_impulse(buf, sample_rate, 0.04, true) {
+				fmt.eprintln("FAIL reverb_predelay: runtime setter rejected preDelay=0.04")
+				all_pass = false
+			}
+			all_pass &= assert_impulse_onset(
+				buf,
+				comb_samples + int(0.04 * sample_rate),
+				"reverb pre-delay runtime 40ms",
+			)
+
+			found_metadata := false
+			for info in ga.Asset_PARAMS {
+				if info.name == "preDelay" {
+					found_metadata = true
+					if info.min != 0.0 || info.max != 0.25 ||
+					   abs(info.default - 0.02) > 1e-6 || info.unit != "s" {
+						fmt.eprintfln(
+							"FAIL reverb_predelay metadata: got min=%.3f max=%.3f default=%.3f unit=%q",
+							info.min, info.max, info.default, info.unit,
+						)
+						all_pass = false
+					}
+				}
+			}
+			if !found_metadata {
+				fmt.eprintln("FAIL reverb_predelay: preDelay missing from Asset_PARAMS")
+				all_pass = false
+			}
+		}
+
 	case "chord_step":
 		// Music Layer with a three-note chord on step 0 (used to emit
 		// duplicate switch cases) plus a single note on step 4.
@@ -914,6 +970,38 @@ render_effect_feed :: proc(buf: []Stereo_Sample, sample_rate: f32) {
 	}
 }
 
+// Render one full-wet impulse through the Reverb effect fixture. When
+// `set_runtime` is true, process a short idle prefix before calling the
+// public setter, proving that a live change (not only init) drives the tap.
+render_reverb_impulse :: proc(
+	buf: []Stereo_Sample,
+	sample_rate: f32,
+	pre_delay: f32,
+	set_runtime: bool,
+) -> bool {
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+
+	set_ok := true
+	if set_runtime {
+		for _ in 0 ..< 32 {
+			ga.Asset_feed_input(p, 0.0, 0.0)
+			ga.Asset_process(p)
+		}
+		set_ok = ga.Asset_set_param(p, "preDelay", pre_delay)
+	}
+
+	for i in 0 ..< len(buf) {
+		impulse: f32 = 0.0
+		if i == 0 do impulse = 1.0
+		ga.Asset_feed_input(p, impulse, impulse)
+		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+	return set_ok
+}
+
 render_music_layer :: proc(buf: []Stereo_Sample, sample_rate: f32) {
 	p := new(ga.Asset_Processor)
 	defer free(p)
@@ -950,6 +1038,33 @@ render_param_sweep :: proc(buf: []Stereo_Sample, sample_rate: f32) {
 }
 
 // ----- Specialty assertions wired only from this file -----
+
+assert_impulse_onset :: proc(
+	buf: []Stereo_Sample,
+	expected_sample: int,
+	label: string,
+) -> bool {
+	actual := -1
+	for sample, i in buf {
+		if abs(sample.l) > 0.5 || abs(sample.r) > 0.5 {
+			actual = i
+			break
+		}
+	}
+	if actual < 0 {
+		fmt.eprintfln("FAIL %s: no impulse onset found", label)
+		return false
+	}
+	if abs(actual - expected_sample) > 1 {
+		fmt.eprintfln(
+			"FAIL %s: onset sample %d, expected %d (tolerance 1 sample)",
+			label, actual, expected_sample,
+		)
+		return false
+	}
+	fmt.printfln("PASS %s: onset sample %d (expected %d)", label, actual, expected_sample)
+	return true
+}
 
 // Smoke: finite, non-clipping, no DC, audible. Used by Phase 5 mode:smoke.
 run_smoke :: proc(buf: []Stereo_Sample, name: string) -> bool {

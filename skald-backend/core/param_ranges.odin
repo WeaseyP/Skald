@@ -75,6 +75,8 @@ lookup_param_range :: proc(name: string, node_type := "") -> Param_Range {
 		return {0.0, 2.0, 0.5, "s"}
 	case "feedback":
 		return {0.0, 0.99, 0.5, ""}
+	case "preDelay":
+		return {0.0, 0.25, 0.02, "s"}
 	case "wetDryMix", "mix":
 		return {0.0, 1.0, 0.5, ""}
 	case "drive":

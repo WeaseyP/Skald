@@ -105,6 +105,7 @@ Asset_Processor :: struct {
 	ext_in_r: f32,
 	delay_3_buffer: [96000]f32,
 	delay_3_write_index: int,
+	reverb_3_pre_buffer: [48000]f32,
 	Env_decay: f32,
 	Verb_decay: f32,
 	amplitude: f32,
@@ -123,6 +124,9 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.bpm = 120.000000000
 	p.prng.state = 12345
 	p.loop = true
+	p.delay_3_buffer = {}
+	p.delay_3_write_index = 0
+	p.reverb_3_pre_buffer = {}
 	p.Env_decay = 0.050000001
 	p.Verb_decay = 0.500000000
 	p.amplitude = 0.500000000
@@ -496,13 +500,22 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 	{
 		node_2_out := node_2_out_vsum
 		node_3_out: f32 = 0.0
-		// --- Reverb Node 3 (Simple FDN) ---
+		// --- Reverb Node 3 (pre-delay + feedback comb) ---
 		{
+			pre_delay_seconds_3: f32 = math.clamp(f32(f32(0.020000000)), 0.0, 0.25);
+			pre_delay_samples_3 := int(math.clamp(pre_delay_seconds_3 * sample_rate, 0.0, f32(48000)));
+			pre_write_index_3 := p.delay_3_write_index % len(p.reverb_3_pre_buffer)
+			pre_delayed_input_3 := f32((node_2_out))
+			if pre_delay_samples_3 > 0 {
+				pre_read_index_3 := (pre_write_index_3 - pre_delay_samples_3 + len(p.reverb_3_pre_buffer)) % len(p.reverb_3_pre_buffer)
+				pre_delayed_input_3 = p.reverb_3_pre_buffer[pre_read_index_3]
+			}
+			p.reverb_3_pre_buffer[pre_write_index_3] = f32((node_2_out))
 			delay_samples_3 := int(math.clamp((0.075000000) * sample_rate, 0, 96000-1));
 			read_index_3 := (p.delay_3_write_index - delay_samples_3 + len(p.delay_3_buffer)) % len(p.delay_3_buffer);
 			delayed_sample_3 := p.delay_3_buffer[read_index_3];
 			decay_gain_3: f32 = math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(p.Verb_decay), 0.01)), 0.0, 0.95);
-			p.delay_3_buffer[p.delay_3_write_index] = ((node_2_out)) + delayed_sample_3 * decay_gain_3;
+			p.delay_3_buffer[p.delay_3_write_index] = pre_delayed_input_3 + delayed_sample_3 * decay_gain_3;
 			p.delay_3_write_index = (p.delay_3_write_index + 1) % len(p.delay_3_buffer);
 			node_3_out = ((node_2_out)) * (1.0 - (p.mix)) + delayed_sample_3 * (p.mix);
 		}

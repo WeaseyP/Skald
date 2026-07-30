@@ -234,7 +234,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'reverb':
             return (<>
                 {renderControlWrapper('decay', 'Decay (s)', slider('decay', 0.1, 10, 3))}
-                {renderControlWrapper('preDelay', 'Pre-Delay (s)', slider('preDelay', 0, 1, 0.01))}
+                {renderControlWrapper('preDelay', 'Pre-Delay (s)', slider('preDelay', 0, 0.25, 0.02))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
             </>);
         case 'distortion':

@@ -110,6 +110,7 @@ Asset_Processor :: struct {
 	ext_in_r: f32,
 	delay_7_buffer: [96000]f32,
 	delay_7_write_index: int,
+	reverb_7_pre_buffer: [48000]f32,
 }
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
@@ -117,6 +118,9 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.bpm = 120.000000000
 	p.prng.state = 12345
 	p.loop = true
+	p.delay_7_buffer = {}
+	p.delay_7_write_index = 0
+	p.reverb_7_pre_buffer = {}
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -364,13 +368,22 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 	{
 		node_6_out := node_6_out_vsum
 		node_7_out: f32 = 0.0
-		// --- Reverb Node 7 (Simple FDN) ---
+		// --- Reverb Node 7 (pre-delay + feedback comb) ---
 		{
+			pre_delay_seconds_7: f32 = math.clamp(f32(f32(0.020000000)), 0.0, 0.25);
+			pre_delay_samples_7 := int(math.clamp(pre_delay_seconds_7 * sample_rate, 0.0, f32(48000)));
+			pre_write_index_7 := p.delay_7_write_index % len(p.reverb_7_pre_buffer)
+			pre_delayed_input_7 := f32((node_6_out))
+			if pre_delay_samples_7 > 0 {
+				pre_read_index_7 := (pre_write_index_7 - pre_delay_samples_7 + len(p.reverb_7_pre_buffer)) % len(p.reverb_7_pre_buffer)
+				pre_delayed_input_7 = p.reverb_7_pre_buffer[pre_read_index_7]
+			}
+			p.reverb_7_pre_buffer[pre_write_index_7] = f32((node_6_out))
 			delay_samples_7 := int(math.clamp((0.075000000) * sample_rate, 0, 96000-1));
 			read_index_7 := (p.delay_7_write_index - delay_samples_7 + len(p.delay_7_buffer)) % len(p.delay_7_buffer);
 			delayed_sample_7 := p.delay_7_buffer[read_index_7];
 			decay_gain_7: f32 = math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(f32(3.000000000)), 0.01)), 0.0, 0.95);
-			p.delay_7_buffer[p.delay_7_write_index] = ((node_6_out)) + delayed_sample_7 * decay_gain_7;
+			p.delay_7_buffer[p.delay_7_write_index] = pre_delayed_input_7 + delayed_sample_7 * decay_gain_7;
 			p.delay_7_write_index = (p.delay_7_write_index + 1) % len(p.delay_7_buffer);
 			node_7_out = ((node_6_out)) * (1.0 - (f32(0.500000000))) + delayed_sample_7 * (f32(0.500000000));
 		}

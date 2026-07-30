@@ -35,3 +35,17 @@
   - `nodes/mixer.md`, **What "expose" does**, final warning paragraph: exposed channels no longer start at 1.0 or discard the fader.
   - `nodes/mixer.md`, **Code-vs-intent notes**, item 1: the blocker is fixed.
   - `EDITORIAL-REPORT.md`, **BLOCKERS**, B4: exposure now preserves the authored Mixer level in preview and export.
+
+## P1 / B5 - Reverb pre-delay
+
+- Implemented Reverb Pre-Delay as a real, sample-rate-derived delay stage on the wet path ahead of the existing 75 ms feedback comb.
+- Standardized its editor, generator fallback, runtime setter, and exported metadata range at 0-0.25 s with a 0.02 s default.
+- Added focused wet-tail impulse coverage for zero delay, an authored 20 ms gap, and a live runtime change to 40 ms.
+- Stale chapter/editorial sections:
+  - `nodes/reverb.md`, **The controls**, Pre-Delay row: the control is implemented, its range/default changed, and exposure no longer falls through to the unknown range.
+  - `nodes/reverb.md`, **Try it (hands-on)**, step 8: Pre-Delay is no longer inert.
+  - `nodes/reverb.md`, **Going further**, “Fake the pre-delay you do not have”: a separate Delay node is no longer required.
+  - `nodes/reverb.md`, **Under the hood**: the node now has an independent pre-delay history before the 75 ms comb.
+  - `nodes/reverb.md`, **Terms introduced**, Pre-delay: Skald now implements it.
+  - `nodes/reverb.md`, **Code-vs-intent notes**, items 1 and 2: the dead control and nonsense exposed range are fixed.
+  - `EDITORIAL-REPORT.md`, **BLOCKERS**, B5: Pre-Delay is implemented and runtime-exposable.

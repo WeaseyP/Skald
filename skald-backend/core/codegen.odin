@@ -18,6 +18,13 @@ import json "core:encoding/json"
 // scope here — this only names the pre-existing literal.)
 MAX_DELAY_SAMPLES :: 96000
 
+// Reverb pre-delay is intentionally short (0..250ms). Keep its independent
+// input-history buffer bounded while preserving the full authored range at
+// every conventional audio rate through 192kHz:
+//     0.25 seconds * 192000 samples/second = 48000 samples.
+// At still-higher rates the emitted sample tap clamps to this fixed capacity.
+MAX_REVERB_PREDELAY_SAMPLES :: 48000
+
 // BPM-sync resolution: when a node has bpmSync=true, its time base comes
 // from the musical division in syncRate ("1/8", "1/4t", ... "1/1"; trailing
 // 't' = triplet) instead of its free-run frequency/time param. Returns an
@@ -541,13 +548,23 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// graph (not nil): the UI's DEFAULT exposure set has both ADSR and
 	// Reverb exposing "decay" — the nil path emitted `p.decay` against the
 	// collision-renamed fields and the generated package didn't compile.
-	decay_str := get_f32_param(graph, node, "decay", "", 0.5)
-	mix_str   := get_f32_param(graph, node, "mix", "", 0.5)
+	decay_str     := get_f32_param(graph, node, "decay", "", 0.5)
+	pre_delay_str := get_f32_param(graph, node, "preDelay", "", 0.02)
+	mix_str       := get_f32_param(graph, node, "mix", "", 0.5)
 	
 	delay_time := 0.075 
 
-	fmt.sbprintf(sb, "\t\t// --- Reverb Node %s (Simple FDN) ---\n", node.id)
+	fmt.sbprintf(sb, "\t\t// --- Reverb Node %s (pre-delay + feedback comb) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("pre_delay_seconds_%s", node.id), fmt.tprintf("math.clamp(f32(%s), 0.0, 0.25)", pre_delay_str))
+	fmt.sbprintf(sb, "\t\t\tpre_delay_samples_%s := int(math.clamp(pre_delay_seconds_%s * sample_rate, 0.0, f32(%d)));\n", node.id, node.id, MAX_REVERB_PREDELAY_SAMPLES)
+	fmt.sbprintf(sb, "\t\t\tpre_write_index_%s := p.delay_%s_write_index %% len(p.reverb_%s_pre_buffer)\n", node.id, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\tpre_delayed_input_%s := f32(%s)\n", node.id, input_str)
+	fmt.sbprintf(sb, "\t\t\tif pre_delay_samples_%s > 0 {{\n", node.id)
+	fmt.sbprintf(sb, "\t\t\t\tpre_read_index_%s := (pre_write_index_%s - pre_delay_samples_%s + len(p.reverb_%s_pre_buffer)) %% len(p.reverb_%s_pre_buffer)\n", node.id, node.id, node.id, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\t\tpre_delayed_input_%s = p.reverb_%s_pre_buffer[pre_read_index_%s]\n", node.id, node.id, node.id)
+	fmt.sbprint(sb, "\t\t\t}\n")
+	fmt.sbprintf(sb, "\t\t\tp.reverb_%s_pre_buffer[pre_write_index_%s] = f32(%s)\n", node.id, node.id, input_str)
 	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%.9f) * sample_rate, 0, %d-1));\n", node.id, delay_time, MAX_DELAY_SAMPLES)
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
@@ -555,7 +572,7 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
 	// default of 3.0 diverged exponentially. Map RT60-style: gain such that
 	// the 75ms tap decays 60dB over `decay` seconds, hard-capped below 1.
 	emit_f32_local(sb, "\t\t\t", fmt.tprintf("decay_gain_%s", node.id), fmt.tprintf("math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(%s), 0.01)), 0.0, 0.95)", decay_str))
-	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = (%s) + delayed_sample_%s * decay_gain_%s;\n", node.id, node.id, input_str, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = pre_delayed_input_%s + delayed_sample_%s * decay_gain_%s;\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_write_index = (p.delay_%s_write_index + 1) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * (1.0 - (%s)) + delayed_sample_%s * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)
 	fmt.sbprint(sb, "\t\t}\n\n")
@@ -1165,6 +1182,9 @@ generate_processor_code :: proc(
 		if node.type == "Delay" || node.type == "Reverb" {
 			fmt.sbprintf(&sb, "\tdelay_%s_buffer: [%d]f32,\n", node.id, MAX_DELAY_SAMPLES)
             fmt.sbprintf(&sb, "\tdelay_%s_write_index: int,\n", node.id)
+			if node.type == "Reverb" {
+				fmt.sbprintf(&sb, "\treverb_%s_pre_buffer: [%d]f32,\n", node.id, MAX_REVERB_PREDELAY_SAMPLES)
+			}
 		}
 	}
 	// Bus-domain stateful nodes (a Filter/LFO/etc downstream of a Delay or
@@ -1351,6 +1371,16 @@ generate_processor_code :: proc(
             voice_seed += 1
         }
     }
+
+	// Effect history is processor state, not allocator state. Explicitly clear
+	// Reverb's comb and pre-delay histories so calling init on an existing
+	// processor has the same reset semantics as initializing a fresh one.
+	for node in all_nodes {
+		if node.type != "Reverb" do continue
+		fmt.sbprintf(&sb, "\tp.delay_%s_buffer = {{}}\n", node.id)
+		fmt.sbprintf(&sb, "\tp.delay_%s_write_index = 0\n", node.id)
+		fmt.sbprintf(&sb, "\tp.reverb_%s_pre_buffer = {{}}\n", node.id)
+	}
 
     // Init Exposed Parameters using resolved field names. stable_resolutions
     // is already deduplicated by field_name, so each field inits exactly once.

@@ -122,7 +122,7 @@ const defaultDelayParams: DelayParams = {
 
 const defaultReverbParams: ReverbParams = {
     decay: 3.0,
-    preDelay: 0.01,
+    preDelay: 0.02,
     mix: 0.5,
     exposedParameters: ['decay', 'mix']
 };
