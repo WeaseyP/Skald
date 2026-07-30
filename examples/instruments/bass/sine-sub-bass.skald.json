@@ -1,6 +1,6 @@
 {
   "nodes": [
-    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Oscillator", "frequency": 55, "waveform": "Sine" } },
+    { "id": "osc_1", "type": "oscillator", "position": { "x": 100, "y": 200 }, "data": { "label": "Oscillator", "frequency": 440, "waveform": "Sine" } },
     { "id": "adsr_1", "type": "adsr", "position": { "x": 350, "y": 200 }, "data": { "label": "ADSR", "attack": 0.01, "decay": 0.1, "sustain": 1.0, "release": 0.2 } },
     { "id": "output_1", "type": "output", "position": { "x": 600, "y": 200 }, "data": { "label": "Output" } }
   ],

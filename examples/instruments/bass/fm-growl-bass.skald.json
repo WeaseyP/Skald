@@ -92,7 +92,7 @@
               "data": {
                 "label": "Growl LFO",
                 "waveform": "Sine",
-                "frequency": 6,
+                "frequency": 4.6666667,
                 "amplitude": 1,
                 "bpmSync": true,
                 "syncRate": "1/8",

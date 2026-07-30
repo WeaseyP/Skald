@@ -262,7 +262,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 // workaround no longer applies.
 const paletteNodes: Array<{ type: string; label: string; tip: string; style?: React.CSSProperties }> = [
     { type: 'oscillator', label: 'Oscillator', tip: 'Tone generator (sine/saw/triangle/PWM square). Pitch tracks the played note.' },
-    { type: 'noise', label: 'Noise', tip: 'White noise source.' },
+    { type: 'noise', label: 'Noise', tip: 'White and pink noise source.' },
     { type: 'lfo', label: 'LFO', tip: 'Low-frequency oscillator for modulating parameters. Can sync to BPM.' },
     { type: 'sampleHold', label: 'S & H', tip: 'Sample & hold — stepped random modulation. Can sync to BPM.' },
     { type: 'fmOperator', label: 'FM Operator', tip: 'FM sine at a ratio of the played note. Feed input_mod for sidebands.' },

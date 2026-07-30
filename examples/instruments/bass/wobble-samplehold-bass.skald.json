@@ -79,7 +79,7 @@
               "position": { "x": 0, "y": 460 },
               "data": {
                 "label": "Stepped 1/8",
-                "rate": 8,
+                "rate": 4.6666667,
                 "amplitude": 1,
                 "bpmSync": true,
                 "syncRate": "1/8",

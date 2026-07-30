@@ -79,7 +79,7 @@
               "position": { "x": 0, "y": 460 },
               "data": {
                 "label": "Random 1/16",
-                "rate": 10,
+                "rate": 8.4,
                 "amplitude": 1,
                 "bpmSync": true,
                 "syncRate": "1/16",

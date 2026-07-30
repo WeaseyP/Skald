@@ -70,7 +70,7 @@ The UI sends a project description to `skald_codegen.exe`. The generator writes 
 | Node | Purpose |
 | --- | --- |
 | Oscillator | Sine, saw, triangle, and pulse-width square wave source |
-| Noise | White-noise source |
+| Noise | White- and pink-noise source |
 | LFO | Free-running or BPM-synced modulation oscillator |
 | Sample and Hold | Free-running or BPM-synced stepped random modulation |
 | FM Operator | FM sine operator using a ratio of the played note |
