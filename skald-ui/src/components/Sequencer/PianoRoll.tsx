@@ -17,7 +17,7 @@ const KEY_WIDTH = 50;
 const HEADER_HEIGHT = 30;
 
 // Visible range (MIDI notes)
-const MIN_NOTE = 36; // C2
+const MIN_NOTE = 21; // A0 (lowest key on an 88-key piano)
 const MAX_NOTE = 84; // C6
 
 const pianoRollStyles: React.CSSProperties = {
@@ -211,7 +211,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                 </div>
             </div>
 
-            <div style={gridContainerStyles} ref={scrollContainerRef}>
+            <div style={gridContainerStyles} ref={scrollContainerRef} data-testid="piano-roll-scroll-container">
                 {/* Keys Column */}
                 <div style={keysColumnStyles}>
                     <div style={{ height: HEADER_HEIGHT }}></div> {/* Spacer for header */}
@@ -270,6 +270,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                         return (
                             <div
                                 key={note}
+                                data-testid={`piano-roll-note-${note}`}
                                 style={{
                                     height: NOTE_HEIGHT,
                                     width: steps * STEP_WIDTH,
