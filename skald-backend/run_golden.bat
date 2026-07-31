@@ -20,8 +20,23 @@ REM                                 with arbitrary names, so the Asset_*
 REM                                 acceptance harness cannot build against
 REM                                 them. run_acceptance.bat's glob is
 REM                                 non-recursive and so does not see them.
-REM   Fixture base names must be unique ACROSS both directories - the golden
-REM   file name is derived from the base name alone.
+REM   tests\fixtures\codegen_only\  Project-shape fixtures that pin EMITTED TEXT
+REM     *.json                      only - a range-table default, a warning, an
+REM                                 identifier edge case. Same non-recursive
+REM                                 escape as graph\.
+REM
+REM   READ THIS BEFORE ADDING A FIXTURE. A .json dropped in the FLAT
+REM   tests\fixtures\ directory is automatically an ACCEPTANCE fixture too, and
+REM   run_acceptance.bat switches on its base name to pick FFT assertions -
+REM   an unknown name is a hard failure ("unknown fixture"), so a golden-only
+REM   fixture added there turns the acceptance suite (and CI's backend job) red.
+REM   That is exactly what happened to noise_exposed_amplitude in 08d5875.
+REM   Adding a fixture: does it need audio assertions?
+REM     yes -> flat tests\fixtures\, name the single instrument `Asset`, and add
+REM            its case to acceptance\main.odin
+REM     no  -> codegen_only\ (project shape) or graph\ (React Flow shape)
+REM   Fixture base names must be unique ACROSS all three directories - the
+REM   golden file name is derived from the base name alone.
 REM
 REM DETERMINISM GATE (roadmap packet A3 / BUGS.md SKB-003): every fixture is
 REM generated TWICE and the two emissions are compared with `fc /B`. Byte
@@ -79,6 +94,13 @@ for %%f in (tests\fixtures\*.json) do (
 
 if exist tests\fixtures\graph (
     for %%f in (tests\fixtures\graph\*.json) do (
+        set /a TOTAL+=1
+        call :check_one "%%~ff" "%%~nf"
+    )
+)
+
+if exist tests\fixtures\codegen_only (
+    for %%f in (tests\fixtures\codegen_only\*.json) do (
         set /a TOTAL+=1
         call :check_one "%%~ff" "%%~nf"
     )
