@@ -94,7 +94,7 @@ You do not need a MIDI keyboard. The sequencer will do everything.
 
 1. **Select the `sax` instrument node.** The parameter panel fills with an "Internal Nodes" list — every node inside the instrument, MIDI Input among them, showing MIDI Device = *All Devices* and Enable MPE unchecked (`ParameterPanel.tsx:309-316`, `:363-374`). This is where you'll edit values in the steps below.
 
-2. **Put two notes in.** The project already carries an empty sequencer track called "sax" (`sax3.json:284-295`). Open its piano roll and place a note on step 1 at **C4** (MIDI 60) and a note on step 9 at **C5** (MIDI 72). The roll spans C2–C6 (`PianoRoll.tsx:20-21`), so both are on screen. New notes default to velocity 1.0.
+2. **Put two notes in.** The project already carries an empty sequencer track called "sax" (`sax3.json:284-295`). Open its piano roll and place a note on step 1 at **C4** (MIDI 60) and a note on step 9 at **C5** (MIDI 72). The roll spans A0–C6 (`PianoRoll.tsx:20-21`), so both are on screen with room to spare below. New notes default to velocity 1.0.
 
 3. **Press play.** You hear two saw-ish notes, second higher than the first.
 

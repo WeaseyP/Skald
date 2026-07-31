@@ -1,5 +1,45 @@
 # Fixed packets
 
+## A10 - Manual false-pessimism sweep (chapter side of P2/P3/P6/P10/P12)
+
+Closed out the stale chapter sections listed under P2/B3, P6, P10 and P12 below, plus the
+instances those packets did not enumerate. Nothing in this entry is a code change; every
+claim was re-verified against the current tree before rewriting.
+
+- Filter resonance: all six passages that described a panel/pad ceiling of 30 now say 20, the
+  value every surface and the range table agree on, and explain that the damping floor of 0.05
+  is reached at exactly `resonance = 20`. `00-foundations.md` step 10 and **Code-vs-intent** item 2;
+  `nodes/filter.md` **Try it** step 5 and **Code-vs-intent** item 2; `50-bass-teardown.md`
+  **Code-vs-intent** item 8; `60-complexity-ladder.md` **The complexity ladder** step 7 and
+  **Code-vs-intent** item 6.
+- Distortion: `nodes/distortion.md` **Code-vs-intent** items 1-3 and `60-complexity-ladder.md`
+  item 7 rewritten — `shape` is in `DistortionParams` with a `classic` default, and Tone agrees at
+  100-20,000 Hz on all three surfaces. The still-true parts (shape is compiled in; Tone above
+  ~7 kHz is inert) are kept.
+- VCA gain: `nodes/gain.md` **The controls** and **Code-vs-intent** item 1, `00-foundations.md`
+  **The controls** row and item 8, `60-complexity-ladder.md` item 6 — the panel slider is
+  `slider('gain', 0, 4, 0.75)`, so the 0-1 cap is gone. gain.md's *Try it* step 9 asks the reader
+  to set 4.00 from the panel, which the old text said was impossible.
+- Piano Roll: `50-bass-teardown.md` **Exercise 4** step 6 and **Code-vs-intent** items 2-3, and
+  `nodes/midiInput.md` **Try it** step 2 — the roll draws MIDI 21-84 (A0-C6). The "painting a new
+  step gives MIDI 60" claim is narrowed to the Step Grid.
+- Legacy port names: `60-complexity-ladder.md` **The complexity ladder** intro and
+  **Code-vs-intent** item 8 no longer claim the validator rejects `cutoff`/`frequency`/`pulseWidth`.
+  `normalize_port` rewrites them before validation; all four named files were re-run through
+  `codegen.exe` for this packet and exit 0 with their modulation wires live.
+- Stored values (P12): `50-bass-teardown.md` **Exercise 1** step 1 and **Code-vs-intent** items
+  10-11, `nodes/output.md` **Try it** steps 1 and 4, `nodes/noise.md` **What it looks like in
+  Skald** and item 2, and `00-foundations.md` item 9 (the README/palette noise claim, which P12
+  fixed in code but did not list as a stale chapter section).
+- `voiceCount`: the `1-64 (backend)` half of the range-split claim is gone from
+  `00-foundations.md` (**The controls** row and item 7), `50-bass-teardown.md` (**The controls**
+  row) and `60-complexity-ladder.md` (**The controls** row). The table says 1-32.
+- **Deliberately left alone, still gated:** every Reverb pre-delay passage (`nodes/reverb.md`
+  **The controls**/step 8/**Going further**/**Under the hood**/**Terms**/items 1-2, and
+  `60-complexity-ladder.md` §5 and item 1) and every Mixer channel-level passage
+  (`nodes/mixer.md` **What "expose" does** and item 1, `60-complexity-ladder.md` item 3).
+  Pre-delay waits on binary provenance; the mixer rewrite waits on its editor fix landing.
+
 ## P10 - Distortion `shape` TypeScript contract
 
 - Added the four supported Distortion shape values to `DistortionParams`.
