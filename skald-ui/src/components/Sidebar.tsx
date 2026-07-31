@@ -213,7 +213,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles}
                     onClick={onCreateInstrument}
                     disabled={!canCreateInstrument}
-                    title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select 2 or more nodes to create an instrument"}
+                    title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select one or more nodes to create an instrument"}
                 >
                     Create Instrument
                 </button>
@@ -221,7 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles}
                     onClick={onCreateGroup}
                     disabled={!canCreateInstrument}
-                    title={canCreateInstrument ? "Group selected nodes visually" : "Select 2 or more nodes to create a group"}
+                    title={canCreateInstrument ? "Group selected nodes visually" : "Select one or more nodes to create a group"}
                 >
                     Create Group
                 </button>
