@@ -4,6 +4,14 @@
 /main
 # Exception: the UI spawns this at runtime and it ships as an Electron
 # extraResource; contributors without Odin still need the app to work.
+#
+# KNOWN LIABILITY — do not remove this exception on its own. The committed
+# binary drifts from the backend source and is not the one CI validates
+# (BUGS.md SKB-001, roadmap packet A2). The fix is to untrack it and build on
+# `prestart`, but that must land AFTER Odin toolchain resolution (packet A13):
+# with no vendored-toolchain lookup and no checked-in binary, the documented
+# setup path goes from "preview silently does nothing" to "the app will not
+# start". See docs/0.2-ROADMAP.md §4.8.
 !skald-ui/skald_codegen.exe
 
 # Agent/assistant working directories
@@ -19,6 +27,13 @@ skald-backend/tests/out/
 *.dll
 *.so
 *.pdb
+
+# Compiled manual. `scripts/manual/build-manual.mjs` rebuilds skald-manual.html
+# (~2 MB) and skald-manual.pdf (~10 MB) from docs/manual-source/, so the build
+# output stays out of git for the same reason the codegen binary should: a
+# committed artifact drifts from its source silently. Packaging is responsible
+# for building it (roadmap packet B6).
+/docs/manual/
 
 # Skald-generated scratch output
 /skald-ui/generated_audio.odin
