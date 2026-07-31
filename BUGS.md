@@ -40,6 +40,13 @@ a workaround or narrow reach · **low** = real but small.
   product; no release can be cut from this tree. (A few untracked paths — `docs/manual/`,
   `scripts/manual/`, `src/main/dialogDefaults.ts` + test — were created by the coordinator during
   the audit and are expected; the pre-existing ones are the problem.)
+  **Status 2026-08-01 — mostly fixed.** Committed on `review-fixes` in eight commits
+  (`3a4ab40`..`e941703`): the manual sources, `scripts/manual/`, `snes-kit/`, the CODEX brief, both
+  untracked source modules, the 10 modified files as deliberate commits, and the audit documents
+  with the 27 source reports under `docs/audit/0.2/`. `git status` clean, 174 tests and `tsc
+  --noEmit` green. `docs/manual/` is now gitignored as build output (packaging builds it — B6).
+  **Still open:** the CI untracked-files step, and `skald-backend/codegen.exe`, which stays
+  untracked until A2 — gated on A13 — so the audit's baseline binary is still one local file.
   *Findings:* D2-2 (post-audit), subsuming F-C1-6. *Roadmap:* **A1** (§3.2).
 
 - [ ] **SKB-001 — The committed codegen binary is stale; in the committed tree every exposed-parameter knob is a silent no-op during playback.**
