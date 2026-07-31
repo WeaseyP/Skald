@@ -1,6 +1,7 @@
 import React from 'react';
 import { NumberInput } from '../common/NumberInput';
 import { SequencerTrack } from '../../definitions/types';
+import { MAX_PATTERN_STEPS, clampPatternSteps } from './stepMetrics';
 
 interface TrackListProps {
     tracks: SequencerTrack[];
@@ -96,11 +97,11 @@ export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSo
                         <label style={{ fontSize: '9px', color: '#666', marginRight: '2px' }}>Len</label>
                         <NumberInput
                             min={1}
-                            max={64}
+                            max={MAX_PATTERN_STEPS}
                             value={track.steps || 16}
                             onChange={(val) => {
                                 if (onUpdateSteps) {
-                                    onUpdateSteps(track.id, val);
+                                    onUpdateSteps(track.id, clampPatternSteps(val));
                                 }
                             }}
                             style={{ width: '35px', backgroundColor: '#333', color: '#ccc', border: '1px solid #444', fontSize: '10px', textAlign: 'center' }}

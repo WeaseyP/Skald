@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
 import { useScale } from '../../contexts/ScaleContext';
+import { PIANO_STEP_WIDTH_DEFAULT, PIANO_STEP_WIDTH_MIN, stepWidthFor } from './stepMetrics';
+import { useElementWidth } from './useElementWidth';
 
 interface PianoRollProps {
     track: SequencerTrack;
@@ -12,7 +14,6 @@ interface PianoRollProps {
 }
 
 const NOTE_HEIGHT = 20;
-const STEP_WIDTH = 30;
 const KEY_WIDTH = 50;
 const HEADER_HEIGHT = 30;
 
@@ -82,6 +83,15 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     const { isInScale, rootNote, scaleName, nearestInScale } = useScale();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+    // Long patterns shrink their columns to fit rather than forcing a scroll
+    // across dozens of bars; below the floor the grid scrolls as before. The
+    // keys column is sticky, so subtract it from the space the steps can use.
+    const [, containerWidth] = useElementWidth<HTMLDivElement>(scrollContainerRef);
+    const stepWidth = stepWidthFor(steps, Math.max(0, containerWidth - KEY_WIDTH), {
+        preferred: PIANO_STEP_WIDTH_DEFAULT,
+        min: PIANO_STEP_WIDTH_MIN,
+    });
+
     // Generate note list (descending order for display)
     const midiNotes = useMemo(() => {
         const notes = [];
@@ -108,7 +118,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const rect = scrollContainerRef.current.getBoundingClientRect();
         const scrollLeft = scrollContainerRef.current.scrollLeft;
         const relativeX = e.clientX - rect.left - KEY_WIDTH + scrollLeft;
-        const clickedStep = Math.floor(relativeX / STEP_WIDTH);
+        const clickedStep = Math.floor(relativeX / stepWidth);
 
         if (clickedStep >= 0 && clickedStep < steps) {
             setIsPainting(true);
@@ -137,7 +147,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const rect = scrollContainerRef.current.getBoundingClientRect();
         const scrollLeft = scrollContainerRef.current.scrollLeft;
         const relativeX = e.clientX - rect.left - KEY_WIDTH + scrollLeft;
-        const hoveredStep = Math.floor(relativeX / STEP_WIDTH);
+        const hoveredStep = Math.floor(relativeX / stepWidth);
 
         if (hoveredStep >= 0 && hoveredStep < steps) {
             // Avoid double-toggling same step if we just processed it
@@ -242,12 +252,12 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                 {/* Grid Content */}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {/* Header Row */}
-                    <div style={{ ...stepHeaderStyles, width: steps * STEP_WIDTH }}>
+                    <div style={{ ...stepHeaderStyles, width: steps * stepWidth }}>
                         {Array.from({ length: steps }).map((_, i) => (
                             <div
                                 key={i}
                                 style={{
-                                    width: STEP_WIDTH,
+                                    width: stepWidth,
                                     borderRight: '1px solid #444',
                                     textAlign: 'center',
                                     fontSize: '10px',
@@ -273,7 +283,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                 data-testid={`piano-roll-note-${note}`}
                                 style={{
                                     height: NOTE_HEIGHT,
-                                    width: steps * STEP_WIDTH,
+                                    width: steps * stepWidth,
                                     display: 'flex',
                                     position: 'relative',
                                     backgroundColor: inScale ? (isBlack ? '#222' : '#2A2A2A') : (isBlack ? '#151515' : '#1F1F1F'),
@@ -288,7 +298,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                         key={i}
                                         style={{
                                             position: 'absolute',
-                                            left: i * STEP_WIDTH,
+                                            left: i * stepWidth,
                                             top: 0,
                                             bottom: 0,
                                             width: 1,
@@ -303,8 +313,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                         key={idx}
                                         style={{
                                             position: 'absolute',
-                                            left: n.step * STEP_WIDTH + 1,
-                                            width: (n.duration || 1) * STEP_WIDTH - 2,
+                                            left: n.step * stepWidth + 1,
+                                            width: (n.duration || 1) * stepWidth - 2,
                                             top: 1,
                                             bottom: 1,
                                             backgroundColor: track.color || '#007acc',
@@ -318,8 +328,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                 <div
                                     style={{
                                         position: 'absolute',
-                                        left: currentStep * STEP_WIDTH,
-                                        width: STEP_WIDTH,
+                                        left: currentStep * stepWidth,
+                                        width: stepWidth,
                                         top: 0,
                                         bottom: 0,
                                         backgroundColor: 'rgba(255, 255, 255, 0.05)',

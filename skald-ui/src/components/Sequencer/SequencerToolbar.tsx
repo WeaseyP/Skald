@@ -1,6 +1,7 @@
 import React from 'react';
 import { NumberInput } from '../common/NumberInput';
 import { BPM_MIN, BPM_MAX, clampBpm } from '../../definitions/bpm';
+import { MAX_PATTERN_STEPS, clampPatternSteps } from './stepMetrics';
 
 interface SequencerToolbarProps {
     isPlaying: boolean;
@@ -109,11 +110,11 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
                 <label>Steps:</label>
                 <NumberInput
                     value={patternSteps}
-                    onChange={(val) => onPatternStepsChange(Math.max(1, Math.min(64, val)))}
+                    onChange={(val) => onPatternStepsChange(clampPatternSteps(val))}
                     style={inputStyles}
                     min={1}
-                    max={64}
-                    title="Global Pattern Length"
+                    max={MAX_PATTERN_STEPS}
+                    title={`Global pattern length in 16th-note steps, 1–${MAX_PATTERN_STEPS} (16 = one bar). Long patterns shrink the grid and scroll.`}
                 />
             </div>
 

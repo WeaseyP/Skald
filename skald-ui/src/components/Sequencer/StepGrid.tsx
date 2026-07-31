@@ -1,5 +1,7 @@
 import React from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
+import { stepWidthFor } from './stepMetrics';
+import { useElementWidth } from './useElementWidth';
 
 interface StepGridProps {
     tracks: SequencerTrack[];
@@ -26,9 +28,11 @@ const rowStyles: React.CSSProperties = {
     boxSizing: 'border-box'
 };
 
-const cellStyles: React.CSSProperties = {
-    flex: '0 0 40px', // Fixed width per step
-    width: '40px',
+// Cell width is per-render now: long patterns shrink their steps to fit the
+// dock and only scroll once they hit the floor in stepMetrics.
+const cellStylesFor = (stepWidth: number): React.CSSProperties => ({
+    flex: `0 0 ${stepWidth}px`,
+    width: `${stepWidth}px`,
     height: '34px',
     borderRight: '1px solid #2A2A2A',
     cursor: 'pointer',
@@ -36,12 +40,7 @@ const cellStyles: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center'
-};
-
-const beatMarkerStyle: React.CSSProperties = {
-    ...cellStyles,
-    borderRight: '1px solid #444' // Every 4th step
-};
+});
 
 const noteStyle: React.CSSProperties = {
     height: '80%',
@@ -55,7 +54,7 @@ const noteStyle: React.CSSProperties = {
 };
 
 // Playhead overlay
-const Playhead: React.FC<{ step: number; bpm: number }> = ({ step, bpm }) => {
+const Playhead: React.FC<{ step: number; bpm: number; stepWidth: number }> = ({ step, bpm, stepWidth }) => {
     // 16th note duration in seconds = 60 / bpm / 4
     const duration = 60 / bpm / 4;
 
@@ -64,8 +63,8 @@ const Playhead: React.FC<{ step: number; bpm: number }> = ({ step, bpm }) => {
             position: 'absolute',
             top: 0,
             bottom: 0,
-            left: `${step * 40}px`, // 40px per step
-            width: '40px',
+            left: `${step * stepWidth}px`,
+            width: `${stepWidth}px`,
             backgroundColor: 'rgba(255, 255, 255, 0.1)',
             borderLeft: '1px solid rgba(255, 255, 255, 0.3)',
             pointerEvents: 'none',
@@ -82,6 +81,13 @@ export const StepGrid: React.FC<StepGridProps & {
     // Calculate max steps based on tracks
     const maxSteps = Math.max(steps, ...tracks.map(t => t.steps || 16));
     const stepArray = Array.from({ length: maxSteps }, (_, i) => i);
+
+    // Fit the whole pattern into the dock where possible; scroll past the floor.
+    const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
+    const stepWidth = stepWidthFor(maxSteps, gridWidth);
+    const cellStyles = cellStylesFor(stepWidth);
+    const beatMarkerStyle: React.CSSProperties = { ...cellStyles, borderRight: '1px solid #444' };
+    const rowWidth = maxSteps * stepWidth;
 
     const isBeat = (step: number) => (step + 1) % 4 === 0;
 
@@ -247,11 +253,11 @@ export const StepGrid: React.FC<StepGridProps & {
     }, [dragState !== null, onUpdateNote]);
 
     return (
-        <div style={gridContainerStyles} onContextMenu={(e) => e.preventDefault()}>
-            <Playhead step={currentStep} bpm={bpm} />
+        <div ref={gridRef} style={gridContainerStyles} onContextMenu={(e) => e.preventDefault()}>
+            <Playhead step={currentStep} bpm={bpm} stepWidth={stepWidth} />
 
             {tracks.map(track => (
-                <div key={track.id} style={rowStyles}>
+                <div key={track.id} style={{ ...rowStyles, width: rowWidth }}>
                     {stepArray.map(step => {
                         const trackSteps = track.steps || 16;
                         const isDisabled = step >= trackSteps;
@@ -299,7 +305,7 @@ export const StepGrid: React.FC<StepGridProps & {
                                     <div
                                         style={{
                                             ...noteStyle,
-                                            width: `${duration * 40 - 4}px`,
+                                            width: `${Math.max(2, duration * stepWidth - 4)}px`,
                                             backgroundColor: track.color || '#007acc',
                                             opacity: finalOpacity,
                                             cursor: modifiers.ctrl ? 'ns-resize' : (modifiers.shift ? 'ew-resize' : (modifiers.alt ? 'help' : 'pointer')), // Visual cue
