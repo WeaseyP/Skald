@@ -26,6 +26,42 @@ a workaround or narrow reach · **low** = real but small.
 
 ---
 
+## Wave A remediation pass — 2026-08-01
+
+Twelve entries closed, on branch `review-fixes`, commits `c4c30e0`..`c56ef89`. Each was verified
+by neutralizing the fix and re-running the test, or by the before/after measurement quoted below —
+not by reading the code and agreeing with it.
+
+| Entry | Fix | Commit |
+|---|---|---|
+| SKB-003 | Deterministic instrument order + a double-run `fc /B` gate. Reproduced first: 6 distinct outputs / 14 runs, differing per binary; after, 1 hash / 32 runs / 2 binaries | `1a46357` |
+| SKB-027 | Worklet checks `skald_set_param`'s return; `canApplyParamLive` takes the value; name buffer 64→128 asserted at the boundary | `f769168` |
+| SKB-038 | Rebuild generation id — a stale rebuild can no longer swap into a post-Stop worklet | `f769168` |
+| SKB-046 | Oscilloscope buffer from `fftSize`, not `frequencyBinCount` | `f769168` |
+| SKB-047 | Odin probe async + negative results cached 30 s; the old path re-ran a *synchronous* spawn per attempt | `53b807c` |
+| SKB-057 | Vendored `.tools/` toolchain resolved ahead of PATH; `SKALD_ODIN` persisted at User scope; loud actionable failure on two surfaces | `53b807c` |
+| SKB-032 | Group paste remaps `parentId` through the id map and drops `parentId`/`extent` when the parent was not copied | `20d6d02` |
+| SKB-033 | Create Group honours the promise its enabled button makes | `20d6d02` |
+| SKB-043 | **Finding corrected — see the entry.** The flip landed, but the reachability claim was wrong | `08d5875` |
+| SKB-044 | Reverb `preDelay` on the node card, plus a card ⊇ sidebar parity test that also caught Oscillator `phase` | `08d5875` |
+| SKB-049 | Glide 0–5 on both sides (UI widened; narrowing would clamp saved patches) | `08d5875` |
+| SKB-051 | Noise `amplitude` override; an exposed-but-unstored value emitted 0.5, now 1.0 | `08d5875` |
+
+Partially closed, still open above: **SKB-000** (tree committed and CI-gated; `codegen.exe` waits on
+A2), **SKB-007** (the expose route is closed, the P-lock route needs B2), **SKB-024** (the UI reads
+the right default; the range-table half is deliberately deferred — it makes shipped patches 6 dB
+louder), **SKB-026** (the Piano Roll's range is documented correctly now; out-of-range notes are
+still invisible).
+
+Two defects found *while* fixing these, both closed in the same pass and neither previously filed:
+the topology signature masked live params to `null` while `JSON.stringify(NaN)` is also `null`, so a
+value→NaN edit produced an identical signature and neither the live path nor the rebuild path fired
+(`f769168`); and the release docs had been moved into `examples/docs/` while
+`.github/workflows/release.yml` still read notes from `docs/releases/$tag.md`, so every release draft
+would have shipped with no notes (`c4c30e0`).
+
+---
+
 ## Critical
 
 - [ ] **SKB-000 — The audited tree is not the committed tree: 17 untracked paths and 10 modified files, including the audit's own ground truth.**
@@ -65,6 +101,12 @@ a workaround or narrow reach · **low** = real but small.
   hardening that let this hide). **Ordering:** the fix (untrack the exe, build on `prestart`)
   must land *after* SKB-057's toolchain-resolution fix, or "preview silently broken" becomes
   "app will not start" for the documented setup path (roadmap §4.8).
+  **Status 2026-08-01: unblocked, not fixed.** Both gating conditions are now met — SKB-057's
+  resolver landed in `53b807c`, and A6's hardening (`f769168`) means a binary missing the `::` alias
+  now raises a visible `previewStale` naming the key instead of silently dropping the write, so this
+  can no longer hide the same way. A2 is assignable. Until it lands, the tree still ships a binary
+  nine backend commits stale, and `build_codegen.bat` writing over the tracked file is what trips
+  the untracked-files CI gate added in `5deff6b`.
 
 - [ ] **SKB-002 — The CLI/bare-graph ingestion path silently discards the session (tempo, master volume, pattern length) and every P-lock.**
   100 of 101 files under `examples/` are bare-graph shaped and route through
@@ -80,7 +122,7 @@ a workaround or narrow reach · **low** = real but small.
   1 project-shaped.)
   *Findings:* F-C3-2, F-C2-7, F-C1-5. *Roadmap:* **A4**.
 
-- [ ] **SKB-003 — Codegen output is non-deterministic on the bare-graph path; regenerating the same file can reassign which instrument is asset 0.**
+- [x] **SKB-003 — Codegen output is non-deterministic on the bare-graph path; regenerating the same file can reassign which instrument is asset 0.**
   `build_project_from_graph` iterates `graph.nodes` (a `map[string]Node`) unsorted
   (`json.odin:303`, `:331`) against the codebase's own written warnings
   (`graph_utils.odin:9-14`). **Reproduced**: 14 runs of the unmodified
@@ -131,7 +173,15 @@ a workaround or narrow reach · **low** = real but small.
   range `{-1e6, 1e6, 0.0, ""}`, emits `set_syncRate` writing a field the DSP never reads, and in
   the editor the value is masked out of the topology signature while `Number("1/8")` is NaN — so
   neither the instant path nor a rebuild ever applies the change. Persists in the save file.
-  *Findings:* F-C1-2. *Roadmap:* **A7 item 5** (two-line UI fix) + **B2** (backend guard).
+  **Half closed 2026-08-01 (`08d5875`).** All three wrappers now pass `isExposable={false}`, and a
+  load-time scrub removes a stray `syncRate` from a saved patch's `exposedParameters` — recursing
+  into `node.data.subgraph.nodes`, without which it is a no-op, since nearly every BPM-syncable node
+  lives inside an Instrument. Stored *values* are untouched; only the exposure claim goes.
+  **The P-lock route is still open**: `StepPropertiesEditor` ignores `isExposable` entirely, so the
+  step editor still offers a `syncRate` P-lock, and P-locks union into the same exposure list in
+  codegen — a P-lock can still mint the dead ±1e6 setter. No UI-only change closes that; it needs
+  B2's hard error on a P-lock resolving to an inert parameter.
+  *Findings:* F-C1-2. *Roadmap:* **A7 item 5** (done) + **B2** (the remaining half).
 
 - [ ] **SKB-008 — Undo is unreliable in seven distinct ways; the most common editor gestures leave no undo entry.**
   (1) Two independent stacks popped by one Ctrl+Z (`app.tsx:209-228`; graph capped at 50,
@@ -269,9 +319,19 @@ a workaround or narrow reach · **low** = real but small.
   `node-definitions.ts` / `param_ranges.odin` / codegen inline fallbacks (ADSR release 1.0/0.2/0.1,
   Reverb decay 3.0/0.1/0.5, Filter cutoff 800/800/1000, VCA gain 0.75/1.0/1.0, Mixer levels
   0.75/1.0/1.0, FM frequency 2/1/1, Mapper outMax 20000/1/1, Noise amplitude 1.0/0.5/1.0 …).
-  *Findings:* F-C3-4, F-B10-6. *Roadmap:* **A7 item 8** (Wavetable), **A8** (gate), **C2** (class fix).
+  **Half closed 2026-08-01 (`08d5875`), and the remaining half is deliberate.** `amplitude` is now
+  in `WavetableParams`, the defaults and the default exposed set, and `ParamField` gained a
+  read-time `default` so an existing save renders 1.0 — what codegen actually plays — instead of 0.
+  Not done: the `param_ranges.odin` entry still says 0.5, byte-for-byte the same one-line shape as
+  the Noise fix in SKB-051. It was held back because unlike Noise it is **not neutral for existing
+  content** — a shipped patch with an exposed-but-unstored Wavetable amplitude generates at 0.5
+  today, and correcting the table makes it 6 dB louder. That is an audible change to files users
+  already have, so it wants A8's parity gate and possibly C1's version field, not a cheap-win batch.
+  Fix, when someone owns the consequence: `case "Wavetable": if name == "amplitude" do return
+  {0.0, 1.0, 1.0, ""}`.
+  *Findings:* F-C3-4, F-B10-6. *Roadmap:* **A7 item 8** (done), **A8** (gate), **C2** (class fix).
 
-- [ ] **SKB-057 — The shipped v0.1.0 installer cannot preview audio for anyone, and the documented dev setup breaks the moment the setup shell closes.**
+- [x] **SKB-057 — The shipped v0.1.0 installer cannot preview audio for anyone, and the documented dev setup breaks the moment the setup shell closes.**
   Preview compiles Odin at runtime, and: `forge.config.ts:20` bundles **no Odin toolchain**;
   `findOdin` (`main.ts:178`) probes only `SKALD_ODIN` / `odin` on PATH / `C:\Odin\odin.exe` and
   **never looks in the repo's own vendored `.tools/` toolchain**; `setup-dev.ps1` sets
@@ -300,7 +360,7 @@ a workaround or narrow reach · **low** = real but small.
   `PianoRoll.tsx:20-21` vs `StepPropertiesEditor.tsx:190-194`.
   *Findings:* F-B01-7. *Roadmap:* **B5**.
 
-- [ ] **SKB-027 — The live-param masking predicate and the instant-apply predicate disagree by construction; the worklet's 64-byte cutoff contradicts the shim's 128-byte buffer and the test pins the wrong number.**
+- [x] **SKB-027 — The live-param masking predicate and the instant-apply predicate disagree by construction; the worklet's 64-byte cutoff contradicts the shim's 128-byte buffer and the test pins the wrong number.**
   `topologySignature` masks on a byte-length-only check (`projectSerializer.ts:227-241`, whose
   own comment states the invariant) while the instant path also requires finite-number and a
   matching generated case (`useWasmAudioEngine.ts:249-262`); `skaldWasm.worklet.ts:111` rejects
@@ -337,12 +397,12 @@ a workaround or narrow reach · **low** = real but small.
   Two identical notes can render bit-different audio depending on unrelated play history.
   *Findings:* F-B03-2. *Roadmap:* **C6**.
 
-- [ ] **SKB-032 — Copy/pasting a Group with its children produces an empty new group; the pasted children re-attach to the *original* group.**
+- [x] **SKB-032 — Copy/pasting a Group with its children produces an empty new group; the pasted children re-attach to the *original* group.**
   `handlePaste` remaps edge endpoints through `idMap` but never `parentId`/`extent`
   (`useGraphState.ts:151-195`).
   *Findings:* F-B07-5. *Roadmap:* **A7 item 15**.
 
-- [ ] **SKB-033 — Create Group is enabled with one node selected, its tooltip promises success, and clicking does nothing.**
+- [x] **SKB-033 — Create Group is enabled with one node selected, its tooltip promises success, and clicking does nothing.**
   `app.tsx:379` (`length > 0`) vs `useNodeComposition.ts:214-215` (`length <= 1` early return).
   Scoped as a one-line "no-risk warm-up" two remediation rounds ago; still open — fix first as
   the process canary.
@@ -367,7 +427,7 @@ a workaround or narrow reach · **low** = real but small.
   next to it and isn't used for this case.
   *Findings:* F-B04-5. *Roadmap:* **A7 item 19**.
 
-- [ ] **SKB-038 — A rebuild that resolves after Stop→Play can hot-swap the *pre-stop* graph's wasm into the fresh worklet.**
+- [x] **SKB-038 — A rebuild that resolves after Stop→Play can hot-swap the *pre-stop* graph's wasm into the fresh worklet.**
   Only guard is `if (!workletNode.current)` (`useWasmAudioEngine.ts:279-318`) — true precisely in
   the failure case. No build generation ID.
   *Findings:* F-B09b-6. *Roadmap:* **A6**.
@@ -392,13 +452,23 @@ a workaround or narrow reach · **low** = real but small.
   default divergences.
   *Findings:* B09a status table (W4/C4). *Roadmap:* **C2**.
 
-- [ ] **SKB-043 — Mixer channel levels are not exposable from the editor even though the backend fix for exposed levels landed and is golden-tested.**
+- [x] **SKB-043 — Mixer channel levels are not exposable from the editor even though the backend fix for exposed levels landed and is golden-tested.**
   Every `level<n>` wrapper hardcodes `isExposable = false`
   (`NodeParameterControls.tsx:278-292`); the fix commit touched no UI file. The manual's warning
   is still operationally true; the recorded "fixed" status is not deliverable.
-  *Findings:* F-C1-4 (correcting F-A08-1). *Roadmap:* **A7 item 6**.
+  **⚠ This entry's conclusion was wrong, corrected 2026-08-01 while fixing it.** The hardcoded
+  `false` was never reached: `ParameterPanel.tsx:338-348` has an inline mixer branch that returns
+  *before* `NodeParameterControls`, and it already passed `isExposable = true`. Mixer levels have
+  been exposable in the shipped editor all along and the backend's P3 fix was always reachable, so
+  the manual's warning was false, not "operationally true". What the dead `false` actually was is a
+  **landmine under packet B11**, whose job is deleting those inline bypass branches so
+  `NodeParameterControls` is the single path — landing B11 first would have *regressed* mixer
+  exposure. Flipped in `08d5875` as a prerequisite for B11, with a round-trip test carrying both
+  `exposedParameters` and the authored `levels` array into the codegen JSON.
+  *Findings:* F-C1-4 (correcting F-A08-1) — **and F-C1-4 corrected in turn**. *Roadmap:* **A7 item
+  6** (done), **B11** (depends on it).
 
-- [ ] **SKB-044 — The Reverb node card has no Pre-Delay control, so the backend's implemented pre-delay is unreachable on the primary editing surface.**
+- [x] **SKB-044 — The Reverb node card has no Pre-Delay control, so the backend's implemented pre-delay is unreachable on the primary editing surface.**
   `ReverbNode.tsx:8-11` declares `decay`/`mix` only; the sidebar renders three
   (`NodeParameterControls.tsx:236-239`). Blocks the manual rewrite for F-A07-1.
   *Findings:* F-C1-9, F-B07-8 instance. *Roadmap:* **A7 item 7**.
@@ -407,21 +477,34 @@ a workaround or narrow reach · **low** = real but small.
   `projectSerializer.ts:174-182` filters them; `renderNodeOverrides` happily offers the controls.
   *Findings:* F-B01-11. *Roadmap:* **B5**.
 
+- [ ] **SKB-058 — `bpmSync: true` with no `syncRate` key silently becomes 1/4, and the node's stored rate is dead.**
+  Filed 2026-08-01 while verifying A10. `bpm_sync_seconds_expr` (`codegen.odin:42`) defaults the
+  division to `1/4` when `syncRate` is absent, with no warning, so a node whose author enabled
+  tempo sync without choosing a division gets a quarter note regardless of the `frequency`/`rate`
+  still stored on it — the stored value is inert but visible in the editor, which is the exact
+  shape of the confusion the P12 pass tried to clear up. `examples/instruments/bass/lfo-filter-wobble-bass.skald.json:3`
+  is a shipped instance: `bpmSync: true`, no `syncRate`, `frequency: 8` dead. Commit `388dab2`
+  fixed that file's oscillator and missed its LFO, so it is the one file in the class the data pass
+  left behind. Two fixes, both cheap: warn at build time when `bpmSync` is set without `syncRate`,
+  and give the file a division.
+  *Findings:* F-A10-8 (filed as stale-doc; the data and codegen halves are the real defect).
+  *Roadmap:* **B5** (warning) + **D3** (the file).
+
 ---
 
 ## Low
 
-- [ ] **SKB-046 — Oscilloscope buffer sized from `frequencyBinCount` instead of `fftSize`; the drawn window is half what it should be.**
+- [x] **SKB-046 — Oscilloscope buffer sized from `frequencyBinCount` instead of `fftSize`; the drawn window is half what it should be.**
   `AudioVisualizer.tsx:34-36`. *F-B08-9 → A7 item 21.*
-- [ ] **SKB-047 — Failed Odin lookups are never cached and probe with blocking `spawnSync` on the Electron main thread (up to 3 × 10 s stalls per Play if a candidate hangs).**
+- [x] **SKB-047 — Failed Odin lookups are never cached and probe with blocking `spawnSync` on the Electron main thread (up to 3 × 10 s stalls per Play if a candidate hangs).**
   `main.ts:175-191`. *F-B08-8 → A7 item 24.*
 - [ ] **SKB-048 — `NumberInput`'s unguarded `value.toString()` was fixed at one call site and relocated to `handleFocus`.**
   `common/NumberInput.tsx:108`. *F-B09b-4 → A7-class.*
-- [ ] **SKB-049 — Instrument Glide: UI slider 0–2 s vs backend clamp 0–5 s.**
+- [x] **SKB-049 — Instrument Glide: UI slider 0–2 s vs backend clamp 0–5 s.**
   `NodeParameterControls.tsx:320` vs `param_ranges.odin` glide entry. *F-A09-5/F-A01-10 → A7 item 12.*
 - [ ] **SKB-050 — BPM bounds: UI 20–300 vs backend 20–999 — harmless until a runtime BPM setter ships.**
   `bpm.ts:18-19` vs `param_ranges.odin`. *F-B02-9 → A8 catches; unify with runtime-BPM work.*
-- [ ] **SKB-051 — Noise `amplitude` default: generic table 0.5 vs UI/codegen 1.0; the node-type override switch built for this omits Noise.**
+- [x] **SKB-051 — Noise `amplitude` default: generic table 0.5 vs UI/codegen 1.0; the node-type override switch built for this omits Noise.**
   `param_ranges.odin:88-89` vs `node-definitions.ts:98-101`. *F-A02-6 → A7 item 9.*
 - [ ] **SKB-052 — Generated oscillator code emits a guard that can never be false (`if unison_count > 0` on a literal floored at 1).**
   `codegen.odin:179-186`, `:219`. Same smell the codebase fixed once before. *F-C1-10 → A7 item 25.*
