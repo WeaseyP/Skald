@@ -11,14 +11,24 @@
 |                                     preserving the step-clock position       |
 |                                     (bytes, never a compiled Module — the   |
 |                                     port silently drops Module payloads)     |
-|   {type:'set-param', asset, nameBytes, value}   live exposed-param edit     |
+|   {type:'set-param', asset, key, nameBytes, value}  live exposed-param edit |
+|                                     (key = the decoded name, for reporting) |
 |   {type:'note-on'|'note-off'|'trigger', asset, note, velocity?, duration?}  |
 |   {type:'set-loop', loop}                                                    |
 |   {type:'start-all'} / {type:'stop-all'}                                     |
 | Messages out:                                                                |
 |   {type:'step', step}      sequencer step changed (drives the UI playhead)  |
 |   {type:'ended'}           non-looping pattern finished                      |
-|   {type:'error', message}                                                    |
+|   {type:'error', message}  worklet failure — playback itself is broken       |
+|   {type:'param-dropped', key, reason}   a set-param did NOT apply: the       |
+|                                     running module rejected the name (e.g.  |
+|                                     a stale build without the "::" alias)   |
+|                                     or the name exceeded the wasm buffer.   |
+|                                     Audio keeps playing the OLD value —     |
+|                                     surfaced by the host like previewStale, |
+|                                     never silently swallowed (that silence  |
+|                                     is how a stale compiler turned every    |
+|                                     knob into an undetected no-op, SKB-001) |
 ================================================================================
 */
 export const skaldWasmProcessorString = `
@@ -104,14 +114,28 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
                     this.instantiate(m.bytes, m.stepAsset ?? this.stepAsset, true);
                     break;
                 case 'set-param': {
-                    // 64 = the generated shim's skald_name_buf size. The wasm
-                    // side rejects oversized names, but only AFTER the host
-                    // wrote the bytes — writing more than 64 here would
-                    // corrupt whatever wasm global follows the name buffer.
-                    if (!this.ex || !m.nameBytes || m.nameBytes.length === 0 || m.nameBytes.length > 64) break;
-                    new Uint8Array(this.ex.memory.buffer, this.nameBufPtr, m.nameBytes.length)
+                    if (!this.ex) break;
+                    const len = m.nameBytes ? m.nameBytes.length : 0;
+                    // 128 = the generated shim's skald_name_buf size
+                    // ([128]u8). The wasm side rejects oversized names, but
+                    // only AFTER the host wrote the bytes — writing more than
+                    // 128 here would corrupt whatever wasm global follows the
+                    // name buffer. Rejected here = still reported, not thrown:
+                    // playback is fine, only this edit didn't land.
+                    if (len === 0 || len > 128) {
+                        this.port.postMessage({ type: 'param-dropped', key: m.key ?? '(unknown)', reason: 'parameter name exceeds the 128-byte wasm name buffer' });
+                        break;
+                    }
+                    new Uint8Array(this.ex.memory.buffer, this.nameBufPtr, len)
                         .set(m.nameBytes);
-                    this.ex.skald_set_param(m.asset, m.nameBytes.length, m.value);
+                    // skald_set_param returns 1 only when the running module
+                    // actually dispatched the name to a setter. 0 means the
+                    // knob did NOTHING — e.g. a stale build that predates the
+                    // "<nodeId>::<param>" alias. Discarding that return value
+                    // is exactly what made SKB-001 invisible.
+                    if (this.ex.skald_set_param(m.asset, len, m.value) !== 1) {
+                        this.port.postMessage({ type: 'param-dropped', key: m.key ?? '(unknown)', reason: 'the running module did not accept this parameter (stale or mismatched build?)' });
+                    }
                     break;
                 }
                 case 'note-on':

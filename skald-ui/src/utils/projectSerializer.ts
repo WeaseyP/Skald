@@ -224,8 +224,24 @@ export const liveParamKey = (nodeId: string, param: string): string => `${nodeId
 // The generated wasm shim's param-name mailbox is 128 bytes; a key that
 // doesn't fit can't be applied live and must go through the rebuild path.
 const MAX_PARAM_KEY_BYTES = 128;
-export const canApplyParamLive = (nodeId: string, param: string): boolean =>
-    new TextEncoder().encode(liveParamKey(nodeId, param)).length <= MAX_PARAM_KEY_BYTES;
+
+// skald_set_param carries the value as an f32. Anything a float32 cannot
+// represent finitely — non-numbers, NaN/Infinity, magnitudes past f32 max —
+// must not be dropped into the worklet, where it would either corrupt the
+// running DSP or be discarded without a sound changing.
+const MAX_LIVE_PARAM_MAGNITUDE = 3.4028234663852886e38; // largest finite f32
+
+// True only when BOTH the key fits the shim's name buffer AND the value is
+// something skald_set_param can actually carry. Returning false here is what
+// routes a bad edit to the full-rebuild path: topologySignature leaves the
+// value unmasked, the signature changes, and a rebuild fires — instead of the
+// edit being silently dropped into (or by) the worklet. The value predicate
+// narrows to number so callers can post it without re-checking.
+export const canApplyParamLive = (nodeId: string, param: string, value: unknown): value is number => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    if (Math.abs(value) > MAX_LIVE_PARAM_MAGNITUDE) return false;
+    return new TextEncoder().encode(liveParamKey(nodeId, param)).length <= MAX_PARAM_KEY_BYTES;
+};
 
 // A stable fingerprint of everything that requires a re-codegen when it
 // changes. Exposed parameter VALUES are masked out — those apply live
@@ -238,8 +254,15 @@ export const topologySignature = (projectData: ProjectStructure): string => {
     for (const inst of clone.project.instruments) {
         for (const n of inst.audio_graph?.nodes ?? []) {
             for (const name of (n.parameters?.exposedParameters ?? []) as string[]) {
-                if (name in n.parameters && canApplyParamLive(n.id, name)) {
-                    n.parameters[name] = null;
+                if (name in n.parameters && canApplyParamLive(n.id, name, n.parameters[name])) {
+                    // The mask sentinel must not collide with anything a
+                    // stored value can serialize to. `null` collided with
+                    // NaN/Infinity (JSON.stringify → null): editing a live
+                    // param from a number (masked → null) to NaN (unmasked →
+                    // null) produced IDENTICAL signatures, so neither the
+                    // instant path nor a rebuild fired — the silent drop this
+                    // masking exists to prevent.
+                    n.parameters[name] = ' __SKALD_LIVE_MASKED__';
                 }
             }
         }

@@ -69,7 +69,7 @@ describe('projectSerializer topology signature', () => {
         // Masked-but-not-live-appliable would mean the edit changes nothing
         // until an unrelated rebuild; oversized keys must keep rebuilding.
         const hugeId = 'n'.repeat(200);
-        expect(canApplyParamLive(hugeId, 'cutoff')).toBe(false);
+        expect(canApplyParamLive(hugeId, 'cutoff', 800)).toBe(false);
         const withHugeNode = (cutoff: number) => {
             const inst = makeInstrument();
             (inst.data as any).subgraph.nodes.push({
@@ -85,7 +85,46 @@ describe('projectSerializer topology signature', () => {
 describe('liveParamKey', () => {
     it('builds the node-scoped key the generated set_param dispatch accepts', () => {
         expect(liveParamKey('sax-formant', 'cutoff')).toBe('sax-formant::cutoff');
-        expect(canApplyParamLive('sax-formant', 'cutoff')).toBe(true);
+        expect(canApplyParamLive('sax-formant', 'cutoff', 1600)).toBe(true);
+    });
+});
+
+describe('canApplyParamLive — value guard (F-C1-3)', () => {
+    // skald_set_param carries an f32. A value the instant path cannot carry
+    // must return false so the edit falls back to a full rebuild — the old
+    // key-only check let bad values be masked out of the topology signature
+    // AND skipped by the instant path: the edit changed nothing, silently.
+    it('accepts ordinary finite numbers', () => {
+        expect(canApplyParamLive('flt', 'cutoff', 0)).toBe(true);
+        expect(canApplyParamLive('flt', 'cutoff', -20000)).toBe(true);
+        expect(canApplyParamLive('flt', 'cutoff', 3.4e38)).toBe(true); // inside f32 range
+    });
+
+    it('rejects non-finite numbers', () => {
+        expect(canApplyParamLive('flt', 'cutoff', NaN)).toBe(false);
+        expect(canApplyParamLive('flt', 'cutoff', Infinity)).toBe(false);
+        expect(canApplyParamLive('flt', 'cutoff', -Infinity)).toBe(false);
+    });
+
+    it('rejects non-numbers', () => {
+        expect(canApplyParamLive('flt', 'cutoff', '4000')).toBe(false);
+        expect(canApplyParamLive('flt', 'cutoff', undefined)).toBe(false);
+        expect(canApplyParamLive('flt', 'cutoff', null)).toBe(false);
+        expect(canApplyParamLive('flt', 'cutoff', { v: 1 })).toBe(false);
+    });
+
+    it('rejects values past the f32 range (they arrive in wasm as Infinity)', () => {
+        expect(canApplyParamLive('flt', 'cutoff', 3.5e38)).toBe(false);
+        expect(canApplyParamLive('flt', 'cutoff', -1e39)).toBe(false);
+        expect(canApplyParamLive('flt', 'cutoff', Number.MAX_VALUE)).toBe(false);
+    });
+
+    it('does NOT mask an exposed param holding a live-inapplicable value — the edit must rebuild, not vanish', () => {
+        // NaN serializes to null, so if the signature masked it the two
+        // graphs would hash identically and no rebuild would ever fire.
+        const sig = (cutoff: number) =>
+            topologySignature(build(makeInstrument({ filterData: { cutoff } })));
+        expect(sig(NaN)).not.toBe(sig(800));
     });
 });
 

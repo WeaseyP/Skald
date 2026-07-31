@@ -282,6 +282,49 @@ describe('useWasmAudioEngine — live edits while playing', () => {
         void result;
     });
 
+    it('an exposed param edited to a value the f32 path cannot carry (NaN) falls back to a REBUILD instead of vanishing', async () => {
+        vi.useFakeTimers();
+        const { rerender } = await startPlaying([makeInstrument(440, 800)]);
+        const port = createdWorklets[0].port;
+        port.postMessage.mockClear();
+
+        // Drag the exposed cutoff to NaN (e.g. a corrupt control state).
+        await act(async () => { rerender({ n: [makeInstrument(440, NaN)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+        // The instant path must NOT post it into the worklet...
+        const setParamCalls = port.postMessage.mock.calls
+            .map((c) => c[0]).filter((m: { type: string }) => m.type === 'set-param');
+        expect(setParamCalls).toHaveLength(0);
+        // ...and the edit must not be dropped on the floor either: the
+        // topology signature leaves the value unmasked, so the debounced
+        // rebuild fires. Before canApplyParamLive took the value, NEITHER
+        // happened — the signature masked the value while the instant path
+        // skipped it, so the edit changed nothing until an unrelated rebuild
+        // (the silent-failure shape of F-C1-3).
+        expect(buildWasmPreview).toHaveBeenCalledTimes(2);
+    });
+
+    it('a param-dropped report from the worklet (the knob did nothing) surfaces as previewStale, not as a fatal error', async () => {
+        const { result } = await startPlaying([makeInstrument()]);
+        const port = createdWorklets[0].port;
+        expect(result.current.previewStale).toBeNull();
+
+        // The worklet reports that skald_set_param rejected the key — the
+        // exact shape a stale build without the "::" alias produces (SKB-001).
+        act(() => {
+            port.onmessage?.({
+                data: { type: 'param-dropped', key: 'flt::cutoff', reason: 'the running module did not accept this parameter (stale or mismatched build?)' },
+            } as MessageEvent);
+        });
+
+        // Same surfacing channel as a failed rebuild: what you hear is not
+        // the graph on screen. Playback itself is fine, so NOT previewError.
+        expect(result.current.previewStale).toContain('flt::cutoff');
+        expect(result.current.previewError).toBeNull();
+        expect(result.current.isPlaying).toBe(true);
+    });
+
     // Regression: BUGS.md "Normal Sax" — multiple filters exposing the SAME
     // param names (cutoff/resonance). These edits used to be skipped by the
     // instant path (only uniquely-exposed names were addressable) and fell
@@ -331,5 +374,58 @@ describe('useWasmAudioEngine — live edits while playing', () => {
         expect(setParamCalls).toHaveLength(1);
         expect(new TextDecoder().decode(setParamCalls[0].nameBytes)).toBe('formant::cutoff');
         expect(setParamCalls[0].value).toBe(2200);
+    });
+});
+
+describe('useWasmAudioEngine — stop→play stale-swap race (F-B09b-6)', () => {
+    it('a rebuild that resolves AFTER Stop→Play never swaps its stale module into the new session\'s worklet', async () => {
+        vi.useFakeTimers();
+
+        // --- Session 1: play, then edit so a rebuild starts... slowly. ---
+        const { result, rerender } = renderHook(
+            ({ n }: { n: Node[] }) =>
+                useWasmAudioEngine(n, [] as Edge[], false, 120, [], noopStep, 16, identityScale),
+            { initialProps: { n: [makeInstrument(440)] } }
+        );
+        await act(async () => { await result.current.handlePlay(); });
+        expect(createdWorklets).toHaveLength(1);
+        expect(buildWasmPreview).toHaveBeenCalledTimes(1);
+
+        // Park the rebuild triggered by the next edit. Its bytes are
+        // distinguishable so a leak is provable.
+        const staleBytes = new ArrayBuffer(64);
+        let resolveStaleRebuild!: (b: ArrayBuffer) => void;
+        buildWasmPreview.mockImplementationOnce(
+            () => new Promise<ArrayBuffer>((res) => { resolveStaleRebuild = res; })
+        );
+        await act(async () => { rerender({ n: [makeInstrument(220)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+        expect(buildWasmPreview).toHaveBeenCalledTimes(2); // stale rebuild in flight
+
+        // --- Stop, then immediately Play again (session 2, new worklet). ---
+        act(() => { result.current.handleStop(); });
+        await act(async () => { await result.current.handlePlay(); });
+        expect(buildWasmPreview).toHaveBeenCalledTimes(3); // session 2's own build
+        expect(createdWorklets).toHaveLength(2);
+        const session2Port = createdWorklets[1].port;
+        session2Port.postMessage.mockClear();
+
+        // --- The promises resolve OUT of lineage order: the pre-stop rebuild
+        // completes only now, AFTER session 2 is already live. ---
+        await act(async () => { resolveStaleRebuild(staleBytes); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+        // The stale module must never reach the live graph. Before the
+        // rebuild-generation id, the only guard was `workletNode.current`
+        // being non-null — which session 2's worklet SATISFIES, so the
+        // pre-stop graph's bytes were hot-swapped into the new session and
+        // the user briefly heard a patch that was no longer on screen.
+        const swaps = session2Port.postMessage.mock.calls
+            .map((c) => c[0]).filter((m: { type: string }) => m.type === 'swap');
+        expect(swaps).toHaveLength(0);
+
+        // And the stale completion must not poison session 2's health flags.
+        expect(result.current.previewStale).toBeNull();
+        expect(result.current.isPlaying).toBe(true);
     });
 });

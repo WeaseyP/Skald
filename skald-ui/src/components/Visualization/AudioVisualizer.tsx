@@ -30,10 +30,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             return;
         }
 
-        // Data Arrays
-        const bufferLength = analyser.frequencyBinCount; // 1024 if fftSize is 2048
-        const dataArrayTime = new Uint8Array(bufferLength);
-        const dataArrayFreq = new Uint8Array(bufferLength);
+        // Data Arrays. These are NOT the same size (F-B08-9): the time-domain
+        // waveform has fftSize samples (2048), while the spectrum has
+        // frequencyBinCount bins (fftSize/2 = 1024). Sizing both from
+        // frequencyBinCount drew the oscilloscope from only the first HALF of
+        // the analysis window — half the samples it should show.
+        const timeLength = analyser.fftSize;
+        const freqLength = analyser.frequencyBinCount;
+        const dataArrayTime = new Uint8Array(timeLength);
+        const dataArrayFreq = new Uint8Array(freqLength);
 
         const render = () => {
             // Get Data
@@ -46,15 +51,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
             // Draw Spectrum
             if (showSpectrum) {
-                const barWidth = (width / bufferLength) * 2.5;
+                const barWidth = (width / freqLength) * 2.5;
                 let x = 0;
 
-                for (let i = 0; i < bufferLength; i++) {
+                for (let i = 0; i < freqLength; i++) {
                     const barHeight = dataArrayFreq[i] / 255 * height;
 
                     // Gradient Color based on frequency/amplitude
-                    const r = barHeight + (25 * (i / bufferLength));
-                    const g = 250 * (i / bufferLength);
+                    const r = barHeight + (25 * (i / freqLength));
+                    const g = 250 * (i / freqLength);
                     const b = 50;
 
                     ctx.fillStyle = `rgb(${r},${g},${b})`;
@@ -71,10 +76,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
                 ctx.strokeStyle = '#00ffcc'; // Cyan
                 ctx.beginPath();
 
-                const sliceWidth = width * 1.0 / bufferLength;
+                const sliceWidth = width * 1.0 / timeLength;
                 let x = 0;
 
-                for (let i = 0; i < bufferLength; i++) {
+                for (let i = 0; i < timeLength; i++) {
                     const v = dataArrayTime[i] / 128.0;
                     const y = v * height / 2;
 

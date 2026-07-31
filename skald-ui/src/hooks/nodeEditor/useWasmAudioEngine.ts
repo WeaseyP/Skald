@@ -70,6 +70,15 @@ export const useWasmAudioEngine = (
     const buildInFlight = useRef(false);
     const rebuildQueued = useRef(false);
 
+    // Monotonic rebuild-lineage id, bumped on every Stop and Play. An async
+    // rebuild captures it when it starts and its completion is DROPPED if the
+    // id has moved on. Without this, a rebuild kicked off before Stop could
+    // resolve after the next Play and hot-swap the older graph's module into
+    // the new session's worklet — the `workletNode.current` null-check alone
+    // is true precisely when a NEW worklet exists, i.e. the failure case
+    // (stop→play stale-swap race, F-B09b-6).
+    const rebuildGeneration = useRef(0);
+
     // The asset whose step clock drives the UI playhead: first instrument
     // with a non-muted, non-empty track (mirrors the backend's Music Layer
     // detection). -1 keeps the playhead still when nothing sequences.
@@ -106,6 +115,9 @@ export const useWasmAudioEngine = (
 
     const handleStop = useCallback(() => {
         logger.info('WasmAudioEngine', 'Stop requested');
+        // Invalidate any rebuild still in flight: its completion must never
+        // reach a worklet created by a LATER Play (stale-swap race).
+        rebuildGeneration.current++;
         if (rebuildTimer.current) {
             clearTimeout(rebuildTimer.current);
             rebuildTimer.current = null;
@@ -141,6 +153,8 @@ export const useWasmAudioEngine = (
         logger.info('WasmAudioEngine', 'Play requested');
         if (isPlaying || startInFlight.current) return;
         startInFlight.current = true;
+        // New session: any rebuild completion from before this Play is stale.
+        rebuildGeneration.current++;
         setPreviewError(null);
         setPreviewStale(null);
         try {
@@ -178,6 +192,17 @@ export const useWasmAudioEngine = (
                 else if (m.type === 'error') {
                     logger.error('WasmAudioEngine', 'Worklet error', m.message);
                     setPreviewError(String(m.message));
+                }
+                // A set-param the running module did NOT apply. Audio keeps
+                // playing — with the OLD value — so this is previewStale's
+                // exact meaning (what you hear is not the graph on screen),
+                // not previewError's (nothing is sounding). Before this was
+                // surfaced, a stale codegen build made every exposed-param
+                // knob an undetected no-op (SKB-001 / F-C4-2).
+                else if (m.type === 'param-dropped') {
+                    const message = `Live edit "${m.key}" was not applied — ${m.reason}. The preview is still playing the previous value.`;
+                    logger.error('WasmAudioEngine', 'Live param edit dropped', message);
+                    setPreviewStale(message);
                 }
             };
             // Structured-deserialization failures on messages FROM the worklet
@@ -243,17 +268,24 @@ export const useWasmAudioEngine = (
                 const prevSn = prevSubnodes.get(sn.id);
                 if (!prevSn || prevSn.data === sn.data) continue;
                 for (const name of (sn.data?.exposedParameters ?? []) as string[]) {
-                    // Keys past the shim's name-buffer limit can't be applied
-                    // live; topologySignature leaves them unmasked so they
-                    // take the rebuild path instead of silently no-oping.
-                    if (!canApplyParamLive(sn.id, name)) continue;
-                    const value = Number(sn.data?.[name]);
+                    // Keys past the shim's name-buffer limit — and values
+                    // skald_set_param's f32 can't carry (non-number,
+                    // non-finite, oversize) — can't be applied live;
+                    // topologySignature leaves them unmasked so they take the
+                    // rebuild path instead of silently no-oping.
+                    const value = sn.data?.[name];
+                    if (!canApplyParamLive(sn.id, name, value)) continue;
                     const prevValue = Number(prevSn.data?.[name]);
-                    if (Number.isFinite(value) && value !== prevValue) {
+                    if (value !== prevValue) {
                         const key = liveParamKey(sn.id, name);
                         port.postMessage({
                             type: 'set-param',
                             asset: assetIdx,
+                            // key rides along so the worklet can NAME the
+                            // param in its param-dropped report without
+                            // needing TextDecoder (not guaranteed in
+                            // AudioWorkletGlobalScope).
+                            key,
                             nameBytes: new TextEncoder().encode(key),
                             value,
                         });
@@ -286,9 +318,20 @@ export const useWasmAudioEngine = (
                 return;
             }
             buildInFlight.current = true;
+            // Stamp the rebuild with the CURRENT lineage id. If Stop (or
+            // Stop→Play) happens during the await, the id moves on and this
+            // completion is dropped: the workletNode null-check alone cannot
+            // catch a rebuild that resolves after a NEW worklet exists, and
+            // swapping there would put the pre-stop graph's module into the
+            // new session's live graph (F-B09b-6).
+            const generation = rebuildGeneration.current;
             try {
                 const { bytes, signature, stepAsset } = await buildModuleRef.current();
                 if (!workletNode.current) return; // stopped while building
+                if (generation !== rebuildGeneration.current) {
+                    logger.info('WasmAudioEngine', 'Dropped stale rebuild (playback restarted while it was compiling)');
+                    return;
+                }
                 // Raw bytes, transferred: a compiled WebAssembly.Module here is
                 // silently dropped by the port and the edit never lands.
                 workletNode.current.port.postMessage({ type: 'swap', bytes, stepAsset }, [bytes]);
@@ -300,10 +343,13 @@ export const useWasmAudioEngine = (
                 // half-wired graph) are expected to fail codegen sometimes.
                 // But SAY so — silently playing the old DSP while the screen
                 // shows the new graph is the one way preview and export can
-                // still disagree.
-                const message = cleanIpcError(e);
-                logger.error('WasmAudioEngine', 'Preview rebuild failed; keeping last module', message);
-                setPreviewStale(message);
+                // still disagree. (Unless the rebuild itself is stale: a
+                // pre-stop build failing must not flag the NEW session.)
+                if (generation === rebuildGeneration.current) {
+                    const message = cleanIpcError(e);
+                    logger.error('WasmAudioEngine', 'Preview rebuild failed; keeping last module', message);
+                    setPreviewStale(message);
+                }
             } finally {
                 buildInFlight.current = false;
                 if (rebuildQueued.current) {
