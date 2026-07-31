@@ -9,6 +9,7 @@
 import { useCallback } from 'react';
 import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import { SequencerTrack } from '../../definitions/types';
+import { ImportedGraph, layOutImportBatch } from '../../utils/importLayout';
 
 // Song-level settings that live outside the graph/tracks but shape how the
 // project sounds and exports. They used to be dropped from saves entirely:
@@ -135,107 +136,71 @@ export const useFileIO = (
         setFuture([]);
     }, [setNodes, setEdges, setHistory, setFuture, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
 
+    // Import Patch merges one or more saved patches into the current graph.
+    // The dialog is a multi-selection, so picking a whole drum kit is one trip
+    // rather than four; layout and id remapping live in layOutImportBatch.
     const handleImportGraph = useCallback(async () => {
         if (!reactFlowInstance) return;
-        const result = await window.electron.loadGraph().catch((e) => ({ content: null, error: String(e) }));
-        if (result?.error) {
-            notifyFileStatus({ kind: 'error', message: `Import failed — could not read the file: ${result.error}` });
-            return;
-        }
-        if (!result?.content) return; // canceled
-
-        const { flow, error } = parseSaveFile(result.content);
-        if (error) {
-            notifyFileStatus({ kind: 'error', message: `Import failed — ${error}. Your current graph is unchanged.` });
-            return;
-        }
-
-        const importedNodes = flow.nodes as Node[];
-        const importedEdges = flow.edges as Edge[] || [];
-        const importedTracks = flow.sequencerTracks as SequencerTrack[] || [];
-
-        // 1. Calculate boundaries of imported nodes
-        let impMinX = Infinity, impMaxX = -Infinity;
-        let impMinY = Infinity, impMaxY = -Infinity;
-
-        importedNodes.forEach(n => {
-            if (n.position.x < impMinX) impMinX = n.position.x;
-            if (n.position.x > impMaxX) impMaxX = n.position.x;
-            if (n.position.y < impMinY) impMinY = n.position.y;
-            if (n.position.y > impMaxY) impMaxY = n.position.y;
-        });
-
-        const impWidth = impMaxX - impMinX;
-        const impHeight = impMaxY - impMinY;
-        const impCenterX = impMinX + impWidth / 2;
-        const impCenterY = impMinY + impHeight / 2;
-
-        // 2. Calculate Viewport Center in Graph Coordinates
-        const { x: vpX, y: vpY, zoom } = reactFlowInstance.getViewport();
-
-        // Canvas dimensions (Window - Sidebars)
-        const canvasWidth = window.innerWidth - 550; // Sidebars (200 + 350)
-        const canvasHeight = window.innerHeight - 300; // Estimate Sequencer height
-
-        const targetCenterX = (-vpX + canvasWidth / 2) / zoom;
-        const targetCenterY = (-vpY + canvasHeight / 2) / zoom;
-
-        // 3. Remap IDs to avoid collisions & Reposition
-        const idMap = new Map<string, string>();
-        const timestamp = Date.now();
-
-        const remappedNodes = importedNodes.map((node, index) => {
-            const newId = `${timestamp}-${index}`; // Use timestamp-index for uniqueness
-            idMap.set(node.id, newId);
-
-            // Calculate new position relative to center
-            const offsetX = node.position.x - impCenterX;
-            const offsetY = node.position.y - impCenterY;
-
-            return {
-                ...node,
-                id: newId,
-                position: {
-                    x: targetCenterX + offsetX,
-                    y: targetCenterY + offsetY
-                },
-                selected: true, // Auto-select imported nodes
-                data: {
-                    ...node.data,
-                    label: node.data.label // Keep label
-                }
-            };
-        });
-
-        // Only keep edges whose BOTH endpoints were imported — falling back
-        // to the original id left dangling edges pointing at nodes that
-        // don't exist in this graph. Handles + index keep ids unique for
-        // multi-port targets.
-        const remappedEdges = importedEdges
-            .filter(edge => idMap.has(edge.source) && idMap.has(edge.target))
-            .map((edge, index) => ({
-                ...edge,
-                id: `e${idMap.get(edge.source)}${edge.sourceHandle ?? ''}-${idMap.get(edge.target)}${edge.targetHandle ?? ''}-${timestamp}-${index}`,
-                source: idMap.get(edge.source)!,
-                target: idMap.get(edge.target)!,
-                selected: true
+        const result = await window.electron
+            .importPatches()
+            .catch((e: unknown) => ({
+                files: [] as { name: string; content: string }[],
+                skipped: [{ name: 'selection', error: String(e) }],
             }));
 
-        // 3. Remap Sequencer Tracks
-        const remappedTracks = importedTracks.map(track => ({
-            ...track,
-            id: `${timestamp}-${track.id}`,
-            targetNodeId: idMap.get(track.targetNodeId) || track.targetNodeId
-        }));
+        const files = result?.files ?? [];
+        const skipped = [...(result?.skipped ?? [])];
+        if (files.length === 0 && skipped.length === 0) return; // canceled
 
-        // 4. Update State
-        // Deselect existing
-        setNodes(nds => nds.map(n => ({ ...n, selected: false })).concat(remappedNodes));
-        setEdges(eds => eds.concat(remappedEdges));
+        // Parse everything before touching state: a bad file in the selection
+        // must not leave the canvas half-imported.
+        const graphs: ImportedGraph[] = [];
+        for (const file of files) {
+            const { flow, error } = parseSaveFile(file.content);
+            if (error || !flow) {
+                skipped.push({ name: file.name, error: error ?? 'unreadable' });
+                continue;
+            }
+            graphs.push({
+                name: file.name,
+                nodes: flow.nodes as Node[],
+                edges: (flow.edges as Edge[]) || [],
+                tracks: (flow.sequencerTracks as SequencerTrack[]) || [],
+            });
+        }
 
-        // Merge tracks
-        loadSequencerTracks([...sequencerTracks, ...remappedTracks]);
+        const skippedNote = skipped.length
+            ? ` Skipped ${skipped.map((s) => `${s.name} (${s.error})`).join(', ')}.`
+            : '';
 
+        if (graphs.length === 0) {
+            notifyFileStatus({
+                kind: 'error',
+                message: `Import failed — nothing importable in the selection.${skippedNote} Your current graph is unchanged.`,
+            });
+            return;
+        }
+
+        // Viewport centre in graph coordinates — where the batch gets dropped.
+        const { x: vpX, y: vpY, zoom } = reactFlowInstance.getViewport();
+        const canvasWidth = window.innerWidth - 550;  // Sidebars (200 + 350)
+        const canvasHeight = window.innerHeight - 300; // Estimate sequencer height
+        const center = {
+            x: (-vpX + canvasWidth / 2) / zoom,
+            y: (-vpY + canvasHeight / 2) / zoom,
+        };
+
+        const placed = layOutImportBatch(graphs, center, Date.now());
+
+        setNodes(nds => nds.map((n): Node => ({ ...n, selected: false })).concat(placed.nodes));
+        setEdges(eds => eds.concat(placed.edges));
+        loadSequencerTracks([...sequencerTracks, ...placed.tracks]);
+
+        const patchWord = graphs.length === 1 ? 'patch' : 'patches';
+        notifyFileStatus({
+            kind: skipped.length ? 'error' : 'success',
+            message: `Imported ${graphs.length} ${patchWord} (${placed.nodes.length} nodes, ${placed.tracks.length} tracks).${skippedNote}`,
+        });
     }, [reactFlowInstance, setNodes, setEdges, loadSequencerTracks, sequencerTracks, notifyFileStatus]);
 
     return { handleSave, handleLoad, handleImportGraph };

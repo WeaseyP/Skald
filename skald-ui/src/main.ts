@@ -5,6 +5,12 @@ import fs from 'node:fs';
 import { spawn, spawnSync } from 'child_process';
 import started from 'electron-squirrel-startup';
 import { assertCodegenTargetSafe } from './main/codegenGuards';
+import {
+  DialogPathEnv,
+  importDialogDefaultPath,
+  openDialogDefaultPath,
+  saveDialogDefaultPath,
+} from './main/dialogDefaults';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -288,6 +294,18 @@ ipcMain.handle('select-output-path', async () => {
 });
 
 
+// Load / Save / Import all open on the examples folder, so the patches every
+// manual chapter's "Try it" section references are one click away instead of
+// wherever the OS last left the picker. See src/main/dialogDefaults.ts.
+const dialogPathEnv = (): DialogPathEnv => ({
+  appPath: app.getAppPath(),
+  resourcesPath: process.resourcesPath,
+  isPackaged: app.isPackaged,
+  documentsPath: app.getPath('documents'),
+  envOverride: process.env.SKALD_EXAMPLES_DIR,
+  importOverride: process.env.SKALD_IMPORT_DIR,
+});
+
 // Handler for saving the graph. Returns an explicit result: the renderer
 // used to fire-and-forget, so a full disk / locked file / permission error
 // left the user believing their song was saved when nothing was written.
@@ -295,7 +313,7 @@ ipcMain.handle('save-graph', async (_, graphJson: string): Promise<{ saved: bool
   const { filePath } = await dialog.showSaveDialog({
     title: 'Save Skald Graph',
     buttonLabel: 'Save',
-    defaultPath: `skald-graph-${Date.now()}.json`,
+    defaultPath: saveDialogDefaultPath(`skald-graph-${Date.now()}.json`, dialogPathEnv()),
     filters: [{ name: 'Skald Files', extensions: ['json'] }],
   });
 
@@ -317,6 +335,7 @@ ipcMain.handle('load-graph', async (): Promise<{ content: string | null; error?:
     title: 'Load Skald Graph',
     buttonLabel: 'Load',
     properties: ['openFile'],
+    defaultPath: openDialogDefaultPath(dialogPathEnv()),
     filters: [{ name: 'Skald Files', extensions: ['json'] }],
   });
 
@@ -329,4 +348,35 @@ ipcMain.handle('load-graph', async (): Promise<{ content: string | null; error?:
     console.error(`[Skald] Failed to read graph from ${filePaths[0]}:`, err);
     return { content: null, error: err instanceof Error ? err.message : String(err) };
   }
+});
+
+// Import Patch. Separate from load-graph on two counts: it opens in the patch
+// kit rather than the top of examples/, and it takes a multi-selection, so a
+// whole drum kit lands on the canvas in one trip through the dialog.
+//
+// An unreadable file in the selection is reported per-file rather than failing
+// the batch — the renderer merges what it got and names what it skipped.
+ipcMain.handle('import-patches', async (): Promise<{
+  files: { name: string; content: string }[];
+  skipped: { name: string; error: string }[];
+}> => {
+  const { filePaths } = await dialog.showOpenDialog({
+    title: 'Import Skald Patches',
+    buttonLabel: 'Import',
+    properties: ['openFile', 'multiSelections'],
+    defaultPath: importDialogDefaultPath(dialogPathEnv()),
+    filters: [{ name: 'Skald Files', extensions: ['json'] }],
+  });
+
+  const files: { name: string; content: string }[] = [];
+  const skipped: { name: string; error: string }[] = [];
+  for (const filePath of filePaths ?? []) {
+    try {
+      files.push({ name: path.basename(filePath), content: fs.readFileSync(filePath, 'utf-8') });
+    } catch (err) {
+      console.error(`[Skald] Failed to read patch from ${filePath}:`, err);
+      skipped.push({ name: path.basename(filePath), error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { files, skipped };
 });

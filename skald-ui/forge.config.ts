@@ -11,7 +11,13 @@ const config: ForgeConfig = {
     // The codegen CLI must live OUTSIDE app.asar: child_process.spawn cannot
     // execute a binary from the virtual asar path. This places it under
     // process.resourcesPath in packaged builds (see codegenExePath in main.ts).
-    extraResource: ['./skald_codegen.exe'],
+    //
+    // The example patches ship alongside it (as resources/examples) because
+    // the Load / Save / Import dialogs open on that folder and every manual
+    // chapter's "Try it" section names a patch inside it — a packaged build
+    // without them sends the reader looking for files that were never
+    // installed. See src/main/dialogDefaults.ts.
+    extraResource: ['./skald_codegen.exe', '../examples'],
   },
   rebuildConfig: {},
   makers: [

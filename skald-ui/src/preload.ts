@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('electron', {
     loadGraph: (): Promise<{ content: string | null; error?: string }> =>
         ipcRenderer.invoke('load-graph'),
 
+    // Import Patch: opens in the patch kit and accepts a multi-selection.
+    importPatches: (): Promise<{
+        files: { name: string; content: string }[];
+        skipped: { name: string; error: string }[];
+    }> => ipcRenderer.invoke('import-patches'),
+
     selectOutputPath: (): Promise<string | null> =>
         ipcRenderer.invoke('select-output-path'),
 

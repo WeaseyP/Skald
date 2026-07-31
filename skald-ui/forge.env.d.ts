@@ -6,6 +6,12 @@ export interface IElectronAPI {
     // failures (fire-and-forget saves lied when the disk write failed).
     saveGraph: (graphJson: string) => Promise<{ saved: boolean; path?: string; error?: string }>,
     loadGraph: () => Promise<{ content: string | null; error?: string }>,
+    // Import Patch: multi-selection, opened in the patch kit. Unreadable files
+    // come back in `skipped` rather than failing the whole batch.
+    importPatches: () => Promise<{
+        files: { name: string; content: string }[];
+        skipped: { name: string; error: string }[];
+    }>,
     selectOutputPath: () => Promise<string | null>,
     buildWasmPreview: (projectJson: string) => Promise<ArrayBuffer>,
 }
