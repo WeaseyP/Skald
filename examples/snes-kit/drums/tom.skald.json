@@ -1,0 +1,129 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-tom",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Tom",
+        "label": "SNES Tom",
+        "volume": 0.6,
+        "voiceCount": 3,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "tom-osc",
+              "type": "oscillator",
+              "position": { "x": -520, "y": -60 },
+              "data": {
+                "label": "Skin",
+                "frequency": 120,
+                "waveform": "Triangle",
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "tom-amp",
+              "type": "adsr",
+              "position": { "x": -260, "y": -60 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.001,
+                "decay": 0.28,
+                "sustain": 0,
+                "release": 0.06,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "tom-lp",
+              "type": "filter",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Dampen",
+                "type": "Lowpass",
+                "cutoff": 2600,
+                "resonance": 0.9,
+                "exposedParameters": ["cutoff"]
+              }
+            },
+            {
+              "id": "tom-output",
+              "type": "output",
+              "position": { "x": 260, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "tom-pitch",
+              "type": "adsr",
+              "position": { "x": -780, "y": 200 },
+              "data": {
+                "label": "Pitch Env",
+                "attack": 0.001,
+                "decay": 0.08,
+                "sustain": 0,
+                "release": 0.01,
+                "depth": 1,
+                "velocitySensitivity": 0.3,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "tom-pitch-map",
+              "type": "mapper",
+              "position": { "x": -520, "y": 200 },
+              "data": {
+                "label": "Drop (octaves)",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 0.8,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "tom-osc", "from_port": "output", "to_node": "tom-amp", "to_port": "input" },
+            { "from_node": "tom-amp", "from_port": "output", "to_node": "tom-lp", "to_port": "input" },
+            { "from_node": "tom-lp", "from_port": "output", "to_node": "tom-output", "to_port": "input" },
+            { "from_node": "tom-pitch", "from_port": "output", "to_node": "tom-pitch-map", "to_port": "input" },
+            { "from_node": "tom-pitch-map", "from_port": "output", "to_node": "tom-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 560, "y": 220, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-tom",
+      "targetNodeId": "instrument-snes-tom",
+      "name": "SNES Tom",
+      "color": "#B7791F",
+      "steps": 16,
+      "notes": [
+        { "step": 8, "note": 50, "velocity": 0.85, "duration": 1 },
+        { "step": 10, "note": 48, "velocity": 0.8, "duration": 1 },
+        { "step": 12, "note": 45, "velocity": 0.9, "duration": 1 },
+        { "step": 14, "note": 43, "velocity": 0.95, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

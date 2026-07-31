@@ -1,0 +1,147 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-slap-bass",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Slap Bass",
+        "label": "SNES Slap Bass",
+        "volume": 0.8,
+        "voiceCount": 1,
+        "voiceStealing": "oldest",
+        "glide": 0.02,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "bass-osc",
+              "type": "oscillator",
+              "position": { "x": -520, "y": -60 },
+              "data": {
+                "label": "Body",
+                "frequency": 110,
+                "waveform": "Sawtooth",
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "bass-amp",
+              "type": "adsr",
+              "position": { "x": -260, "y": -60 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.002,
+                "decay": 0.18,
+                "sustain": 0.35,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay", "sustain"]
+              }
+            },
+            {
+              "id": "bass-filter",
+              "type": "filter",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Slap Filter",
+                "type": "Lowpass",
+                "cutoff": 420,
+                "resonance": 3.5,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "bass-grit",
+              "type": "distortion",
+              "position": { "x": 260, "y": -60 },
+              "data": {
+                "label": "Grit",
+                "drive": 8,
+                "shape": "soft",
+                "tone": 2600,
+                "mix": 0.3,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "bass-output",
+              "type": "output",
+              "position": { "x": 520, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "bass-fenv",
+              "type": "adsr",
+              "position": { "x": -520, "y": 220 },
+              "data": {
+                "label": "Slap Env",
+                "attack": 0.001,
+                "decay": 0.09,
+                "sustain": 0.1,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "bass-fmap",
+              "type": "mapper",
+              "position": { "x": -260, "y": 220 },
+              "data": {
+                "label": "Slap Depth (Hz)",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 200,
+                "outMax": 3600,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "bass-osc", "from_port": "output", "to_node": "bass-amp", "to_port": "input" },
+            { "from_node": "bass-amp", "from_port": "output", "to_node": "bass-filter", "to_port": "input" },
+            { "from_node": "bass-filter", "from_port": "output", "to_node": "bass-grit", "to_port": "input" },
+            { "from_node": "bass-grit", "from_port": "output", "to_node": "bass-output", "to_port": "input" },
+            { "from_node": "bass-fenv", "from_port": "output", "to_node": "bass-fmap", "to_port": "input" },
+            { "from_node": "bass-fmap", "from_port": "output", "to_node": "bass-filter", "to_port": "input_cutoff" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 420, "y": 200, "zoom": 0.85 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-slap-bass",
+      "targetNodeId": "instrument-snes-slap-bass",
+      "name": "SNES Slap Bass",
+      "color": "#68D391",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 33, "velocity": 1, "duration": 2 },
+        { "step": 2, "note": 33, "velocity": 0.75, "duration": 1 },
+        { "step": 3, "note": 45, "velocity": 0.85, "duration": 1 },
+        { "step": 6, "note": 33, "velocity": 0.8, "duration": 1 },
+        { "step": 8, "note": 33, "velocity": 0.95, "duration": 2 },
+        { "step": 11, "note": 40, "velocity": 0.8, "duration": 1 },
+        { "step": 12, "note": 45, "velocity": 0.85, "duration": 1 },
+        { "step": 14, "note": 43, "velocity": 0.8, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

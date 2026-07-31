@@ -1,0 +1,154 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-snare",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Snare",
+        "label": "SNES Snare",
+        "volume": 0.7,
+        "voiceCount": 3,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "snare-noise",
+              "type": "noise",
+              "position": { "x": -780, "y": -180 },
+              "data": {
+                "label": "Rattle",
+                "type": "White",
+                "amplitude": 0.8,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "snare-band",
+              "type": "filter",
+              "position": { "x": -520, "y": -180 },
+              "data": {
+                "label": "Rattle Band",
+                "type": "Bandpass",
+                "cutoff": 2200,
+                "resonance": 1.8,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "snare-noise-env",
+              "type": "adsr",
+              "position": { "x": -260, "y": -180 },
+              "data": {
+                "label": "Rattle Env",
+                "attack": 0.001,
+                "decay": 0.16,
+                "sustain": 0,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "snare-tone-osc",
+              "type": "oscillator",
+              "position": { "x": -780, "y": 80 },
+              "data": {
+                "label": "Shell",
+                "frequency": 190,
+                "waveform": "Triangle",
+                "amplitude": 0.35,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "snare-tone-env",
+              "type": "adsr",
+              "position": { "x": -520, "y": 80 },
+              "data": {
+                "label": "Shell Env",
+                "attack": 0.001,
+                "decay": 0.09,
+                "sustain": 0,
+                "release": 0.03,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "snare-mix",
+              "type": "mixer",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Snare Mix",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.85, "pan": 0 },
+                  { "id": 2, "level": 0.6, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "snare-room",
+              "type": "reverb",
+              "position": { "x": 260, "y": -60 },
+              "data": {
+                "label": "SNES Room",
+                "decay": 1.1,
+                "preDelay": 0.008,
+                "mix": 0.22,
+                "exposedParameters": ["decay", "mix"]
+              }
+            },
+            {
+              "id": "snare-output",
+              "type": "output",
+              "position": { "x": 520, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "snare-noise", "from_port": "output", "to_node": "snare-band", "to_port": "input" },
+            { "from_node": "snare-band", "from_port": "output", "to_node": "snare-noise-env", "to_port": "input" },
+            { "from_node": "snare-noise-env", "from_port": "output", "to_node": "snare-mix", "to_port": "input_1" },
+            { "from_node": "snare-tone-osc", "from_port": "output", "to_node": "snare-tone-env", "to_port": "input" },
+            { "from_node": "snare-tone-env", "from_port": "output", "to_node": "snare-mix", "to_port": "input_2" },
+            { "from_node": "snare-mix", "from_port": "output", "to_node": "snare-room", "to_port": "input" },
+            { "from_node": "snare-room", "from_port": "output", "to_node": "snare-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 560, "y": 220, "zoom": 0.8 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-snare",
+      "targetNodeId": "instrument-snes-snare",
+      "name": "SNES Snare",
+      "color": "#E2E8F0",
+      "steps": 16,
+      "notes": [
+        { "step": 4, "note": 38, "velocity": 1, "duration": 1 },
+        { "step": 11, "note": 38, "velocity": 0.45, "duration": 1 },
+        { "step": 12, "note": 38, "velocity": 0.95, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

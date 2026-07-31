@@ -1,0 +1,130 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-kick",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Kick",
+        "label": "SNES Kick",
+        "volume": 0.9,
+        "voiceCount": 2,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "kick-osc",
+              "type": "oscillator",
+              "position": { "x": -520, "y": -60 },
+              "data": {
+                "label": "Body",
+                "frequency": 52,
+                "waveform": "Sine",
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "kick-amp",
+              "type": "adsr",
+              "position": { "x": -260, "y": -60 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.001,
+                "decay": 0.22,
+                "sustain": 0,
+                "release": 0.04,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "kick-punch",
+              "type": "distortion",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Punch",
+                "drive": 14,
+                "shape": "soft",
+                "tone": 2400,
+                "mix": 0.4,
+                "exposedParameters": ["drive", "mix"]
+              }
+            },
+            {
+              "id": "kick-output",
+              "type": "output",
+              "position": { "x": 260, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "kick-pitch",
+              "type": "adsr",
+              "position": { "x": -780, "y": 200 },
+              "data": {
+                "label": "Pitch Env",
+                "attack": 0.001,
+                "decay": 0.05,
+                "sustain": 0,
+                "release": 0.01,
+                "depth": 1,
+                "velocitySensitivity": 0.3,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "kick-pitch-map",
+              "type": "mapper",
+              "position": { "x": -520, "y": 200 },
+              "data": {
+                "label": "Drop (octaves)",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2.2,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "kick-osc", "from_port": "output", "to_node": "kick-amp", "to_port": "input" },
+            { "from_node": "kick-amp", "from_port": "output", "to_node": "kick-punch", "to_port": "input" },
+            { "from_node": "kick-punch", "from_port": "output", "to_node": "kick-output", "to_port": "input" },
+            { "from_node": "kick-pitch", "from_port": "output", "to_node": "kick-pitch-map", "to_port": "input" },
+            { "from_node": "kick-pitch-map", "from_port": "output", "to_node": "kick-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 560, "y": 220, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-kick",
+      "targetNodeId": "instrument-snes-kick",
+      "name": "SNES Kick",
+      "color": "#A0AEC0",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 36, "velocity": 1, "duration": 1 },
+        { "step": 6, "note": 36, "velocity": 0.85, "duration": 1 },
+        { "step": 8, "note": 36, "velocity": 0.95, "duration": 1 },
+        { "step": 14, "note": 36, "velocity": 0.8, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

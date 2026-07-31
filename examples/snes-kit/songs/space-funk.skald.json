@@ -1,0 +1,2427 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-kick",
+      "type": "instrument",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "name": "SNES Kick",
+        "label": "SNES Kick",
+        "volume": 0.8,
+        "voiceCount": 2,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "kick-osc",
+              "type": "oscillator",
+              "position": {
+                "x": -520,
+                "y": -60
+              },
+              "data": {
+                "label": "Body",
+                "frequency": 52,
+                "waveform": "Sine",
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "kick-amp",
+              "type": "adsr",
+              "position": {
+                "x": -260,
+                "y": -60
+              },
+              "data": {
+                "label": "Amp",
+                "attack": 0.001,
+                "decay": 0.22,
+                "sustain": 0,
+                "release": 0.04,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "decay"
+                ]
+              }
+            },
+            {
+              "id": "kick-punch",
+              "type": "distortion",
+              "position": {
+                "x": 0,
+                "y": -60
+              },
+              "data": {
+                "label": "Punch",
+                "drive": 14,
+                "shape": "soft",
+                "tone": 2400,
+                "mix": 0.4,
+                "exposedParameters": [
+                  "drive",
+                  "mix"
+                ]
+              }
+            },
+            {
+              "id": "kick-output",
+              "type": "output",
+              "position": {
+                "x": 260,
+                "y": -60
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "kick-pitch",
+              "type": "adsr",
+              "position": {
+                "x": -780,
+                "y": 200
+              },
+              "data": {
+                "label": "Pitch Env",
+                "attack": 0.001,
+                "decay": 0.05,
+                "sustain": 0,
+                "release": 0.01,
+                "depth": 1,
+                "velocitySensitivity": 0.3,
+                "exposedParameters": [
+                  "decay"
+                ]
+              }
+            },
+            {
+              "id": "kick-pitch-map",
+              "type": "mapper",
+              "position": {
+                "x": -520,
+                "y": 200
+              },
+              "data": {
+                "label": "Drop (octaves)",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 0,
+                "outMax": 2.2,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "kick-osc",
+              "from_port": "output",
+              "to_node": "kick-amp",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-amp",
+              "from_port": "output",
+              "to_node": "kick-punch",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-punch",
+              "from_port": "output",
+              "to_node": "kick-output",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-pitch",
+              "from_port": "output",
+              "to_node": "kick-pitch-map",
+              "to_port": "input"
+            },
+            {
+              "from_node": "kick-pitch-map",
+              "from_port": "output",
+              "to_node": "kick-osc",
+              "to_port": "input_freq"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "instrument-snes-snare",
+      "type": "instrument",
+      "position": {
+        "x": 420,
+        "y": 0
+      },
+      "data": {
+        "name": "SNES Snare",
+        "label": "SNES Snare",
+        "volume": 0.55,
+        "voiceCount": 3,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "snare-noise",
+              "type": "noise",
+              "position": {
+                "x": -780,
+                "y": -180
+              },
+              "data": {
+                "label": "Rattle",
+                "type": "White",
+                "amplitude": 0.8,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "snare-band",
+              "type": "filter",
+              "position": {
+                "x": -520,
+                "y": -180
+              },
+              "data": {
+                "label": "Rattle Band",
+                "type": "Bandpass",
+                "cutoff": 2200,
+                "resonance": 1.8,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ]
+              }
+            },
+            {
+              "id": "snare-noise-env",
+              "type": "adsr",
+              "position": {
+                "x": -260,
+                "y": -180
+              },
+              "data": {
+                "label": "Rattle Env",
+                "attack": 0.001,
+                "decay": 0.16,
+                "sustain": 0,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": [
+                  "decay"
+                ]
+              }
+            },
+            {
+              "id": "snare-tone-osc",
+              "type": "oscillator",
+              "position": {
+                "x": -780,
+                "y": 80
+              },
+              "data": {
+                "label": "Shell",
+                "frequency": 190,
+                "waveform": "Triangle",
+                "amplitude": 0.35,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": true,
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "snare-tone-env",
+              "type": "adsr",
+              "position": {
+                "x": -520,
+                "y": 80
+              },
+              "data": {
+                "label": "Shell Env",
+                "attack": 0.001,
+                "decay": 0.09,
+                "sustain": 0,
+                "release": 0.03,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "decay"
+                ]
+              }
+            },
+            {
+              "id": "snare-mix",
+              "type": "mixer",
+              "position": {
+                "x": 0,
+                "y": -60
+              },
+              "data": {
+                "label": "Snare Mix",
+                "inputCount": 2,
+                "levels": [
+                  {
+                    "id": 1,
+                    "level": 0.85,
+                    "pan": 0
+                  },
+                  {
+                    "id": 2,
+                    "level": 0.6,
+                    "pan": 0
+                  }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "snare-room",
+              "type": "reverb",
+              "position": {
+                "x": 260,
+                "y": -60
+              },
+              "data": {
+                "label": "SNES Room",
+                "decay": 1.1,
+                "preDelay": 0.008,
+                "mix": 0.22,
+                "exposedParameters": [
+                  "decay",
+                  "mix"
+                ]
+              }
+            },
+            {
+              "id": "snare-output",
+              "type": "output",
+              "position": {
+                "x": 520,
+                "y": -60
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "snare-noise",
+              "from_port": "output",
+              "to_node": "snare-band",
+              "to_port": "input"
+            },
+            {
+              "from_node": "snare-band",
+              "from_port": "output",
+              "to_node": "snare-noise-env",
+              "to_port": "input"
+            },
+            {
+              "from_node": "snare-noise-env",
+              "from_port": "output",
+              "to_node": "snare-mix",
+              "to_port": "input_1"
+            },
+            {
+              "from_node": "snare-tone-osc",
+              "from_port": "output",
+              "to_node": "snare-tone-env",
+              "to_port": "input"
+            },
+            {
+              "from_node": "snare-tone-env",
+              "from_port": "output",
+              "to_node": "snare-mix",
+              "to_port": "input_2"
+            },
+            {
+              "from_node": "snare-mix",
+              "from_port": "output",
+              "to_node": "snare-room",
+              "to_port": "input"
+            },
+            {
+              "from_node": "snare-room",
+              "from_port": "output",
+              "to_node": "snare-output",
+              "to_port": "input"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "instrument-snes-hat",
+      "type": "instrument",
+      "position": {
+        "x": 0,
+        "y": 200
+      },
+      "data": {
+        "name": "SNES Hat",
+        "label": "SNES Hat",
+        "volume": 0.35,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "hat-noise",
+              "type": "noise",
+              "position": {
+                "x": -520,
+                "y": -60
+              },
+              "data": {
+                "label": "Sizzle",
+                "type": "White",
+                "amplitude": 0.7,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "hat-hp",
+              "type": "filter",
+              "position": {
+                "x": -260,
+                "y": -60
+              },
+              "data": {
+                "label": "Sizzle HP",
+                "type": "Highpass",
+                "cutoff": 7000,
+                "resonance": 1.2,
+                "exposedParameters": [
+                  "cutoff"
+                ]
+              }
+            },
+            {
+              "id": "hat-env",
+              "type": "adsr",
+              "position": {
+                "x": 0,
+                "y": -60
+              },
+              "data": {
+                "label": "Tick",
+                "attack": 0.001,
+                "decay": 0.045,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": [
+                  "decay"
+                ]
+              }
+            },
+            {
+              "id": "hat-output",
+              "type": "output",
+              "position": {
+                "x": 260,
+                "y": -60
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "hat-noise",
+              "from_port": "output",
+              "to_node": "hat-hp",
+              "to_port": "input"
+            },
+            {
+              "from_node": "hat-hp",
+              "from_port": "output",
+              "to_node": "hat-env",
+              "to_port": "input"
+            },
+            {
+              "from_node": "hat-env",
+              "from_port": "output",
+              "to_node": "hat-output",
+              "to_port": "input"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "instrument-snes-slap-bass",
+      "type": "instrument",
+      "position": {
+        "x": 420,
+        "y": 200
+      },
+      "data": {
+        "name": "SNES Slap Bass",
+        "label": "SNES Slap Bass",
+        "volume": 0.7,
+        "voiceCount": 1,
+        "voiceStealing": "oldest",
+        "glide": 0.02,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "bass-osc",
+              "type": "oscillator",
+              "position": {
+                "x": -520,
+                "y": -60
+              },
+              "data": {
+                "label": "Body",
+                "frequency": 110,
+                "waveform": "Sawtooth",
+                "amplitude": 0.6,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "bass-amp",
+              "type": "adsr",
+              "position": {
+                "x": -260,
+                "y": -60
+              },
+              "data": {
+                "label": "Amp",
+                "attack": 0.002,
+                "decay": 0.18,
+                "sustain": 0.35,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": [
+                  "decay",
+                  "sustain"
+                ]
+              }
+            },
+            {
+              "id": "bass-filter",
+              "type": "filter",
+              "position": {
+                "x": 0,
+                "y": -60
+              },
+              "data": {
+                "label": "Slap Filter",
+                "type": "Lowpass",
+                "cutoff": 420,
+                "resonance": 3.5,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ]
+              }
+            },
+            {
+              "id": "bass-grit",
+              "type": "distortion",
+              "position": {
+                "x": 260,
+                "y": -60
+              },
+              "data": {
+                "label": "Grit",
+                "drive": 8,
+                "shape": "soft",
+                "tone": 2600,
+                "mix": 0.3,
+                "exposedParameters": [
+                  "drive",
+                  "mix"
+                ]
+              }
+            },
+            {
+              "id": "bass-output",
+              "type": "output",
+              "position": {
+                "x": 520,
+                "y": -60
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "bass-fenv",
+              "type": "adsr",
+              "position": {
+                "x": -520,
+                "y": 220
+              },
+              "data": {
+                "label": "Slap Env",
+                "attack": 0.001,
+                "decay": 0.09,
+                "sustain": 0.1,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": [
+                  "decay"
+                ]
+              }
+            },
+            {
+              "id": "bass-fmap",
+              "type": "mapper",
+              "position": {
+                "x": -260,
+                "y": 220
+              },
+              "data": {
+                "label": "Slap Depth (Hz)",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 200,
+                "outMax": 3600,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "bass-osc",
+              "from_port": "output",
+              "to_node": "bass-amp",
+              "to_port": "input"
+            },
+            {
+              "from_node": "bass-amp",
+              "from_port": "output",
+              "to_node": "bass-filter",
+              "to_port": "input"
+            },
+            {
+              "from_node": "bass-filter",
+              "from_port": "output",
+              "to_node": "bass-grit",
+              "to_port": "input"
+            },
+            {
+              "from_node": "bass-grit",
+              "from_port": "output",
+              "to_node": "bass-output",
+              "to_port": "input"
+            },
+            {
+              "from_node": "bass-fenv",
+              "from_port": "output",
+              "to_node": "bass-fmap",
+              "to_port": "input"
+            },
+            {
+              "from_node": "bass-fmap",
+              "from_port": "output",
+              "to_node": "bass-filter",
+              "to_port": "input_cutoff"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "instrument-snes-space-pad",
+      "type": "instrument",
+      "position": {
+        "x": 0,
+        "y": 400
+      },
+      "data": {
+        "name": "SNES Space Pad",
+        "label": "SNES Space Pad",
+        "volume": 0.4,
+        "voiceCount": 8,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 6,
+        "detune": 22,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "pad-osc",
+              "type": "oscillator",
+              "position": {
+                "x": -520,
+                "y": -60
+              },
+              "data": {
+                "label": "Wide Saw",
+                "frequency": 220,
+                "waveform": "Sawtooth",
+                "amplitude": 0.35,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "pad-amp",
+              "type": "adsr",
+              "position": {
+                "x": -260,
+                "y": -60
+              },
+              "data": {
+                "label": "Swell",
+                "attack": 0.9,
+                "decay": 1.2,
+                "sustain": 0.7,
+                "release": 1.8,
+                "depth": 1,
+                "velocitySensitivity": 0.3,
+                "exposedParameters": [
+                  "attack",
+                  "release"
+                ]
+              }
+            },
+            {
+              "id": "pad-filter",
+              "type": "filter",
+              "position": {
+                "x": 0,
+                "y": -60
+              },
+              "data": {
+                "label": "Drift Filter",
+                "type": "Lowpass",
+                "cutoff": 900,
+                "resonance": 1.2,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ]
+              }
+            },
+            {
+              "id": "pad-space",
+              "type": "reverb",
+              "position": {
+                "x": 260,
+                "y": -60
+              },
+              "data": {
+                "label": "Deep Space",
+                "decay": 6,
+                "preDelay": 0.06,
+                "mix": 0.55,
+                "exposedParameters": [
+                  "decay",
+                  "mix"
+                ]
+              }
+            },
+            {
+              "id": "pad-output",
+              "type": "output",
+              "position": {
+                "x": 520,
+                "y": -60
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "pad-drift-lfo",
+              "type": "lfo",
+              "position": {
+                "x": -520,
+                "y": 220
+              },
+              "data": {
+                "label": "Slow Drift",
+                "waveform": "Sine",
+                "frequency": 0.12,
+                "amplitude": 1,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": [
+                  "frequency",
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "pad-drift-map",
+              "type": "mapper",
+              "position": {
+                "x": -260,
+                "y": 220
+              },
+              "data": {
+                "label": "Drift Depth (Hz)",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": -450,
+                "outMax": 450,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "pad-osc",
+              "from_port": "output",
+              "to_node": "pad-amp",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-amp",
+              "from_port": "output",
+              "to_node": "pad-filter",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-filter",
+              "from_port": "output",
+              "to_node": "pad-space",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-space",
+              "from_port": "output",
+              "to_node": "pad-output",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-drift-lfo",
+              "from_port": "output",
+              "to_node": "pad-drift-map",
+              "to_port": "input"
+            },
+            {
+              "from_node": "pad-drift-map",
+              "from_port": "output",
+              "to_node": "pad-filter",
+              "to_port": "input_cutoff"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "instrument-snes-starfield-arp",
+      "type": "instrument",
+      "position": {
+        "x": 420,
+        "y": 400
+      },
+      "data": {
+        "name": "SNES Starfield Arp",
+        "label": "SNES Starfield Arp",
+        "volume": 0.45,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "arp-osc",
+              "type": "oscillator",
+              "position": {
+                "x": -520,
+                "y": -60
+              },
+              "data": {
+                "label": "Glass",
+                "frequency": 440,
+                "waveform": "Triangle",
+                "amplitude": 0.45,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": [
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "arp-amp",
+              "type": "adsr",
+              "position": {
+                "x": -260,
+                "y": -60
+              },
+              "data": {
+                "label": "Ping",
+                "attack": 0.001,
+                "decay": 0.14,
+                "sustain": 0,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.7,
+                "exposedParameters": [
+                  "decay",
+                  "release"
+                ]
+              }
+            },
+            {
+              "id": "arp-filter",
+              "type": "filter",
+              "position": {
+                "x": 0,
+                "y": -60
+              },
+              "data": {
+                "label": "Sparkle Filter",
+                "type": "Lowpass",
+                "cutoff": 1200,
+                "resonance": 6,
+                "exposedParameters": [
+                  "cutoff",
+                  "resonance"
+                ]
+              }
+            },
+            {
+              "id": "arp-echo",
+              "type": "delay",
+              "position": {
+                "x": 260,
+                "y": -60
+              },
+              "data": {
+                "label": "Ping Echo",
+                "delayTime": 0.28,
+                "feedback": 0.5,
+                "mix": 0.4,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": [
+                  "feedback",
+                  "mix"
+                ]
+              }
+            },
+            {
+              "id": "arp-output",
+              "type": "output",
+              "position": {
+                "x": 520,
+                "y": -60
+              },
+              "data": {
+                "label": "Output",
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "arp-sh",
+              "type": "sampleHold",
+              "position": {
+                "x": -520,
+                "y": 220
+              },
+              "data": {
+                "label": "Random Steps",
+                "rate": 8,
+                "amplitude": 1,
+                "bpmSync": true,
+                "syncRate": "1/16",
+                "exposedParameters": [
+                  "rate",
+                  "amplitude"
+                ]
+              }
+            },
+            {
+              "id": "arp-sh-map",
+              "type": "mapper",
+              "position": {
+                "x": -260,
+                "y": 220
+              },
+              "data": {
+                "label": "Sparkle Depth (Hz)",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": -700,
+                "outMax": 1800,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            {
+              "from_node": "arp-osc",
+              "from_port": "output",
+              "to_node": "arp-amp",
+              "to_port": "input"
+            },
+            {
+              "from_node": "arp-amp",
+              "from_port": "output",
+              "to_node": "arp-filter",
+              "to_port": "input"
+            },
+            {
+              "from_node": "arp-filter",
+              "from_port": "output",
+              "to_node": "arp-echo",
+              "to_port": "input"
+            },
+            {
+              "from_node": "arp-echo",
+              "from_port": "output",
+              "to_node": "arp-output",
+              "to_port": "input"
+            },
+            {
+              "from_node": "arp-sh",
+              "from_port": "output",
+              "to_node": "arp-sh-map",
+              "to_port": "input"
+            },
+            {
+              "from_node": "arp-sh-map",
+              "from_port": "output",
+              "to_node": "arp-filter",
+              "to_port": "input_cutoff"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": {
+    "x": 60,
+    "y": 40,
+    "zoom": 0.6
+  },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-kick",
+      "targetNodeId": "instrument-snes-kick",
+      "name": "SNES Kick",
+      "color": "#A0AEC0",
+      "steps": 64,
+      "notes": [
+        {
+          "step": 0,
+          "note": 36,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 7,
+          "note": 36,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 10,
+          "note": 36,
+          "velocity": 0.9,
+          "duration": 1
+        },
+        {
+          "step": 14,
+          "note": 36,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 16,
+          "note": 36,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 23,
+          "note": 36,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 26,
+          "note": 36,
+          "velocity": 0.9,
+          "duration": 1
+        },
+        {
+          "step": 30,
+          "note": 36,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 32,
+          "note": 36,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 39,
+          "note": 36,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 42,
+          "note": 36,
+          "velocity": 0.9,
+          "duration": 1
+        },
+        {
+          "step": 46,
+          "note": 36,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 48,
+          "note": 36,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 55,
+          "note": 36,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 58,
+          "note": 36,
+          "velocity": 0.9,
+          "duration": 1
+        },
+        {
+          "step": 62,
+          "note": 36,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 63,
+          "note": 36,
+          "velocity": 0.65,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "track-snes-snare",
+      "targetNodeId": "instrument-snes-snare",
+      "name": "SNES Snare",
+      "color": "#E2E8F0",
+      "steps": 64,
+      "notes": [
+        {
+          "step": 4,
+          "note": 38,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 12,
+          "note": 38,
+          "velocity": 0.95,
+          "duration": 1
+        },
+        {
+          "step": 20,
+          "note": 38,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 22,
+          "note": 38,
+          "velocity": 0.35,
+          "duration": 1
+        },
+        {
+          "step": 27,
+          "note": 38,
+          "velocity": 0.4,
+          "duration": 1
+        },
+        {
+          "step": 28,
+          "note": 38,
+          "velocity": 0.95,
+          "duration": 1
+        },
+        {
+          "step": 36,
+          "note": 38,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 44,
+          "note": 38,
+          "velocity": 0.95,
+          "duration": 1
+        },
+        {
+          "step": 52,
+          "note": 38,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 54,
+          "note": 38,
+          "velocity": 0.35,
+          "duration": 1
+        },
+        {
+          "step": 59,
+          "note": 38,
+          "velocity": 0.4,
+          "duration": 1
+        },
+        {
+          "step": 60,
+          "note": 38,
+          "velocity": 0.95,
+          "duration": 1
+        },
+        {
+          "step": 61,
+          "note": 38,
+          "velocity": 0.6,
+          "duration": 1
+        },
+        {
+          "step": 62,
+          "note": 38,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 63,
+          "note": 38,
+          "velocity": 0.8,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "track-snes-hat",
+      "targetNodeId": "instrument-snes-hat",
+      "name": "SNES Hat",
+      "color": "#CBD5E0",
+      "steps": 64,
+      "notes": [
+        {
+          "step": 0,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 1,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 2,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 3,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 4,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 5,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 6,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 7,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 8,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 9,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 10,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 11,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 12,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 13,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 14,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 15,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 16,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 17,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 18,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 19,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 20,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 21,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 22,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 23,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 24,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 25,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 26,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 27,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 28,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 29,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 30,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 31,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 32,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 33,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 34,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 35,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 36,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 37,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 38,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 39,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 40,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 41,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 42,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 43,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 44,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 45,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 46,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 47,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 48,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 49,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 50,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 51,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 52,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 53,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 54,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 55,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 56,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 57,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 58,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 59,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 60,
+          "note": 42,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 61,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 62,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        },
+        {
+          "step": 63,
+          "note": 42,
+          "velocity": 0.3,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "track-snes-slap-bass",
+      "targetNodeId": "instrument-snes-slap-bass",
+      "name": "SNES Slap Bass",
+      "color": "#68D391",
+      "steps": 64,
+      "notes": [
+        {
+          "step": 0,
+          "note": 38,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 3,
+          "note": 50,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 4,
+          "note": 38,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 6,
+          "note": 48,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 7,
+          "note": 38,
+          "velocity": 0.6,
+          "duration": 1
+        },
+        {
+          "step": 10,
+          "note": 50,
+          "velocity": 0.85,
+          "duration": 1
+        },
+        {
+          "step": 11,
+          "note": 38,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 13,
+          "note": 45,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 14,
+          "note": 38,
+          "velocity": 0.65,
+          "duration": 1
+        },
+        {
+          "step": 16,
+          "note": 34,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 19,
+          "note": 46,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 20,
+          "note": 34,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 22,
+          "note": 44,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 23,
+          "note": 34,
+          "velocity": 0.6,
+          "duration": 1
+        },
+        {
+          "step": 26,
+          "note": 46,
+          "velocity": 0.85,
+          "duration": 1
+        },
+        {
+          "step": 27,
+          "note": 34,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 29,
+          "note": 41,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 30,
+          "note": 34,
+          "velocity": 0.65,
+          "duration": 1
+        },
+        {
+          "step": 32,
+          "note": 31,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 35,
+          "note": 43,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 36,
+          "note": 31,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 38,
+          "note": 41,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 39,
+          "note": 31,
+          "velocity": 0.6,
+          "duration": 1
+        },
+        {
+          "step": 42,
+          "note": 43,
+          "velocity": 0.85,
+          "duration": 1
+        },
+        {
+          "step": 43,
+          "note": 31,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 45,
+          "note": 38,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 46,
+          "note": 31,
+          "velocity": 0.65,
+          "duration": 1
+        },
+        {
+          "step": 48,
+          "note": 33,
+          "velocity": 1.0,
+          "duration": 1
+        },
+        {
+          "step": 51,
+          "note": 45,
+          "velocity": 0.7,
+          "duration": 1
+        },
+        {
+          "step": 52,
+          "note": 33,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 54,
+          "note": 43,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 55,
+          "note": 33,
+          "velocity": 0.6,
+          "duration": 1
+        },
+        {
+          "step": 58,
+          "note": 45,
+          "velocity": 0.85,
+          "duration": 1
+        },
+        {
+          "step": 59,
+          "note": 33,
+          "velocity": 0.5,
+          "duration": 1
+        },
+        {
+          "step": 61,
+          "note": 40,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 62,
+          "note": 33,
+          "velocity": 0.65,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "track-snes-space-pad",
+      "targetNodeId": "instrument-snes-space-pad",
+      "name": "SNES Space Pad",
+      "color": "#9F7AEA",
+      "steps": 64,
+      "notes": [
+        {
+          "step": 0,
+          "note": 50,
+          "velocity": 0.6,
+          "duration": 16
+        },
+        {
+          "step": 0,
+          "note": 53,
+          "velocity": 0.57,
+          "duration": 16
+        },
+        {
+          "step": 0,
+          "note": 57,
+          "velocity": 0.54,
+          "duration": 16
+        },
+        {
+          "step": 0,
+          "note": 60,
+          "velocity": 0.51,
+          "duration": 16
+        },
+        {
+          "step": 0,
+          "note": 64,
+          "velocity": 0.48,
+          "duration": 16
+        },
+        {
+          "step": 16,
+          "note": 46,
+          "velocity": 0.6,
+          "duration": 16
+        },
+        {
+          "step": 16,
+          "note": 50,
+          "velocity": 0.57,
+          "duration": 16
+        },
+        {
+          "step": 16,
+          "note": 53,
+          "velocity": 0.54,
+          "duration": 16
+        },
+        {
+          "step": 16,
+          "note": 57,
+          "velocity": 0.51,
+          "duration": 16
+        },
+        {
+          "step": 32,
+          "note": 43,
+          "velocity": 0.6,
+          "duration": 16
+        },
+        {
+          "step": 32,
+          "note": 46,
+          "velocity": 0.57,
+          "duration": 16
+        },
+        {
+          "step": 32,
+          "note": 50,
+          "velocity": 0.54,
+          "duration": 16
+        },
+        {
+          "step": 32,
+          "note": 53,
+          "velocity": 0.51,
+          "duration": 16
+        },
+        {
+          "step": 32,
+          "note": 57,
+          "velocity": 0.48,
+          "duration": 16
+        },
+        {
+          "step": 48,
+          "note": 45,
+          "velocity": 0.6,
+          "duration": 16
+        },
+        {
+          "step": 48,
+          "note": 49,
+          "velocity": 0.57,
+          "duration": 16
+        },
+        {
+          "step": 48,
+          "note": 52,
+          "velocity": 0.54,
+          "duration": 16
+        },
+        {
+          "step": 48,
+          "note": 55,
+          "velocity": 0.51,
+          "duration": 16
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    },
+    {
+      "id": "track-snes-starfield-arp",
+      "targetNodeId": "instrument-snes-starfield-arp",
+      "name": "SNES Starfield Arp",
+      "color": "#4FD1C5",
+      "steps": 64,
+      "notes": [
+        {
+          "step": 0,
+          "note": 74,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 1,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 2,
+          "note": 81,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 3,
+          "note": 84,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 4,
+          "note": 81,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 5,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 6,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 7,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 8,
+          "note": 81,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 9,
+          "note": 84,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 10,
+          "note": 81,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 11,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 12,
+          "note": 74,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 13,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 14,
+          "note": 81,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 15,
+          "note": 84,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 16,
+          "note": 70,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 17,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 18,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 19,
+          "note": 81,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 20,
+          "note": 77,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 21,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 22,
+          "note": 70,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 23,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 24,
+          "note": 77,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 25,
+          "note": 81,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 26,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 27,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 28,
+          "note": 70,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 29,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 30,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 31,
+          "note": 81,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 32,
+          "note": 67,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 33,
+          "note": 70,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 34,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 35,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 36,
+          "note": 74,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 37,
+          "note": 70,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 38,
+          "note": 67,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 39,
+          "note": 70,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 40,
+          "note": 74,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 41,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 42,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 43,
+          "note": 70,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 44,
+          "note": 67,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 45,
+          "note": 70,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 46,
+          "note": 74,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 47,
+          "note": 77,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 48,
+          "note": 69,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 49,
+          "note": 73,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 50,
+          "note": 76,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 51,
+          "note": 79,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 52,
+          "note": 76,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 53,
+          "note": 73,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 54,
+          "note": 69,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 55,
+          "note": 73,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 56,
+          "note": 76,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 57,
+          "note": 79,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 58,
+          "note": 76,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 59,
+          "note": 73,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 60,
+          "note": 69,
+          "velocity": 0.8,
+          "duration": 1
+        },
+        {
+          "step": 61,
+          "note": 73,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 62,
+          "note": 76,
+          "velocity": 0.55,
+          "duration": 1
+        },
+        {
+          "step": 63,
+          "note": 79,
+          "velocity": 0.55,
+          "duration": 1
+        }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": {
+    "bpm": 104,
+    "patternSteps": 64,
+    "masterVolume": 0.7
+  }
+}

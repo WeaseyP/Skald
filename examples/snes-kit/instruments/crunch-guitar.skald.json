@@ -1,0 +1,125 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-crunch-guitar",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Crunch Guitar",
+        "label": "SNES Crunch Guitar",
+        "volume": 0.4,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 2,
+        "detune": 12,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "gtr-osc",
+              "type": "oscillator",
+              "position": { "x": -520, "y": -60 },
+              "data": {
+                "label": "String",
+                "frequency": 165,
+                "waveform": "Sawtooth",
+                "amplitude": 0.4,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "gtr-drive",
+              "type": "distortion",
+              "position": { "x": -260, "y": -60 },
+              "data": {
+                "label": "Crunch",
+                "drive": 45,
+                "shape": "classic",
+                "tone": 3200,
+                "mix": 0.85,
+                "exposedParameters": ["drive", "tone", "mix"]
+              }
+            },
+            {
+              "id": "gtr-cab",
+              "type": "filter",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Cab",
+                "type": "Lowpass",
+                "cutoff": 4200,
+                "resonance": 0.7,
+                "exposedParameters": ["cutoff"]
+              }
+            },
+            {
+              "id": "gtr-amp",
+              "type": "adsr",
+              "position": { "x": 260, "y": -60 },
+              "data": {
+                "label": "Pick",
+                "attack": 0.004,
+                "decay": 0.2,
+                "sustain": 0.55,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["decay", "sustain", "release"]
+              }
+            },
+            {
+              "id": "gtr-output",
+              "type": "output",
+              "position": { "x": 520, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "gtr-osc", "from_port": "output", "to_node": "gtr-drive", "to_port": "input" },
+            { "from_node": "gtr-drive", "from_port": "output", "to_node": "gtr-cab", "to_port": "input" },
+            { "from_node": "gtr-cab", "from_port": "output", "to_node": "gtr-amp", "to_port": "input" },
+            { "from_node": "gtr-amp", "from_port": "output", "to_node": "gtr-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 420, "y": 260, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-crunch-guitar",
+      "targetNodeId": "instrument-snes-crunch-guitar",
+      "name": "SNES Crunch Guitar",
+      "color": "#FC8181",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 45, "velocity": 0.9, "duration": 1 },
+        { "step": 0, "note": 52, "velocity": 0.8, "duration": 1 },
+        { "step": 2, "note": 45, "velocity": 0.7, "duration": 1 },
+        { "step": 2, "note": 52, "velocity": 0.6, "duration": 1 },
+        { "step": 4, "note": 45, "velocity": 0.8, "duration": 1 },
+        { "step": 4, "note": 52, "velocity": 0.7, "duration": 1 },
+        { "step": 6, "note": 45, "velocity": 0.7, "duration": 1 },
+        { "step": 6, "note": 52, "velocity": 0.6, "duration": 1 },
+        { "step": 8, "note": 45, "velocity": 0.85, "duration": 1 },
+        { "step": 8, "note": 52, "velocity": 0.75, "duration": 1 },
+        { "step": 10, "note": 45, "velocity": 0.7, "duration": 1 },
+        { "step": 10, "note": 52, "velocity": 0.6, "duration": 1 },
+        { "step": 12, "note": 45, "velocity": 0.8, "duration": 1 },
+        { "step": 12, "note": 52, "velocity": 0.7, "duration": 1 },
+        { "step": 14, "note": 45, "velocity": 0.7, "duration": 1 },
+        { "step": 14, "note": 52, "velocity": 0.6, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

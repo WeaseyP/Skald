@@ -1,0 +1,174 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-pulse-lead",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Pulse Lead",
+        "label": "SNES Pulse Lead",
+        "volume": 0.55,
+        "voiceCount": 2,
+        "voiceStealing": "oldest",
+        "glide": 0.02,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "lead-osc",
+              "type": "oscillator",
+              "position": { "x": -520, "y": -60 },
+              "data": {
+                "label": "Pulse",
+                "frequency": 440,
+                "waveform": "Square",
+                "amplitude": 0.5,
+                "pulseWidth": 0.35,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": ["amplitude", "pulseWidth"]
+              }
+            },
+            {
+              "id": "lead-amp",
+              "type": "adsr",
+              "position": { "x": -260, "y": -60 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.005,
+                "decay": 0.08,
+                "sustain": 0.75,
+                "release": 0.12,
+                "depth": 1,
+                "velocitySensitivity": 0.4,
+                "exposedParameters": ["attack", "release"]
+              }
+            },
+            {
+              "id": "lead-tone",
+              "type": "filter",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Tone",
+                "type": "Lowpass",
+                "cutoff": 5200,
+                "resonance": 0.8,
+                "exposedParameters": ["cutoff"]
+              }
+            },
+            {
+              "id": "lead-echo",
+              "type": "delay",
+              "position": { "x": 260, "y": -60 },
+              "data": {
+                "label": "SNES Echo",
+                "delayTime": 0.2,
+                "feedback": 0.35,
+                "mix": 0.28,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "lead-output",
+              "type": "output",
+              "position": { "x": 520, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "lead-pwm-lfo",
+              "type": "lfo",
+              "position": { "x": -880, "y": 140 },
+              "data": {
+                "label": "PWM Drift",
+                "waveform": "Sine",
+                "frequency": 0.8,
+                "amplitude": 1,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "lead-pwm-map",
+              "type": "mapper",
+              "position": { "x": -690, "y": 140 },
+              "data": {
+                "label": "PWM Depth",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": -0.12,
+                "outMax": 0.12,
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "lead-vib-lfo",
+              "type": "lfo",
+              "position": { "x": -880, "y": 320 },
+              "data": {
+                "label": "Vibrato",
+                "waveform": "Sine",
+                "frequency": 5.5,
+                "amplitude": 1,
+                "bpmSync": false,
+                "syncRate": "1/4",
+                "exposedParameters": ["frequency", "amplitude"]
+              }
+            },
+            {
+              "id": "lead-vib-map",
+              "type": "mapper",
+              "position": { "x": -690, "y": 320 },
+              "data": {
+                "label": "Vib Depth (octaves)",
+                "inMin": -1,
+                "inMax": 1,
+                "outMin": -0.012,
+                "outMax": 0.012,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "lead-osc", "from_port": "output", "to_node": "lead-amp", "to_port": "input" },
+            { "from_node": "lead-amp", "from_port": "output", "to_node": "lead-tone", "to_port": "input" },
+            { "from_node": "lead-tone", "from_port": "output", "to_node": "lead-echo", "to_port": "input" },
+            { "from_node": "lead-echo", "from_port": "output", "to_node": "lead-output", "to_port": "input" },
+            { "from_node": "lead-pwm-lfo", "from_port": "output", "to_node": "lead-pwm-map", "to_port": "input" },
+            { "from_node": "lead-pwm-map", "from_port": "output", "to_node": "lead-osc", "to_port": "input_pulseWidth" },
+            { "from_node": "lead-vib-lfo", "from_port": "output", "to_node": "lead-vib-map", "to_port": "input" },
+            { "from_node": "lead-vib-map", "from_port": "output", "to_node": "lead-osc", "to_port": "input_freq" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 420, "y": 240, "zoom": 0.85 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-pulse-lead",
+      "targetNodeId": "instrument-snes-pulse-lead",
+      "name": "SNES Pulse Lead",
+      "color": "#F6E05E",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 69, "velocity": 0.9, "duration": 2 },
+        { "step": 2, "note": 72, "velocity": 0.8, "duration": 2 },
+        { "step": 4, "note": 76, "velocity": 0.95, "duration": 4 },
+        { "step": 8, "note": 74, "velocity": 0.8, "duration": 2 },
+        { "step": 10, "note": 72, "velocity": 0.8, "duration": 2 },
+        { "step": 12, "note": 69, "velocity": 0.85, "duration": 4 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

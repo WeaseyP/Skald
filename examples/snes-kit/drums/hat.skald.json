@@ -1,0 +1,100 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-hat",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Hat",
+        "label": "SNES Hat",
+        "volume": 0.45,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "hat-noise",
+              "type": "noise",
+              "position": { "x": -520, "y": -60 },
+              "data": {
+                "label": "Sizzle",
+                "type": "White",
+                "amplitude": 0.7,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "hat-hp",
+              "type": "filter",
+              "position": { "x": -260, "y": -60 },
+              "data": {
+                "label": "Sizzle HP",
+                "type": "Highpass",
+                "cutoff": 7000,
+                "resonance": 1.2,
+                "exposedParameters": ["cutoff"]
+              }
+            },
+            {
+              "id": "hat-env",
+              "type": "adsr",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Tick",
+                "attack": 0.001,
+                "decay": 0.045,
+                "sustain": 0,
+                "release": 0.02,
+                "depth": 1,
+                "velocitySensitivity": 0.8,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "hat-output",
+              "type": "output",
+              "position": { "x": 260, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "hat-noise", "from_port": "output", "to_node": "hat-hp", "to_port": "input" },
+            { "from_node": "hat-hp", "from_port": "output", "to_node": "hat-env", "to_port": "input" },
+            { "from_node": "hat-env", "from_port": "output", "to_node": "hat-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 420, "y": 260, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-hat",
+      "targetNodeId": "instrument-snes-hat",
+      "name": "SNES Hat",
+      "color": "#CBD5E0",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 42, "velocity": 0.8, "duration": 1 },
+        { "step": 2, "note": 42, "velocity": 0.45, "duration": 1 },
+        { "step": 4, "note": 42, "velocity": 0.7, "duration": 1 },
+        { "step": 6, "note": 42, "velocity": 0.45, "duration": 1 },
+        { "step": 8, "note": 42, "velocity": 0.8, "duration": 1 },
+        { "step": 10, "note": 42, "velocity": 0.45, "duration": 1 },
+        { "step": 12, "note": 42, "velocity": 0.7, "duration": 1 },
+        { "step": 14, "note": 42, "velocity": 0.5, "duration": 1 },
+        { "step": 15, "note": 42, "velocity": 0.35, "duration": 1 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

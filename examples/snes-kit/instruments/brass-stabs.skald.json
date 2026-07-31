@@ -1,0 +1,162 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-brass-stabs",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Brass Stabs",
+        "label": "SNES Brass Stabs",
+        "volume": 0.5,
+        "voiceCount": 6,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 2,
+        "detune": 8,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "brass-saw",
+              "type": "oscillator",
+              "position": { "x": -760, "y": -160 },
+              "data": {
+                "label": "Saw Layer",
+                "frequency": 220,
+                "waveform": "Sawtooth",
+                "amplitude": 0.45,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "brass-square",
+              "type": "oscillator",
+              "position": { "x": -760, "y": 40 },
+              "data": {
+                "label": "Square Layer",
+                "frequency": 220,
+                "waveform": "Square",
+                "amplitude": 0.25,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "fixedPitch": false,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "brass-mix",
+              "type": "mixer",
+              "position": { "x": -500, "y": -60 },
+              "data": {
+                "label": "Layers",
+                "inputCount": 2,
+                "levels": [
+                  { "id": 1, "level": 0.8, "pan": 0 },
+                  { "id": 2, "level": 0.55, "pan": 0 }
+                ],
+                "exposedParameters": []
+              }
+            },
+            {
+              "id": "brass-amp",
+              "type": "adsr",
+              "position": { "x": -240, "y": -60 },
+              "data": {
+                "label": "Amp",
+                "attack": 0.012,
+                "decay": 0.1,
+                "sustain": 0.65,
+                "release": 0.1,
+                "depth": 1,
+                "velocitySensitivity": 0.5,
+                "exposedParameters": ["attack", "release"]
+              }
+            },
+            {
+              "id": "brass-filter",
+              "type": "filter",
+              "position": { "x": 20, "y": -60 },
+              "data": {
+                "label": "Stab Filter",
+                "type": "Lowpass",
+                "cutoff": 700,
+                "resonance": 1.6,
+                "exposedParameters": ["cutoff", "resonance"]
+              }
+            },
+            {
+              "id": "brass-output",
+              "type": "output",
+              "position": { "x": 280, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            },
+            {
+              "id": "brass-fenv",
+              "type": "adsr",
+              "position": { "x": -500, "y": 240 },
+              "data": {
+                "label": "Blat Env",
+                "attack": 0.008,
+                "decay": 0.12,
+                "sustain": 0.3,
+                "release": 0.08,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["decay", "sustain"]
+              }
+            },
+            {
+              "id": "brass-fmap",
+              "type": "mapper",
+              "position": { "x": -240, "y": 240 },
+              "data": {
+                "label": "Blat Depth (Hz)",
+                "inMin": 0,
+                "inMax": 1,
+                "outMin": 400,
+                "outMax": 4200,
+                "exposedParameters": []
+              }
+            }
+          ],
+          "connections": [
+            { "from_node": "brass-saw", "from_port": "output", "to_node": "brass-mix", "to_port": "input_1" },
+            { "from_node": "brass-square", "from_port": "output", "to_node": "brass-mix", "to_port": "input_2" },
+            { "from_node": "brass-mix", "from_port": "output", "to_node": "brass-amp", "to_port": "input" },
+            { "from_node": "brass-amp", "from_port": "output", "to_node": "brass-filter", "to_port": "input" },
+            { "from_node": "brass-filter", "from_port": "output", "to_node": "brass-output", "to_port": "input" },
+            { "from_node": "brass-fenv", "from_port": "output", "to_node": "brass-fmap", "to_port": "input" },
+            { "from_node": "brass-fmap", "from_port": "output", "to_node": "brass-filter", "to_port": "input_cutoff" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 560, "y": 220, "zoom": 0.8 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-brass-stabs",
+      "targetNodeId": "instrument-snes-brass-stabs",
+      "name": "SNES Brass Stabs",
+      "color": "#F6AD55",
+      "steps": 16,
+      "notes": [
+        { "step": 6, "note": 57, "velocity": 0.9, "duration": 2 },
+        { "step": 6, "note": 60, "velocity": 0.85, "duration": 2 },
+        { "step": 6, "note": 64, "velocity": 0.85, "duration": 2 },
+        { "step": 14, "note": 57, "velocity": 0.8, "duration": 2 },
+        { "step": 14, "note": 60, "velocity": 0.75, "duration": 2 },
+        { "step": 14, "note": 64, "velocity": 0.75, "duration": 2 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}

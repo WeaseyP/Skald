@@ -1,0 +1,110 @@
+{
+  "nodes": [
+    {
+      "id": "instrument-snes-echo-bell",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "SNES Echo Bell",
+        "label": "SNES Echo Bell",
+        "volume": 0.45,
+        "voiceCount": 4,
+        "voiceStealing": "oldest",
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "inputs": [],
+        "outputs": [],
+        "exposedParameters": [],
+        "subgraph": {
+          "nodes": [
+            {
+              "id": "bell-fm",
+              "type": "fmOperator",
+              "position": { "x": -520, "y": -60 },
+              "data": {
+                "label": "Bell FM",
+                "frequency": 3,
+                "modIndex": 120,
+                "exposedParameters": ["frequency", "modIndex"]
+              }
+            },
+            {
+              "id": "bell-amp",
+              "type": "adsr",
+              "position": { "x": -260, "y": -60 },
+              "data": {
+                "label": "Strike",
+                "attack": 0.001,
+                "decay": 0.9,
+                "sustain": 0,
+                "release": 0.5,
+                "depth": 1,
+                "velocitySensitivity": 0.6,
+                "exposedParameters": ["decay"]
+              }
+            },
+            {
+              "id": "bell-tone",
+              "type": "filter",
+              "position": { "x": 0, "y": -60 },
+              "data": {
+                "label": "Tone",
+                "type": "Lowpass",
+                "cutoff": 6500,
+                "resonance": 0.5,
+                "exposedParameters": ["cutoff"]
+              }
+            },
+            {
+              "id": "bell-echo",
+              "type": "delay",
+              "position": { "x": 260, "y": -60 },
+              "data": {
+                "label": "SNES Echo",
+                "delayTime": 0.2,
+                "feedback": 0.45,
+                "mix": 0.35,
+                "bpmSync": true,
+                "syncRate": "1/8",
+                "exposedParameters": ["feedback", "mix"]
+              }
+            },
+            {
+              "id": "bell-output",
+              "type": "output",
+              "position": { "x": 520, "y": -60 },
+              "data": { "label": "Output", "exposedParameters": [] }
+            }
+          ],
+          "connections": [
+            { "from_node": "bell-fm", "from_port": "output", "to_node": "bell-amp", "to_port": "input" },
+            { "from_node": "bell-amp", "from_port": "output", "to_node": "bell-tone", "to_port": "input" },
+            { "from_node": "bell-tone", "from_port": "output", "to_node": "bell-echo", "to_port": "input" },
+            { "from_node": "bell-echo", "from_port": "output", "to_node": "bell-output", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "viewport": { "x": 420, "y": 260, "zoom": 0.9 },
+  "sequencerTracks": [
+    {
+      "id": "track-snes-echo-bell",
+      "targetNodeId": "instrument-snes-echo-bell",
+      "name": "SNES Echo Bell",
+      "color": "#63B3ED",
+      "steps": 16,
+      "notes": [
+        { "step": 0, "note": 81, "velocity": 0.8, "duration": 2 },
+        { "step": 4, "note": 76, "velocity": 0.7, "duration": 2 },
+        { "step": 8, "note": 84, "velocity": 0.85, "duration": 2 },
+        { "step": 12, "note": 79, "velocity": 0.75, "duration": 4 }
+      ],
+      "isMuted": false,
+      "isSolo": false
+    }
+  ],
+  "session": { "bpm": 148, "patternSteps": 16, "masterVolume": 0.75 }
+}
