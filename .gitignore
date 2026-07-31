@@ -35,6 +35,13 @@ skald-backend/tests/out/
 # for building it (roadmap packet B6).
 /docs/manual/
 
+# The acceptance harness's codegen target. run_acceptance.bat copies
+# _stub.odin.template over this before the self-test and then overwrites it once
+# per fixture, so a tracked copy is guaranteed-stale build output that dirties
+# the tree on every run — the same class as the tracked codegen binary above.
+# The template is the source; this is its output.
+/skald-backend/acceptance/generated_audio/generated_audio.odin
+
 # Skald-generated scratch output
 /skald-ui/generated_audio.odin
 /skald-backend/generated_audio.odin
