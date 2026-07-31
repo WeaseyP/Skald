@@ -8,6 +8,18 @@ Version 0.1.0 is a prerelease. The main editing, sequencing, preview, save/load,
 
 See the [v0.1.0 release notes](docs/releases/v0.1.0.md), [release process](docs/RELEASING.md), and [bug list](BUGS.md).
 
+## Manual
+
+The user manual's source is the 22 chapters in [`docs/manual-source/`](docs/manual-source/). It compiles to a single-page HTML manual with search and a bookmarked PDF; the compiled output isn't committed (`docs/manual/` is gitignored build output), so build it locally:
+
+~~~powershell
+cd scripts/manual
+npm install
+npm run build
+~~~
+
+See [`scripts/manual/README.md`](scripts/manual/README.md) for build options and chapter ordering.
+
 ## Install
 
 Windows builds are available from the [GitHub releases page](https://github.com/WeaseyP/Skald/releases). Use the Setup executable for a normal installation or the ZIP for a portable copy.

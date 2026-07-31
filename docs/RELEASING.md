@@ -37,7 +37,7 @@ For verification before committing release-preparation changes, use -AllowDirty.
 
 ~~~powershell
 git tag -a v0.1.0 -m "Skald v0.1.0"
-git push origin review-fixes
+git push origin HEAD          # the release branch you are on, not a fixed name
 git push origin v0.1.0
 ~~~
 

@@ -15,7 +15,7 @@ All paths relative to the repo root. Line numbers as of branch
 | 1 | Voice steal = hard state reset → click | **CONFIRMED-FIXED** (this branch) | High |
 | 2 | Queued hot-swap rebuild uses stale graph | **CONFIRMED-FIXED** (this branch) | High |
 | 3 | Worklet set-param writes past 64-byte wasm name buffer | **CONFIRMED-FIXED** (this branch) | Medium |
-| 4 | P-lock ↔ exposed-param collision silently kills live knobs | **CONFIRMED-OPEN** (proposed fix, not applied — see note) | High |
+| 4 | P-lock ↔ exposed-param collision silently kills live knobs | **CONFIRMED-FIXED** (verified — see note) | High |
 | 5 | Sequencer step clock (BUG-SEQ-RATE), incl. live BPM change | **CONFIRMED-FIXED** (verified + new regression) | — |
 | 6 | Stereo/panner accumulation (BUG-PROJ-STEREO), mono broadcast gain | **CONFIRMED-FIXED** (verified) | — |
 | 7 | NaN propagation in filters/FM/delay feedback | **CONFIRMED-FIXED** (verified) | — |
@@ -111,7 +111,7 @@ exceeds 64 bytes before touching memory.
 the worklet source in a sandbox: pre-fix a 100-byte name wrote `65` at offset ≥ 64;
 post-fix no byte past 63 is written and the call is not forwarded.
 
-## 4. P-lock ↔ exposed-param name collision silently kills live knobs — CONFIRMED-OPEN
+## 4. P-lock ↔ exposed-param name collision silently kills live knobs — CONFIRMED-FIXED
 
 **Mechanism.** The backend counts "exposure" as `exposedParameters` **plus P-lock
 targets** (`core/codegen.odin`, `effective_exposed_params`). On a name collision it
@@ -144,6 +144,20 @@ agent and both fixes touch `projectSerializer.ts` / the engine's instant path.
 Documented to avoid a collision. Note the Sax symptom (multiple filters, changes
 only land "on the next pass") is consistent with the sibling mechanism: UI-visible
 collisions skip the instant path by design and ride the debounce+rebuild.
+
+**Update — CONFIRMED-FIXED.** The Sax multi-filter live-param fix (node-scoped
+`<nodeId>::<param>` keys) landed the same day and supersedes the proposal above:
+`effective_exposed_params`/alias emission in `core/codegen.odin` now gives every
+resolved param (exposed OR P-lock-targeted) a `"<node.id>::<param>"` case
+alongside the collision-prefixed field name, and the UI (`liveParamKey` /
+`canApplyParamLive` in `projectSerializer.ts`, used by `useWasmAudioEngine.ts`)
+addresses knobs by that node-scoped key instead of the bare name, so the
+collision this finding describes can no longer cause a silent drop. Re-ran this
+finding's own repro: `codegen.exe -in:docs/investigations/fixtures/plock_collision.json
+-out:<tmp>.odin -package:generated_audio` now emits
+`case "F1_cutoff", "2::cutoff":` and `case "F2_cutoff", "3::cutoff":` — the
+UI's `"2::cutoff"` message (F1's node id) lands correctly, where the old bare
+`"cutoff"` message used to fall through to `return false`.
 
 ## 5. Sequencer step clock incl. live BPM change — CONFIRMED-FIXED (verified)
 
