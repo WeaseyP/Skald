@@ -1,0 +1,15 @@
+{
+  "name": "skald-manual-build",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Compiles docs/manual-source into a searchable HTML manual and a print PDF.",
+  "scripts": {
+    "build": "node build-manual.mjs",
+    "build:html": "node build-manual.mjs --no-pdf"
+  },
+  "dependencies": {
+    "marked": "^14.1.4",
+    "puppeteer-core": "^24.0.0"
+  }
+}
