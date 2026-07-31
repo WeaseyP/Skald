@@ -298,9 +298,20 @@ build_project_from_graph :: proc(graph: ^Graph) -> Project {
     project.bpm = 120.0 // Default
     project.master_volume = 1.0
 
+    // SKB-003 / F-B04-1: both loops below used to iterate `graph.nodes` (a
+    // map[string]Node) directly. Odin map iteration order is unspecified and
+    // varies run-to-run, so `project.instruments[idx]` was filled in hash
+    // order — the same input file produced six distinct outputs across 14
+    // runs, and the wasm shim's integer asset index permuted with it, so
+    // `skald_note_on(asset, ...)` addressed a different instrument on each
+    // regeneration. Iterate the sorted-by-id view (graph_utils.odin) instead;
+    // node ids are unique within a graph, so this is a total order.
+    sorted_nodes := nodes_sorted_by_id(graph)
+    defer delete(sorted_nodes)
+
     // Count instruments
     inst_count := 0
-    for _, node in graph.nodes {
+    for node in sorted_nodes {
         if node.type == "Instrument" || node.type == "instrument" {
             inst_count += 1
         }
@@ -328,7 +339,7 @@ build_project_from_graph :: proc(graph: ^Graph) -> Project {
     project.instruments = make([]Project_Instrument, inst_count)
 
     idx := 0
-    for _, node in graph.nodes {
+    for node in sorted_nodes {
         if node.type == "Instrument" || node.type == "instrument" {
             // Extract Instrument parameters from Node Data
             name := get_string_param(node, "name", "Untitled")
