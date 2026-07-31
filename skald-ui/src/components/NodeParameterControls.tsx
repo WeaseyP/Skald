@@ -51,6 +51,12 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             </div>
         ) : null;
 
+    // `syncRate` is NEVER exposable (all three wrappers below pass `false`).
+    // The stored value is a note division string ("1/8"), not a number: the
+    // exposure path fell through to the unknown-parameter range
+    // {-1e6, 1e6, 0.0, ""} and emitted a `set_syncRate` writing a struct field
+    // the DSP never reads — dead public API minted in one click, persisted into
+    // the save file. The backend-side guard is B2's job; this is the UI half.
     const syncRateControl = (defaultRate: string) => {
         const rate = data.syncRate ?? defaultRate;
         return (
@@ -80,7 +86,14 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
     // Helpers to cleanup common patterns. Every slider is paired with a
     // typed number box — dragging is for exploring, typing is for landing
     // on the exact value you meant.
-    const slider = (param: string, min: number, max: number, def: number, scale?: 'log' | 'linear', step?: number, integer = false) => (
+    //
+    // `exponent` bends the slider travel without touching the stored value:
+    // value = min + (max - min) * (position ** exponent). 1 = linear (the
+    // default, so every existing control is unchanged). >1 expands the bottom
+    // of the range — used where the musically useful values sit in the first
+    // few percent of a wide linear range (Mod Index). A true log scale can't
+    // be used for those because their range includes 0.
+    const slider = (param: string, min: number, max: number, def: number, scale?: 'log' | 'linear', step?: number, integer = false, exponent = 1) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
                 <CustomSlider
@@ -90,6 +103,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     scale={scale}
                     step={step}
                     quantize={integer}
+                    exponent={exponent}
                     defaultValue={def}
                 />
             </div>
@@ -156,7 +170,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             return (<>
                 {renderControlWrapper('waveform', 'Waveform', createSelect('waveform', ['Sine', 'Sawtooth', 'Triangle', 'Square']), false)}
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/4'))
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/4'), false)
                     : renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 0.1, 50, 5, 'log'))
                 }
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
@@ -169,7 +183,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'delay':
             return (<>
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'))
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'), false)
                     : renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0, 2, 0.5))
                 }
                 {renderControlWrapper('feedback', 'Feedback', slider('feedback', 0, 1, 0.5))}
@@ -182,7 +196,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'sampleHold':
             return (<>
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'))
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'), false)
                     : renderControlWrapper('rate', 'Rate (Hz)', slider('rate', 0.1, 50, 10, 'log'))
                 }
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
@@ -198,7 +212,12 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     "Carrier Freq (Hz)" with a 20–20000 range — every value
                     above 32 silently clamped. */}
                 {renderControlWrapper('frequency', 'Ratio (× note freq)', slider('frequency', 0.01, 32, 1, 'log'))}
-                {renderControlWrapper('modIndex', 'Modulation Index', slider('modIndex', 0, 1000, 100))}
+                {/* Mod Index is radians of phase deviation over a 0–1000 range,
+                    but everything musical lives under ~10 — the bottom 1% of a
+                    linear fader. The cubic travel curve puts 0–10 in the bottom
+                    ~21% and leaves the default (100) near centre. Stored values
+                    are untouched: this is only how position maps to value. */}
+                {renderControlWrapper('modIndex', 'Modulation Index', slider('modIndex', 0, 1000, 100, undefined, undefined, false, 3))}
             </>);
         case 'wavetable':
             return (<>
@@ -211,6 +230,11 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 </div>
                 {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
                 {renderControlWrapper('position', 'Table Position', slider('position', 0, 3, 0, undefined, 0.01))}
+                {/* Default 1.0 — matches what the generated code plays for an
+                    absent value (codegen.odin's Wavetable amplitude fallback).
+                    The parameter existed in the engine and on the node card but
+                    had no sidebar control and no entry in WavetableParams. */}
+                {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 1))}
             </>);
         case 'oscillator':
             return (<>
@@ -274,6 +298,12 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                         style={numberBoxStyles}
                     />
                 ), false)}
+                {/* Channel levels ARE exposable. The backend resolves `level<n>`
+                    through the nested `levels` array (exposed_param_default →
+                    mixer_channel_level) so exposing a fader preserves the mix
+                    instead of resetting it to 0; that fix shipped and was
+                    golden-tested, and this hardcoded `false` was the only thing
+                    keeping it unreachable from the editor. */}
                 {Array.from({ length: inputCount }, (_, i) => i + 1).map(ch =>
                     renderControlWrapper(`level${ch}`, `Level ${ch}`, (
                         <div key={ch} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -290,7 +320,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                                 style={numberBoxStyles}
                             />
                         </div>
-                    ), false)
+                    ), true)
                 )}
             </>);
         }
@@ -317,7 +347,10 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 ), false)}
                 {renderControlWrapper('volume', 'Volume', slider('volume', 0, 1, 1))}
                 {renderControlWrapper('voiceCount', 'Voice Count', slider('voiceCount', 1, 32, 8, undefined, 1, true))}
-                {renderControlWrapper('glide', 'Glide (s)', slider('glide', 0, 2, 0.05))}
+                {/* 0–5 s, matching `param_ranges.odin`'s glide entry. The UI
+                    capped at 2 s with no backend basis; widening the UI is the
+                    only direction that cannot clamp an already-saved value. */}
+                {renderControlWrapper('glide', 'Glide (s)', slider('glide', 0, 5, 0.05))}
                 {renderControlWrapper('unison', 'Unison Voices', slider('unison', 1, 16, 1, undefined, 1, true))}
                 {renderControlWrapper('detune', 'Detune (cents)', slider('detune', 0, 100, 5))}
             </>);

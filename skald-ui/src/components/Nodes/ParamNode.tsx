@@ -33,6 +33,14 @@ export interface ParamField {
     max?: number;
     step?: number;
     options?: string[];
+    // Value to render when the node's data has no entry for `key` — which is
+    // what every patch saved before the parameter existed looks like. Without
+    // it the card showed 0 while the generated code played the codegen
+    // fallback (Wavetable amplitude: card said "Amp 0", engine played 1.0).
+    // Set it to the codegen fallback, NOT to a value written back into the
+    // node: this is a read-time default, not a backfill (roadmap §4
+    // constraint 4 gates schema-touching writes behind C1's version field).
+    default?: number;
     // Hide fields that only mean something in a certain mode (e.g. the
     // frequency box only when fixedPitch is on — an editable-but-inert
     // control is a lie).
@@ -102,13 +110,20 @@ const FieldControl: React.FC<{
             min={field.min}
             max={field.max}
             step={field.step ?? 0.1}
-            value={typeof value === 'number' ? value : Number(value ?? 0)}
+            value={typeof value === 'number' ? value : Number(value ?? field.default ?? 0)}
             onChange={(val) => update({ [field.key]: val })}
         />
     );
 };
 
-export const makeParamNode = (cfg: ParamNodeConfig) => {
+// A spec-driven node card, with its spec still readable off the component.
+// `paramSpec` is what lets the card/sidebar parity test assert that a card's
+// `fields` covers every parameter the sidebar offers for that node type —
+// the cheap stand-in for C2's generated node schema.
+export type ParamNodeComponent =
+    React.MemoExoticComponent<React.FC<NodeProps<Node<NodeParams>>>> & { paramSpec: ParamNodeConfig };
+
+export const makeParamNode = (cfg: ParamNodeConfig): ParamNodeComponent => {
     const accent = accentFor(cfg.type);
     const Component: React.FC<NodeProps<Node<NodeParams>>> = ({ id, data }) => {
         const update = useNodeParamUpdater(id);
@@ -149,5 +164,7 @@ export const makeParamNode = (cfg: ParamNodeConfig) => {
         );
     };
     Component.displayName = `ParamNode(${cfg.title})`;
-    return memo(Component);
+    const wrapped = memo(Component) as ParamNodeComponent;
+    wrapped.paramSpec = cfg;
+    return wrapped;
 };

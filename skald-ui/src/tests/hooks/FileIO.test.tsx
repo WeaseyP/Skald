@@ -215,3 +215,84 @@ describe('useFileIO — multi-patch import', () => {
         expect(setNodes).not.toHaveBeenCalled();
     });
 });
+
+// ---------------------------------------------------------------------------
+// Packet A7 item 5 — a saved patch must stop carrying a dead public-API
+// parameter. `syncRate` was exposable in one click until the sidebar wrappers
+// were corrected; anything saved while that was true still lists it, and the
+// backend still mints a `set_syncRate` for a note-division string. Strip it as
+// the file is parsed, before any of it reaches state.
+// ---------------------------------------------------------------------------
+
+const patchWithSyncRateExposed = () => JSON.stringify({
+    nodes: [
+        {
+            id: 'lfo-top', type: 'lfo', position: { x: 0, y: 0 },
+            data: { bpmSync: true, syncRate: '1/4', amplitude: 1, exposedParameters: ['amplitude', 'syncRate'] },
+        },
+        {
+            id: 'inst-1', type: 'instrument', position: { x: 0, y: 0 },
+            data: {
+                name: 'Bass',
+                exposedParameters: [],
+                subgraph: {
+                    nodes: [
+                        {
+                            id: 'sh', type: 'sampleHold', position: { x: 0, y: 0 },
+                            data: { bpmSync: true, syncRate: '1/8', rate: 10, exposedParameters: ['syncRate', 'rate'] },
+                        },
+                        {
+                            id: 'dly', type: 'delay', position: { x: 0, y: 0 },
+                            data: { bpmSync: true, syncRate: '1/16', exposedParameters: ['syncRate'] },
+                        },
+                    ],
+                    connections: [],
+                },
+            },
+        },
+    ],
+    edges: [],
+});
+
+describe('useFileIO — dead exposed-parameter scrub on load', () => {
+    it('strips syncRate from exposedParameters, including inside instrument subgraphs', async () => {
+        loadGraph.mockResolvedValue({ content: patchWithSyncRateExposed() });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+
+        const loaded = setNodes.mock.calls[0][0] as any[];
+        const lfo = loaded.find((n) => n.id === 'lfo-top');
+        expect(lfo.data.exposedParameters).toEqual(['amplitude']);
+        // The stored value itself is untouched — only the exposure claim goes.
+        expect(lfo.data.syncRate).toBe('1/4');
+
+        const sub = loaded.find((n) => n.id === 'inst-1').data.subgraph.nodes;
+        expect(sub.find((n: any) => n.id === 'sh').data.exposedParameters).toEqual(['rate']);
+        expect(sub.find((n: any) => n.id === 'dly').data.exposedParameters).toEqual([]);
+        expect(sub.find((n: any) => n.id === 'dly').data.syncRate).toBe('1/16');
+    });
+
+    it('applies the same scrub on Import Patch', async () => {
+        importPatches.mockResolvedValue({
+            files: [{ name: 'synced.skald.json', content: patchWithSyncRateExposed() }],
+            skipped: [],
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleImportGraph(); });
+
+        const updater = setNodes.mock.calls[0][0] as (nds: Node[]) => Node[];
+        const merged = updater([]) as any[];
+        for (const n of merged) {
+            expect(n.data.exposedParameters ?? []).not.toContain('syncRate');
+        }
+    });
+
+    it('leaves a file with no exposedParameters arrays alone', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({ nodes: [{ id: 'a', data: {} }, { id: 'b' }], edges: [] }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(setNodes).toHaveBeenCalledWith([{ id: 'a', data: {} }, { id: 'b' }]);
+    });
+});

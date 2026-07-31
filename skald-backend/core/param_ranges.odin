@@ -31,6 +31,12 @@ lookup_param_range :: proc(name: string, node_type := "") -> Param_Range {
 		if name == "amplitude" do return {0.0, 20000.0, 1.0, ""}
 	case "SampleHold":
 		if name == "rate" do return {0.1, 1000.0, 10.0, "Hz"}
+	case "Noise":
+		// The generic "amplitude" default below is 0.5, but the Noise
+		// generator's own fallback and the editor's default are both 1.0
+		// (unity) — so exposing an untouched Noise amplitude used to halve
+		// it. Same class as the LFO amplitude override above.
+		if name == "amplitude" do return {0.0, 1.0, 1.0, ""}
 	case "Wavetable":
 		if name == "position" do return {0.0, 3.0, 0.0, ""}
 	case "Distortion":

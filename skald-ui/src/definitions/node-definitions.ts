@@ -59,7 +59,12 @@ const defaultWavetableParams: WavetableParams = {
     tableName: 'Sine',
     frequency: 440,
     position: 0,
-    exposedParameters: ['frequency', 'position']
+    // 1.0 = unity, matching the codegen fallback for an absent value. A new
+    // node now stores it explicitly, so exposing amplitude initializes the
+    // generated field from the stored 1.0 instead of the generic range-table
+    // default (0.5) — the "-6 dB from a checkbox" case.
+    amplitude: 1.0,
+    exposedParameters: ['frequency', 'position', 'amplitude']
 };
 
 const defaultSampleHoldParams: SampleHoldParams = {
@@ -124,7 +129,9 @@ const defaultReverbParams: ReverbParams = {
     decay: 3.0,
     preDelay: 0.02,
     mix: 0.5,
-    exposedParameters: ['decay', 'mix']
+    // preDelay is implemented in the engine and now editable on the node card;
+    // it belongs in the default public API alongside decay and mix.
+    exposedParameters: ['decay', 'preDelay', 'mix']
 };
 
 const defaultDistortionParams: DistortionParams = {

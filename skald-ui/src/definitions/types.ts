@@ -51,6 +51,13 @@ export interface WavetableParams extends BaseNodeParams {
   tableName: 'Sine' | 'Triangle' | 'Sawtooth' | 'Square';
   frequency: number;
   position: number;
+  // Output level (0..1), multiplied into the wavetable sample. The engine has
+  // always read it (with a 1.0 fallback) and the node card has always shown a
+  // control for it; it was missing from this interface and from the defaults,
+  // so a fresh node had no stored value and the card rendered "Amp 0" while
+  // the generated code played unity. Optional because patches saved before
+  // this field existed legitimately have no value — read it as 1.0.
+  amplitude?: number;
 }
 
 export interface SampleHoldParams extends BaseNodeParams, BpmSynchronizable {

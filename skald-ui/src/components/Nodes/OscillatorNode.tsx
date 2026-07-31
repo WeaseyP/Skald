@@ -16,6 +16,10 @@ export const OscillatorNode = makeParamNode({
         { key: 'waveform', label: 'Wave', kind: 'select', options: ['Sine', 'Sawtooth', 'Square', 'Triangle'] },
         { key: 'amplitude', label: 'Amp', min: 0, max: 1, step: 0.05 },
         { key: 'pulseWidth', label: 'PW', min: 0.01, max: 0.99, step: 0.01, showIf: (d) => d.waveform === 'Square' },
+        // Start phase in degrees — offered by the sidebar since it shipped,
+        // but missing from this card until the card/sidebar parity test caught
+        // it. `default: 0` matches the codegen fallback.
+        { key: 'phase', label: 'Phase', min: 0, max: 360, step: 1, default: 0 },
         { key: 'fixedPitch', label: 'Fixed Pitch', kind: 'toggle' },
         { key: 'frequency', label: 'Freq (Hz)', min: 20, max: 20000, step: 1, showIf: (d) => !!d.fixedPitch },
     ],

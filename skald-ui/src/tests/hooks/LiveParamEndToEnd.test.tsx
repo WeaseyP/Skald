@@ -96,9 +96,10 @@ const instantiateWorkletProcessor = (
     };
     const FakeWebAssembly = {
         Module: class { constructor(public bytes: unknown) {} },
+        // No constructor: the worklet calls `new WebAssembly.Instance(module,
+        // imports)` and a class without one still accepts and ignores both.
         Instance: class {
             exports = shimExports;
-            constructor(_module: unknown, _imports: unknown) {}
         },
     };
     new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', 'WebAssembly', skaldWasmProcessorString)(

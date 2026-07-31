@@ -38,6 +38,14 @@ interface CustomSliderProps {
     step?: number;
     defaultValue?: number;
     onReset?: () => void;
+    // Bends the slider travel without changing the stored value's meaning:
+    //   value    = min + (max - min) * (position/100) ** exponent
+    //   position = 100 * ((value - min) / (max - min)) ** (1/exponent)
+    // 1 (the default) is exactly the old linear mapping. >1 expands the bottom
+    // of the range, which is what a parameter whose musical values sit in the
+    // first few percent of a wide linear range needs (Mod Index: 0–1000, useful
+    // under ~10). Unlike `scale: 'log'` this works when `min` is 0, so 0 stays
+    // reachable at the left stop. Ignored when `scale === 'log'`.
     exponent?: number;
     className?: string; // Allow className to be passed
     // Snap TYPED commits (text blur / Enter) onto the `step` grid. Set for
@@ -66,6 +74,19 @@ const fromLogValue = (value: number, min: number, max: number) => {
     return (Math.log(value) - minLog) / scale;
 };
 
+// Power-law (a.k.a. "audio taper") mapping between the 0..100 range input
+// position and the parameter value. exponent === 1 collapses to the plain
+// linear mapping, so it is bit-identical for every control that doesn't opt in.
+const toTaperedValue = (position: number, min: number, max: number, exponent: number) =>
+    min + (max - min) * Math.pow(position / 100, exponent);
+
+const fromTaperedValue = (value: number, min: number, max: number, exponent: number) => {
+    if (max === min) return 0;
+    const normalized = (value - min) / (max - min);
+    if (!(normalized > 0)) return 0; // at/below min, or NaN
+    return 100 * Math.pow(Math.min(normalized, 1), 1 / exponent);
+};
+
 // --- MAIN COMPONENT ---
 
 export const CustomSlider: React.FC<CustomSliderProps> = ({
@@ -77,6 +98,7 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
     step = 0.01,
     defaultValue = 0,
     onReset,
+    exponent = 1,
     quantize = false,
 }) => {
     // Internal state for immediate UI feedback
@@ -99,8 +121,9 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
 
     const getSliderPosition = useCallback(() => {
         if (scale === 'log') return fromLogValue(localValue, min, max);
+        if (exponent !== 1) return fromTaperedValue(localValue, min, max, exponent);
         return ((localValue - min) / (max - min)) * 100;
-    }, [localValue, min, max, scale]);
+    }, [localValue, min, max, scale, exponent]);
 
     // Snap a committed value onto the control's `step` grid, anchored at `min`,
     // then clamp. Integer controls (step === 1) therefore commit only whole
@@ -125,6 +148,8 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
         let newValue: number;
         if (scale === 'log') {
             newValue = toLogValue(newPosition, min, max);
+        } else if (exponent !== 1) {
+            newValue = toTaperedValue(newPosition, min, max, exponent);
         } else {
             newValue = min + (max - min) * (newPosition / 100);
         }

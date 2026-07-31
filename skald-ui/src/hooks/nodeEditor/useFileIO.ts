@@ -22,6 +22,37 @@ export interface SessionSettings {
 
 export type FileStatus = { kind: 'success' | 'error'; message: string };
 
+// Parameters that must never appear in a node's `exposedParameters`, because
+// exposing them mints public API the DSP provably never reads.
+//
+// `syncRate` stores a note-division STRING ("1/8"). It was exposable in one
+// click until the three sidebar wrappers were corrected; anything saved while
+// that was true still carries the dead entry, which resolves to the
+// unknown-parameter range {-1e6, 1e6, 0.0, ""} and emits a `set_syncRate`
+// writing a field nothing reads. Strip it at parse time so existing files stop
+// carrying it. This is deliberately a value-level scrub, not a schema
+// migration (roadmap §4 constraint 4 gates those behind C1's version field):
+// removing a name from a list needs no version to be safe or idempotent.
+const NEVER_EXPOSABLE = ['syncRate'];
+
+// Applies the scrub to a node and, recursively, to any Instrument subgraph
+// nodes — which is where nearly every BPM-syncable node actually lives.
+const stripDeadExposedParameters = (node: any): void => {
+    if (!node || typeof node !== 'object') return;
+    const data = node.data;
+    if (data && typeof data === 'object') {
+        if (Array.isArray(data.exposedParameters)) {
+            data.exposedParameters = data.exposedParameters.filter(
+                (p: unknown) => typeof p !== 'string' || !NEVER_EXPOSABLE.includes(p)
+            );
+        }
+        const subNodes = data.subgraph?.nodes;
+        if (Array.isArray(subNodes)) {
+            for (const sub of subNodes) stripDeadExposedParameters(sub);
+        }
+    }
+};
+
 // Parse + shape-check a save file BEFORE any state is touched. A truncated
 // or foreign JSON used to either throw at the boundary or silently clobber
 // the graph with `undefined` fields.
@@ -49,6 +80,7 @@ const parseSaveFile = (graphJson: string): { flow?: any; error?: string } => {
             n.parentId = n.parentNode;
             delete n.parentNode;
         }
+        stripDeadExposedParameters(n);
     }
     return { flow };
 };
