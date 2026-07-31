@@ -158,12 +158,15 @@ single "threat level" float. Pull the noise layer out of an engine loop when the
 These are exactly the jobs a per-channel level is for, and they are much cheaper than swapping
 instruments.
 
-One thing to know before you rely on it: an exposed channel's runtime starting value is **1.0**, not
-the value on the fader. The exporter looks for a parameter literally named `level1` on the node, does
-not find one (the UI keeps levels inside a `levels` array), and falls back to the range table's
-default of 1.0 (`codegen.odin:1191-1198`, `param_ranges.odin:43-45`). Once a parameter is exposed,
-the slider stops feeding the audio — set the value from code, or leave the channel unexposed. Full
-detail in Code-vs-intent notes.
+One thing worth knowing before you rely on it: exposing a channel changes *how* the fader keeps
+working, not whether it works. The exporter does not look for a flat parameter named `level1` — it
+resolves the value out of the same `levels` array the UI already stores it in, so a channel exposed
+at 0.4 exports with its field initialized to 0.4, not a generic default. What does change is the path
+an edit takes while you are playing: because that value lives inside a nested array rather than a
+bare field, dragging an exposed channel's fader does not take the same instant, same-sample path an
+exposed Filter cutoff gets — it goes through the ordinary debounced rebuild instead. The fader still
+drives the sound; it just arrives a rebuild later rather than on the next sample. Full detail in
+Code-vs-intent notes.
 
 ## Try it (hands-on)
 
@@ -377,19 +380,20 @@ in the app is what the exported instrument does.
 
 ## Code-vs-intent notes
 
-**1. Exposing a channel level silently discards the fader value and pins it to 1.0. (blocker)**
-When a parameter is exposed, the exporter takes its runtime initial value from
-`node.parameters[<param name>]`, falling back to the range table (`codegen.odin:1191-1198`,
-`p.<field> = <default>` emitted at `codegen.odin:1328`). For a Mixer, the parameter key is `level1`
-(`codegen.odin:657`, `ParameterPanel.tsx:342`), but the UI never writes a top-level `level1` — it
-stores channel values inside a `levels` array (`node-definitions.ts:139-144`,
-`ParameterPanel.tsx:177-182`, `MixerNode.tsx:26-33`). The lookup misses, so the initial value comes
-from `param_ranges.odin:43-45` = **1.0**. Simultaneously the per-sample expression switches from a
-literal to `p.level1` (`param_utils.odin:78-85`), so the `levels` value is dropped from the audio path
-too. Net effect: exposing "Input 1 Level" makes that channel jump to unity and its fader inert, in
-both the preview and the export. The `param_ranges.odin:40-42` comment shows this was already fixed
-once — the fallback used to be 0.0, which muted the channel outright — but the fader value still does
-not reach the exported default.
+**1. A finding that exposing a channel pinned it to 1.0 and left the fader inert was wrong. (resolved)**
+The claim was that the exporter looks up a flat `level1` field the UI never writes, misses, and falls
+back to the range table's default of 1.0 — silently discarding the fader and freezing the channel at
+unity in both preview and export. That is not what the exporter's default lookup does for a Mixer
+node: it recognises `level<n>` names specifically and resolves them out of the same nested `levels`
+array the UI already stores them in, before it would ever fall back to a generic default. A channel's
+exported starting value has always matched its fader. A real, narrower defect existed alongside this
+claim — the shared parameter-control component's `level<n>` row hardcoded `isExposable = false` — but
+it was never reachable for a Mixer node in the shipped editor, because the parameter panel's own
+mixer-specific branch (the one that actually renders when a Mixer is selected) has always passed
+`isExposable = true` on its own, independently of the shared component. That hardcoded `false`
+mattered only for the sequencer's Step Properties editor, which reuses the shared component, and it
+has since been flipped to `true` there too. Net effect, and the effect all along in the app you can
+actually open: exposing a channel preserves its level.
 
 **2. Per-channel `pan` is modelled, stored, and completely inert. (confusing)**
 `MixerChannelParams` declares `pan` with the comment "Added pan for more realistic mixing"
