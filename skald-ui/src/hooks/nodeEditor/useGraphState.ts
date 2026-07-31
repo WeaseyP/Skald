@@ -153,15 +153,52 @@ export const useGraphState = () => {
 
         saveStateForUndo();
 
+        // 1. Assign every clipboard node a new id FIRST, in one pass, so
+        // step 2 (below) can tell whether a child's parentId points at a
+        // Group that was copied along with it (id present in the map) or
+        // one left behind on the canvas (id absent) — that distinction
+        // can't be made mid-loop if the parent happens to be visited after
+        // the child.
         const idMap = new Map<string, string>();
-        const newNodes: Node<NodeParams>[] = [];
-
-        // 1. Create new Nodes with new IDs
         clipboard.nodes.forEach(node => {
-            const newId = `${generateId()}`; // Ensure generateId is accessible or use Date.now variant
-            idMap.set(node.id, newId);
+            idMap.set(node.id, `${generateId()}`);
+        });
 
-            newNodes.push({
+        // Duplicate Instruments must not keep the original's name/label:
+        // paste and Export-Step (app.tsx) would otherwise emit two assets
+        // claiming the same identity (F-A09-7). No renaming convention
+        // exists elsewhere in this file, so pasted copies get the plainest
+        // reading a musician would expect: "Bass", "Bass 2", "Bass 3"...
+        const existingInstrumentNames = new Set(
+            nodes.filter(n => n.type === 'instrument').map(n => (n.data as { name?: string }).name).filter(Boolean)
+        );
+        const nextInstrumentName = (baseName: string): string => {
+            if (!existingInstrumentNames.has(baseName)) {
+                existingInstrumentNames.add(baseName);
+                return baseName;
+            }
+            let n = 2;
+            while (existingInstrumentNames.has(`${baseName} ${n}`)) n++;
+            const suffixed = `${baseName} ${n}`;
+            existingInstrumentNames.add(suffixed);
+            return suffixed;
+        };
+
+        // 2. Create new Nodes with new IDs
+        const newNodes: Node<NodeParams>[] = clipboard.nodes.map(node => {
+            const newId = idMap.get(node.id)!;
+
+            // Deep clone per paste: a shallow spread meant pasting an
+            // instrument twice made both copies share ONE subgraph
+            // object — editing one silently edited the other.
+            const clonedData = JSON.parse(JSON.stringify(node.data));
+            if (node.type === 'instrument' && typeof clonedData.name === 'string') {
+                const suffixedName = nextInstrumentName(clonedData.name);
+                clonedData.name = suffixedName;
+                clonedData.label = suffixedName;
+            }
+
+            const newNode: Node<NodeParams> = {
                 ...node,
                 id: newId,
                 position: {
@@ -169,14 +206,30 @@ export const useGraphState = () => {
                     y: node.position.y + 50
                 },
                 selected: true,
-                // Deep clone per paste: a shallow spread meant pasting an
-                // instrument twice made both copies share ONE subgraph
-                // object — editing one silently edited the other.
-                data: JSON.parse(JSON.stringify(node.data))
-            });
+                data: clonedData,
+            };
+
+            // Group membership (F-B07-5): remap parentId/extent through the
+            // paste id-map when the parent was copied along with the child,
+            // exactly as edge.source/edge.target are remapped below.
+            // Otherwise the pasted child kept pointing at the ORIGINAL
+            // group. If the parent was NOT part of the copied selection,
+            // drop parentId/extent entirely rather than leave the pasted
+            // node silently confined to a box it was never part of.
+            if (node.parentId) {
+                const mappedParentId = idMap.get(node.parentId);
+                if (mappedParentId) {
+                    newNode.parentId = mappedParentId;
+                } else {
+                    delete newNode.parentId;
+                    delete newNode.extent;
+                }
+            }
+
+            return newNode;
         });
 
-        // 2. Create new Edges
+        // 3. Create new Edges
         const newEdges = clipboard.edges.map(edge => ({
             ...edge,
             id: `e${idMap.get(edge.source)}-${idMap.get(edge.target)}-${Math.random()}`,
@@ -185,7 +238,7 @@ export const useGraphState = () => {
             selected: true
         }));
 
-        // 3. Deselect old nodes
+        // 4. Deselect old nodes
         const deseplectedOldNodes = nodes.map(n => ({ ...n, selected: false }));
         const deseplectedOldEdges = edges.map(e => ({ ...e, selected: false }));
 

@@ -70,6 +70,13 @@ const parameterPanelStyles: React.CSSProperties = {
     borderLeft: '1px solid #333',
 };
 
+// Export-Step's existing "(Step N)" suffix convention, applied to both the
+// node's display label and (F-A09-7) an Instrument's `name` — the field
+// codegen actually derives asset identity from. Exported as a pure function
+// so the naming rule is directly unit-testable without standing up a full
+// App render (no App-level test harness exists in this suite).
+export const suffixForStepExport = (base: string, step: number): string => `${base} (Step ${step})`;
+
 const EditorLayout = () => {
     const reactFlowWrapper = useRef(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -315,8 +322,16 @@ const EditorLayout = () => {
         newNode.position.y += 0;
         newNode.selected = true;
 
-        const label = sourceNode.data.label || sourceNode.type;
-        newNode.data.label = `${label} (Step ${step})`;
+        const label: string = sourceNode.data.label || sourceNode.type || 'Node';
+        newNode.data.label = suffixForStepExport(label, step);
+
+        // An Instrument's `name` (not `label`) is the identity codegen
+        // derives asset names from. Without this, an exported step and its
+        // source Instrument claim the same identity in generated code
+        // (F-A09-7) even though the label above already reads as distinct.
+        if (newNode.type === 'instrument' && typeof newNode.data.name === 'string') {
+            newNode.data.name = suffixForStepExport(newNode.data.name, step);
+        }
 
         // Apply Overrides
         if (note.patchOverrides) {

@@ -212,7 +212,15 @@ export const useNodeComposition = ({
     }, [selectedNodesForGrouping, setIsNamePromptVisible]);
 
     const handleCreateGroup = useCallback(() => {
-        if (selectedNodesForGrouping.length <= 1) return;
+        // Sidebar enables "Create Group" whenever ANY node is selected (it
+        // reuses `canCreateInstrument`, `selectedNodesForGrouping.length > 0`
+        // — app.tsx:379) and its enabled-state tooltip promises "Group
+        // selected nodes visually" with no mention of a minimum count. A
+        // group box around a single node is a legitimate (if small) visual
+        // container — nothing below this guard requires 2+ nodes to behave
+        // correctly. So the button's promise is the truth to honor: make
+        // the operation work for one node instead of silently refusing it.
+        if (selectedNodesForGrouping.length === 0) return;
 
         saveStateForUndo();
 
