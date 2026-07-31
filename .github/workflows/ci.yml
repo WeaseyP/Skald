@@ -40,6 +40,28 @@ jobs:
         working-directory: skald-backend
         run: .\run_golden.bat check
 
+      # The audit's top finding was a working tree nobody could reproduce: the
+      # compiler four agents measured against, two source modules imported by
+      # shipped code, and the manual the whole audit was calibrated on all
+      # existed on one disk only (roadmap §3.2). A build that leaves untracked
+      # files behind is how that happens — either a source file was never
+      # committed, or a build artifact is landing somewhere that isn't ignored.
+      #
+      # It fails on modified tracked files too, deliberately: `build_codegen.bat`
+      # writes over the *tracked* skald-ui/skald_codegen.exe, so any step that
+      # builds the CLI will trip this. That is the finding, not a false positive
+      # — packet A2 untracks the binary and this stops being reachable.
+      - name: No untracked files after the backend build
+        shell: pwsh
+        run: |
+          $stray = git status --porcelain --untracked-files=all -- docs examples skald-backend skald-ui/src
+          if ($stray) {
+            Write-Host "Untracked or modified paths after a clean build:"
+            $stray | ForEach-Object { Write-Host "  $_" }
+            throw "Commit the sources, or add the build artifact to .gitignore."
+          }
+          Write-Host "Tree clean."
+
   ui:
     name: UI (lint + typecheck + tests)
     runs-on: windows-latest
@@ -66,3 +88,42 @@ jobs:
 
       - name: Tests
         run: npm test
+
+      # Same gate as the backend job; `npm ci` and vitest must leave the source
+      # tree exactly as they found it.
+      - name: No untracked files after the UI build
+        shell: pwsh
+        working-directory: .
+        run: |
+          $stray = git status --porcelain --untracked-files=all -- docs examples skald-backend skald-ui/src
+          if ($stray) {
+            Write-Host "Untracked or modified paths after a clean build:"
+            $stray | ForEach-Object { Write-Host "  $_" }
+            throw "Commit the sources, or add the build artifact to .gitignore."
+          }
+          Write-Host "Tree clean."
+
+  manual:
+    name: Manual (chapter registry)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: scripts/manual
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/manual/package-lock.json
+
+      - run: npm ci
+
+      # PARTS in build-manual.mjs is hand-maintained, and an unregistered
+      # chapter used to be skipped silently: 70-space-funk-build.md was written
+      # and shipped absent from the compiled manual with a zero exit code. This
+      # validates the registry against docs/manual-source/ without rendering
+      # (no Chrome needed for the PDF).
+      - name: Chapter registry matches docs/manual-source
+        run: npm run check

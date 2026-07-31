@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // Compiles docs/manual-source/*.md into a single searchable HTML manual and a print PDF.
 //
-//   node build-manual.mjs [--src <dir>] [--out <dir>] [--no-pdf]
+//   node build-manual.mjs [--src <dir>] [--out <dir>] [--no-pdf] [--check]
+//
+// --check validates the chapter registry and exits without rendering anything;
+// it is what CI runs.
 //
 // Requires: marked, puppeteer-core, and a local Chrome install (for the PDF).
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, statSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Marked } from 'marked'
@@ -23,6 +26,7 @@ const flag = (name, fallback) => {
 const SRC = resolve(flag('--src', join(HERE, '..', '..', 'docs', 'manual-source')))
 const OUT = resolve(flag('--out', join(HERE, '..', '..', 'docs', 'manual')))
 const MAKE_PDF = !argv.includes('--no-pdf')
+const CHECK_ONLY = argv.includes('--check')
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -51,6 +55,53 @@ const PARTS = [
   { part: 'Packaging', files: ['nodes/instrument.md'] },
   { part: 'Worked examples', files: ['50-bass-teardown.md', '60-complexity-ladder.md', '70-space-funk-build.md'] },
 ]
+
+// Markdown under SRC that is deliberately not a chapter. Anything else found
+// there and absent from PARTS is a build failure — see reconcileRegistry.
+const NOT_CHAPTERS = new Set(['EDITORIAL-REPORT.md', 'FIXED.md'])
+
+// ---------------------------------------------------------------- registry
+//
+// PARTS is hand-maintained, and for most of this project's life an
+// unregistered chapter was skipped in silence: 70-space-funk-build.md was
+// written, left out of PARTS, and shipped absent from the compiled manual with
+// no warning and a zero exit code. Two representations of one thing with
+// nothing reconciling them — the same class of defect as the code findings in
+// docs/0.2-ROADMAP.md §3. So the build now refuses to run on any mismatch, in
+// either direction.
+
+const sourceMarkdown = (dir) =>
+  readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.md'))
+    .map((e) => join(e.parentPath ?? e.path, e.name).slice(dir.length + 1).replace(/\\/g, '/'))
+
+const reconcileRegistry = () => {
+  const registered = PARTS.flatMap((p) => p.files)
+  const onDisk = sourceMarkdown(SRC)
+
+  const duplicated = registered.filter((f, i) => registered.indexOf(f) !== i)
+  const missing = registered.filter((f) => !existsSync(join(SRC, f)))
+  const unregistered = onDisk.filter((f) => !registered.includes(f) && !NOT_CHAPTERS.has(f))
+
+  for (const f of duplicated) console.error(`  ! registered twice: ${f}`)
+  for (const f of missing) console.error(`  ! registered but not on disk: ${f}`)
+  for (const f of unregistered) {
+    console.error(`  ! chapter file not registered in PARTS: ${f}`)
+  }
+
+  if (duplicated.length || missing.length || unregistered.length) {
+    console.error('')
+    console.error('The chapter registry and docs/manual-source/ disagree. Add the file to PARTS')
+    console.error(`in the right part, or to NOT_CHAPTERS if it is an editorial note. Refusing to`)
+    console.error('build a manual that silently omits a chapter.')
+    process.exit(1)
+  }
+
+  console.log(`  registry ok: ${registered.length} chapters, ${NOT_CHAPTERS.size} non-chapter files`)
+}
+
+reconcileRegistry()
+if (CHECK_ONLY) process.exit(0)
 
 // -------------------------------------------------------------------- utils
 
@@ -144,8 +195,10 @@ for (const { part, files } of PARTS) {
   for (const file of files) {
     const path = join(SRC, file)
     if (!existsSync(path)) {
+      // reconcileRegistry already refused this case; belt and braces, because a
+      // skipped chapter must never be a warning.
       console.error(`  ! missing chapter: ${file}`)
-      continue
+      process.exit(1)
     }
     const md = readFileSync(path, 'utf8')
     const title = (md.match(/^#\s+(.+)$/m) || [, file])[1].trim()
