@@ -17,6 +17,27 @@ const config: ForgeConfig = {
     // chapter's "Try it" section names a patch inside it — a packaged build
     // without them sends the reader looking for files that were never
     // installed. See src/main/dialogDefaults.ts.
+    //
+    // ▲ The Odin COMPILER is deliberately NOT bundled here, and that is a
+    // decision, not an oversight (SKB-057 / roadmap §3.12). The obvious fix —
+    // add `'../.tools'` to this list — is worse than the bug: `.tools/` is
+    // gitignored and only exists after scripts/setup-dev.ps1 has run, so on
+    // any clean clone, CI runner, or release machine that skipped setup the
+    // entry would silently produce a toolchain-less installer. That is the
+    // exact failure mode being fixed, with the honest error swapped for a
+    // packager that quietly no-ops. Bundling it would also ship a third-party
+    // toolchain that measures 443MB / 3,195 files on this machine (Odin
+    // dev-2025-02 plus its core+vendor library tree and LLVM-derived
+    // binaries, with their own licence obligations) inside a Squirrel
+    // installer, for a feature the user may never touch.
+    //
+    // Instead, a packaged install without a resolvable compiler says so, in
+    // the app, at first launch AND on the first Play, naming SKALD_ODIN and
+    // the download: see warnIfOdinMissing / odinMissingMessage in main.ts and
+    // src/main/odinToolchain.ts. Should this be revisited, the resolver
+    // ALREADY probes `<resourcesPath>/.tools/**/odin.exe` first in a packaged
+    // build, so bundling becomes a one-line change here plus a package step
+    // that guarantees the toolchain is present (and fails the build if not).
     extraResource: ['./skald_codegen.exe', '../examples'],
   },
   rebuildConfig: {},

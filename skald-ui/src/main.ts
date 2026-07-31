@@ -2,7 +2,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { spawn, spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import started from 'electron-squirrel-startup';
 import { assertCodegenTargetSafe } from './main/codegenGuards';
 import {
@@ -11,6 +11,11 @@ import {
   openDialogDefaultPath,
   saveDialogDefaultPath,
 } from './main/dialogDefaults';
+import {
+  OdinPathEnv,
+  createOdinResolver,
+  odinMissingMessage,
+} from './main/odinToolchain';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -49,7 +54,43 @@ const createWindow = () => {
   });
 };
 
-app.on('ready', createWindow);
+// Resolve the Odin compiler (SKALD_ODIN -> the repo's vendored .tools
+// toolchain -> PATH -> C:\Odin), memoised, with a short negative TTL and an
+// async probe. See src/main/odinToolchain.ts for why each of those matters.
+const odinPathEnv = (): OdinPathEnv => ({
+  appPath: app.getAppPath(),
+  resourcesPath: process.resourcesPath,
+  isPackaged: app.isPackaged,
+  envOverride: process.env.SKALD_ODIN,
+});
+
+const odinResolver = createOdinResolver(odinPathEnv);
+
+// Fail LOUDLY at first launch when nothing can compile, rather than letting a
+// missing toolchain surface as a build error the first time someone presses
+// Play — which is what a packaged install did to every user of v0.1.0, and
+// what a fresh terminal did to every developer who followed the documented
+// setup (SKB-057). Nothing is bundled to fix this silently: see the
+// extraResource note in forge.config.ts.
+//
+// The error box is the only main-process-owned surface that is visible IN THE
+// APP without touching a renderer component. The same message also comes back
+// through the build-wasm-preview rejection, which is the channel previewError
+// / previewStale already ride to the on-canvas banner (useWasmAudioEngine ->
+// app.tsx), so the failure is stated twice and neither is console-only.
+const warnIfOdinMissing = async (): Promise<void> => {
+  if (await odinResolver.resolve()) return;
+  const message = odinMissingMessage(odinPathEnv());
+  console.error(`[Skald] ${message}`);
+  dialog.showErrorBox('Skald — audio preview unavailable', message);
+};
+
+app.on('ready', () => {
+  createWindow();
+  // Deliberately not awaited: the window must come up regardless, and the
+  // probe is async precisely so it cannot block the main process.
+  void warnIfOdinMissing();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -168,28 +209,6 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { package
 
 // --- Live preview: JSON -> codegen (+wasm shim) -> odin build -> wasm bytes ---
 
-// Resolve the Odin compiler. SKALD_ODIN env var wins; then PATH; then the
-// conventional Windows install location. Only successful lookups are cached:
-// caching a miss would keep saying "not found" after the user installs Odin
-// mid-session.
-let cachedOdinPath: string | null = null;
-const findOdin = (): string | null => {
-  if (cachedOdinPath !== null) return cachedOdinPath;
-  const candidates = [process.env.SKALD_ODIN, 'odin', 'C:\\Odin\\odin.exe'].filter(Boolean) as string[];
-  for (const candidate of candidates) {
-    try {
-      const probe = spawnSync(candidate, ['version'], { timeout: 10_000 });
-      if (probe.status === 0) {
-        cachedOdinPath = candidate;
-        return candidate;
-      }
-    } catch {
-      // try the next candidate
-    }
-  }
-  return null;
-};
-
 // A hung child (AV scan holding a file, stuck compiler) would otherwise leave
 // the returned Promise pending forever and wedge the preview's buildInFlight
 // latch — kill and reject instead.
@@ -229,12 +248,12 @@ const runProcess = (command: string, args: string[], stdin?: string): Promise<st
 let previewBuildChain: Promise<unknown> = Promise.resolve();
 
 const buildWasmPreview = async (projectJson: string): Promise<ArrayBuffer> => {
-  const odinPath = findOdin();
+  const odinPath = await odinResolver.resolve();
   if (!odinPath) {
-    throw new Error(
-      'Odin compiler not found. Install Odin (https://odin-lang.org) and either add it to PATH ' +
-      'or set the SKALD_ODIN environment variable to the odin executable.'
-    );
+    // Rejecting with the full actionable text on purpose: this rejection is
+    // what the renderer turns into the on-canvas preview banner, so the fix
+    // (the vendored path, SKALD_ODIN, setup-dev.ps1) has to be IN the message.
+    throw new Error(odinMissingMessage(odinPathEnv()));
   }
 
   // The preview package lives in its own directory (Odin: one package per
@@ -252,11 +271,17 @@ const buildWasmPreview = async (projectJson: string): Promise<ArrayBuffer> => {
 
   await runProcess(codegenExePath(), [`-out:${odinFile}`, `-wasm-shim:${shimFile}`], projectJson);
 
+  // -o:none, NOT -o:speed. The preview module's only real-time requirement is
+  // clearing one ~2.9ms render quantum, and optimisation time is paid on every
+  // debounced live-edit rebuild: measured 702ms -> 172ms on the 9-instrument
+  // snes demo, and ~1.4s -> ~250ms on a 24-instrument patch (F-B08-4).
+  // Generate Code / export keeps its own optimisation level — this flag is the
+  // preview path only.
   await runProcess(odinPath, [
     'build', previewDir,
     '-target:freestanding_wasm32',
     '-no-entry-point',
-    '-o:speed',
+    '-o:none',
     `-out:${wasmFile}`,
   ]);
 
