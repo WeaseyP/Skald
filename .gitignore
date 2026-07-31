@@ -192,3 +192,6 @@ yarn-error.log*
 .electron/
 *.env
 review-checkpoints/
+
+# Cygwin/MSYS crash dumps (git-bash tooling on Windows)
+*.stackdump
