@@ -1,0 +1,66 @@
+C2 measured gain evidence. Harness: rig/main.odin renders Asset_process() (PER-ASSET path,
+no project_process, no master tanh) at 48 kHz, holds notes, reports peak |sample| per channel.
+All fixtures: instrument volume 1.0, unison 1, detune 0. Osc = sine amp 1.0 fixedPitch 440
+unless marked "default" (= palette defaults: saw amp 0.5 / LP 800 res 1.0 / ADSR .1/.2/.5/1.0).
+
+fixture               chain                                      peakL    peakR   rmsL
+A_osc_direct          osc -> Output                              1.00000  1.00000 0.70711
+B_osc_pan_centre      osc -> Panner(pan=0) -> Output             0.70711  0.70711 0.50000
+C_osc_vca             osc -> VCA(gain=0.75 default) -> Output    0.75000  0.75000 0.53033
+D_2osc_mixer          2 osc -> Mixer(2ch, level 1.0) -> Output    1.90627  1.90627 1.00000
+E_2osc_merge          2 osc wired straight to Output              1.90627  1.90627 1.00000
+F_osc_adsr            osc -> ADSR(sus 1.0) -> Output             1.00000  1.00000 0.70660
+G_canonical           osc -> Filter(20k) -> ADSR -> Output       1.00039  1.00039 0.70689
+I_dist_unity          osc -> Distortion(soft, drive 1, mix 1)    0.76159  0.76159 0.57523
+J_pan_then_filter     osc -> Panner(0) -> Filter -> Output       1.00039  1.00039 0.70739
+K_panR_direct         osc -> Panner(pan=+1) -> Output            0.00000  1.00000 0.00000
+L_panR_filter         osc -> Panner(+1) -> Filter -> Output      0.70738  0.70738 0.50020
+M_poly8_adsr 1 note   osc -> ADSR -> Output, voiceCount 8        1.00000  1.00000
+M_poly8_adsr 8 notes  same, 8 simultaneous notes                 8.00000  8.00000 5.65277
+
+Palette-default patches (what a user gets dragging nodes with no edits), voiceCount 8:
+N_manual_canonical  Osc->Filter->ADSR->Output   1 note 0.52511 | 4 notes 1.60760 | 8 notes 2.27692
+O_canonical_dist    + Distortion (drive 20)     1 note 0.70730 | 4 notes 2.44633 | 8 notes 3.92978
+P_canonical_dist_pan + Panner(centre)           1 note 0.50013 | 4 notes 1.72982 | 8 notes 2.77878
+
+Key derived facts:
+ - Centre Panner = 0.7071x (-3.01 dB) vs no Panner. Confirms F-A08-3.
+ - Panner mono downmix (what ANY downstream node reads) = 1.0 at pan 0 and 0.7071 at pan +-1.
+   So a Panner mid-chain is a 0..-3 dB volume knob labelled "pan", and it is 3 dB LOUDER than
+   the same Panner wired straight to Output. Adding a Filter after a Panner RAISES level 3 dB.
+ - Mixer at unity levels == bare wire merge. No headroom/compensation at all.
+ - Distortion soft at drive=1 mix=1 -> 0.7616 (tanh(1)); no makeup gain, so the "neutral"
+   setting attenuates 2.4 dB. Default drive 20 mix 0.5 raises a 0.525 peak to 0.707 (+2.6 dB).
+ - Voice summing is 1:1 unattenuated: 8 identical notes -> exactly 8.0x.
+ - Per-asset _process has NO limiter. tanh lives only in project_process, which the repo's own
+   integration README tells games not to use.
+
+=== STATIC EVIDENCE (read from emitted Odin, no harness needed) ===
+1. four-bar-song Kick: node_3_out = (node_1_out_gate) * envelope * f32(120.0) * vel_scale_3
+   feeding detuned_freq = voice.current_freq * math.pow(2.0, math.clamp(f32(node_3_out),-10,10))
+   -> pitch env rides the +10-octave clamp (1024x) for ~92% of its 80 ms decay.
+   Note 24 (32.7 Hz) -> 33.5 kHz -> aliases. (scratchpad/c2/four.odin:~1700-1725)
+2. four-bar-song Lead/Bass/Pad: detuned_freq = voice.current_freq * 2^clamp(node_1_out_pitch,...)
+   -> MidiInput.pitch wired to input_freq = exact double transposition (8 occurrences).
+3. All five four-bar-song instruments set VCA gain: 0 by hand (the undocumented workaround
+   for additive input_gain).
+4. delay.md:138 "fake ping-pong": emitted code is
+   node_pL_out = (L+R)*0.7071068 ; node_pR_out = (L+R)*0.7071068 ;
+   mix_sum += both ; output_left += node_mix_out ; output_right += node_mix_out  -> identical. MONO.
+5. P-lock on a bpmSync'd Delay: Asset_set_param(p,"delayTime",0.05) emitted every loop;
+   delay_samples_d1 := int(clamp(((60.0/p.bpm)*0.5)*sample_rate,...)) -- p.delayTime read nowhere.
+6. P-lock forces exposure -> Osc_frequency / Wob_frequency emitted in struct+PARAMS+setters+
+   set_param and never read (fixedPitch=false / bpmSync=true). scratchpad/c2/plock_dead.odin.
+7. Cross-domain modulation: node_lfo_out_vsum += node_lfo_out inside `if !voice.active do continue`,
+   then bus block does node_lfo_out := node_lfo_out_vsum. Depth scales with active voice count,
+   is 0 between notes. scratchpad/c2/crossdomain.odin:233,254,308,316,331
+8. is_playing: only p.playing || any voice.active. Bus block (Delay/Reverb) runs unconditionally.
+9. CLI vs editor: build_project_from_graph (json.odin:296-299) hardcodes bpm=120,
+   master_volume=1.0, pattern_steps=0 -- ignores the `session` block the editor writes
+   (useFileIO.ts:119-131). Note_Event.patch_overrides never matches the editor's `patchOverrides`,
+   so the CLI silently drops every P-lock in a .skald.json save (verified on hat-static).
+10. Preview bakes master_volume=1.0 (useWasmAudioEngine.ts:92-95) and applies the slider via a
+   JS GainNode AFTER tanh; export bakes tanh(mix * master_volume) (codegen.odin:2477-2478).
+   Default masterVolume is 0.8, so every project diverges out of the box.
+11. Only 1 of 81 example patch files contains a Panner.
+12. No peak meter / clip indicator anywhere in skald-ui.

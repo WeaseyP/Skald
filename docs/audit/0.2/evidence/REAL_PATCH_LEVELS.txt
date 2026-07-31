@@ -1,0 +1,18 @@
+=== Real shipped patches, per-asset _process peak (no master limiter), 48k, 1.5s ===
+acid-303-squelch-lead      1note: peakL=0.82236 peakR=0.82236 rmsL=0.24640 dcL=0.005966
+acid-303-squelch-lead      4note: peakL=2.36525 peakR=2.36525 rmsL=0.54666 dcL=0.044570
+glassy-fm-pluck            1note: peakL=0.20263 peakR=0.21360 rmsL=0.04347 dcL=-0.000159
+glassy-fm-pluck            4note: peakL=0.66011 peakR=0.83161 rmsL=0.05712 dcL=-0.000375
+house-pluck-bass           1note: peakL=0.79970 peakR=0.79970 rmsL=0.07491 dcL=0.000587
+house-pluck-bass           4note: peakL=1.61971 peakR=1.61971 rmsL=0.17338 dcL=0.003024
+kick-sequenced             1note: peakL=0.69922 peakR=0.69922 rmsL=0.16827 dcL=0.000529
+kick-sequenced             4note: peakL=2.79688 peakR=2.79688 rmsL=0.67309 dcL=0.002116
+picked-rock-bass           1note: peakL=0.37449 peakR=0.37449 rmsL=0.10713 dcL=0.000914
+picked-rock-bass           4note: peakL=1.01030 peakR=1.01030 rmsL=0.20974 dcL=0.004241
+sub-808-glide-bass         1note: peakL=0.66374 peakR=0.66374 rmsL=0.41064 dcL=0.000977
+sub-808-glide-bass         4note: peakL=0.66392 peakR=0.66392 rmsL=0.39856 dcL=0.000968
+supersaw-hypersaw-lead     1note: peakL=0.43738 peakR=0.43738 rmsL=0.07390 dcL=0.000059
+supersaw-hypersaw-lead     4note: peakL=1.04662 peakR=1.04662 rmsL=0.14388 dcL=0.000088
+four-bar-song.skald.json                             project peakL=0.98499  samples>=0.999: 0/288000 (0.00%)  >=0.95: 265 (0.09%)
+possible-background-music.skald.json                 project peakL=0.76735  samples>=0.999: 0/288000 (0.00%)  >=0.95: 0 (0.00%)
+space-funk.skald.json                                project peakL=0.91747  samples>=0.999: 0/288000 (0.00%)  >=0.95: 0 (0.00%)
