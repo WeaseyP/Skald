@@ -96,6 +96,24 @@ extract_graph_raw_from_object :: proc(obj: json.Object) -> (Graph_Raw, bool) {
 	return graph_raw, found
 }
 
+// Fold the editor's camelCase Note_Event keys onto the snake_case fields the
+// codegen actually reads. Today that is exactly one key — `patchOverrides` —
+// because the graph shape is a raw dump of the editor's own objects while the
+// project shape is a deliberate translation (see Note_Event.patchOverrides).
+//
+// Mutates in place: `events` aliases the array the unmarshaller allocated, and
+// every caller wants the folded view. Idempotent, and a file that spells the
+// key snake_case already wins (an explicit `patch_overrides` is never
+// overwritten), so a file carrying both is read the same as a project-shaped
+// export of it.
+resolve_note_event_aliases :: proc(events: []Note_Event) {
+	for i in 0 ..< len(events) {
+		if len(events[i].patch_overrides) == 0 && len(events[i].patchOverrides) > 0 {
+			events[i].patch_overrides = events[i].patchOverrides
+		}
+	}
+}
+
 connections_from_raw :: proc(graph_raw: ^Graph_Raw) -> []Connection {
 	if len(graph_raw.connections) > 0 {
 		connections := make([]Connection, len(graph_raw.connections))
@@ -154,6 +172,19 @@ sequencer_tracks_from_raw :: proc(graph_raw: ^Graph_Raw) -> []Sequencer_Track {
 // "osc-1" or a raw uuid would otherwise emit `node_osc-1_out` - a syntax
 // error in every generated file.
 build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
+	// Resolve the camelCase Note_Event aliases before anything downstream
+	// reads an event. Done here rather than in sequencer_tracks_from_raw so
+	// all three places Note_Events arrive are covered from one site — the
+	// top-level `events` array and both sequencer-track spellings — and so the
+	// recursion below covers instrument subgraphs for free.
+	resolve_note_event_aliases(graph_raw.events)
+	for i in 0 ..< len(graph_raw.sequencer_tracks) {
+		resolve_note_event_aliases(graph_raw.sequencer_tracks[i].events)
+	}
+	for i in 0 ..< len(graph_raw.sequencerTracks) {
+		resolve_note_event_aliases(graph_raw.sequencerTracks[i].notes)
+	}
+
 	graph: Graph
 	graph.nodes = make(map[string]Node)
 	graph.connections = connections_from_raw(graph_raw)
@@ -292,11 +323,79 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 }
 
 
-// NEW: Build Project from a Main Graph (where nodes are instruments)
-build_project_from_graph :: proc(graph: ^Graph) -> Project {
+/// Did this file carry a usable `session` block at all? Odin's unmarshaller
+/// cannot report which keys were present, so presence is inferred from the
+/// values: if not one of the three is authored, there was no block (or an empty
+/// one, which means the same thing). A partial block — say bpm only — counts as
+/// present, and the missing fields take their documented defaults silently;
+/// only the total absence is worth shouting about, because that is the case
+/// where the export is at no authored tempo whatsoever.
+session_has_values :: proc(session: Session_Raw) -> bool {
+	return session.bpm > 0 || session.masterVolume > 0 || session.patternSteps > 0
+}
+
+/// The warning that should have existed since the beginning. Silence is what
+/// let SKB-002 survive a full audit pass and certify a 101-file example corpus
+/// through a path that retimed all of it to 120 BPM: the CLI exited 0 and said
+/// "Codegen OK".
+///
+/// fmt.eprint, not eprintf: the message names a JSON literal, and Odin's
+/// formatter reads `{` as the start of a format verb (an eprintf here printed
+/// "%!(MISSING ARGUMENT)%!(MISSING CLOSE BRACE)bpm" in place of the example).
+/// There are no arguments to interpolate, so the verbless printer is both
+/// correct and the one that cannot be broken by editing the text.
+warn_legacy_session_defaults :: proc() {
+	fmt.eprint(
+		"Warning: this input has no `session` block, so the legacy graph-path defaults were assumed: bpm = 120, masterVolume = 1.0, patternSteps = 0 (loop length falls back to the longest active sequencer track). If this patch was composed at any other tempo or master level, THIS EXPORT IS NOT AT THAT TEMPO OR LEVEL.\n" +
+		"         The editor writes the authored tempo, master volume and pattern length into a top-level \"session\" object on every Save, shaped {\"bpm\": 140, \"patternSteps\": 16, \"masterVolume\": 0.7}. A file without one is hand-written, predates the block, or was produced by a tool that dropped it. Add the block, or generate from a project-shaped file, to export at the authored values. (BUGS.md SKB-002 / roadmap packet A4.)\n",
+	)
+}
+
+/// Build a Project from a bare graph save — the shape every editor Save
+/// writes and 100 of 101 shipped examples under examples/ have. `session` is
+/// the save's top-level `session` block (Graph_Raw.session); pass a zeroed
+/// Session_Raw for a file that has none, and the legacy defaults below apply
+/// with a warning.
+build_project_from_graph :: proc(graph: ^Graph, session: Session_Raw) -> Project {
     project: Project
-    project.bpm = 120.0 // Default
-    project.master_volume = 1.0
+
+    // A4 / SKB-002 / F-C3-2. These three used to be hardcoded right here —
+    // `project.bpm = 120.0`, `project.master_volume = 1.0`, pattern_steps
+    // never assigned at all — while the editor wrote all three into a
+    // top-level `session` block that no struct had a field for. This is the
+    // path 100 of 101 shipped examples take, so a 140 BPM patch exported at
+    // 120 and every BPM-derived expression in the emitted file (the sequencer
+    // step clock, every note duration, every tempo-synced LFO and S&H) came
+    // out off by the tempo ratio, with exit code 0 and no warning.
+    //
+    // The defaults and clamps mirror build_project_from_raw exactly, and are
+    // written in the same order, so a reader can diff the two by eye. They
+    // must not drift again before step 2 collapses this proc into a normalizer
+    // that hands a Project_Raw to the single build_project_from_raw.
+    if !session_has_values(session) {
+        warn_legacy_session_defaults()
+    }
+
+    project.bpm = session.bpm
+    // Same guard, same reason as build_project_from_raw: bpm <= 0 means the
+    // field was absent or null, and a raw 0 reaches the generated
+    // `samples_per_step_f := p.sample_rate * 60.0 / (p.bpm * 4.0)` as a
+    // division by zero.
+    if project.bpm <= 0 do project.bpm = 120.0
+    project.master_volume = session.masterVolume
+    // masterVolume <= 0 means the field was absent (no `session` block, or a
+    // hand-written one that omits it) -> unity, which is what this path
+    // hardcoded before, so no session-less file changes emission. Applied here
+    // and not left to the codegen's own `master_vol <= 0.0 -> 1.0` guard
+    // because absence is only knowable at parse time: SKB-004 / packet B1 has
+    // to make an explicit 0 mean silence, and when it does, a legacy save with
+    // no session must still export at unity rather than go silent. B1 needs a
+    // presence signal to tell the two apart — see the note in Session_Raw.
+    if project.master_volume <= 0 do project.master_volume = 1.0
+    // 0 = "fall back to the longest active track", handled in the codegen
+    // (generate_sequencer_code's `global_steps <= 0` branch). Passed through
+    // unclamped, same as build_project_from_raw.
+    project.pattern_steps = session.patternSteps
 
     // SKB-003 / F-B04-1: both loops below used to iterate `graph.nodes` (a
     // map[string]Node) directly. Odin map iteration order is unspecified and

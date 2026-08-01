@@ -184,7 +184,14 @@ main :: proc() {
         
         if parse_err_g == nil && len(graph_raw.nodes) > 0 {
              main_graph := core.build_graph_from_raw(&graph_raw)
-             project = core.build_project_from_graph(&main_graph)
+             // graph_raw.session carries the save's authored tempo, master
+             // volume and pattern length. It used to be parsed by nobody, and
+             // this constructor hardcoded 120 BPM / unity master (SKB-002,
+             // F-C3-2). Passed explicitly rather than hung off the in-memory
+             // Graph so that step 2 — folding this branch into a normalizer
+             // that calls build_project_from_raw — has the raw envelope in
+             // hand at the one place that needs it.
+             project = core.build_project_from_graph(&main_graph, graph_raw.session)
         } else {
              fmt.eprintf("Error: Input JSON must be valid Project or Graph.\nProject Error: %v\nGraph Error: %v\n", parse_err, parse_err_g)
              os.exit(1)

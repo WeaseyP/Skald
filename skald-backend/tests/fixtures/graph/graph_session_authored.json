@@ -1,0 +1,94 @@
+{
+  "nodes": [
+    {
+      "id": "inst_pulse",
+      "type": "instrument",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "name": "Pulse",
+        "label": "Pulse",
+        "voiceCount": 2,
+        "glide": 0.01,
+        "unison": 1,
+        "detune": 0,
+        "volume": 0.9,
+        "subgraph": {
+          "nodes": [
+            { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
+            { "id": "2", "type": "oscillator", "position": { "x": 200, "y": 0 }, "data": { "label": "Osc", "waveform": "Square", "frequency": 220, "amplitude": 0.5, "pulseWidth": 0.5 } },
+            { "id": "3", "type": "filter", "position": { "x": 400, "y": 0 }, "data": { "label": "Filter", "type": "Lowpass", "cutoff": 1200, "resonance": 2, "exposedParameters": ["cutoff", "resonance"] } },
+            { "id": "4", "type": "adsr", "position": { "x": 600, "y": 0 }, "data": { "label": "Amp Env", "attack": 0.004, "decay": 0.12, "sustain": 0.5, "release": 0.18 } },
+            { "id": "5", "type": "output", "position": { "x": 800, "y": 0 }, "data": { "label": "Out" } }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
+            { "from_node": "1", "from_port": "gate", "to_node": "4", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" },
+            { "from_node": "4", "from_port": "output", "to_node": "5", "to_port": "input" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "inst_sub",
+      "type": "instrument",
+      "position": { "x": 100, "y": 400 },
+      "data": {
+        "name": "Sub",
+        "label": "Sub",
+        "voiceCount": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 0.75,
+        "subgraph": {
+          "nodes": [
+            { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
+            { "id": "2", "type": "oscillator", "position": { "x": 200, "y": 0 }, "data": { "label": "Osc", "waveform": "Sine", "frequency": 55, "amplitude": 0.8 } },
+            { "id": "3", "type": "adsr", "position": { "x": 400, "y": 0 }, "data": { "label": "Amp Env", "attack": 0.002, "decay": 0.2, "sustain": 0.3, "release": 0.12 } },
+            { "id": "4", "type": "output", "position": { "x": 600, "y": 0 }, "data": { "label": "Out" } }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
+            { "from_node": "1", "from_port": "gate", "to_node": "3", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "sequencerTracks": [
+    {
+      "targetNodeId": "inst_pulse",
+      "name": "Pulse Line",
+      "steps": 8,
+      "isMuted": false,
+      "isSolo": false,
+      "notes": [
+        { "note": 60, "velocity": 0.9, "step": 0, "duration": 1, "patchOverrides": { "Filter:cutoff": 400, "Filter:resonance": 6 } },
+        { "note": 63, "velocity": 0.8, "step": 3, "duration": 1 },
+        { "note": 67, "velocity": 0.85, "step": 5, "duration": 1, "patchOverrides": { "Filter:cutoff": 3200 } },
+        { "note": 60, "velocity": 0.7, "step": 7, "duration": 1, "patch_overrides": { "Filter:cutoff": 900 } }
+      ]
+    },
+    {
+      "targetNodeId": "inst_sub",
+      "name": "Sub Line",
+      "steps": 8,
+      "isMuted": false,
+      "isSolo": false,
+      "notes": [
+        { "note": 36, "velocity": 1.0, "step": 0, "duration": 2 },
+        { "note": 36, "velocity": 0.9, "step": 4, "duration": 2 }
+      ]
+    }
+  ],
+  "session": {
+    "bpm": 140,
+    "patternSteps": 12,
+    "masterVolume": 0.65
+  }
+}
