@@ -33,6 +33,14 @@ const RF_INSTANCE = {
     fitView: () => undefined,
 } as unknown as ReactFlowInstance;
 
+// This whole file exercises what happens AFTER Load proceeds, not the B4
+// confirm-on-Load guard itself (that lives in LoadConfirm.test.tsx) — so the
+// harness always answers "yes, discard" the moment the guard asks, exactly
+// as if a user facing the prompt clicked through. Every scenario below dirties
+// the document before calling handleLoad(), and without this the guard would
+// call the real `window.confirm`, which jsdom does not implement.
+const alwaysConfirmDiscard = () => true;
+
 const useHarness = () => {
     const editor = useEditorState();
     const fileIO = useFileIO(
@@ -44,6 +52,8 @@ const useHarness = () => {
         editor.loadTracks,
         editor.session,
         editor.applySessionSettings,
+        undefined,
+        alwaysConfirmDiscard,
     );
     return { ...editor, ...fileIO };
 };

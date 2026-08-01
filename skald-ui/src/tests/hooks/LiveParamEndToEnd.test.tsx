@@ -56,6 +56,11 @@ const makeShim = (acceptedNames: string[]) => {
         skald_left_ptr: () => 4096,
         skald_right_ptr: () => 8192,
         skald_name_buf_ptr: () => NAME_BUF_PTR,
+        // Every generated shim has these (codegen.odin, SKB-011's backend
+        // half): instantiate() calls skald_set_master_volume unconditionally
+        // right after skald_init, so a stand-in missing it would throw.
+        skald_set_master_volume: vi.fn(),
+        skald_get_master_volume: () => 1,
         skald_process: vi.fn(),
         skald_note_on: vi.fn(),
         skald_note_off: vi.fn(),
@@ -200,7 +205,7 @@ const identityScale = (n: number) => n;
 const startEngine = async (cutoff: number) => {
     const view = renderHook(
         ({ n }: { n: Node[] }) =>
-            useWasmAudioEngine(n, [] as Edge[], false, 120, [] as SequencerTrack[], noopStep, 16, identityScale),
+            useWasmAudioEngine(n, [] as Edge[], false, 120, [] as SequencerTrack[], noopStep, 16, identityScale, 1.0),
         { initialProps: { n: [makeInstrument(cutoff)] } }
     );
     await act(async () => { await view.result.current.handlePlay(); });

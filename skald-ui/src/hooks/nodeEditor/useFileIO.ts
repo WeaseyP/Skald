@@ -24,8 +24,11 @@ export type { SessionSettings };
  * `resetHistory` (not "push"): Load replaces the entire document, so the only
  * safe history is an empty one. Import Patch, by contrast, is an edit like any
  * other and pushes one entry.
+ *
+ * `isDirty` (packet B4): the confirm-on-Load guard below reads it to decide
+ * whether Load has anything to ask permission for.
  */
-export type FileIOHistoryHooks = Pick<EditorHistoryApi, 'pushHistory' | 'resetHistory' | 'markSaved'>;
+export type FileIOHistoryHooks = Pick<EditorHistoryApi, 'pushHistory' | 'resetHistory' | 'markSaved' | 'isDirty'>;
 
 export type FileStatus = { kind: 'success' | 'error'; message: string };
 
@@ -92,6 +95,18 @@ const parseSaveFile = (graphJson: string): { flow?: any; error?: string } => {
     return { flow };
 };
 
+// Packet B4 (b) — there is no `confirm(` anywhere in skald-ui/src and no
+// promise-based dialog primitive to reach for instead: NamePromptModal (the
+// one existing modal convention) resolves through onConfirm/onCancel props
+// wired into a visible component tree, not a value handleLoad can `await`,
+// and retrofitting that shape onto this callback would mean threading modal
+// state through app.tsx for a single yes/no question. `window.confirm` is a
+// real, native (Chromium) dialog in Electron's renderer — not a stub — so it
+// is the pragmatic default here. It is injected (not called directly) so a
+// test can supply a stub instead of hitting jsdom's unimplemented version.
+const defaultConfirmDiscard = (): boolean =>
+    window.confirm('You have unsaved changes. Loading a different project will discard them. Continue?');
+
 export const useFileIO = (
     reactFlowInstance: ReactFlowInstance | null,
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
@@ -103,7 +118,11 @@ export const useFileIO = (
     applySessionSettings: (settings: Partial<SessionSettings>) => void,
     // Visible outcome reporting — saves used to be fire-and-forget (a disk
     // error looked identical to success) and load failures died silently.
-    notifyFileStatus: (status: FileStatus) => void = () => undefined
+    notifyFileStatus: (status: FileStatus) => void = () => undefined,
+    // Packet B4 (b) — asks permission before Load discards unsaved edits.
+    // Only consulted when `history.isDirty`; see defaultConfirmDiscard above
+    // for why the default is `window.confirm` rather than an in-app dialog.
+    confirmDiscardUnsaved: () => boolean | Promise<boolean> = defaultConfirmDiscard
 ) => {
     const handleSave = useCallback(async () => {
         if (!reactFlowInstance) return;
@@ -132,6 +151,16 @@ export const useFileIO = (
     }, [reactFlowInstance, sequencerTracks, sessionSettings, notifyFileStatus, history]);
 
     const handleLoad = useCallback(async () => {
+        // SKB-005, the still-open half — Load replaced the session with no
+        // dirty check at all. Ask BEFORE anything happens: before the file
+        // picker even opens, so a decline touches nothing (no dialog was
+        // shown, no file was read, no state was mutated, no history reset).
+        // A clean document has nothing to lose, so it skips the prompt.
+        if (history.isDirty) {
+            const proceed = await confirmDiscardUnsaved();
+            if (!proceed) return;
+        }
+
         let content: string | null;
         try {
             const result = await window.electron.loadGraph();
@@ -208,7 +237,7 @@ export const useFileIO = (
         // project's and the registry pruned them as orphans. One history, one
         // reset, and `loadTracks` no longer pushes anything.
         history.resetHistory();
-    }, [reactFlowInstance, setNodes, setEdges, history, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
+    }, [reactFlowInstance, setNodes, setEdges, history, loadSequencerTracks, applySessionSettings, notifyFileStatus, confirmDiscardUnsaved]);
 
     // Import Patch merges one or more saved patches into the current graph.
     // The dialog is a multi-selection, so picking a whole drum kit is one trip

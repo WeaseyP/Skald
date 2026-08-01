@@ -62,12 +62,11 @@ const contentAreaStyles: React.CSSProperties = {
 import { AudioVisualizer } from '../Visualization/AudioVisualizer';
 import { PianoRoll } from './PianoRoll';
 import { NumberInput } from '../common/NumberInput';
-import { logger } from '../../utils/logger';
 
 
 
 
-export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: AnalyserNode | null; masterGainNode: GainNode | null }> = ({
+export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: AnalyserNode | null }> = ({
     state,
     isBuilding,
     bpm,
@@ -87,8 +86,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     onUpdateNote,
     onUpdateSteps,
     onStepSelect,
-    analyserNode,
-    masterGainNode
+    analyserNode
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
@@ -99,32 +97,17 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     // Height: 40px (Toolbar only) vs Custom Height (Expanded)
     const currentHeight = isCollapsed ? 40 : height;
 
+    // setMasterVolume alone is now the whole story: it updates the document's
+    // session state, which useWasmAudioEngine reads and pushes live into the
+    // running module via skald_set_master_volume (inside the DSP graph, at
+    // the export's exact mix point). There is no second, dock-owned audio
+    // path anymore — that JS GainNode workaround was SKB-011 (BUGS.md):
+    // preview applied the fader AFTER the worklet while export applies it
+    // INSIDE it, and since tanh is concave the two only ever agreed at
+    // vol∈{0,1}.
     const handleMasterVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = parseFloat(e.target.value);
-        setMasterVolume(val);
-        if (masterGainNode) {
-            // Fires on every slider input event (i.e. continuously while
-            // dragging) — debug-only, not actionable status.
-            logger.debug('SequencerDock', `Setting master gain: ${val}`);
-            masterGainNode.gain.setTargetAtTime(val, masterGainNode.context.currentTime, 0.01);
-        } else {
-            // Expected while preview is stopped (no GainNode exists outside
-            // an active playback session) — not a fault, debug-only.
-            logger.debug('SequencerDock', 'Master gain node missing (preview not playing); slider value stored only');
-        }
+        setMasterVolume(parseFloat(e.target.value));
     };
-
-    // Sync volume when node becomes available
-    React.useEffect(() => {
-        if (masterGainNode) {
-            logger.debug('SequencerDock', `Master gain node connected; syncing volume to ${masterVolume}`);
-            masterGainNode.gain.setValueAtTime(masterVolume, masterGainNode.context.currentTime); // Use setValueAtTime for immediate sync
-        } else {
-            // Null before Play and after Stop/AudioContext close — expected
-            // lifecycle state, not an error. See BUGS.md BUG-PREVIEW-CONSOLE-NOISE.
-            logger.debug('SequencerDock', 'Master gain node is null (preview not playing)');
-        }
-    }, [masterGainNode]); // masterVolume excluded to avoid reset loops if logic changes, though safe here.
 
     const editingTrack = state.tracks.find(t => t.id === editingTrackId);
 

@@ -116,7 +116,6 @@ Asset_Processor :: struct {
 	attack: f32,
 	decay: f32,
 	depth: f32,
-	frequency: f32,
 	release: f32,
 	sustain: f32,
 }
@@ -131,7 +130,6 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.attack = 0.010000000
 	p.decay = 0.100000001
 	p.depth = 1.000000000
-	p.frequency = 440.000000000
 	p.release = 0.200000003
 	p.sustain = 0.699999988
 }
@@ -282,13 +280,6 @@ Asset_set_depth :: proc(p: ^Asset_Processor, value: f32) {
 	p.depth = v
 }
 
-Asset_set_frequency :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 20.000000000 do v = 20.000000000
-	if v > 20000.000000000 do v = 20000.000000000
-	p.frequency = v
-}
-
 Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
 	if v < 0.000000000 do v = 0.000000000
@@ -308,7 +299,6 @@ Asset_PARAMS := []Skald_Param_Info{
 	{"attack", 0.000000000, 10.000000000, 0.010000000, "s"},
 	{"decay", 0.000000000, 10.000000000, 0.100000001, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
-	{"frequency", 20.000000000, 20000.000000000, 440.000000000, "Hz"},
 	{"release", 0.000000000, 10.000000000, 0.200000003, "s"},
 	{"sustain", 0.000000000, 1.000000000, 0.699999988, ""},
 }
@@ -326,9 +316,6 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 		return true
 	case "depth", "adsr-1::depth":
 		Asset_set_depth(p, value)
-		return true
-	case "frequency", "osc-1::frequency":
-		Asset_set_frequency(p, value)
 		return true
 	case "release", "adsr-1::release":
 		Asset_set_release(p, value)
@@ -350,8 +337,6 @@ Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 		return p.decay, true
 	case "depth", "adsr-1::depth":
 		return p.depth, true
-	case "frequency", "osc-1::frequency":
-		return p.frequency, true
 	case "release", "adsr-1::release":
 		return p.release, true
 	case "sustain", "adsr-1::sustain":

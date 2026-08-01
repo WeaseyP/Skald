@@ -92,7 +92,7 @@ Asset_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	fm_1_phase: f32,
+	fm_1_phase: [1]f32,
 	osc_2_phase: [1]f32,
 	adsr_3_stage: ADSR_Stage,
 	adsr_3_release_level: f32,
@@ -113,12 +113,11 @@ Asset_Processor :: struct {
 	ext_in_l: f32,
 	ext_in_r: f32,
 	volume: f32,
-	Carrier_frequency: f32,
-	FM_frequency: f32,
 	amplitude: f32,
 	attack: f32,
 	decay: f32,
 	depth: f32,
+	frequency: f32,
 	modIndex: f32,
 	phase: f32,
 	pulseWidth: f32,
@@ -132,12 +131,11 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.volume = 1.000000000
 	p.prng.state = 12345
 	p.loop = true
-	p.Carrier_frequency = 440.000000000
-	p.FM_frequency = 3.500000000
 	p.amplitude = 0.500000000
 	p.attack = 0.010000000
 	p.decay = 0.500000000
 	p.depth = 1.000000000
+	p.frequency = 3.500000000
 	p.modIndex = 200.000000000
 	p.phase = 0.000000000
 	p.pulseWidth = 0.500000000
@@ -199,7 +197,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	v.adsr_3_attack_start = adsr_3_prev_level
 	v.adsr_3_release_level = adsr_3_prev_level
 	if !stolen {
-		v.fm_1_phase = 0.0
+		v.fm_1_phase = {}
 		v.osc_2_phase = {}
 	}
 }
@@ -264,20 +262,6 @@ Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	return false
 }
 
-Asset_set_Carrier_frequency :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 20.000000000 do v = 20.000000000
-	if v > 20000.000000000 do v = 20000.000000000
-	p.Carrier_frequency = v
-}
-
-Asset_set_FM_frequency :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 32.000000000 do v = 32.000000000
-	p.FM_frequency = v
-}
-
 Asset_set_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
 	if v < 0.000000000 do v = 0.000000000
@@ -304,6 +288,13 @@ Asset_set_depth :: proc(p: ^Asset_Processor, value: f32) {
 	if v < 0.000000000 do v = 0.000000000
 	if v > 1.000000000 do v = 1.000000000
 	p.depth = v
+}
+
+Asset_set_frequency :: proc(p: ^Asset_Processor, value: f32) {
+	v := value
+	if v < 0.010000000 do v = 0.010000000
+	if v > 32.000000000 do v = 32.000000000
+	p.frequency = v
 }
 
 Asset_set_modIndex :: proc(p: ^Asset_Processor, value: f32) {
@@ -342,12 +333,11 @@ Asset_set_sustain :: proc(p: ^Asset_Processor, value: f32) {
 }
 
 Asset_PARAMS := []Skald_Param_Info{
-	{"Carrier_frequency", 20.000000000, 20000.000000000, 440.000000000, "Hz"},
-	{"FM_frequency", 0.010000000, 32.000000000, 3.500000000, "ratio"},
 	{"amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"attack", 0.000000000, 10.000000000, 0.010000000, "s"},
 	{"decay", 0.000000000, 10.000000000, 0.500000000, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
+	{"frequency", 0.010000000, 32.000000000, 3.500000000, "ratio"},
 	{"modIndex", 0.000000000, 1000.000000000, 200.000000000, ""},
 	{"phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
 	{"pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
@@ -357,12 +347,6 @@ Asset_PARAMS := []Skald_Param_Info{
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	switch name {
-	case "Carrier_frequency", "2::frequency":
-		Asset_set_Carrier_frequency(p, value)
-		return true
-	case "FM_frequency", "1::frequency":
-		Asset_set_FM_frequency(p, value)
-		return true
 	case "amplitude", "2::amplitude":
 		Asset_set_amplitude(p, value)
 		return true
@@ -374,6 +358,9 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 		return true
 	case "depth", "3::depth":
 		Asset_set_depth(p, value)
+		return true
+	case "frequency", "1::frequency":
+		Asset_set_frequency(p, value)
 		return true
 	case "modIndex", "1::modIndex":
 		Asset_set_modIndex(p, value)
@@ -396,10 +383,6 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 	switch name {
-	case "Carrier_frequency", "2::frequency":
-		return p.Carrier_frequency, true
-	case "FM_frequency", "1::frequency":
-		return p.FM_frequency, true
 	case "amplitude", "2::amplitude":
 		return p.amplitude, true
 	case "attack", "3::attack":
@@ -408,6 +391,8 @@ Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 		return p.decay, true
 	case "depth", "3::depth":
 		return p.depth, true
+	case "frequency", "1::frequency":
+		return p.frequency, true
 	case "modIndex", "1::modIndex":
 		return p.modIndex, true
 	case "phase", "2::phase":
@@ -451,11 +436,19 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		node_3_out: f32 = 0.0
 		node_4_out: f32 = 0.0
 
-		// --- FM Operator Node 1 ---
+		// --- FM Operator Node 1 (Unison/Detune) ---
 		{
-			carrier_freq_1: f32 = voice.current_freq * math.clamp(f32(p.FM_frequency), 0.01, 32.0);
-			voice.fm_1_phase = math.mod(voice.fm_1_phase + (2 * f32(math.PI) * carrier_freq_1 / sample_rate), 2 * f32(math.PI));
-			node_1_out = math.sin(voice.fm_1_phase + (0.0) * (p.modIndex));
+			carrier_freq_1: f32 = voice.current_freq * math.clamp(f32(p.frequency), 0.01, 32.0);
+			unison_out: f32 = 0.0;
+			unison_count := 1;
+			for i in 0..<unison_count {
+				detune_amount: f32 = 0.0;
+				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (5.000000000);
+				detuned_carrier_freq_1: f32 = carrier_freq_1 * math.pow(2.0, detune_amount / 1200.0);
+				voice.fm_1_phase[i] = math.mod(voice.fm_1_phase[i] + (2 * f32(math.PI) * detuned_carrier_freq_1 / sample_rate), 2 * f32(math.PI));
+				unison_out += math.sin(voice.fm_1_phase[i] + (0.0) * (p.modIndex));
+			}
+			node_1_out = unison_out / f32(unison_count);
 		}
 
 		// --- Oscillator Node 2 (Unison/Detune) ---

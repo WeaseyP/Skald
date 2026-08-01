@@ -36,7 +36,11 @@ class FakeAudioContext {
 class FakeAudioWorkletNode {
     port: FakePort = { onmessage: null, postMessage: vi.fn() };
     connect = vi.fn();
-    constructor(_ctx: unknown, _name: string, _opts: unknown) { createdWorklets.push(this); }
+    // processorOptions captured (not just discarded): the master-volume
+    // contract tests below assert on it directly (SKB-011 — the initial
+    // fader value must seed the worklet the same way `loop` and `stepAsset`
+    // already do, not arrive only via a later postMessage).
+    constructor(_ctx: unknown, _name: string, public opts: { processorOptions?: Record<string, unknown> }) { createdWorklets.push(this); }
 }
 
 let buildWasmPreview: ReturnType<typeof vi.fn>;
@@ -90,10 +94,10 @@ const makeInstrument = (freq = 440, cutoff = 800): Node => ({
 const noopStep = () => undefined;
 const identityScale = (n: number) => n;
 
-const renderEngine = (nodes: Node[], tracks: SequencerTrack[] = []) =>
+const renderEngine = (nodes: Node[], tracks: SequencerTrack[] = [], masterVolume = 1.0) =>
     renderHook(
         ({ n }: { n: Node[] }) =>
-            useWasmAudioEngine(n, [] as Edge[], false, 120, tracks, noopStep, 16, identityScale),
+            useWasmAudioEngine(n, [] as Edge[], false, 120, tracks, noopStep, 16, identityScale, masterVolume),
         { initialProps: { n: nodes } }
     );
 
@@ -435,7 +439,7 @@ describe('useWasmAudioEngine — stop→play stale-swap race (F-B09b-6)', () => 
         // --- Session 1: play, then edit so a rebuild starts... slowly. ---
         const { result, rerender } = renderHook(
             ({ n }: { n: Node[] }) =>
-                useWasmAudioEngine(n, [] as Edge[], false, 120, [], noopStep, 16, identityScale),
+                useWasmAudioEngine(n, [] as Edge[], false, 120, [], noopStep, 16, identityScale, 1.0),
             { initialProps: { n: [makeInstrument(440)] } }
         );
         await act(async () => { await result.current.handlePlay(); });
@@ -478,5 +482,57 @@ describe('useWasmAudioEngine — stop→play stale-swap race (F-B09b-6)', () => 
         // And the stale completion must not poison session 2's health flags.
         expect(result.current.previewStale).toBeNull();
         expect(result.current.isPlaying).toBe(true);
+    });
+});
+
+// SKB-011: master volume must apply INSIDE the DSP graph (skald_set_master_
+// volume), at the same point the export applies it, not through a post-
+// worklet JS GainNode. These pin the hook's side of that contract — that the
+// worklet is CONSTRUCTED with the current fader value and that changes are
+// pushed live via postMessage, the same shape as the `loop` flag. The
+// end-to-end proof that the real worklet code actually calls
+// skald_set_master_volume (in the right order, and survives a hot-swap)
+// lives in MasterVolumeLive.test.tsx, which drives the real
+// skaldWasmProcessorString against a wasm-shim stand-in.
+describe('useWasmAudioEngine — master volume (SKB-011)', () => {
+    const renderEngineWithVolume = (nodes: Node[], masterVolume: number) =>
+        renderHook(
+            ({ n, mv }: { n: Node[]; mv: number }) =>
+                useWasmAudioEngine(n, [] as Edge[], false, 120, [], noopStep, 16, identityScale, mv),
+            { initialProps: { n: nodes, mv: masterVolume } }
+        );
+
+    it('Play constructs the worklet with the current slider value in processorOptions.masterVolume', async () => {
+        const { result } = renderEngineWithVolume([makeInstrument()], 0.42);
+
+        await act(async () => { await result.current.handlePlay(); });
+
+        expect(createdWorklets).toHaveLength(1);
+        expect(createdWorklets[0].opts.processorOptions?.masterVolume).toBe(0.42);
+    });
+
+    it('masterVolume = 0 is passed through as a real 0, not dropped as falsy', async () => {
+        const { result } = renderEngineWithVolume([makeInstrument()], 0);
+
+        await act(async () => { await result.current.handlePlay(); });
+
+        // Exact 0, and specifically not `undefined` (which the worklet would
+        // read as "absent" and default to 1.0 — the SKB-004 failure shape).
+        expect(createdWorklets[0].opts.processorOptions?.masterVolume).toBe(0);
+    });
+
+    it('a live masterVolume change while playing posts set-master-volume to the worklet port', async () => {
+        const { result, rerender } = renderEngineWithVolume([makeInstrument()], 0.5);
+        await act(async () => { await result.current.handlePlay(); });
+        const port = createdWorklets[0].port;
+        port.postMessage.mockClear();
+
+        await act(async () => { rerender({ n: [makeInstrument()], mv: 0.8 }); });
+
+        const calls = port.postMessage.mock.calls
+            .map((c) => c[0])
+            .filter((m: { type: string }) => m.type === 'set-master-volume');
+        expect(calls).toHaveLength(1);
+        expect(calls[0].value).toBe(0.8);
     });
 });

@@ -152,7 +152,7 @@ const loadThroughEditor = async (content: string): Promise<LoadOutcome> => {
             rfInstance,
             setNodes as unknown as React.Dispatch<React.SetStateAction<Node[]>>,
             setEdges as unknown as React.Dispatch<React.SetStateAction<Edge[]>>,
-            { pushHistory: vi.fn(), resetHistory: vi.fn(), markSaved: vi.fn() },
+            { pushHistory: vi.fn(), resetHistory: vi.fn(), markSaved: vi.fn(), isDirty: false },
             [],
             loadTracks as unknown as (tracks: SequencerTrack[]) => void,
             { ...EDITOR_SESSION_DEFAULTS, packageName: 'generated_audio' },

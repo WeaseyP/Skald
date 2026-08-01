@@ -604,6 +604,78 @@ main :: proc() {
 			)
 		}
 
+	case "wavetable_unison_stack":
+		// SKB-012: instrument unison=3 / detune=1200 (a full octave spread
+		// across the 3-voice stack: i=0 -> -1200 cents, i=1 -> 0, i=2 ->
+		// +1200 cents) over a single Wavetable source at position 0 (pure
+		// sine). Before this fix the Wavetable generator had no unison
+		// reference at all and this instrument rendered as a single 440Hz
+		// tone — the two octave-offset partials asserted below would be
+		// silent (only FFT window leakage, nowhere near the threshold).
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			spec := fft_channel(buf, .Left)
+			defer delete(spec)
+			center := magnitude_at_freq(spec, sample_rate, 440.0)
+			below := magnitude_at_freq(spec, sample_rate, 220.0)
+			above := magnitude_at_freq(spec, sample_rate, 880.0)
+			// All three voices are equal-amplitude (linear /N average), so
+			// the down- and up-octave voices should sit within the same
+			// order of magnitude as the center voice, not down in the noise
+			// floor. 15% is comfortably above FFT window leakage from a
+			// single undetuned 440Hz sine (checked: leakage alone is <2%).
+			if below < center * 0.15 {
+				fmt.eprintfln(
+					"FAIL wavetable_unison_stack: expected real energy at 220Hz (unison voice i=0, -1200 cents) comparable to the 440Hz center voice; got %.4f vs center %.4f — the unison stack is not detuning this voice",
+					below, center,
+				)
+				all_pass = false
+			}
+			if above < center * 0.15 {
+				fmt.eprintfln(
+					"FAIL wavetable_unison_stack: expected real energy at 880Hz (unison voice i=2, +1200 cents) comparable to the 440Hz center voice; got %.4f vs center %.4f — the unison stack is not detuning this voice",
+					above, center,
+				)
+				all_pass = false
+			}
+		}
+
+	case "fm_unison_stack":
+		// SKB-012: same unison=3 / detune=1200 stack as wavetable_unison_stack
+		// above, but over an FM Operator carrier (ratio=1.0, modIndex=0 so no
+		// modulator sidebands complicate the spectrum — this renders three
+		// pure carrier tones). Before this fix generate_fm_operator_code had
+		// no unison reference and this instrument rendered as a single
+		// 440Hz tone.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			spec := fft_channel(buf, .Left)
+			defer delete(spec)
+			center := magnitude_at_freq(spec, sample_rate, 440.0)
+			below := magnitude_at_freq(spec, sample_rate, 220.0)
+			above := magnitude_at_freq(spec, sample_rate, 880.0)
+			if below < center * 0.15 {
+				fmt.eprintfln(
+					"FAIL fm_unison_stack: expected real energy at 220Hz (unison voice i=0, -1200 cents) comparable to the 440Hz center voice; got %.4f vs center %.4f — the unison stack is not detuning this voice",
+					below, center,
+				)
+				all_pass = false
+			}
+			if above < center * 0.15 {
+				fmt.eprintfln(
+					"FAIL fm_unison_stack: expected real energy at 880Hz (unison voice i=2, +1200 cents) comparable to the 440Hz center voice; got %.4f vs center %.4f — the unison stack is not detuning this voice",
+					above, center,
+				)
+				all_pass = false
+			}
+		}
+
 	case "graph_save_roundtrip":
 		// Raw React Flow save: instrument metadata and subgraph live under
 		// node.data, and internal nodes use UI type names. This used to fall

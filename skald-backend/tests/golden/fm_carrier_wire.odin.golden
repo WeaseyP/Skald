@@ -93,7 +93,7 @@ Asset_Voice_State :: struct {
 	glide_time: f32,
 	duration: f32,
 	lfo_1_phase: f32,
-	fm_2_phase: f32,
+	fm_2_phase: [1]f32,
 	adsr_3_stage: ADSR_Stage,
 	adsr_3_release_level: f32,
 	adsr_3_attack_start: f32,
@@ -177,7 +177,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	v.adsr_3_attack_start = adsr_3_prev_level
 	v.adsr_3_release_level = adsr_3_prev_level
 	if !stolen {
-		v.fm_2_phase = 0.0
+		v.fm_2_phase = {}
 	}
 }
 
@@ -286,11 +286,19 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		if voice.lfo_1_phase < 0.0 do voice.lfo_1_phase += 2 * f32(math.PI);
 		node_1_out = math.sin(voice.lfo_1_phase) * (f32(0.500000000));
 
-		// --- FM Operator Node 2 ---
+		// --- FM Operator Node 2 (Unison/Detune) ---
 		{
 			carrier_freq_2: f32 = voice.current_freq * math.clamp(f32(f32(1.000000000)), 0.01, 32.0) * math.pow(2.0, math.clamp(f32(node_1_out), -10.0, 10.0));
-			voice.fm_2_phase = math.mod(voice.fm_2_phase + (2 * f32(math.PI) * carrier_freq_2 / sample_rate), 2 * f32(math.PI));
-			node_2_out = math.sin(voice.fm_2_phase + (0.0) * (f32(0.000000000)));
+			unison_out: f32 = 0.0;
+			unison_count := 1;
+			for i in 0..<unison_count {
+				detune_amount: f32 = 0.0;
+				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (5.000000000);
+				detuned_carrier_freq_2: f32 = carrier_freq_2 * math.pow(2.0, detune_amount / 1200.0);
+				voice.fm_2_phase[i] = math.mod(voice.fm_2_phase[i] + (2 * f32(math.PI) * detuned_carrier_freq_2 / sample_rate), 2 * f32(math.PI));
+				unison_out += math.sin(voice.fm_2_phase[i] + (0.0) * (f32(0.000000000)));
+			}
+			node_2_out = unison_out / f32(unison_count);
 		}
 
 		// --- ADSR Node 3 ---

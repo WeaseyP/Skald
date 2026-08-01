@@ -66,17 +66,17 @@ not by reading the code and agreeing with it.
 | SKB-004 | `Maybe(T)` presence signal: absent → 1.0, authored 0 → silence. Rendered peak 0.294 → 0.000, measured on a shipped file | `05b52ea` |
 | SKB-002 | `build_project_from_graph` deleted; one reader via a pure normaliser. The collapse changed no output — goldens byte-identical, 201/201 corpus green | `05b52ea` |
 
-Partially closed, still open above: **SKB-007** (the expose route is closed, the P-lock route needs
-B2), **SKB-024** (the UI reads the right default; the range-table half is deliberately deferred — it
+Partially closed, still open above: **SKB-024** (the UI reads the right default; the range-table half is deliberately deferred — it
 makes shipped patches 6 dB louder, and the A8 gate now pins it red rather than letting it pass),
 **SKB-026** (the Piano Roll's range is documented correctly now; out-of-range notes are still
 invisible), **SKB-020** (three of the four tracked `generated_audio.odin` copies regenerated and now
 gated by `regen_generated.bat`; one is deliberately left stale because two manual chapters cite it by
 line number and re-pointing those is A9/Wave D — the gate names the exclusion out loud).
 
-**SKB-050** (BPM bounds: UI 20–300 vs backend 20–999) is still open *and now watched*: A8's parity
-gate pins it as an allowlist entry recording both sides' values, so the entry goes stale — and fails —
-the moment either side moves, including when someone fixes it.
+**SKB-050** (BPM bounds: UI 20–300 vs backend 20–999) is **closed 2026-08-01**, unified at 999. It is
+the first bug the A8 parity gate ever caught *and* saw retired: the gate pinned it as an allowlist entry
+recording both sides' values, designed to go stale — and fail — the moment either side moved, including
+when someone fixed it. It did exactly that, and the fix retired the entry in the same change.
 
 Three defects the *fixes themselves* introduced or exposed, all caught before landing and worth
 recording because they are the failure mode this pass is meant to break:
@@ -211,7 +211,7 @@ would have shipped with no notes (`c4c30e0`).
   matters because a UI NaN serialises to null.
   *Findings:* F-A05-1 (+F-B11-5: no test exercises the value). *Roadmap:* **B1**.
 
-- [ ] **SKB-005 — Load destroys the session in one click, and one Ctrl+Z immediately after Load destroys the *newly opened* project's sequencer data.**
+- [x] **SKB-005 — Load destroys the session in one click, and one Ctrl+Z immediately after Load destroys the *newly opened* project's sequencer data.**
   `handleLoad` replaces nodes/edges and clears undo with no dirty check, no confirmation, no
   title-bar state, no autosave (`useFileIO.ts:114-136`; no `confirm(` anywhere in
   `skald-ui/src`). Worse: `app.tsx:169-180` clears only the *graph* stack, while `loadTracks`
@@ -221,16 +221,28 @@ would have shipped with no notes (`c4c30e0`).
   unrecoverable.
   **Half fixed 2026-08-01 (`8e44c86`, packet B3).** The undo half is closed: Load now resets one ordered
   history, and `LoadThenUndo.test.tsx` asserts the opened file's nodes, tracks and notes survive Ctrl+Z —
-  comment out `resetHistory()` and it fails with the previous project back on screen. **Still open:** the
-  Load itself is still unguarded — no dirty flag, no confirm, no window-title marker, no autosave/recovery.
-  B3 exposed `isDirty`/`editsSinceSave`/`markSaved()`/`captureSnapshot()` for exactly that work.
-  *Findings:* F-C4-5, F-B06-2 (as strengthened by C1), F-B07-4. *Roadmap:* **B4**.
+  comment out `resetHistory()` and it fails with the previous project back on screen.
+  **Closed 2026-08-01 (packet B4, uncommitted).** The guard half is now closed too, on B3's exposed
+  `isDirty`/`editsSinceSave`/`markSaved()`/`captureSnapshot()`. The dirty check is the *first* statement of
+  `handleLoad`, so a decline aborts before the file picker opens — no IPC, no state mutation, no history
+  reset. `useWindowTitle.ts` marks unsaved state as `* Skald` (Electron mirrors `document.title`, so no
+  main-process change). `useAutosave.ts` debounces `captureSnapshot()` to `localStorage` keyed on
+  `editsSinceSave` rather than `isDirty` — Undo/Redo flips the boolean without new content, so keying on it
+  would schedule redundant writes — and is guarded against wiping a crash record on first render.
+  `app.tsx` renders a Restore/Dismiss recovery banner. Tests 543 → 559 green, corpus 201/201.
+  Stub the guard to `if (false && history.isDirty)` and 3 of 4 `LoadConfirm.test.tsx` tests fail
+  (confirm never invoked; `loadGraph` fires past the bypassed guard).
+  *Note:* the confirm uses injected `window.confirm` — a real native dialog in Electron's renderer, stubbable
+  in tests. `NamePromptModal` resolves via `onConfirm`/`onCancel` props on a mounted component and cannot be
+  `await`ed from `handleLoad`; retrofitting it for one yes/no question was judged not worth threading modal
+  state through `app.tsx`. Revisit if a promise-based dialog primitive ever lands.
+  *Findings:* F-C4-5, F-B06-2 (as strengthened by C1), F-B07-4. *Roadmap:* **B3** + **B4**.
 
 ---
 
 ## High
 
-- [ ] **SKB-006 — The generated API advertises setters, PARAMS rows and P-lock targets for parameters the DSP provably never reads.**
+- [x] **SKB-006 — The generated API advertises setters, PARAMS rows and P-lock targets for parameters the DSP provably never reads.**
   The exposure pass keys on parameter name + node type only (`codegen.odin:1216-1283`) and never
   reads `bpmSync`/`fixedPitch`, while the generators bake those branches at codegen time
   (`bpm_sync_seconds_expr` `codegen.odin:35-58`; oscillator `fixedPitch` `:137`, `:483`).
@@ -239,10 +251,29 @@ would have shipped with no notes (`c4c30e0`).
   union into the same list (`:971-999`), so a user can mint dead public API from the step editor
   without ever clicking expose. Instances: LFO `frequency`, S&H `rate` (exposed by default),
   Delay `delayTime` under sync; oscillator/wavetable `frequency` without `fixedPitch`.
+  **Closed 2026-08-01 (packet B2, uncommitted).** `param_is_reachable(node, param)` mirrors the exact
+  branches the generators already hard-code, and `effective_exposed_params` now filters *both* the
+  `exposedParameters` loop and the P-lock union loop through it — so a P-lock can no longer resurrect a
+  dead parameter. Every (type, param) pair outside the four named instances defaults to reachable.
+  **Two severities, deliberately.** A P-lock resolving to an inert parameter is a hard `os.exit(1)` naming
+  node, parameter and reason: an authored automation instruction that silently does nothing is the exact bug
+  class the P-lock resolver exists to kill, and its own comment says so. A dangling `exposedParameters`
+  checkbox is a non-fatal stderr warning instead (alongside `warn_graph_output_count`/`warn_unreachable_nodes`)
+  — toggling `bpmSync`/`fixedPitch` without revisiting the checkbox is routine editing, and hard-failing it
+  would break every default-shipped Oscillator/Wavetable node.
+  **Goldens: 122 lines across 5 files, all classified**, 41 rewritten byte-identical. 90 lines are direct
+  removal (struct field, init, setter, `_PARAMS` row, dispatch cases) of Oscillator `frequency`, dead by
+  default without `fixedPitch`. The remaining **32 in `fm_patch` are a second-order rename, not new
+  behaviour**: dropping Carrier's dead `Carrier_frequency` takes the same-name collision count for
+  "frequency" from 2→1, so the *pre-existing* naming logic reverts FmOperator's live ratio param from
+  `FM_frequency` back to plain `frequency`. The value is unchanged and still live — but note this **renames a
+  live symbol in the generated public API**, so anything linking `FM_frequency` breaks. Worth a changelog line.
+  Unit tests 45/45; forcing the predicate always-true fails 8, always-false fails 14 (both directions
+  covered). Golden check 46/46, acceptance 31/31 FFT fixtures, corpus 201/201 — no audio behaviour moved.
   *Findings:* F-B02-1/2, F-A03-1/2, F-A07-4 (reachability corrected by F-B02-4), F-C2-4, F-C5-3.
   *Roadmap:* **B2**.
 
-- [ ] **SKB-007 — `syncRate` is exposable in one click; exposing it emits a dead ±1e6 setter into the public API *and* makes the Sync Rate dropdown inert in the preview, persistently.**
+- [x] **SKB-007 — `syncRate` is exposable in one click; exposing it emits a dead ±1e6 setter into the public API *and* makes the Sync Rate dropdown inert in the preview, persistently.**
   The three `syncRate` wrappers omit the `isExposable=false` flag
   (`NodeParameterControls.tsx:159`, `:172`, `:185`; default is true at
   `ParameterPanel.tsx:216-222`). **Reproduced**: exposed `syncRate` falls to the unknown-param
@@ -257,6 +288,27 @@ would have shipped with no notes (`c4c30e0`).
   step editor still offers a `syncRate` P-lock, and P-locks union into the same exposure list in
   codegen — a P-lock can still mint the dead ±1e6 setter. No UI-only change closes that; it needs
   B2's hard error on a P-lock resolving to an inert parameter.
+  **Closed 2026-08-01 (packet B2 follow-on, uncommitted).** `param_is_reachable` now short-circuits
+  `syncRate` to `false` *unconditionally* for LFO/SampleHold/Delay — unlike `frequency`/`rate`/`delayTime`
+  it is not gated by `bpmSync`, because no configuration ever makes it live. **Premise verified before
+  coding:** all three consumers reach it only via `bpm_sync_seconds_expr` → `get_string_param`
+  (`param_utils.odin:237`), which reads straight off `node.parameters`, never through
+  `graph.exposed_resolutions` or a `p.<field>` reference; no `p.syncRate` exists anywhere, and a
+  checkbox-exposed `syncRate` was confirmed against a real emitted `.odin` to produce no field, setter or
+  dispatch case. `param_dead_reason` gained a `param` argument — the node-type-only switch could not
+  distinguish LFO's two *different* dead params (`frequency`, gated by bpmSync, vs `syncRate`, dead always)
+  and would have misreported one as the other. The follow-up advice branches too: "toggle BPM Sync" is
+  actively wrong here, since no toggle ever makes `syncRate` live.
+  Unit tests 51/51 (26 in `param_reachability_test.odin`, up from 20); deleting the three `syncRate`
+  short-circuits fails 5 test functions, e.g. *"a P-lock on syncRate must never resurrect it, synced or
+  not"*. Goldens 46/46 unchanged — **expected**, since no fixture exposes or P-locks `syncRate`
+  (`filter_sweep.json` stores a value but with `exposedParameters: []`). Acceptance 31/31, corpus 201/201.
+  Hard error verified end-to-end via `codegen.exe`: crafted fixture exits 1; same fixture minus the P-lock
+  exits 0, drops the checkbox exposure with a warning, and keeps `amplitude`.
+  *Note:* `patch_overrides` is `map[string]f32` (`types.odin:20`), so a `syncRate` P-lock's value could never
+  have held the string division (`"1/4"`) it is meant to represent — the route was nonsensical at the schema
+  level, not merely unreachable. Orthogonal to this fix (the error fires on the node+param key, before the
+  value is read), but it argues the schema should stop accepting the key at all.
   *Findings:* F-C1-2. *Roadmap:* **A7 item 5** (done) + **B2** (the remaining half).
 
 - [x] **SKB-008 — Undo is unreliable in seven distinct ways; the most common editor gestures leave no undo entry.**
@@ -289,21 +341,65 @@ would have shipped with no notes (`c4c30e0`).
   (`SequencerDock.tsx:248`), and *lowering* the toolbar Steps strands already-composed notes.
   *Findings:* F-B01-1 (+C1 additions). *Roadmap:* **B5**.
 
-- [ ] **SKB-011 — Preview and export disagree on master volume: the export is always louder and less saturated than what was tuned by ear.**
+- [x] **SKB-011 — Preview and export disagree on master volume: the export is always louder and less saturated than what was tuned by ear.**
   Preview bakes `master_volume = 1.0` and applies the slider as a post-worklet JS GainNode
   (`useWasmAudioEngine.ts:92-95`, `:191-196`) → plays `vol·tanh(x)`; export plays `tanh(vol·x)`.
   Since tanh is concave, `tanh(v·x) ≥ v·tanh(x)` for all v∈[0,1]: at v=0.5, peak 2.0 → preview
   0.482 vs export 0.762 (+4 dB, different waveform). Default masterVolume is 0.8 (`app.tsx:82`),
   so every project diverges out of the box.
+  **Closed 2026-08-01 (packet B1, editor half, uncommitted).** The backend half was already shipped —
+  `codegen.odin` emits `skald_set_master_volume`/`skald_get_master_volume` and SKB-004's `Maybe(f32)`
+  resolution was already correct — so the whole bug lived in the editor. The post-worklet `GainNode` is
+  **deleted**, not flagged off: `node.connect(analyser)` directly, no `masterGainState`, and
+  `SequencerDock.tsx` no longer takes a `masterGainNode` prop or touches `gain.setTargetAtTime`. The slider
+  now runs doc state → `port.postMessage({type:'set-master-volume'})` → `ex.skald_set_master_volume()`,
+  following the existing `set-loop`/`set-param` convention rather than a new bridge. That lands on the same
+  `wasm_master_volume` global `skald_process` multiplies in *before* `skald_soft_limit` (`codegen.odin:2916`)
+  — the identical mix point `project_process` uses for export (`:2676-2678`). Preview is now the export.
+  `buildModule` still bakes `1.0` as a topology-neutral placeholder so dragging the fader never forces a
+  rebuild, and the worklet reapplies the live value after *every* `skald_init`, covering hot-swaps.
+  Seeding uses `typeof === 'number'`, never `??`/`||`, so an authored `0` is real silence and SKB-004 cannot
+  reappear on this path. Tests 559 → 566 green, corpus 201/201. Drop the reapply after `skald_init` and the
+  hot-swap test fails `expected 1 to be 0.3`; drop the seed and 7 fail, including `expected 1 to be +0`.
   *Findings:* F-B08-1 (direction corrected by C1), F-C3-7. *Roadmap:* **B1**.
 
-- [ ] **SKB-012 — Instrument Unison/Detune is silently inert for Wavetable and FM Operator sources.**
+- [x] **SKB-012 — Instrument Unison/Detune is silently inert for Wavetable and FM Operator sources.**
   `generate_wavetable_code` (`codegen.odin:477-512`) and `generate_fm_operator_code` (`:414-475`)
   contain no unison reference; phase state is scalar (`:1136`) vs Oscillator's
   `[max(unison,1)]f32` (`:1117`). Same two always-visible sliders, one node type responds. No
   warning anywhere.
-  *Findings:* F-A01-4 (FM scope added by C1). *Roadmap:* **C5** (extend or validate loudly —
-  decision recorded there).
+  **Closed 2026-08-01 (uncommitted). C5's open question decided: EXTEND, and — user's call — shipped
+  UNGATED.** Both generators now mirror `generate_oscillator_code` exactly: `[max(unison,1)]f32` phase
+  array, linear cents spread `(i/(N-1)-0.5)*2*detune` gated behind `N>1`, `freq * 2^(detune/1200)`, and
+  **linear `/N` gain compensation — not `sqrt(N)`**. Matching that divisor is what keeps a wavetable at
+  unison=N level with an oscillator at unison=N; guessing RMS here would have been a worse bug than the one
+  being fixed. Fresh-voice reset went `= 0.0` → `= {}`.
+  **Note the control is instrument-level, not per-source** — it sits beside `voiceCount`/`glide` on the
+  instrument, and the source lives in its `subgraph`. So one instrument can hold a mix
+  (`crunch-rhythm` has an oscillator *and* an fmOperator), which is why "grey out the slider for
+  Wavetable/FM" was never coherent: the control was half-live, not dead.
+  **Blast radius — exactly 2 instruments change sound**, from a 17-file universe cross-checked two ways
+  (recursive JSON walk for instrument `unison`/`detune`, plus a raw grep for `wavetable`/`fmOperator` type
+  strings; both agree, nothing uncertain):
+  `crunch-rhythm.skald.json` "Crunch Rhythm" (u=2, d=9 — the `cr-grit` fmOperator joins the stack its
+  sibling oscillator was already in) and `pad-sequenced.skald.json` "Pad" (u=3, d=12 — the wavetable
+  becomes a real 3-voice stack). **Both want re-auditioning.** Everything else with a wavetable/FM node
+  sits at unison=1, where the detune branch never fires and the change is a numeric no-op.
+  *Watch out:* `chase-loop.skald.json` looks affected and is not — its two unison=2 instruments
+  ("SNES Crunch Guitar", "SNES Brass Stabs") are oscillator-only and already had unison; its only fmOperator
+  is inside "SNES Echo Bell" at u=1.
+  **FM's modulator is a decision, not a discovery:** `input_mod` stays one shared signal added identically
+  to every detuned carrier rather than being re-detuned per voice — mirrors a real multi-carrier FM voice
+  and is the smaller change. Pinned by a unit-test assertion so a silent future change is caught. Revisitable.
+  Unit 59/59, goldens 48/48 (2 new), acceptance 33/33 (2 new FFT fixtures proving real energy at the
+  ±1200-cent partials of a 3-voice stack), UI 567/567. Reverting the five edit sites fails the two new
+  acceptance fixtures (`expected real energy at 220Hz... got 0.0163 vs center 194.5486`).
+  Goldens for `fm_carrier_wire`/`wavetable_morph`/`fm_patch` at u=1 changed *structurally* (the unison wrap)
+  while the audio is provably identical — the acceptance pass, not the golden text, is the evidence there.
+  *Caveat:* `test_unison_detune_spread_gives_distinct_rates_per_voice` is pure arithmetic and was the one
+  test not run through an explicit red/green cycle.
+  *Findings:* F-A01-4 (FM scope added by C1). *Roadmap:* **C5** (extend or validate loudly — decided:
+  extend, ungated; C5's remaining items — Wavetable PWM + phase, FM output level, Reverb `damping` — still open).
 
 - [ ] **SKB-013 — The Panner is a −3 dB pad at the end of a chain and a pan-flavoured volume knob anywhere else; its backend stereo ports broadcast one channel to both outputs.**
   **Measured** (F-C2-2): osc→Output = 1.0/1.0; osc→Panner(0)→Output = 0.707/0.707; but
@@ -609,8 +705,27 @@ would have shipped with no notes (`c4c30e0`).
   `common/NumberInput.tsx:108`. *F-B09b-4 → A7-class.*
 - [x] **SKB-049 — Instrument Glide: UI slider 0–2 s vs backend clamp 0–5 s.**
   `NodeParameterControls.tsx:320` vs `param_ranges.odin` glide entry. *F-A09-5/F-A01-10 → A7 item 12.*
-- [ ] **SKB-050 — BPM bounds: UI 20–300 vs backend 20–999 — harmless until a runtime BPM setter ships.**
+- [x] **SKB-050 — BPM bounds: UI 20–300 vs backend 20–999 — harmless until a runtime BPM setter ships.**
   `bpm.ts:18-19` vs `param_ranges.odin`. *F-B02-9 → A8 catches; unify with runtime-BPM work.*
+  **Closed 2026-08-01 (uncommitted). Unified at 999 — the UI widened, the backend left alone.** The
+  backend's `20..999` (`param_ranges.odin:164`) predates the A8 gate and matches the standard DAW ceiling
+  (Ableton, FL, Logic all cap at 999); the UI's `BPM_MAX = 300` arrived in `dfa1197` as a side effect of a
+  NaN-clamp fix with no musical rationale. Nothing in the corpus exceeds 180, so neither direction
+  invalidated a shipped project. High BPM verified safe rather than assumed: the step accumulator floors
+  every step at 1 sample (`n_step := u64(math.max(p.step_frac_acc, 1.0))`), and playback timing is
+  sample-accurate WASM (`skald_get_step()` per render quantum) — the only BPM math in JS is a cosmetic
+  CSS-transition duration and display text.
+  **The A8 allowlist entry was retired, per the gate's own written convention ("if it was fixed, DELETE
+  this entry").** The dedicated test that asserted the *mismatch* now asserts equality
+  (`RangeParity.test.tsx`); remaining allowlist sections renumbered 1–6. This is the first entry ever
+  resolved, so the convention had no precedent to imitate — worth knowing if a second one lands.
+  Boundary tests both sides (20/999 in, 19/1000 out). Reverting `BPM_MAX` to 300 fails 3, including the
+  generic parity sweep `project.bpm [project] 20..300 vs backend(*.bpm) 20..999` — i.e. the gate correctly
+  re-detects the divergence now that the allowlist entry is gone. Unit 52/52, goldens 46/46, acceptance
+  31/31, UI 567 tests green.
+  *Caveat:* with no runtime BPM setter yet, the backend bound is declarative metadata read by the
+  range-dump/parity tooling, not an enforcement path — `clampBpm` is still the only place a value is
+  actually rejected. The backend boundary test pins the row, not a rejection.
 - [x] **SKB-051 — Noise `amplitude` default: generic table 0.5 vs UI/codegen 1.0; the node-type override switch built for this omits Noise.**
   `param_ranges.odin:88-89` vs `node-definitions.ts:98-101`. *F-A02-6 → A7 item 9.*
 - [x] **SKB-052 — Generated oscillator code emits a guard that can never be false (`if unison_count > 0` on a literal floored at 1).**

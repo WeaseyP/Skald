@@ -92,7 +92,7 @@ Asset_Voice_State :: struct {
 	target_freq: f32,
 	glide_time: f32,
 	duration: f32,
-	wavetable_1_phase: f32,
+	wavetable_1_phase: [1]f32,
 	adsr_2_stage: ADSR_Stage,
 	adsr_2_release_level: f32,
 	adsr_2_attack_start: f32,
@@ -178,7 +178,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	v.adsr_2_attack_start = adsr_2_prev_level
 	v.adsr_2_release_level = adsr_2_prev_level
 	if !stolen {
-		v.wavetable_1_phase = 0.0
+		v.wavetable_1_phase = {}
 	}
 }
 
@@ -298,10 +298,20 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
 
-		// --- Wavetable Node 1 ---
-		voice.wavetable_1_phase = math.mod(voice.wavetable_1_phase + ((voice.current_freq) / sample_rate), 1.0);
-		if voice.wavetable_1_phase < 0.0 do voice.wavetable_1_phase += 1.0;
-		node_1_out = skald_wavetable_sample(voice.wavetable_1_phase, f32(p.position)) * (f32(1.000000000));
+		// --- Wavetable Node 1 (Unison/Detune) ---
+		{
+			unison_out: f32 = 0.0;
+			unison_count := 1;
+			for i in 0..<unison_count {
+				detune_amount: f32 = 0.0;
+				if unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (5.000000000);
+				detuned_freq: f32 = (voice.current_freq) * math.pow(2.0, detune_amount / 1200.0);
+				voice.wavetable_1_phase[i] = math.mod(voice.wavetable_1_phase[i] + (detuned_freq / sample_rate), 1.0);
+				if voice.wavetable_1_phase[i] < 0.0 do voice.wavetable_1_phase[i] += 1.0;
+				unison_out += skald_wavetable_sample(voice.wavetable_1_phase[i], f32(p.position));
+			}
+			node_1_out = (unison_out / f32(unison_count)) * (f32(1.000000000));
+		}
 
 		// --- ADSR Node 2 ---
 		{

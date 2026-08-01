@@ -23,6 +23,8 @@ import { nodeTypes } from './definitions/nodeTypes';
 import { useEditorState, suffixForStepExport } from './hooks/nodeEditor/useEditorState';
 import { useWasmAudioEngine } from './hooks/nodeEditor/useWasmAudioEngine';
 import { useFileIO, FileStatus } from './hooks/nodeEditor/useFileIO';
+import { useWindowTitle } from './hooks/nodeEditor/useWindowTitle';
+import { useAutosave, readAutosave, clearAutosave, AutosaveRecord } from './hooks/nodeEditor/useAutosave';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
 // import { NODE_DEFINITIONS } from './definitions/node-definitions'; // Unused
 import { SequencerDock } from './components/Sequencer/SequencerDock';
@@ -152,7 +154,7 @@ const EditorLayout = () => {
 
     const { nearestInScale } = useScale();
 
-    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode, previewError, previewStale, isBuilding } = useWasmAudioEngine(
+    const { isPlaying, handlePlay, handleStop, analyserNode, previewError, previewStale, isBuilding } = useWasmAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -160,7 +162,11 @@ const EditorLayout = () => {
         tracks,
         setCurrentStep,
         patternSteps,
-        nearestInScale
+        nearestInScale,
+        // Live master fader (SKB-011): applied inside the DSP graph via
+        // skald_set_master_volume, not a post-worklet JS GainNode. See the
+        // hook's masterVolume param comment for why the two never agreed.
+        masterVolume
     );
     // Save/load outcome, shown in a banner over the canvas. Errors stay up
     // until the next file action; successes auto-clear after a few seconds.
@@ -184,6 +190,41 @@ const EditorLayout = () => {
         applySessionSettings,
         notifyFileStatus
     );
+
+    // Packet B4 (c) — the title bar (Electron mirrors document.title by
+    // default; see useWindowTitle.ts) marks unsaved edits the same way every
+    // other editor does, so "did I save?" never depends on remembering.
+    useWindowTitle(history.isDirty);
+
+    // Packet B4 (d) — a debounced write-behind of the whole document to
+    // localStorage, cleared the instant there is nothing left to recover.
+    // See useAutosave.ts for why `editsSinceSave` drives the write and
+    // `isDirty` drives the clear.
+    useAutosave(history.captureSnapshot, history.editsSinceSave, history.isDirty);
+
+    // A crash or a closed window can leave a recovery record behind from a
+    // PREVIOUS session; read it once, on mount, before this session's own
+    // edits have a chance to overwrite or clear it.
+    const [recoverableAutosave, setRecoverableAutosave] = useState<AutosaveRecord | null>(() => readAutosave());
+
+    const handleRestoreAutosave = useCallback((record: AutosaveRecord) => {
+        // Same shape as a Load: replace every slice of the document, then
+        // reset the history — the pre-recovery state (whatever this fresh
+        // session opened with, i.e. nothing) is not something to undo BACK to.
+        setNodes(record.snapshot.nodes);
+        setEdges(record.snapshot.edges);
+        loadTracks(record.snapshot.tracks);
+        applySessionSettings(record.snapshot.session);
+        history.resetHistory();
+        clearAutosave();
+        setRecoverableAutosave(null);
+        notifyFileStatus({ kind: 'success', message: `Restored autosave from ${new Date(record.savedAt).toLocaleString()}` });
+    }, [setNodes, setEdges, loadTracks, applySessionSettings, history, notifyFileStatus]);
+
+    const handleDismissAutosave = useCallback(() => {
+        clearAutosave();
+        setRecoverableAutosave(null);
+    }, []);
 
     const sequencerState = {
         isPlaying,
@@ -404,6 +445,44 @@ const EditorLayout = () => {
                                 {previewError ?? previewStale}
                             </div>
                         )}
+                        {recoverableAutosave && (
+                            <div
+                                data-testid="autosave-recovery-banner"
+                                style={{
+                                    position: 'absolute',
+                                    top: 10,
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    zIndex: 51,
+                                    maxWidth: '85%',
+                                    padding: '8px 14px',
+                                    borderRadius: 6,
+                                    fontSize: '0.85em',
+                                    color: '#fff',
+                                    backgroundColor: 'rgba(49,130,206,0.95)',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                }}
+                            >
+                                <span>Recovered unsaved changes from {new Date(recoverableAutosave.savedAt).toLocaleString()}.</span>
+                                <button
+                                    data-testid="autosave-restore-button"
+                                    onClick={() => handleRestoreAutosave(recoverableAutosave)}
+                                    style={{ background: '#fff', color: '#1E1E1E', border: 'none', borderRadius: 4, padding: '4px 10px', fontWeight: 'bold', cursor: 'pointer' }}
+                                >
+                                    Restore
+                                </button>
+                                <button
+                                    data-testid="autosave-dismiss-button"
+                                    onClick={handleDismissAutosave}
+                                    style={{ background: 'transparent', color: '#fff', border: '1px solid #fff', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        )}
                         {fileStatus && (
                             <div
                                 data-testid="file-status-banner"
@@ -473,7 +552,6 @@ const EditorLayout = () => {
                     onUpdateNote={updateNote}
                     onUpdateSteps={updateTrackSteps}
                     analyserNode={analyserNode?.current || null}
-                    masterGainNode={masterGainNode?.current || null}
                     onStepSelect={(trackId, step) => {
                         // Deselect nodes
                         setNodes(nds => nds.map(n => ({ ...n, selected: false })));

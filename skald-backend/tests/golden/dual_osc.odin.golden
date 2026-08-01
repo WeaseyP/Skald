@@ -114,11 +114,9 @@ Asset_Processor :: struct {
 	ext_in_r: f32,
 	volume: f32,
 	Osc_A_amplitude: f32,
-	Osc_A_frequency: f32,
 	Osc_A_phase: f32,
 	Osc_A_pulseWidth: f32,
 	Osc_B_amplitude: f32,
-	Osc_B_frequency: f32,
 	Osc_B_phase: f32,
 	Osc_B_pulseWidth: f32,
 	attack: f32,
@@ -135,11 +133,9 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.prng.state = 12345
 	p.loop = true
 	p.Osc_A_amplitude = 0.500000000
-	p.Osc_A_frequency = 440.000000000
 	p.Osc_A_phase = 0.000000000
 	p.Osc_A_pulseWidth = 0.500000000
 	p.Osc_B_amplitude = 0.500000000
-	p.Osc_B_frequency = 660.000000000
 	p.Osc_B_phase = 0.000000000
 	p.Osc_B_pulseWidth = 0.500000000
 	p.attack = 0.050000001
@@ -275,13 +271,6 @@ Asset_set_Osc_A_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 	p.Osc_A_amplitude = v
 }
 
-Asset_set_Osc_A_frequency :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 20.000000000 do v = 20.000000000
-	if v > 20000.000000000 do v = 20000.000000000
-	p.Osc_A_frequency = v
-}
-
 Asset_set_Osc_A_phase :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
 	if v < 0.000000000 do v = 0.000000000
@@ -301,13 +290,6 @@ Asset_set_Osc_B_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 	if v < 0.000000000 do v = 0.000000000
 	if v > 1.000000000 do v = 1.000000000
 	p.Osc_B_amplitude = v
-}
-
-Asset_set_Osc_B_frequency :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 20.000000000 do v = 20.000000000
-	if v > 20000.000000000 do v = 20000.000000000
-	p.Osc_B_frequency = v
 }
 
 Asset_set_Osc_B_phase :: proc(p: ^Asset_Processor, value: f32) {
@@ -361,11 +343,9 @@ Asset_set_sustain :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_PARAMS := []Skald_Param_Info{
 	{"Osc_A_amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
-	{"Osc_A_frequency", 20.000000000, 20000.000000000, 440.000000000, "Hz"},
 	{"Osc_A_phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
 	{"Osc_A_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"Osc_B_amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
-	{"Osc_B_frequency", 20.000000000, 20000.000000000, 660.000000000, "Hz"},
 	{"Osc_B_phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
 	{"Osc_B_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"attack", 0.000000000, 10.000000000, 0.050000001, "s"},
@@ -380,9 +360,6 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	case "Osc_A_amplitude", "1::amplitude":
 		Asset_set_Osc_A_amplitude(p, value)
 		return true
-	case "Osc_A_frequency", "1::frequency":
-		Asset_set_Osc_A_frequency(p, value)
-		return true
 	case "Osc_A_phase", "1::phase":
 		Asset_set_Osc_A_phase(p, value)
 		return true
@@ -391,9 +368,6 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 		return true
 	case "Osc_B_amplitude", "2::amplitude":
 		Asset_set_Osc_B_amplitude(p, value)
-		return true
-	case "Osc_B_frequency", "2::frequency":
-		Asset_set_Osc_B_frequency(p, value)
 		return true
 	case "Osc_B_phase", "2::phase":
 		Asset_set_Osc_B_phase(p, value)
@@ -424,16 +398,12 @@ Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 	switch name {
 	case "Osc_A_amplitude", "1::amplitude":
 		return p.Osc_A_amplitude, true
-	case "Osc_A_frequency", "1::frequency":
-		return p.Osc_A_frequency, true
 	case "Osc_A_phase", "1::phase":
 		return p.Osc_A_phase, true
 	case "Osc_A_pulseWidth", "1::pulseWidth":
 		return p.Osc_A_pulseWidth, true
 	case "Osc_B_amplitude", "2::amplitude":
 		return p.Osc_B_amplitude, true
-	case "Osc_B_frequency", "2::frequency":
-		return p.Osc_B_frequency, true
 	case "Osc_B_phase", "2::phase":
 		return p.Osc_B_phase, true
 	case "Osc_B_pulseWidth", "2::pulseWidth":

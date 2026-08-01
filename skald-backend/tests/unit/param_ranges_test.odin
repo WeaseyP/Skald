@@ -96,6 +96,35 @@ test_generic_name_keyed_hit :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_bpm_range_and_boundary :: proc(t: ^testing.T) {
+	// SKB-050, RESOLVED. The editor used to clamp BPM to 20..300 while this
+	// row said 20..999 — the one still-open member of the original four
+	// range mismatches, watched by RangeParity.test.tsx's KNOWN_DIVERGENCES
+	// allowlist. The editor's `BPM_MAX` was raised to 999 to match this row
+	// (not the other way around: this 20..999 range predates the A8 gate
+	// entirely, matches the conventional DAW tempo ceiling, and nothing in
+	// the example corpus or the step accumulator in codegen.odin assumes an
+	// upper bound below it — see bpm.ts for the full reasoning). The
+	// allowlist entry pinning the mismatch, and the gate's dedicated
+	// "still open" test, were both deleted rather than updated, per the
+	// gate's own "if it was fixed, DELETE this entry" rule.
+	expect_range(t, "bpm", "", 20.0, 999.0, 120.0, "bpm")
+
+	// The boundary itself: 20 and 999 are the last values still inside the
+	// contract; 19 and 1000 are the first values outside it in either
+	// direction. There is no runtime BPM setter yet (BUGS.md SKB-050's
+	// "harmless until a runtime BPM setter ships" note), so this row is
+	// consulted only by the range-dump/parity gate today — pinning the
+	// boundary here is what proves the CONTRACT the gate reads from,
+	// mirroring `clampBpm`'s boundary test on the editor side.
+	r := core.lookup_param_range("bpm", "")
+	testing.expect(t, 20.0 >= r.min && 20.0 <= r.max, "20 (min boundary) must be inside the bpm range")
+	testing.expect(t, 999.0 >= r.min && 999.0 <= r.max, "999 (max boundary) must be inside the bpm range")
+	testing.expect(t, 19.0 < r.min, "19 must be outside the bpm range (below min)")
+	testing.expect(t, 1000.0 > r.max, "1000 must be outside the bpm range (above max)")
+}
+
+@(test)
 test_multi_name_cases_are_distinct_rows :: proc(t: ^testing.T) {
 	// `wetDryMix`/`mix` and `inMin`/`outMin` used to share one switch case.
 	// As data they are separate rows, so this pins that they still agree —

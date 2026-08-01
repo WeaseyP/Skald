@@ -215,26 +215,7 @@ interface KnownDivergence {
  */
 const KNOWN_DIVERGENCES: KnownDivergence[] = [
     // -----------------------------------------------------------------------
-    // 1. Open bugs with an existing id.
-    // -----------------------------------------------------------------------
-    {
-        uiType: 'project',
-        param: 'bpm',
-        surface: 'project',
-        uiMin: 20,
-        uiMax: 300,
-        backendMin: 20,
-        backendMax: 999,
-        owner: 'SKB-050 (open) / unify with the runtime-BPM setter work',
-        why:
-            'The editor cannot reach tempi the backend accepts. Harmless only for as long as ' +
-            'there is no runtime BPM setter: the moment one ships, a host can set 400 and the ' +
-            'editor can neither display nor re-enter it. Also asserted by name in its own test ' +
-            'below, because this is the one still-open member of the original four mismatches.',
-    },
-
-    // -----------------------------------------------------------------------
-    // 2. The name-keyed table cannot express the parameter (F-A10-17).
+    // 1. The name-keyed table cannot express the parameter (F-A10-17).
     //    `decay` is ONE generic row serving two unrelated quantities: an ADSR
     //    envelope stage and a Reverb tail length. There is no single min that
     //    is right for both, which is the root cause of this whole bug class,
@@ -268,7 +249,7 @@ const KNOWN_DIVERGENCES: KnownDivergence[] = [
     },
 
     // -----------------------------------------------------------------------
-    // 3. The backend bound is a SAFETY clamp, deliberately wider than any
+    // 2. The backend bound is a SAFETY clamp, deliberately wider than any
     //    authoring range. An LFO amplitude feeds whatever it modulates, and
     //    modulating a cutoff means reaching 20 kHz — hence 0..20000 on the
     //    setter. Clamping the setter to the slider's range would make the LFO
@@ -303,7 +284,7 @@ const KNOWN_DIVERGENCES: KnownDivergence[] = [
     },
 
     // -----------------------------------------------------------------------
-    // 4. Fixing needs NARROWING an editor bound, which can invalidate a value
+    // 3. Fixing needs NARROWING an editor bound, which can invalidate a value
     //    already sitting in a saved patch. Not done by a gate packet.
     // -----------------------------------------------------------------------
     {
@@ -338,7 +319,7 @@ const KNOWN_DIVERGENCES: KnownDivergence[] = [
     },
 
     // -----------------------------------------------------------------------
-    // 5. Editor surface is NARROWER than the backend and widening it is safe —
+    // 4. Editor surface is NARROWER than the backend and widening it is safe —
     //    recommended fix stated, but the file belongs to another packet.
     //    In both cases the node CARD already matches the backend, so the
     //    sidebar is the sole outlier and there is no judgement call left.
@@ -372,7 +353,7 @@ const KNOWN_DIVERGENCES: KnownDivergence[] = [
     },
 
     // -----------------------------------------------------------------------
-    // 6. Both sides mean "unbounded", spelled differently. The Mapper exists to
+    // 5. Both sides mean "unbounded", spelled differently. The Mapper exists to
     //    rescale arbitrary ranges (its own default outMax is 20000), so the card
     //    deliberately omits min/max and the backend spells the same intent as
     //    +-1e6. Recorded rather than silently skipped: if the contract ever
@@ -393,7 +374,7 @@ const KNOWN_DIVERGENCES: KnownDivergence[] = [
     })),
 
     // -----------------------------------------------------------------------
-    // 7. No backend row exists, so the lookup returns the wide-open fallback.
+    // 6. No backend row exists, so the lookup returns the wide-open fallback.
     // -----------------------------------------------------------------------
     {
         uiType: 'instrument',
@@ -733,16 +714,23 @@ describe('UI/backend parameter-range parity', () => {
         expect(stale).toEqual([]);
     });
 
-    it('BPM: the editor cannot reach tempi the backend accepts (SKB-050, open)', () => {
-        // Named separately from the allowlist because SKB-050 is the one open
-        // mismatch of the original four and the packet brief requires this gate
-        // to light it up rather than absorb it. When a runtime BPM setter ships
-        // and the two are unified, this test fails and must be deleted.
+    it('BPM: the editor and backend bounds are unified (SKB-050, resolved)', () => {
+        // This used to assert the OPPOSITE — that BPM_MAX deliberately did not
+        // match the backend (UI 20..300 vs backend 20..999) — with a comment
+        // saying that test must be deleted the moment the two were unified.
+        // They are unified now (BPM_MAX raised to 999; see bpm.ts), so per
+        // that instruction the old assertion is gone and the
+        // `KNOWN_DIVERGENCES` entry that pinned the mismatch above was
+        // deleted rather than updated, per its own "if it was fixed, DELETE
+        // this entry" rule. The generic parity test already covers
+        // project.bpm now that no allowlist entry shadows it; this test
+        // exists so the resolution is asserted BY NAME, the same way the
+        // open mismatch used to be, instead of silently disappearing into
+        // the generic sweep.
         const backend = resolved.get(key({ backendType: '', param: 'bpm' }));
         expect(backend).toBeDefined();
         expect(BPM_MIN).toBe(backend!.min);
         expect(BPM_DEFAULT).toBe(backend!.default);
-        expect(BPM_MAX).not.toBe(backend!.max);
-        expect([BPM_MAX, backend!.max]).toEqual([300, 999]);
+        expect(BPM_MAX).toBe(backend!.max);
     });
 });

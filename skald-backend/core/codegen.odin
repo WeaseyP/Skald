@@ -146,6 +146,32 @@ warn_unreachable_nodes :: proc(graph: ^Graph, all_nodes: []Node, inst_name: stri
 	}
 }
 
+// SKB-006: build-time trace for the silent exposedParameters drop in
+// effective_exposed_params (param_is_reachable decides which). Same
+// non-fatal build-hygiene category as warn_graph_output_count /
+// warn_unreachable_nodes above — a checkbox left checked across an edit that
+// makes it inert (flipping bpmSync on, or never turning fixedPitch on) is
+// routine, not an error, but "why did my setter disappear" still deserves a
+// build-time trace instead of requiring the user to read the generated Odin
+// by hand.
+warn_dead_exposed_params :: proc(all_nodes: []Node, inst_name: string) {
+	for node in all_nodes {
+		params_val, ok := node.parameters["exposedParameters"]
+		if !ok do continue
+		arr, is_arr := params_val.(json.Array)
+		if !is_arr do continue
+		for p_val in arr {
+			p_name, is_str := p_val.(json.String)
+			if !is_str do continue
+			if param_is_reachable(node, string(p_name)) do continue
+			fmt.eprintf(
+				"Warning: instrument %q: %s(%s) exposes %q, but %s — the generated struct field, setter and _PARAMS row for it are omitted.\n",
+				inst_name, node.type, node.id, p_name, param_dead_reason(node, string(p_name)),
+			)
+		}
+	}
+}
+
 // Split the graph into voice domain and bus domain. Delay/Reverb hold ONE
 // shared buffer on the processor — running them inside the per-voice loop
 // divided the delay time by the active-voice count, bled voices into each
@@ -494,7 +520,7 @@ generate_sample_hold_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 	fmt.sbprintf(sb, "\t\tnode_%s_out = %ssh_%s_current_value * (%s);\n\n", node.id, sp, node.id, amp_str)
 }
 
-generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, instrument: ^Project_Instrument) {
 	// The modulator signal comes from the 'input_mod' port.
 	mod_str := "0.0"
 	if graph != nil {
@@ -545,19 +571,44 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 	// The UI sends 'modIndex', which is the modulation depth.
 	mod_index_str := get_f32_param(graph, node, "modIndex", "", 100.0)
 
-	fmt.sbprintf(sb, "\t\t// --- FM Operator Node %s ---\n", node.id)
+	// SKB-012: instrument-level unison/detune, the same stack Oscillator
+	// builds (see generate_oscillator_code above) — per-voice phase
+	// accumulator, linear cents spread across the stack, /N gain
+	// compensation. json.odin floors a 0 at parse time; this guard covers
+	// Instruments constructed directly in code.
+	//
+	// The modulator (mod_str) is deliberately NOT re-detuned per voice: it
+	// stays one shared signal added identically to every detuned carrier's
+	// phase, mirroring a real multi-carrier FM voice (one modulator driving
+	// several detuned carriers). This is a choice made for this fix, not
+	// something the prior code settled — an equally defensible design would
+	// detune the modulator in lockstep with its carrier; revisit if the
+	// shared-modulator stack doesn't sound right in practice.
+	unison_count := instrument.unison
+	if unison_count <= 0 do unison_count = 1
+	detune_amount := instrument.detune
+
+	fmt.sbprintf(sb, "\t\t// --- FM Operator Node %s (Unison/Detune) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
 	// Ratio clamped to [0.01, 32]: legacy saves carry the old UI default of
 	// 440 in this param, which as a raw ratio put the carrier at ~190kHz.
 	emit_f32_local(sb, "\t\t\t", fmt.tprintf("carrier_freq_%s", node.id), fmt.tprintf("%s * math.clamp(f32(%s), 0.01, 32.0)%s", carrier_base_freq_str, ratio_str, carrier_mod_str))
-	// Increment the phase based on the carrier frequency.
-	fmt.sbprintf(sb, "\t\t\tvoice.fm_%s_phase = math.mod(voice.fm_%s_phase + (2 * f32(math.PI) * carrier_freq_%s / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, node.id)
-	// Calculate the final output. The modulator signal is multiplied by the modulation index and added to the phase.
-	fmt.sbprintf(sb, "\t\t\tnode_%s_out = math.sin(voice.fm_%s_phase + (%s) * (%s));\n", node.id, node.id, mod_str, mod_index_str)
+	fmt.sbprintf(sb, "\t\t\tunison_out: f32 = 0.0;\n")
+	fmt.sbprintf(sb, "\t\t\tunison_count := %d;\n", unison_count)
+	fmt.sbprint(sb, "\t\t\tfor i in 0..<unison_count {\n")
+	fmt.sbprint(sb, "\t\t\t\tdetune_amount: f32 = 0.0;\n")
+	fmt.sbprintf(sb, "\t\t\t\tif unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (%.9f);\n", detune_amount)
+	emit_f32_local(sb, "\t\t\t\t", fmt.tprintf("detuned_carrier_freq_%s", node.id), fmt.tprintf("carrier_freq_%s * math.pow(2.0, detune_amount / 1200.0)", node.id))
+	// Increment the phase based on the detuned carrier frequency.
+	fmt.sbprintf(sb, "\t\t\t\tvoice.fm_%s_phase[i] = math.mod(voice.fm_%s_phase[i] + (2 * f32(math.PI) * detuned_carrier_freq_%s / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, node.id)
+	// Calculate this voice's output. The modulator signal is multiplied by the modulation index and added to the phase.
+	fmt.sbprintf(sb, "\t\t\t\tunison_out += math.sin(voice.fm_%s_phase[i] + (%s) * (%s));\n", node.id, mod_str, mod_index_str)
+	fmt.sbprint(sb, "\t\t\t}\n")
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = unison_out / f32(unison_count);\n", node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
-generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
+generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, instrument: ^Project_Instrument) {
 	// Pitch tracks the played note (same note-wins semantic as Oscillator;
 	// this node used to bake `frequency` in and play 440 for every note).
 	// `fixedPitch` opts back in to the frequency param, same as Oscillator.
@@ -588,10 +639,29 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph)
 	pos_str := get_f32_param(graph, node, "position", "input_pos", 0.0)
 	amp_str := get_f32_param(graph, node, "amplitude", "input_amp", 1.0)
 
-	fmt.sbprintf(sb, "\t\t// --- Wavetable Node %s ---\n", node.id)
-	fmt.sbprintf(sb, "\t\tvoice.wavetable_%s_phase = math.mod(voice.wavetable_%s_phase + ((%s) / sample_rate), 1.0);\n", node.id, node.id, freq_str)
-	fmt.sbprintf(sb, "\t\tif voice.wavetable_%s_phase < 0.0 do voice.wavetable_%s_phase += 1.0;\n", node.id, node.id)
-	fmt.sbprintf(sb, "\t\tnode_%s_out = skald_wavetable_sample(voice.wavetable_%s_phase, f32(%s)) * (%s);\n\n", node.id, node.id, pos_str, amp_str)
+	// SKB-012: instrument-level unison/detune, the same stack Oscillator
+	// builds (see generate_oscillator_code above) — per-voice phase
+	// accumulator, linear cents spread across the stack, /N gain
+	// compensation. json.odin floors a 0 at parse time; this guard covers
+	// Instruments constructed directly in code.
+	unison_count := instrument.unison
+	if unison_count <= 0 do unison_count = 1
+	detune_amount := instrument.detune
+
+	fmt.sbprintf(sb, "\t\t// --- Wavetable Node %s (Unison/Detune) ---\n", node.id)
+	fmt.sbprint(sb, "\t\t{\n")
+	fmt.sbprintf(sb, "\t\t\tunison_out: f32 = 0.0;\n")
+	fmt.sbprintf(sb, "\t\t\tunison_count := %d;\n", unison_count)
+	fmt.sbprint(sb, "\t\t\tfor i in 0..<unison_count {\n")
+	fmt.sbprint(sb, "\t\t\t\tdetune_amount: f32 = 0.0;\n")
+	fmt.sbprintf(sb, "\t\t\t\tif unison_count > 1 do detune_amount = (f32(i) / (f32(unison_count) - 1.0) - 0.5) * 2.0 * (%.9f);\n", detune_amount)
+	emit_f32_local(sb, "\t\t\t\t", "detuned_freq", fmt.tprintf("(%s) * math.pow(2.0, detune_amount / 1200.0)", freq_str))
+	fmt.sbprintf(sb, "\t\t\t\tvoice.wavetable_%s_phase[i] = math.mod(voice.wavetable_%s_phase[i] + (detuned_freq / sample_rate), 1.0);\n", node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\t\tif voice.wavetable_%s_phase[i] < 0.0 do voice.wavetable_%s_phase[i] += 1.0;\n", node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\t\tunison_out += skald_wavetable_sample(voice.wavetable_%s_phase[i], f32(%s));\n", node.id, pos_str)
+	fmt.sbprint(sb, "\t\t\t}\n")
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (unison_out / f32(unison_count)) * (%s);\n", node.id, amp_str)
+	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
 generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph) {
@@ -1021,6 +1091,12 @@ collect_plock_targets :: proc(
 	all_nodes := nodes_sorted_by_id(&instrument.graph)
 	defer delete(all_nodes)
 
+	// Keyed lookup for the reachability check below, so it doesn't re-scan
+	// all_nodes per resolved target.
+	node_by_id := make(map[string]Node)
+	defer delete(node_by_id)
+	for node in all_nodes do node_by_id[node.id] = node
+
 	seen := make(map[string]bool)
 	defer delete(seen)
 	for track in tracks do for event in track.events {
@@ -1041,6 +1117,44 @@ collect_plock_targets :: proc(
 				fmt.eprintf(
 					"\nThe node was probably renamed or deleted after the override was created. Remove the override in the step editor (or restore the node's label) and regenerate.\n",
 				)
+				os.exit(1)
+			}
+			// SKB-006: a P-lock is an explicit runtime automation instruction
+			// (unlike a dangling exposedParameters checkbox, which is only
+			// silently pruned with a warning — see warn_dead_exposed_params).
+			// A P-lock that resolves to a real node+param the DSP's CURRENT
+			// bpmSync/fixedPitch configuration never reads would still be a
+			// silent no-op — exactly the bug class this resolver exists to
+			// kill (see the comment on resolve_plock_targets above) — so it
+			// is a hard error, the same severity as an unresolvable key.
+			for t in resolved {
+				node, ok := node_by_id[t.node_id]
+				if !ok do continue // resolve_plock_targets only returns ids it found above
+				if param_is_reachable(node, t.param) do continue
+				fmt.eprintf(
+					"Error: instrument %q has a step parameter override (P-lock) %q targeting %s(%s)'s %q parameter, but %s — the generated DSP never reads it, so the override would silently do nothing.\n",
+					instrument.name,
+					key,
+					node.type,
+					node.id,
+					t.param,
+					param_dead_reason(node, t.param),
+				)
+				// SKB-007: unlike the bpmSync/fixedPitch cases, no node
+				// configuration ever makes `syncRate` live — it is read at
+				// codegen time off the authored parameter, never through an
+				// exposed field. Telling the user to "toggle BPM Sync" would
+				// be actively wrong advice for this one, so it gets its own
+				// follow-up line instead of the generic toggle suggestion.
+				if t.param == "syncRate" {
+					fmt.eprintf(
+						"No node configuration makes `syncRate` live — remove this override in the step editor, then regenerate.\n",
+					)
+				} else {
+					fmt.eprintf(
+						"Change the node's configuration so the parameter is live (toggle BPM Sync / fixedPitch as appropriate), or remove this override in the step editor, then regenerate.\n",
+					)
+				}
 				os.exit(1)
 			}
 			for t in resolved do append(&targets, t)
@@ -1070,6 +1184,78 @@ clean_instrument_name :: proc(inst: ^Project_Instrument) -> string {
 	return sanitized
 }
 
+// SKB-006: whether the node's generated DSP, under its CURRENT bpmSync /
+// fixedPitch configuration, actually reads `param` as a runtime `p.<field>`
+// reference. generate_lfo_code, generate_sample_hold_code and
+// generate_delay_code all call get_f32_param for the free-run
+// frequency/rate/delayTime and then DISCARD the result the instant
+// bpm_sync_seconds_expr reports the node synced (:453-458, :479-483,
+// :597-602 above) — so an exposed field for it, if emitted, is written but
+// never referenced anywhere in the output. Oscillator and Wavetable are the
+// mirror image: `frequency` is read only when `fixedPitch` is explicitly on
+// (:210-217, :560-568); by default the played note drives pitch and the
+// param is never referenced at all. Every other (node type, param) pair is
+// unconditionally reachable — the baked-branch gating above is the
+// exception the generators themselves hard-code, not a general rule, so this
+// only mirrors those exact spots.
+//
+// SKB-007: `syncRate` on LFO/SampleHold/Delay is a THIRD, unconditional case
+// — not a bpmSync-gated one. bpm_sync_seconds_expr (:35-58) reads it via
+// get_string_param(node, "syncRate", ...) directly against node.parameters
+// (the parsed JSON), at codegen time, regardless of whether the node ends up
+// synced or not. No generator anywhere emits or reads a `p.syncRate` struct
+// field — get_string_param never resolves through exposed_resolutions or a
+// processor field the way the f32 param helpers do. So unlike `frequency`/
+// `rate`/`delayTime` (dead only while synced), `syncRate` is dead always,
+// independent of the bpmSync flag's value.
+param_is_reachable :: proc(node: Node, param: string) -> bool {
+	switch node.type {
+	case "LFO":
+		if param == "syncRate" do return false
+		if param != "frequency" do return true
+		_, synced := bpm_sync_seconds_expr(node)
+		return !synced
+	case "SampleHold":
+		if param == "syncRate" do return false
+		if param != "rate" do return true
+		_, synced := bpm_sync_seconds_expr(node)
+		return !synced
+	case "Delay":
+		if param == "syncRate" do return false
+		if param != "delayTime" do return true
+		_, synced := bpm_sync_seconds_expr(node)
+		return !synced
+	case "Oscillator", "Wavetable":
+		if param != "frequency" do return true
+		return get_bool_param(node, "fixedPitch", false)
+	}
+	return true
+}
+
+// Human-readable reason for the false path above, shared word-for-word by the
+// P-lock hard error (collect_plock_targets) and the exposed-parameter drop
+// warning (warn_dead_exposed_params) so the two diagnostics agree on WHY.
+// Only meaningful once param_is_reachable has already returned false for
+// (node, param) — every case here is one param_is_reachable already gated
+// on. Takes `param` (not just `node`) because SKB-007 gives a single node
+// type (LFO/SampleHold/Delay) two distinct dead params with two distinct
+// reasons: `frequency`/`rate`/`delayTime` are dead only while bpmSync is on,
+// but `syncRate` is dead unconditionally — conflating the two under one
+// node-type-keyed reason would misreport the fix for whichever one it is not
+// currently describing.
+param_dead_reason :: proc(node: Node, param: string) -> string {
+	if param == "syncRate" {
+		return "syncRate is only ever read at codegen time via get_string_param, straight off the authored parameter — never through an exposed struct field — so no bpmSync/fixedPitch toggle or any other configuration ever makes it live"
+	}
+	switch node.type {
+	case "LFO", "SampleHold", "Delay":
+		return "bpmSync is on, so its time base comes from syncRate instead"
+	case "Oscillator", "Wavetable":
+		return "fixedPitch is off, so the played note drives pitch instead"
+	}
+	return "the current node configuration never reads it"
+}
+
 // generate_processor_code generates the Odin source code for the audio processor logic.
 // It creates struct definitions, state management, and the `process_audio` function.
 // Effective exposure list for one node: the UI's exposedParameters array
@@ -1086,7 +1272,15 @@ effective_exposed_params :: proc(node: Node, plock_targets: []Plock_Target) -> [
 		if arr, is_arr := params_val.(json.Array); is_arr {
 			for p_val in arr {
 				if p_name, is_str := p_val.(json.String); is_str {
-					if !seen[p_name] {
+					// SKB-006: a param the node's CURRENT bpmSync/fixedPitch
+					// configuration never reads (param_is_reachable) is
+					// dropped here instead of minting a dead struct field,
+					// setter, _PARAMS row and set_param case.
+					// warn_dead_exposed_params below emits the build-time
+					// trace for this — a checkbox left checked across an
+					// unrelated bpmSync/fixedPitch edit is routine, not an
+					// authored automation instruction, so it is not an error.
+					if !seen[p_name] && param_is_reachable(node, string(p_name)) {
 						seen[p_name] = true
 						append(&names, string(p_name))
 					}
@@ -1094,9 +1288,14 @@ effective_exposed_params :: proc(node: Node, plock_targets: []Plock_Target) -> [
 			}
 		}
 	}
+	// A P-lock cannot resurrect a dead parameter either — same rule as above.
+	// In the real pipeline collect_plock_targets already hard-errors before
+	// generate_processor_code ever reaches this proc, so `t.param` is always
+	// reachable here in practice; this check is defense-in-depth for any
+	// other caller.
 	for t in plock_targets {
 		if t.node_id != node.id do continue
-		if !seen[t.param] {
+		if !seen[t.param] && param_is_reachable(node, t.param) {
 			seen[t.param] = true
 			append(&names, t.param)
 		}
@@ -1174,6 +1373,7 @@ generate_processor_code :: proc(
 	// code, only whether the user is told about it.
 	warn_graph_output_count(all_nodes, instrument.name)
 	warn_unreachable_nodes(graph, all_nodes, instrument.name)
+	warn_dead_exposed_params(all_nodes, instrument.name)
 
 	bus_nodes := compute_bus_domain(graph, sorted_nodes, instrument.name)
 
@@ -1246,9 +1446,9 @@ generate_processor_code :: proc(
 		} else if node.type == "LFO" {
 			fmt.sbprintf(&sb, "\tlfo_%s_phase: f32,\n", node.id)
 		} else if node.type == "FmOperator" {
-			fmt.sbprintf(&sb, "\tfm_%s_phase: f32,\n", node.id)
+			fmt.sbprintf(&sb, "\tfm_%s_phase: [%d]f32,\n", node.id, max(instrument.unison, 1))
 		} else if node.type == "Wavetable" {
-			fmt.sbprintf(&sb, "\twavetable_%s_phase: f32,\n", node.id)
+			fmt.sbprintf(&sb, "\twavetable_%s_phase: [%d]f32,\n", node.id, max(instrument.unison, 1))
 		} else if node.type == "Noise" {
 			fmt.sbprintf(&sb, "\tnoise_%s_rng: PRNG_State,\n", node.id)
 			if noise_is_pink(node) {
@@ -1621,9 +1821,9 @@ generate_processor_code :: proc(
 			case "Oscillator":
 				fmt.sbprintf(&reset_sb, "\t\tv.osc_%s_phase = {{}}\n", node.id)
 			case "FmOperator":
-				fmt.sbprintf(&reset_sb, "\t\tv.fm_%s_phase = 0.0\n", node.id)
+				fmt.sbprintf(&reset_sb, "\t\tv.fm_%s_phase = {{}}\n", node.id)
 			case "Wavetable":
-				fmt.sbprintf(&reset_sb, "\t\tv.wavetable_%s_phase = 0.0\n", node.id)
+				fmt.sbprintf(&reset_sb, "\t\tv.wavetable_%s_phase = {{}}\n", node.id)
 			case "Distortion":
 				fmt.sbprintf(&reset_sb, "\t\tv.dist_%s_tone = 0.0\n", node.id)
 			}
@@ -2033,9 +2233,9 @@ generate_processor_code :: proc(
         case "LFO":
              generate_lfo_code(&sb, node, graph, "voice.")
         case "FmOperator":
-             generate_fm_operator_code(&sb, node, graph)
+             generate_fm_operator_code(&sb, node, graph, instrument)
         case "Wavetable":
-             generate_wavetable_code(&sb, node, graph)
+             generate_wavetable_code(&sb, node, graph, instrument)
         case "SampleHold":
              generate_sample_hold_code(&sb, node, graph, "voice.")
         case "GraphOutput":

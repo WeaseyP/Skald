@@ -16,7 +16,18 @@
 */
 
 export const BPM_MIN = 20;
-export const BPM_MAX = 300;
+// SKB-050: was 300, which no shipped patch ever needed and which nothing in
+// this file's history justifies as a musical limit — it was a UI default
+// picked in passing while fixing the NaN-clamp bug (BUG-BPM-SETUP-UX), not a
+// considered ceiling. 999 unifies with `param_ranges.odin`'s "" "bpm" row,
+// which predates this file and matches the conventional DAW tempo ceiling
+// (Ableton Live, FL Studio, Logic all cap at 999 BPM). The backend's step
+// accumulator (`codegen.odin`'s `samples_per_step_f` / `step_frac_acc`) never
+// assumed an upper bound — it floors every step at 1 sample regardless of how
+// small `samples_per_step_f` gets — so there is no engine reason to stay at
+// 300 either. See BUGS.md SKB-050 and the retired allowlist entry this
+// unification removes from RangeParity.test.tsx.
+export const BPM_MAX = 999;
 export const BPM_DEFAULT = 120;
 
 // Clamp a BPM edit into the supported range. Non-finite input (empty field,

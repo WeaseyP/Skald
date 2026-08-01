@@ -108,6 +108,23 @@ peak_freq_from_fft :: proc(spec: []complex64, sample_rate: f32) -> f32 {
 	return f32(max_bin) * sample_rate / f32(n)
 }
 
+// Magnitude (not power) at the FFT bin nearest `freq_hz`. Unlike
+// peak_freq_from_fft (which only ever reports the single loudest bin), this
+// lets a caller ask "is there real energy at THIS specific frequency" —
+// e.g. proving a detuned unison stack puts audible energy at partials other
+// than the center voice's, which a single non-detuned source would not.
+magnitude_at_freq :: proc(spec: []complex64, sample_rate: f32, freq_hz: f32) -> f32 {
+	n := len(spec)
+	if n < 4 do return 0
+	half := n / 2
+	bin := int(math.round(freq_hz * f32(n) / sample_rate))
+	if bin < 1 do bin = 1
+	if bin >= half do bin = half - 1
+	re := real(spec[bin])
+	im := imag(spec[bin])
+	return math.sqrt(re * re + im * im)
+}
+
 // Spectral centroid (weighted mean of magnitude across bins, in Hz).
 // Used by the filter-sweep assertion: the centroid moves up when a
 // filter cutoff opens and down when it closes.

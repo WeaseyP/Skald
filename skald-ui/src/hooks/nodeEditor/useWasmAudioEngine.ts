@@ -47,13 +47,21 @@ export const useWasmAudioEngine = (
     sequencerTracks: SequencerTrack[],
     setCurrentStep: (step: number) => void,
     patternSteps: number,
-    nearestInScale: (note: number) => number
+    nearestInScale: (note: number) => number,
+    // Master fader, live (SKB-011). Applied INSIDE the DSP graph via the
+    // generated skald_set_master_volume export, at the same point the
+    // exported binary applies project.master_volume — not as a post-worklet
+    // JS GainNode. That workaround baked master_volume=1.0 into the worklet
+    // and multiplied the slider on afterward (vol·tanh(x)); the export
+    // computes tanh(vol·x). tanh is concave, so the two only ever agreed at
+    // vol∈{0,1} — every other setting played a louder, less-saturated signal
+    // than what was tuned by ear (BUGS.md SKB-011).
+    masterVolume: number
 ) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const workletNode = useRef<AudioWorkletNode | null>(null);
     const [analyserState, setAnalyserState] = useState<AnalyserNode | null>(null);
-    const [masterGainState, setMasterGainState] = useState<GainNode | null>(null);
 
     // Surfaced to the UI — these errors were console-only, which made every
     // failure mode (Odin missing, codegen error, build timeout) look exactly
@@ -109,9 +117,13 @@ export const useWasmAudioEngine = (
     // only an unobserved messageerror) — every hot-swap vanished in transit
     // and live edits never applied until Stop/Play.
     const buildModule = useCallback(async (): Promise<{ bytes: ArrayBuffer, signature: string, stepAsset: number }> => {
-        // master_volume is baked as 1.0 for the preview: the dock's volume
-        // slider drives the JS master GainNode live instead, so volume moves
-        // don't force a recompile. The export path bakes the real value.
+        // master_volume is baked as a topology-neutral 1.0 for the preview
+        // build: the dock's fader instead drives skald_set_master_volume
+        // live (see the masterVolume effect below), so dragging it never
+        // forces a recompile — same treatment as an exposed instrument
+        // param. The export path bakes the real authored value (SKB-011's
+        // backend half); baking it here too would fold volume into
+        // topologySignature and turn every drag into a full rebuild.
         const projectData = buildProjectData(nodes, edges, sequencerTracks, bpm, 1.0, patternSteps, nearestInScale);
         if (projectData.project.instruments.length === 0) {
             throw new Error('No instruments on the canvas. Wrap nodes in an Instrument before playing.');
@@ -143,7 +155,6 @@ export const useWasmAudioEngine = (
         workletNode.current = null;
         lastSignature.current = null;
         setAnalyserState(null);
-        setMasterGainState(null);
         setIsPlaying(false);
         // Stopped = no longer listening to a stale module. A play *error*
         // stays visible until the next Play attempt resolves it.
@@ -190,7 +201,13 @@ export const useWasmAudioEngine = (
                 numberOfInputs: 0,
                 numberOfOutputs: 1,
                 outputChannelCount: [2],
-                processorOptions: { bytes, stepAsset, loop: isLooping },
+                // masterVolume seeds the worklet's live fader state (applied
+                // inside the DSP via skald_set_master_volume — see the
+                // masterVolume effect below for changes during playback).
+                // Same treatment as `loop`: the value read here is
+                // reapplied by the worklet after every hot-swap too, because
+                // skald_init resets the module's copy to the baked 1.0.
+                processorOptions: { bytes, stepAsset, loop: isLooping, masterVolume },
             });
             node.port.onmessage = (e) => {
                 const m = e.data;
@@ -225,11 +242,13 @@ export const useWasmAudioEngine = (
                 setPreviewError('A message from the audio engine was dropped (deserialization error).');
             };
 
-            const masterGain = context.createGain();
+            // No master GainNode: the worklet output IS the mixed, faded
+            // signal (master_volume applied inside the DSP graph, same point
+            // the export applies it — see skald_set_master_volume above).
+            // Two places that could apply the fader is exactly the bug.
             const analyser = context.createAnalyser();
             analyser.fftSize = 2048;
-            node.connect(masterGain);
-            masterGain.connect(analyser);
+            node.connect(analyser);
             analyser.connect(context.destination);
 
             if (context.state === 'suspended') {
@@ -240,7 +259,6 @@ export const useWasmAudioEngine = (
             lastSignature.current = signature;
             prevInstruments.current = getInstrumentNodes(nodes);
             setAnalyserState(analyser);
-            setMasterGainState(masterGain);
             setIsPlaying(true);
             logger.info('WasmAudioEngine', 'Playing generated wasm module');
         } catch (e) {
@@ -255,7 +273,7 @@ export const useWasmAudioEngine = (
         } finally {
             startInFlight.current = false;
         }
-    }, [isPlaying, buildModule, isLooping, setCurrentStep, patternSteps, nodes]);
+    }, [isPlaying, buildModule, isLooping, setCurrentStep, patternSteps, nodes, masterVolume]);
 
     // Instant path: exposed param edits go straight to the running module
     // via skald_set_param — no recompile, no audio interruption. Params are
@@ -397,6 +415,17 @@ export const useWasmAudioEngine = (
         workletNode.current?.port.postMessage({ type: 'set-loop', loop: isLooping });
     }, [isLooping, isPlaying]);
 
+    // Master fader applies live, same shape as the loop toggle above: the
+    // value lands inside the DSP graph via skald_set_master_volume, at the
+    // same mix point the exported binary applies it, instead of a
+    // post-worklet JS GainNode (SKB-011 — see the masterVolume param comment
+    // at the top of this hook). No `??`/`||` here: a slider at 0 must reach
+    // the worklet as a real 0, not be treated as an absent/falsy value —
+    // that is the exact Maybe(f32) distinction SKB-004 fixed on the backend.
+    useEffect(() => {
+        workletNode.current?.port.postMessage({ type: 'set-master-volume', value: masterVolume });
+    }, [masterVolume, isPlaying]);
+
     // Audition: the Output node's test button stamps lastTrigger; fire every
     // asset like the old engine did (C4, short preview envelope).
     const lastAuditionStamp = useRef<unknown>(null);
@@ -470,7 +499,6 @@ export const useWasmAudioEngine = (
         handlePlay,
         handleStop,
         analyserNode: { current: analyserState },
-        masterGainNode: { current: masterGainState },
         // Preview health, for visible UI surfacing (console-only errors made
         // toolchain failures indistinguishable from a silent patch).
         previewError,

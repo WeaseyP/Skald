@@ -15,6 +15,16 @@
 |                                     (key = the decoded name, for reporting) |
 |   {type:'note-on'|'note-off'|'trigger', asset, note, velocity?, duration?}  |
 |   {type:'set-loop', loop}                                                    |
+|   {type:'set-master-volume', value}  live master-fader edit, applied       |
+|                                     INSIDE the DSP graph via                 |
+|                                     skald_set_master_volume — replacing the  |
+|                                     post-worklet JS GainNode whose           |
+|                                     vol*tanh(x) never matched the export's   |
+|                                     tanh(vol*x) (BUGS.md SKB-011). Re-applied|
+|                                     after every instantiate() (initial build |
+|                                     and hot-swap alike), same as loopEnabled |
+|                                     below — skald_init always reseeds the    |
+|                                     wasm global from the BAKED project value.|
 |   {type:'start-all'} / {type:'stop-all'}                                     |
 | Messages out:                                                                |
 |   {type:'step', step}      sequencer step changed (drives the UI playhead)  |
@@ -40,8 +50,19 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         this.lastStep = -1;
         this.wasPlaying = false;
         this.loopEnabled = true;
+        // Mirrors loopEnabled: kept here (not read back from wasm) because
+        // skald_init reseeds the wasm global from the baked project value
+        // (always 1.0 for the preview build — see buildModule in
+        // useWasmAudioEngine.ts) on every instantiate, including a hot-swap.
+        // Without a host-side copy to reapply, a mid-play topology edit would
+        // snap the fader back to full every time the module rebuilt.
+        this.masterVolume = 1.0;
         const opts = options.processorOptions || {};
         if (typeof opts.loop === 'boolean') this.loopEnabled = opts.loop;
+        // typeof check, not a nullish/OR default: an authored/live 0 (silence)
+        // must not be read as "absent" and fall back to 1.0 — that is the
+        // exact Maybe(f32)-vs-0 bug SKB-004 fixed on the backend (BUGS.md).
+        if (typeof opts.masterVolume === 'number') this.masterVolume = opts.masterVolume;
         if (opts.bytes) {
             this.instantiate(opts.bytes, opts.stepAsset ?? 0, false);
         }
@@ -87,6 +108,11 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         const module = new WebAssembly.Module(bytes);
         const ex = new WebAssembly.Instance(module, this.imports()).exports;
         ex.skald_init(sampleRate);
+        // Reapply the live master volume immediately: skald_init just reset
+        // the module's wasm_master_volume to the baked project value, same
+        // reason skald_set_loop is reapplied per asset below rather than
+        // trusting the freshly-initialized module's own defaults.
+        ex.skald_set_master_volume(this.masterVolume);
         ex.skald_start_all();
         const assetCount = ex.skald_asset_count();
         for (let a = 0; a < assetCount; a++) {
@@ -153,6 +179,13 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
                 case 'set-loop':
                     this.loopEnabled = !!m.loop;
                     this.forEachAsset(a => this.ex.skald_set_loop(a, this.loopEnabled ? 1 : 0));
+                    break;
+                case 'set-master-volume':
+                    // Stored (not just forwarded) so instantiate() can
+                    // reapply it after the NEXT hot-swap too — see the
+                    // constructor comment on this.masterVolume.
+                    this.masterVolume = m.value;
+                    this.ex?.skald_set_master_volume(m.value);
                     break;
                 case 'start-all':
                     this.ex?.skald_start_all();

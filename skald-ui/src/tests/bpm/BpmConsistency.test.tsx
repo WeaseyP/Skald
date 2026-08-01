@@ -36,6 +36,17 @@ describe('clampBpm', () => {
         expect(clampBpm(100000)).toBe(BPM_MAX);
     });
 
+    it('SKB-050: accepts the boundary values and clamps just past them', () => {
+        // The editor and the backend (`param_ranges.odin`'s "" "bpm" row) now
+        // agree on 20..999. Pinned tight to the boundary rather than a wide
+        // margin so a regression to the old 300 ceiling — or any other drift —
+        // fails here instead of only in the cross-language RangeParity gate.
+        expect(clampBpm(20)).toBe(20);
+        expect(clampBpm(999)).toBe(999);
+        expect(clampBpm(19)).toBe(20);
+        expect(clampBpm(1000)).toBe(999);
+    });
+
     it('never returns NaN — non-finite input falls back to the default', () => {
         expect(clampBpm(NaN)).toBe(BPM_DEFAULT);
         expect(clampBpm(Infinity)).toBe(BPM_DEFAULT);
@@ -131,7 +142,7 @@ describe('Sidebar BPM input', () => {
     it('clamps typed values into the shared range on commit', () => {
         const onBpmChange = vi.fn();
         renderSidebar(onBpmChange);
-        fireEvent.change(bpmInput(), { target: { value: '500' } });
+        fireEvent.change(bpmInput(), { target: { value: '5000' } });
         fireEvent.blur(bpmInput());
         expect(onBpmChange).toHaveBeenLastCalledWith(BPM_MAX);
 
