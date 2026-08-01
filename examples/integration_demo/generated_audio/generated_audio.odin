@@ -89,6 +89,7 @@ Sfx_Voice_State :: struct {
 	filter_2_band: f32,
 	adsr_3_stage: ADSR_Stage,
 	adsr_3_release_level: f32,
+	adsr_3_attack_start: f32,
 }
 
 Sfx_Processor :: struct {
@@ -137,6 +138,20 @@ Sfx_note_on :: proc(p: ^Sfx_Processor, note: u8, velocity: f32, duration: f32) {
 
 	v := &p.voices[voice_idx]
 	prev_freq := v.current_freq
+	adsr_3_prev_level: f32 = 0.0
+	if stolen && v.adsr_3_stage != .Idle {
+		adsr_3_prev_level = v.adsr_3_release_level
+		if v.adsr_3_stage == .Release {
+			rel_t_3: f32 = (f32(0.200000000));
+			if rel_t_3 > 0.0 {
+				rf_3 := 1.0 - (v.age - v.time_released) / math.max(rel_t_3, 0.000001)
+				if rf_3 < 0.0 do rf_3 = 0.0
+				adsr_3_prev_level *= rf_3
+			} else {
+				adsr_3_prev_level = 0.0
+			}
+		}
+	}
 	v.active = true
 	v.note = note
 	v.velocity = velocity
@@ -151,11 +166,14 @@ Sfx_note_on :: proc(p: ^Sfx_Processor, note: u8, velocity: f32, duration: f32) {
 		v.current_freq = freq
 	}
 	v.duration = duration
-	v.osc_1_phase = {}
-	v.filter_2_low = 0.0
-	v.filter_2_band = 0.0
 	v.adsr_3_stage = .Attack
-	v.adsr_3_release_level = 0.0
+	v.adsr_3_attack_start = adsr_3_prev_level
+	v.adsr_3_release_level = adsr_3_prev_level
+	if !stolen {
+		v.osc_1_phase = {}
+		v.filter_2_low = 0.0
+		v.filter_2_band = 0.0
+	}
 }
 
 Sfx_note_off :: proc(p: ^Sfx_Processor, note: u8) {
@@ -227,7 +245,7 @@ Sfx_PARAMS := []Skald_Param_Info{
 
 Sfx_set_param :: proc(p: ^Sfx_Processor, name: string, value: f32) -> bool {
 	switch name {
-	case "cutoff":
+	case "cutoff", "2::cutoff":
 		Sfx_set_cutoff(p, value)
 		return true
 	}
@@ -236,7 +254,7 @@ Sfx_set_param :: proc(p: ^Sfx_Processor, name: string, value: f32) -> bool {
 
 Sfx_get_param :: proc(p: ^Sfx_Processor, name: string) -> (f32, bool) {
 	switch name {
-	case "cutoff":
+	case "cutoff", "2::cutoff":
 		return p.cutoff, true
 	}
 	return 0.0, false
@@ -284,7 +302,7 @@ Sfx_process :: proc(p: ^Sfx_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += ((final_phase / f32(math.PI)) - 1.0);
 			}
-			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+			node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
 
 		// --- Filter Node 2 (SVF) ---
@@ -305,7 +323,7 @@ Sfx_process :: proc(p: ^Sfx_Processor) -> (f32, f32) {
 			case .Idle:
 				envelope = 0.0;
 			case .Attack:
-				if (f32(0.010000000)) > 0 do envelope = voice.age / math.max(f32(f32(0.010000000)), 0.000001); else do envelope = 1.0;
+				if (f32(0.010000000)) > 0 do envelope = voice.adsr_3_attack_start + (1.0 - voice.adsr_3_attack_start) * (voice.age / math.max(f32(f32(0.010000000)), 0.000001)); else do envelope = 1.0;
 				voice.adsr_3_release_level = envelope;
 				if voice.age >= (f32(0.010000000)) {
 					voice.adsr_3_stage = .Decay;
@@ -356,6 +374,7 @@ Layer_Voice_State :: struct {
 	osc_10_phase: [1]f32,
 	adsr_11_stage: ADSR_Stage,
 	adsr_11_release_level: f32,
+	adsr_11_attack_start: f32,
 }
 
 Layer_Processor :: struct {
@@ -402,6 +421,20 @@ Layer_note_on :: proc(p: ^Layer_Processor, note: u8, velocity: f32, duration: f3
 
 	v := &p.voices[voice_idx]
 	prev_freq := v.current_freq
+	adsr_11_prev_level: f32 = 0.0
+	if stolen && v.adsr_11_stage != .Idle {
+		adsr_11_prev_level = v.adsr_11_release_level
+		if v.adsr_11_stage == .Release {
+			rel_t_11: f32 = (f32(0.080000000));
+			if rel_t_11 > 0.0 {
+				rf_11 := 1.0 - (v.age - v.time_released) / math.max(rel_t_11, 0.000001)
+				if rf_11 < 0.0 do rf_11 = 0.0
+				adsr_11_prev_level *= rf_11
+			} else {
+				adsr_11_prev_level = 0.0
+			}
+		}
+	}
 	v.active = true
 	v.note = note
 	v.velocity = velocity
@@ -416,9 +449,12 @@ Layer_note_on :: proc(p: ^Layer_Processor, note: u8, velocity: f32, duration: f3
 		v.current_freq = freq
 	}
 	v.duration = duration
-	v.osc_10_phase = {}
 	v.adsr_11_stage = .Attack
-	v.adsr_11_release_level = 0.0
+	v.adsr_11_attack_start = adsr_11_prev_level
+	v.adsr_11_release_level = adsr_11_prev_level
+	if !stolen {
+		v.osc_10_phase = {}
+	}
 }
 
 Layer_note_off :: proc(p: ^Layer_Processor, note: u8) {
@@ -530,7 +566,7 @@ Layer_process :: proc(p: ^Layer_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_10_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += math.sin(final_phase);
 			}
-			if unison_count > 0 do node_10_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+			node_10_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
 
 		// --- ADSR Node 11 ---
@@ -540,7 +576,7 @@ Layer_process :: proc(p: ^Layer_Processor) -> (f32, f32) {
 			case .Idle:
 				envelope = 0.0;
 			case .Attack:
-				if (f32(0.001000000)) > 0 do envelope = voice.age / math.max(f32(f32(0.001000000)), 0.000001); else do envelope = 1.0;
+				if (f32(0.001000000)) > 0 do envelope = voice.adsr_11_attack_start + (1.0 - voice.adsr_11_attack_start) * (voice.age / math.max(f32(f32(0.001000000)), 0.000001)); else do envelope = 1.0;
 				voice.adsr_11_release_level = envelope;
 				if voice.age >= (f32(0.001000000)) {
 					voice.adsr_11_stage = .Decay;

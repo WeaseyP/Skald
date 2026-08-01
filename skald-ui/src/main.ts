@@ -16,6 +16,10 @@ import {
   createOdinResolver,
   odinMissingMessage,
 } from './main/odinToolchain';
+import {
+  CodegenStampEnv,
+  createCodegenGuard,
+} from './main/codegenStamp';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -85,11 +89,60 @@ const warnIfOdinMissing = async (): Promise<void> => {
   dialog.showErrorBox('Skald — audio preview unavailable', message);
 };
 
+// In dev, app.getAppPath() is the project root, where the exe sits. In a
+// packaged build getAppPath() is inside app.asar — a virtual path spawn()
+// cannot execute from — so the exe ships as an extraResource under
+// process.resourcesPath instead (see forge.config.ts).
+const codegenExePath = (): string =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, 'skald_codegen.exe')
+    : path.join(app.getAppPath(), 'skald_codegen.exe');
+
+// --- Codegen provenance handshake (roadmap A2 / SKB-001) ---------------------
+//
+// The codegen binary is no longer committed to git; `prestart`/`premake` build
+// it from source. That removes the stale-binary defect at its root, but not the
+// ways it can come back: a developer who edits skald-backend/core and previews
+// without rebuilding, a half-finished build, or a copy carried over from an
+// older checkout. So the app asks the binary who it is (`-version`, a digest of
+// the sources it was compiled from) and refuses to spawn one that does not match
+// the backend sources on disk. See src/main/codegenStamp.ts.
+//
+// The backend sources are only present in a dev checkout; a packaged install
+// gets the weaker "it must answer -version at all" check, and says so rather
+// than claiming a freshness guarantee it cannot make.
+const codegenStampEnv = (): CodegenStampEnv => {
+  const backendDir = path.join(app.getAppPath(), '..', 'skald-backend');
+  return {
+    exePath: codegenExePath(),
+    backendDir: !app.isPackaged && fs.existsSync(path.join(backendDir, 'main.odin')) ? backendDir : null,
+  };
+};
+
+const codegenGuard = createCodegenGuard(codegenStampEnv);
+
+// Same reasoning as warnIfOdinMissing: an error box is the one in-app surface
+// the main process owns outright, and it fires at launch rather than waiting for
+// the user to wonder why their edits have no effect. The same text also comes
+// back through the build-wasm-preview and invoke-codegen rejections, so Play and
+// Generate each state it again on the canvas.
+const warnIfCodegenStale = async (): Promise<void> => {
+  const verdict = await codegenGuard.check();
+  if (verdict.ok) {
+    if (verdict.note) console.warn(`[Skald] ${verdict.note}`);
+    else console.log(`[Skald] Codegen provenance verified: ${verdict.stamp.digest}`);
+    return;
+  }
+  console.error(`[Skald] ${verdict.message}`);
+  dialog.showErrorBox('Skald — code generator out of date', verdict.message);
+};
+
 app.on('ready', () => {
   createWindow();
   // Deliberately not awaited: the window must come up regardless, and the
-  // probe is async precisely so it cannot block the main process.
+  // probes are async precisely so they cannot block the main process.
   void warnIfOdinMissing();
+  void warnIfCodegenStale();
 });
 
 app.on('window-all-closed', () => {
@@ -104,15 +157,6 @@ app.on('activate', () => {
   }
 });
 
-// In dev, app.getAppPath() is the project root, where the exe sits. In a
-// packaged build getAppPath() is inside app.asar — a virtual path spawn()
-// cannot execute from — so the exe ships as an extraResource under
-// process.resourcesPath instead (see forge.config.ts).
-const codegenExePath = (): string =>
-  app.isPackaged
-    ? path.join(process.resourcesPath, 'skald_codegen.exe')
-    : path.join(app.getAppPath(), 'skald_codegen.exe');
-
 ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { packageName?: string, outputPath?: string } = {}) => {
   // --- DEBUG: Log the JSON received by the main process ---
   console.log("Main process received from renderer:", graphJson.substring(0, 50) + "...");
@@ -120,6 +164,13 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { package
   // ---------------------------------------------------------
 
   const executablePath = codegenExePath();
+
+  // Refuse to write generated code with a generator that does not match the
+  // backend sources. Generate Code is the path whose output a game developer
+  // then compiles against for months, so shipping them stale output is worse
+  // here than in preview — it leaves the repo, and it is what put the
+  // voice-steal click into every checked-in generated_audio.odin (SKB-020).
+  await codegenGuard.assertUsable();
 
   // Refuse to clobber a foreign Odin package — either by overwriting a
   // different-package file at the output path, or by dropping our file into a
@@ -255,6 +306,13 @@ const buildWasmPreview = async (projectJson: string): Promise<ArrayBuffer> => {
     // (the vendored path, SKALD_ODIN, setup-dev.ps1) has to be IN the message.
     throw new Error(odinMissingMessage(odinPathEnv()));
   }
+
+  // Checked after Odin, before the codegen spawn: without a compiler you cannot
+  // rebuild the generator either, so that message comes first. This rejection
+  // is what the renderer turns into the on-canvas banner (useWasmAudioEngine ->
+  // app.tsx), which is the whole point — a stale generator used to surface as
+  // knobs that quietly did nothing (SKB-001/F-C4-2).
+  await codegenGuard.assertUsable();
 
   // The preview package lives in its own directory (Odin: one package per
   // directory) under userData so it never collides with user-chosen output

@@ -40,6 +40,94 @@ jobs:
         working-directory: skald-backend
         run: .\run_golden.bat check
 
+      # ---------------------------------------------------------------------
+      # Binary provenance (roadmap packet A2 / BUGS.md SKB-001). The audit's
+      # most-cited finding was that the binary the app spawns
+      # (skald-ui/skald_codegen.exe) was COMMITTED and nine backend commits
+      # stale, while CI built its own copy from source and never looked at the
+      # committed one: the green badge certified a compiler no user ran.
+      #
+      # The binary is untracked now, so the job that proves the app works has to
+      # build it — by the same path a contributor's `npm start` takes, so that
+      # path cannot rot either.
+      # ---------------------------------------------------------------------
+      - name: Build the code generator the app spawns (the prestart path)
+        working-directory: skald-ui
+        run: node scripts/ensure-codegen.mjs --required
+
+      # The stamp is a digest of the backend sources embedded in the binary at
+      # compile time (skald-backend/main.odin), which the editor compares
+      # against the files on disk before spawning it. Its one weakness is that
+      # the embedded file list is hand-written, so a NEW backend source would sit
+      # outside the digest and drift unwatched. The app only warns about that —
+      # refusing would leave a contributor unable to un-stick themselves by
+      # rebuilding — so this is where it has to be fatal.
+      - name: Provenance stamp covers every backend source
+        shell: pwsh
+        working-directory: skald-backend
+        run: |
+          $stamp = & ..\skald-ui\skald_codegen.exe -version
+          if ($LASTEXITCODE -ne 0) { throw "skald_codegen.exe -version exited $LASTEXITCODE" }
+          $stamp | ForEach-Object { Write-Host "  $_" }
+          $digest = $stamp | Select-String '^source-digest: (\S+)$'
+          if (-not $digest) { throw "No source-digest line: the binary reports no provenance stamp." }
+          $stamped = $stamp |
+            Select-String '^source-file: \S+ (.+)$' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
+          $onDisk = @('main.odin') + (Get-ChildItem core -Filter *.odin | ForEach-Object { "core/$($_.Name)" })
+          $uncovered = $onDisk | Where-Object { $stamped -notcontains $_ }
+          $ghost = $stamped | Where-Object { $onDisk -notcontains $_ }
+          if ($uncovered) {
+            throw "Backend sources outside the provenance stamp: $($uncovered -join ', '). " +
+                  "Add them to CODEGEN_SOURCES in skald-backend/main.odin, or drift in them is invisible."
+          }
+          if ($ghost) { throw "Stamp names sources that no longer exist: $($ghost -join ', ')." }
+          Write-Host "Stamp covers all $($onDisk.Count) backend sources."
+
+      # SKB-020: every checked-in generated_audio.odin was emitted by the stale
+      # binary, so all of them re-introduced the voice-steal click that source
+      # had already fixed — including the integration demo, which is the copy a
+      # game developer starts from. Regenerate and diff, exactly like the
+      # goldens.
+      - name: Checked-in generated Odin matches the current compiler
+        working-directory: skald-backend
+        run: .\regen_generated.bat check
+
+      # ...and it has to COMPILE, not just match: three harnesses and the
+      # reference integration build against those files.
+      - name: Harnesses and the integration demo build against it
+        shell: pwsh
+        run: |
+          odin build skald-backend/tester -out:test_harness.exe
+          if ($LASTEXITCODE -ne 0) { throw "tester harness build failed" }
+          odin build skald-backend/tester/fixture_player -out:fixture_player.exe
+          if ($LASTEXITCODE -ne 0) { throw "fixture_player build failed" }
+          Push-Location examples/integration_demo
+          odin build . -out:integration_demo.exe
+          if ($LASTEXITCODE -ne 0) { Pop-Location; throw "integration demo build failed" }
+          ./integration_demo.exe -mode:silent-test
+          if ($LASTEXITCODE -ne 0) { Pop-Location; throw "integration demo silent-test failed" }
+          Pop-Location
+
+      # The reappearance gate. Untracking the binary is only a fix while it
+      # stays untracked: a single `git add -f` would put a stale compiler back
+      # in the index and CI would go on testing its own build instead.
+      - name: No build artifact is tracked in git
+        shell: pwsh
+        run: |
+          $tracked = git ls-files -- '*.exe' '*.dll' '*.wasm' '*.obj' '*.pdb'
+          if ($tracked) {
+            $tracked | ForEach-Object { Write-Host "  tracked artifact: $_" }
+            throw "Build artifacts are tracked. skald-ui/skald_codegen.exe was committed and " +
+                  "went nine backend commits stale (SKB-001); it is built by prestart/premake now."
+          }
+          git check-ignore -q skald-ui/skald_codegen.exe
+          if ($LASTEXITCODE -ne 0) {
+            throw "skald-ui/skald_codegen.exe is no longer gitignored — an un-ignore exception " +
+                  "has come back. See the comment at the top of .gitignore."
+          }
+          Write-Host "No tracked build artifacts; the codegen binary is ignored."
+
       # The audit's top finding was a working tree nobody could reproduce: the
       # compiler four agents measured against, two source modules imported by
       # shipped code, and the manual the whole audit was calibrated on all
@@ -47,10 +135,18 @@ jobs:
       # files behind is how that happens — either a source file was never
       # committed, or a build artifact is landing somewhere that isn't ignored.
       #
-      # It fails on modified tracked files too, deliberately: `build_codegen.bat`
-      # writes over the *tracked* skald-ui/skald_codegen.exe, so any step that
-      # builds the CLI will trip this. That is the finding, not a false positive
-      # — packet A2 untracks the binary and this stops being reachable.
+      # It fails on modified tracked files too, deliberately.
+      #
+      # A note here used to say that `build_codegen.bat` trips this step by
+      # writing over the tracked skald-ui/skald_codegen.exe. Two things were
+      # wrong with that: nothing in this job built the CLI at all, and
+      # skald-ui/skald_codegen.exe is outside the pathspec below (which covers
+      # skald-ui/src, not skald-ui/) — so it never could have tripped. Packet A2
+      # settles it either way: the binary is untracked and matched by
+      # `.gitignore`'s `*.exe`, so the steps above now build it, run it, and
+      # regenerate every checked-in generated_audio.odin with it, and this step
+      # still sees a clean tree. Anything those steps leave behind that is NOT
+      # ignored (say skald-backend/.regen/) fails here, which is the point.
       - name: No untracked files after the backend build
         shell: pwsh
         run: |

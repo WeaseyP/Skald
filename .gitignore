@@ -2,17 +2,27 @@
 *.exe
 *.out
 /main
-# Exception: the UI spawns this at runtime and it ships as an Electron
-# extraResource; contributors without Odin still need the app to work.
+# NO EXCEPTIONS HERE. `skald-ui/skald_codegen.exe` — the generator the app
+# spawns for both preview and Generate — used to be un-ignored and tracked. It
+# drifted nine backend commits behind its own source, so in a fresh clone every
+# exposed-parameter knob was a silent no-op during preview, the voice-steal
+# anti-click fix was un-shipped, and CI's green badge certified a compiler no
+# user ran (BUGS.md SKB-001, roadmap packet A2, §3.1).
 #
-# KNOWN LIABILITY — do not remove this exception on its own. The committed
-# binary drifts from the backend source and is not the one CI validates
-# (BUGS.md SKB-001, roadmap packet A2). The fix is to untrack it and build on
-# `prestart`, but that must land AFTER Odin toolchain resolution (packet A13):
-# with no vendored-toolchain lookup and no checked-in binary, the documented
-# setup path goes from "preview silently does nothing" to "the app will not
-# start". See docs/0.2-ROADMAP.md §4.8.
-!skald-ui/skald_codegen.exe
+# It is built from source now, on the two commands a contributor types:
+# `npm start` and `npm run make` run skald-ui/scripts/ensure-codegen.mjs, which
+# calls skald-backend/build_codegen.bat (SKALD_ODIN -> vendored .tools -> PATH).
+# The app then checks `skald_codegen.exe -version` against the backend sources
+# and refuses to spawn a mismatched binary with a visible banner
+# (skald-ui/src/main/codegenStamp.ts), and CI rebuilds it and gates the
+# generated files against it.
+#
+# The ordering constraint that used to block this is satisfied: Odin toolchain
+# resolution landed in 53b807c (packet A13), so a checkout with no binary and no
+# compiler now fails loudly and actionably at launch instead of not starting at
+# all (roadmap §4.8). Re-adding a tracked binary would re-open SKB-001 — the
+# packaging path already builds it, and `prestart` deliberately does not abort
+# the app when the build fails.
 
 # Agent/assistant working directories
 .claude/
@@ -41,6 +51,11 @@ skald-backend/tests/out/
 # the tree on every run — the same class as the tracked codegen binary above.
 # The template is the source; this is its output.
 /skald-backend/acceptance/generated_audio/generated_audio.odin
+
+# regen_generated.bat's scratch dir: fresh emission for the checked-in
+# generated_audio.odin copies, compared against the committed files and thrown
+# away. Same role as tests/golden/.gen/.
+/skald-backend/.regen/
 
 # Skald-generated scratch output
 /skald-ui/generated_audio.odin
