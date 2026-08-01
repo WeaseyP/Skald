@@ -1,39 +1,33 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Node } from '@xyflow/react';
 import { NodeParams } from '../../definitions/types';
 import { useSequencerState } from './useSequencerState';
 
+/**
+ * Keeps one sequencer track per Instrument node on the canvas.
+ *
+ * The track list is DERIVED state: it exists because an Instrument node does.
+ * So this reconciliation never pushes its own undo entry — the graph edit that
+ * added or removed the Instrument already pushed one, and that entry's snapshot
+ * contains the tracks as they were before the edit. That is what makes one
+ * Ctrl+Z after deleting an Instrument bring back the node AND its whole track
+ * of notes (F-B01-3), instead of restoring a track whose node is still gone and
+ * having this effect delete it again on the next tick.
+ */
 export const useInstrumentRegistry = (
     nodes: Node<NodeParams>[],
-    sequencerActions: ReturnType<typeof useSequencerState>
+    sequencerActions: Pick<ReturnType<typeof useSequencerState>, 'syncInstrumentTracks'>
 ) => {
-    // Keep track of processed IDs to avoid loops if needed, 
-    // but the reducer in useSequencerState checks existence.
+    const { syncInstrumentTracks } = sequencerActions;
 
     useEffect(() => {
-        const instrumentNodes = nodes.filter(n => n.type === 'instrument');
-        const activeNodeIds = new Set(instrumentNodes.map(n => n.id));
-
-        // 1. Add new tracks
-        instrumentNodes.forEach(node => {
-            const label = node.data?.label || node.data?.name || "Instrument";
-            // Check if track exists is handled in addTrack, but we can check here too if we exposed tracks
-            sequencerActions.addTrack(node.id, label);
-
-            // Sync name if changed (this might be spammy if not careful, but useEffect dep is nodes)
-            sequencerActions.updateTrackName(node.id, label);
-        });
-
-        // 2. Remove dead tracks
-        // access tracks from actions? No, useSequencerState returns { tracks }
-        const currentTracks = sequencerActions.tracks;
-        currentTracks.forEach(track => {
-            if (!activeNodeIds.has(track.targetNodeId)) {
-                // If it's a persisted track but node is gone, remove it.
-                // NOTE: This assumes we want to hard-delete tracks when nodes are deleted.
-                sequencerActions.removeTrack(track.targetNodeId);
-            }
-        });
-
-    }, [nodes, sequencerActions]);
+        syncInstrumentTracks(
+            nodes
+                .filter(n => n.type === 'instrument')
+                .map(n => ({
+                    id: n.id,
+                    name: (n.data?.label || n.data?.name || 'Instrument') as string,
+                }))
+        );
+    }, [nodes, syncInstrumentTracks]);
 };

@@ -102,6 +102,14 @@ describe('Sidebar BPM input', () => {
                 onPackageNameChange={noop}
                 outputPath=""
                 onSelectOutputPath={noop}
+                onUndo={noop}
+                onRedo={noop}
+                canUndo={false}
+                canRedo={false}
+                undoDepth={0}
+                redoDepth={0}
+                undoLabel={null}
+                redoLabel={null}
             />
         );
     };

@@ -3,9 +3,9 @@ import React from 'react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { ReactFlowProvider, Node, NodeChange } from '@xyflow/react';
-import { useGraphState } from '../../hooks/nodeEditor/useGraphState';
+import { useEditorState } from '../../hooks/nodeEditor/useEditorState';
 
-// useNodeComposition (pulled in by useGraphState) calls useReactFlow, so the
+// useNodeComposition (pulled in by useEditorState) calls useReactFlow, so the
 // hook must render inside a ReactFlowProvider.
 const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ReactFlowProvider>{children}</ReactFlowProvider>
@@ -37,9 +37,9 @@ const instrumentNode = (): Node => ({
 
 afterEach(cleanup);
 
-describe('useGraphState — undo / redo of structural edits', () => {
+describe('useEditorState — undo / redo of structural edits', () => {
     it('undo restores the graph before an added node; redo re-applies it', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
 
         // An 'add' node change is undoable and snapshots the empty graph first.
         act(() => {
@@ -55,7 +55,7 @@ describe('useGraphState — undo / redo of structural edits', () => {
     });
 
     it('undo with an empty history is a no-op (does not throw or corrupt state)', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
         act(() => {
             result.current.onNodesChange([{ type: 'add', item: filterNode('n1', 800) } as NodeChange]);
         });
@@ -65,9 +65,9 @@ describe('useGraphState — undo / redo of structural edits', () => {
     });
 });
 
-describe('useGraphState — slider-drag coalescing', () => {
+describe('useEditorState — slider-drag coalescing', () => {
     it('collapses a burst of updateNodeData calls into ONE undo entry', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
 
         act(() => { result.current.setNodes([filterNode('flt', 800)]); });
 
@@ -88,9 +88,9 @@ describe('useGraphState — slider-drag coalescing', () => {
     });
 });
 
-describe('useGraphState — updateNodeData subgraph routing', () => {
+describe('useEditorState — updateNodeData subgraph routing', () => {
     it('writes into a subgraph sub-node when subNodeId differs from the instrument id', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
         act(() => { result.current.setNodes([instrumentNode()]); });
 
         act(() => {
@@ -105,7 +105,7 @@ describe('useGraphState — updateNodeData subgraph routing', () => {
     });
 
     it('writes the instruments OWN params when subNodeId === nodeId (not hunted inside the subgraph)', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
         act(() => { result.current.setNodes([instrumentNode()]); });
 
         // Callers pass `subNodeId || node.id`, so an instrument editing its own

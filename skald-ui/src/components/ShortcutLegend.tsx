@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 // undiscoverable — nothing in the UI mentioned any of them.
 
 const SHORTCUTS: Array<[string, string]> = [
-    ['Ctrl/Cmd + Z', 'Undo (graph + sequencer)'],
+    ['Ctrl/Cmd + Z', 'Undo the last edit (graph, sequencer and transport share one history)'],
     ['Ctrl/Cmd + Shift + Z / Ctrl + Y', 'Redo'],
     ['Ctrl/Cmd + C / V', 'Copy / paste selected nodes'],
     ['Delete / Backspace', 'Delete selected nodes & wires'],

@@ -3,7 +3,11 @@
 | FILE: skald-ui/src/hooks/nodeEditor/useGraphState.ts                         |
 |                                                                              |
 | This hook encapsulates all state and logic related to managing the           |
-| React Flow graph itself, including nodes, edges, undo/redo, and grouping.    |
+| React Flow graph itself: nodes, edges, selection, clipboard and grouping.    |
+|                                                                              |
+| It no longer owns an undo stack. Every edit here pushes a labelled entry onto |
+| THE editor history (useEditorHistory), which snapshots the whole document —   |
+| graph, tracks and session together. See editorSnapshot.ts for why.           |
 ================================================================================
 */
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -14,6 +18,7 @@ import {
     OnEdgesChange,
     OnConnect,
     NodeChange,
+    NodePositionChange,
     EdgeChange,
     addEdge,
     applyNodeChanges,
@@ -22,23 +27,44 @@ import {
 } from '@xyflow/react';
 import { NodeParams, SkaldGraphNode } from '../../definitions/types';
 import { useNodeComposition } from './useNodeComposition';
+import { EditorHistoryApi } from './editorSnapshot';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 
 const initialNodes: Node<NodeParams>[] = [];
 const initialEdges: Edge[] = [];
 
-type HistoryState = { nodes: Node<NodeParams>[]; edges: Edge[] };
+export type GraphHistoryHooks = Pick<EditorHistoryApi, 'pushHistory' | 'endGesture'>;
 
-export const useGraphState = () => {
-    const [nodes, setNodes] = useState<Node<NodeParams>[]>(initialNodes);
-    const [edges, setEdges] = useState<Edge[]>(initialEdges);
+export const useGraphState = ({ pushHistory, endGesture }: GraphHistoryHooks) => {
+    const [nodes, setNodesState] = useState<Node<NodeParams>[]>(initialNodes);
+    const [edges, setEdgesState] = useState<Edge[]>(initialEdges);
     const [selectedNode, setSelectedNode] = useState<Node<NodeParams> | null>(null);
     const [selectedNodesForGrouping, setSelectedNodesForGrouping] = useState<Node<NodeParams>[]>([]);
 
-    const [history, setHistory] = useState<HistoryState[]>([]);
-    const [future, setFuture] = useState<HistoryState[]>([]);
-    const isRestoring = useRef(false);
+    // Graph state is mirrored into refs and every write goes through the
+    // wrappers below, so `nodesRef.current` is the authoritative CURRENT graph
+    // even in the middle of a React batch. The old `saveStateForUndo` closed
+    // over the last render's `nodes`/`edges`; a snapshot taken after a write
+    // in the same tick recorded the wrong document.
+    const nodesRef = useRef<Node<NodeParams>[]>(initialNodes);
+    const edgesRef = useRef<Edge[]>(initialEdges);
+
+    const setNodes = useCallback<React.Dispatch<React.SetStateAction<Node<NodeParams>[]>>>((updater) => {
+        const next = typeof updater === 'function'
+            ? (updater as (prev: Node<NodeParams>[]) => Node<NodeParams>[])(nodesRef.current)
+            : updater;
+        nodesRef.current = next;
+        setNodesState(next);
+    }, []);
+
+    const setEdges = useCallback<React.Dispatch<React.SetStateAction<Edge[]>>>((updater) => {
+        const next = typeof updater === 'function'
+            ? (updater as (prev: Edge[]) => Edge[])(edgesRef.current)
+            : updater;
+        edgesRef.current = next;
+        setEdgesState(next);
+    }, []);
 
     const [isNamePromptVisible, setIsNamePromptVisible] = useState(false);
 
@@ -51,47 +77,48 @@ export const useGraphState = () => {
         }
     }, [nodes, selectedNode?.id]);
 
-    // Continuous-gesture coalescing: a slider drag fires updateNodeData per
-    // tick, and snapshotting every tick flushed the entire history in one
-    // drag. Rapid successive param edits share one undo entry instead.
-    const lastParamSnapshotAt = useRef(0);
-
-    const saveStateForUndo = useCallback((coalesce = false) => {
-        if (isRestoring.current) return;
-        if (coalesce) {
-            const now = Date.now();
-            if (now - lastParamSnapshotAt.current < 500) return;
-            lastParamSnapshotAt.current = now;
-        }
-        setHistory(prev => {
-            const newHistory = [...prev, { nodes, edges }];
-            return newHistory.slice(-50);
-        });
-        setFuture([]);
-    }, [nodes, edges]);
-
-    // Loading/importing a file replaces the whole graph — undo must not be
-    // able to resurrect the pre-load graph on top of the loaded one.
-    const resetHistory = useCallback(() => {
-        setHistory([]);
-        setFuture([]);
-    }, []);
-
     const onNodesChange: OnNodesChange = useCallback((changes: NodeChange[]) => {
-        const isUndoable = changes.some(c => c.type === 'add' || c.type === 'remove' || (c.type === 'position' && !c.dragging));
-        if (isUndoable) saveStateForUndo();
-        setNodes(nds => applyNodeChanges(changes, nds));
-    }, [saveStateForUndo]);
+        const isRemove = changes.some(c => c.type === 'remove');
+        const isAdd = changes.some(c => c.type === 'add');
+
+        const positionChanges = changes.filter((c): c is NodePositionChange => c.type === 'position');
+        // Snapshot on the FIRST `dragging: true` tick, not the last one
+        // (F-B07-2). The old code pushed when `!c.dragging` — i.e. on the
+        // drag-STOP change, by which time `nodes` already held the dragged
+        // position, so undo moved the node back by the last mouse delta: a few
+        // pixels. The gesture key folds every subsequent tick of the same drag
+        // into that one entry, and the drag-stop tick closes it.
+        const dragTick = positionChanges.some(c => c.dragging === true);
+        const dragStopped = positionChanges.some(c => c.dragging === false);
+        const dragKey = `move:${positionChanges.map(c => c.id).sort().join(',')}`;
+
+        // A single deletion arrives as a node change AND (for its wires) an
+        // edge change in the same task; `scope: 'tick'` folds them into one
+        // entry so one Ctrl+Z restores the node together with its wiring.
+        if (isRemove || isAdd) {
+            pushHistory(isRemove ? 'Delete selection' : 'Add node', { gesture: 'structural', scope: 'tick' });
+        }
+        if (dragTick) {
+            pushHistory(positionChanges.length > 1 ? 'Move nodes' : 'Move node', { gesture: dragKey });
+        }
+
+        setNodes(nds => applyNodeChanges(changes, nds) as Node<NodeParams>[]);
+
+        if (dragStopped) endGesture(dragKey);
+    }, [pushHistory, endGesture, setNodes]);
 
     const onEdgesChange: OnEdgesChange = useCallback((changes: EdgeChange[]) => {
-        const isUndoable = changes.some(c => c.type === 'add' || c.type === 'remove');
-        if (isUndoable) saveStateForUndo();
+        const isRemove = changes.some(c => c.type === 'remove');
+        const isAdd = changes.some(c => c.type === 'add');
+        if (isRemove || isAdd) {
+            pushHistory(isRemove ? 'Delete selection' : 'Add wire', { gesture: 'structural', scope: 'tick' });
+        }
         setEdges(eds => applyEdgeChanges(changes, eds));
-    }, [saveStateForUndo]);
+    }, [pushHistory, setEdges]);
 
     const onConnect: OnConnect = useCallback((connection) => {
         if (connection.source === connection.target) return; // no self-loops
-        saveStateForUndo();
+        pushHistory('Connect wire', { gesture: 'structural', scope: 'tick' });
         // Handles are part of the id: `e{source}-{target}` alone collided
         // when two edges targeted different ports of the same node, so the
         // second wire silently replaced the first.
@@ -102,10 +129,18 @@ export const useGraphState = () => {
             targetHandle: connection.targetHandle,
         };
         setEdges(eds => addEdge(edge, eds));
-    }, [saveStateForUndo]);
+    }, [pushHistory, setEdges]);
 
     const updateNodeData = useCallback((nodeId: string, data: Partial<NodeParams>, subNodeId?: string) => {
-        saveStateForUndo(true); // coalesce slider drags into one undo entry
+        const fields = Object.keys(data);
+        // Gesture key is target + field: a slider drag on `cutoff` coalesces
+        // into one entry however long it lasts, while cutoff-then-resonance is
+        // always two entries even if they arrive 10 ms apart. The old 500 ms
+        // wall-clock window got both of those backwards (F-B07-9).
+        pushHistory(
+            fields.length === 1 ? `Change ${fields[0]}` : 'Change parameters',
+            { gesture: `param:${nodeId}:${subNodeId ?? ''}:${fields.slice().sort().join(',')}` },
+        );
         setNodes(nds => nds.map(node => {
             if (node.id === nodeId) {
                 // subNodeId === nodeId means "the node itself" — callers pass
@@ -125,7 +160,7 @@ export const useGraphState = () => {
             }
             return node;
         }));
-    }, [saveStateForUndo]);
+    }, [pushHistory, setNodes]);
 
     const onSelectionChange = useCallback((params: OnSelectionChangeParams) => {
         setSelectedNode(params.nodes.length === 1 ? params.nodes[0] : null);
@@ -151,7 +186,7 @@ export const useGraphState = () => {
     const handlePaste = useCallback(() => {
         if (!clipboard) return;
 
-        saveStateForUndo();
+        pushHistory('Paste');
 
         // 1. Assign every clipboard node a new id FIRST, in one pass, so
         // step 2 (below) can tell whether a child's parentId points at a
@@ -245,29 +280,7 @@ export const useGraphState = () => {
         setNodes([...deseplectedOldNodes, ...newNodes]);
         setEdges([...deseplectedOldEdges, ...newEdges]);
 
-    }, [clipboard, nodes, edges, saveStateForUndo]);
-
-    const handleUndo = useCallback(() => {
-        if (history.length === 0) return;
-        isRestoring.current = true;
-        const lastState = history[history.length - 1];
-        setHistory(history.slice(0, -1));
-        setFuture(prevFuture => [{ nodes, edges }, ...prevFuture]);
-        setNodes(lastState.nodes);
-        setEdges(lastState.edges);
-        isRestoring.current = false;
-    }, [history, nodes, edges]);
-
-    const handleRedo = useCallback(() => {
-        if (future.length === 0) return;
-        isRestoring.current = true;
-        const nextState = future[0];
-        setFuture(future.slice(1));
-        setHistory(prevHistory => [...prevHistory, { nodes, edges }]);
-        setNodes(nextState.nodes);
-        setEdges(nextState.edges);
-        isRestoring.current = false;
-    }, [future, nodes, edges]);
+    }, [clipboard, nodes, edges, pushHistory, setNodes, setEdges]);
 
     const {
         onDrop,
@@ -281,13 +294,15 @@ export const useGraphState = () => {
         setNodes,
         setEdges,
         selectedNodesForGrouping,
-        saveStateForUndo,
+        pushHistory,
         setIsNamePromptVisible,
     });
 
     return {
         nodes,
         edges,
+        nodesRef,
+        edgesRef,
         setNodes,
         setEdges,
         selectedNode,
@@ -300,9 +315,6 @@ export const useGraphState = () => {
         updateNodeData,
         onDrop,
         onSelectionChange,
-        handleUndo,
-        handleRedo,
-        resetHistory,
         handleCopy,
         handlePaste,
         handleCreateInstrument,

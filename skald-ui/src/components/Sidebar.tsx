@@ -111,6 +111,18 @@ interface SidebarProps {
     onPackageNameChange: (name: string) => void;
     outputPath: string;
     onSelectOutputPath: () => void;
+    // Undo/Redo had no on-screen affordance at all: Ctrl+Z was the only way to
+    // reach it and nothing in the UI said whether there was anything to undo
+    // (F-B07-11). These carry the REAL depth of the one editor history, so the
+    // buttons cannot claim a step that isn't there.
+    onUndo: () => void;
+    onRedo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+    undoDepth: number;
+    redoDepth: number;
+    undoLabel: string | null;
+    redoLabel: string | null;
 }
 
 
@@ -137,6 +149,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     onPackageNameChange,
     outputPath,
     onSelectOutputPath,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
+    undoDepth,
+    redoDepth,
+    undoLabel,
+    redoLabel,
 }) => {
 
     const onDragStart = (event: React.DragEvent, nodeType: string) => {
@@ -205,6 +225,36 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <button style={secondaryButtonStyles} onClick={onSave}>Save</button>
                 <button style={secondaryButtonStyles} onClick={onLoad}>Load</button>
                 <button style={secondaryButtonStyles} onClick={onImport}>Import Patch</button>
+            </div>
+
+            <div>
+                <h2 style={sectionTitleStyles}>History</h2>
+                <div style={{ display: 'flex', gap: '5px' }}>
+                    <button
+                        style={{ ...(canUndo ? secondaryButtonStyles : disabledButtonStyles), flex: 1 }}
+                        onClick={onUndo}
+                        disabled={!canUndo}
+                        data-testid="undo-button"
+                        aria-label={canUndo ? `Undo ${undoLabel}` : 'Nothing to undo'}
+                        title={canUndo
+                            ? `Undo ${undoLabel} (Ctrl+Z) — ${undoDepth} step${undoDepth === 1 ? '' : 's'} available`
+                            : 'Nothing to undo'}
+                    >
+                        {'↶ Undo'}<span data-testid="undo-depth" style={{ opacity: 0.7, fontWeight: 'normal' }}>{undoDepth > 0 ? ` ${undoDepth}` : ''}</span>
+                    </button>
+                    <button
+                        style={{ ...(canRedo ? secondaryButtonStyles : disabledButtonStyles), flex: 1 }}
+                        onClick={onRedo}
+                        disabled={!canRedo}
+                        data-testid="redo-button"
+                        aria-label={canRedo ? `Redo ${redoLabel}` : 'Nothing to redo'}
+                        title={canRedo
+                            ? `Redo ${redoLabel} (Ctrl+Shift+Z) — ${redoDepth} step${redoDepth === 1 ? '' : 's'} available`
+                            : 'Nothing to redo'}
+                    >
+                        {'↷ Redo'}<span data-testid="redo-depth" style={{ opacity: 0.7, fontWeight: 'normal' }}>{redoDepth > 0 ? ` ${redoDepth}` : ''}</span>
+                    </button>
+                </div>
             </div>
 
             <div>

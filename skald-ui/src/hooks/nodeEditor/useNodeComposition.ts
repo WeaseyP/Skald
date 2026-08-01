@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react';
 import { NODE_DEFINITIONS } from '../../definitions/node-definitions';
 import { NodeParams, InstrumentParams } from '../../definitions/types';
+import { PushHistory } from './editorSnapshot';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 
@@ -25,7 +26,7 @@ type UseNodeCompositionArgs = {
     setNodes: (nodes: Node<NodeParams>[] | ((prevNodes: Node<NodeParams>[]) => Node<NodeParams>[])) => void;
     setEdges: (edges: Edge[] | ((prevEdges: Edge[]) => Edge[])) => void;
     selectedNodesForGrouping: Node<NodeParams>[];
-    saveStateForUndo: () => void;
+    pushHistory: PushHistory;
     setIsNamePromptVisible: (isVisible: boolean) => void;
 };
 
@@ -35,7 +36,7 @@ export const useNodeComposition = ({
     setNodes,
     setEdges,
     selectedNodesForGrouping,
-    saveStateForUndo,
+    pushHistory,
     setIsNamePromptVisible,
 }: UseNodeCompositionArgs) => {
 
@@ -60,8 +61,14 @@ export const useNodeComposition = ({
             } as NodeParams,
         };
 
+        // Dropping from the palette is the single most common way to add a
+        // node, and it left NO undo entry (F-B07-3): the drop went straight to
+        // setNodes, bypassing React Flow's `add` change, so onNodesChange never
+        // saw it either. Ctrl+Z after a drop undid whatever came before it.
+        pushHistory(`Add ${definition.label}`);
+
         setNodes((nds) => nds.concat(newNode));
-    }, [screenToFlowPosition, setNodes]);
+    }, [screenToFlowPosition, setNodes, pushHistory]);
 
     const handleInstrumentNameSubmit = (instrumentName: string) => {
         const newInstrumentId = `${generateId()}`;
@@ -197,7 +204,7 @@ export const useNodeComposition = ({
             },
         };
 
-        saveStateForUndo();
+        pushHistory('Create instrument');
         const remainingNodes = nodes.filter(n => !selectedIds.has(n.id));
         setNodes([...remainingNodes, newInstrumentNode]);
         setEdges(newMainGraphEdges);
@@ -222,7 +229,7 @@ export const useNodeComposition = ({
         // the operation work for one node instead of silently refusing it.
         if (selectedNodesForGrouping.length === 0) return;
 
-        saveStateForUndo();
+        pushHistory('Create group');
 
         const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
         const newGroupId = `group-${generateId()}`;
@@ -262,7 +269,7 @@ export const useNodeComposition = ({
         });
 
         setNodes([...updatedNodes, newGroupNode]);
-    }, [nodes, selectedNodesForGrouping, saveStateForUndo, setNodes]);
+    }, [nodes, selectedNodesForGrouping, pushHistory, setNodes]);
 
     const handleExplodeInstrument = useCallback(() => {
         const selectedSnapshot = selectedNodesForGrouping.length === 1 ? selectedNodesForGrouping[0] : null;
@@ -274,7 +281,7 @@ export const useNodeComposition = ({
         const instrumentData = instrumentNode.data as InstrumentParams;
         if (!instrumentData.subgraph) return;
 
-        saveStateForUndo();
+        pushHistory('Explode instrument');
 
         const { subgraph } = instrumentData;
         const instrumentPos = instrumentNode.position;
@@ -459,7 +466,7 @@ export const useNodeComposition = ({
         setNodes([...otherNodes, ...validNodes]);
         setEdges([...otherEdges, ...newEdges]);
 
-    }, [nodes, edges, selectedNodesForGrouping, saveStateForUndo, setNodes, setEdges]);
+    }, [nodes, edges, selectedNodesForGrouping, pushHistory, setNodes, setEdges]);
 
     return {
         onDrop,

@@ -11,9 +11,9 @@ import React from 'react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { ReactFlowProvider, Node, OnSelectionChangeParams } from '@xyflow/react';
-import { useGraphState } from '../../hooks/nodeEditor/useGraphState';
+import { useEditorState } from '../../hooks/nodeEditor/useEditorState';
 
-// useNodeComposition (pulled in by useGraphState) calls useReactFlow, so the
+// useNodeComposition (pulled in by useEditorState) calls useReactFlow, so the
 // hook must render inside a ReactFlowProvider.
 const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ReactFlowProvider>{children}</ReactFlowProvider>
@@ -56,7 +56,7 @@ const selectionOf = (nodes: Node[]): OnSelectionChangeParams => ({ nodes, edges:
 
 describe('item 1 — Create Group must work whenever the button is enabled', () => {
     it('creates a group for a SINGLE selected node instead of silently doing nothing', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
 
         act(() => { result.current.setNodes([filterNode('n1')]); });
         act(() => { result.current.onSelectionChange(selectionOf(result.current.nodes)); });
@@ -76,7 +76,7 @@ describe('item 1 — Create Group must work whenever the button is enabled', () 
     });
 
     it('still refuses to create a group for an EMPTY selection', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
         act(() => { result.current.setNodes([filterNode('n1')]); });
         act(() => { result.current.onSelectionChange(selectionOf([])); });
 
@@ -87,7 +87,7 @@ describe('item 1 — Create Group must work whenever the button is enabled', () 
 
 describe('item 14 — duplicating an Instrument suffixes its name (F-A09-7)', () => {
     it('gives a pasted copy of an Instrument a distinct name/label instead of an identical one', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
 
         act(() => { result.current.setNodes([instrumentNode('inst-1', 'Bass', { selected: true })]); });
         act(() => { result.current.handleCopy(); });
@@ -106,7 +106,7 @@ describe('item 14 — duplicating an Instrument suffixes its name (F-A09-7)', ()
     });
 
     it('keeps incrementing the suffix so a second paste does not collide with the first', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
 
         act(() => { result.current.setNodes([instrumentNode('inst-1', 'Bass', { selected: true })]); });
         act(() => { result.current.handleCopy(); });
@@ -123,7 +123,7 @@ describe('item 14 — duplicating an Instrument suffixes its name (F-A09-7)', ()
 
 describe('item 15 — Group paste remaps parentId through the paste id-map (F-B07-5)', () => {
     it('case A: child copied together with its parent Group gets reparented onto the NEW pasted group, not the original', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
 
         act(() => {
             result.current.setNodes([
@@ -148,7 +148,7 @@ describe('item 15 — Group paste remaps parentId through the paste id-map (F-B0
     });
 
     it('case B: child copied ALONE (parent not in the copied selection) drops parentId/extent instead of pointing at a node outside the paste', () => {
-        const { result } = renderHook(() => useGraphState(), { wrapper });
+        const { result } = renderHook(() => useEditorState(), { wrapper });
 
         act(() => {
             result.current.setNodes([

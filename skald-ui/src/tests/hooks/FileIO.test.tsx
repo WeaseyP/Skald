@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
-import { useFileIO, FileStatus, SessionSettings } from '../../hooks/nodeEditor/useFileIO';
+import { useFileIO, FileStatus, SessionSettings, FileIOHistoryHooks } from '../../hooks/nodeEditor/useFileIO';
 import { SequencerTrack } from '../../definitions/types';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +20,11 @@ let setEdges: ReturnType<typeof vi.fn>;
 let loadTracks: ReturnType<typeof vi.fn>;
 let applySession: ReturnType<typeof vi.fn>;
 let notify: ReturnType<typeof vi.fn>;
+
+let pushHistory: ReturnType<typeof vi.fn>;
+let resetHistory: ReturnType<typeof vi.fn>;
+let markSaved: ReturnType<typeof vi.fn>;
+let fileHistory: FileIOHistoryHooks;
 
 let setViewport: ReturnType<typeof vi.fn>;
 let fitView: ReturnType<typeof vi.fn>;
@@ -43,8 +48,7 @@ const renderFileIO = () =>
             rfInstance(),
             setNodes as unknown as React.Dispatch<React.SetStateAction<Node[]>>,
             setEdges as unknown as React.Dispatch<React.SetStateAction<Edge[]>>,
-            vi.fn() as unknown as (history: unknown[]) => void,
-            vi.fn() as unknown as (future: unknown[]) => void,
+            fileHistory,
             [],
             loadTracks as unknown as (tracks: SequencerTrack[]) => void,
             session,
@@ -64,6 +68,14 @@ beforeEach(() => {
     notify = vi.fn();
     setViewport = vi.fn();
     fitView = vi.fn();
+    pushHistory = vi.fn();
+    resetHistory = vi.fn();
+    markSaved = vi.fn();
+    fileHistory = {
+        pushHistory,
+        resetHistory,
+        markSaved,
+    } as unknown as FileIOHistoryHooks;
     (window as unknown as { electron: unknown }).electron = { saveGraph, loadGraph, importPatches };
 });
 

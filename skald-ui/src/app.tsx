@@ -8,7 +8,7 @@
 ================================================================================
 */
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { ReactFlow, Background, Controls, ReactFlowInstance, ReactFlowProvider, Node } from '@xyflow/react';
+import { ReactFlow, Background, Controls, ReactFlowInstance, ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 // Import your components
@@ -20,16 +20,18 @@ import NamePromptModal from './components/NamePromptModal';
 import { nodeTypes } from './definitions/nodeTypes';
 
 // Import your new hooks
-import { useGraphState } from './hooks/nodeEditor/useGraphState';
+import { useEditorState, suffixForStepExport } from './hooks/nodeEditor/useEditorState';
 import { useWasmAudioEngine } from './hooks/nodeEditor/useWasmAudioEngine';
 import { useFileIO, FileStatus } from './hooks/nodeEditor/useFileIO';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
 // import { NODE_DEFINITIONS } from './definitions/node-definitions'; // Unused
 import { SequencerDock } from './components/Sequencer/SequencerDock';
-import { useSequencerState } from './hooks/sequencer/useSequencerState';
-import { useInstrumentRegistry } from './hooks/sequencer/useInstrumentRegistry';
 import { useScale , ScaleProvider } from './contexts/ScaleContext';
 import { GraphActionsProvider } from './contexts/GraphActionsContext';
+
+// Re-exported: the Export-Step naming rule now lives with the Export-Step
+// action itself (useEditorState), which is where its undo entry is pushed.
+export { suffixForStepExport };
 
 
 
@@ -70,27 +72,16 @@ const parameterPanelStyles: React.CSSProperties = {
     borderLeft: '1px solid #333',
 };
 
-// Export-Step's existing "(Step N)" suffix convention, applied to both the
-// node's display label and (F-A09-7) an Instrument's `name` — the field
-// codegen actually derives asset identity from. Exported as a pure function
-// so the naming rule is directly unit-testable without standing up a full
-// App render (no App-level test harness exists in this suite).
-export const suffixForStepExport = (base: string, step: number): string => `${base} (Step ${step})`;
-
 const EditorLayout = () => {
     const reactFlowWrapper = useRef(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-    const [bpm, setBpm] = useState(120);
+    // Playback preference, not part of the document: neither saved nor
+    // undoable, so it stays local instead of joining the session block.
     const [isLooping, setIsLooping] = useState(false);
-    const [patternSteps, setPatternSteps] = useState(16);
-    // Owned here (not in SequencerDock): the exported project and the save
-    // file both carry it. Reading the live GainNode at Generate time baked
-    // 0.8 whenever playback was stopped (the node only exists while playing).
-    const [masterVolume, setMasterVolume] = useState(0.8);
     const [selectedStep, setSelectedStep] = useState<{ trackId: string, step: number } | null>(null);
 
-
-    const [packageName, setPackageName] = useState("generated_audio");
+    // Not part of the document either: the Generate destination is a
+    // session-scoped path, not project data.
     const [outputPath, setOutputPath] = useState("");
 
     const handleSelectOutputPath = async () => {
@@ -103,9 +94,13 @@ const EditorLayout = () => {
     // Memoize the imported nodeTypes to ensure referential stability across HMR updates
     const memoizedNodeTypes = useMemo(() => nodeTypes, []);
 
+    // ONE editor document behind ONE history (SKB-008 / packet B3): graph,
+    // sequencer tracks and session settings snapshot together, so one Ctrl+Z is
+    // one edit undone rather than one pop off each of two diverging stacks.
     const {
         nodes,
         edges,
+        nodesRef,
         setNodes,
         setEdges,
         selectedNode,
@@ -120,14 +115,31 @@ const EditorLayout = () => {
         onSelectionChange,
         handleUndo,
         handleRedo,
-        resetHistory,
         handleCreateInstrument,
         handleInstrumentNameSubmit,
         handleCreateGroup,
         handleExplodeInstrument,
         handleCopy,
         handlePaste,
-    } = useGraphState();
+        handleExportStep,
+        history,
+        tracks,
+        currentStep,
+        setCurrentStep,
+        loadTracks,
+        toggleStep,
+        toggleMute,
+        toggleSolo,
+        updateNote,
+        updateTrackSteps,
+        session,
+        setBpm,
+        setPatternSteps,
+        setMasterVolume,
+        setPackageName,
+        applySessionSettings,
+    } = useEditorState();
+    const { bpm, patternSteps, masterVolume, packageName } = session;
 
     // Sync node selection to clear step selection
     React.useEffect(() => {
@@ -138,8 +150,6 @@ const EditorLayout = () => {
 
     const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration();
 
-    const sequencerStateHooks = useSequencerState();
-    useInstrumentRegistry(nodes, sequencerStateHooks);
     const { nearestInScale } = useScale();
 
     const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode, previewError, previewStale, isBuilding } = useWasmAudioEngine(
@@ -147,27 +157,11 @@ const EditorLayout = () => {
         edges,
         isLooping,
         bpm,
-        sequencerStateHooks.tracks,
-        sequencerStateHooks.setCurrentStep,
+        tracks,
+        setCurrentStep,
         patternSteps,
         nearestInScale
     );
-
-    // resetHistory wired for real: the old no-op callbacks meant "undo"
-    // after loading a file restored the stale pre-load graph.
-    // packageName rides along here (SKB-036) so it round-trips through
-    // save/load exactly like bpm/patternSteps/masterVolume instead of
-    // resetting to "generated_audio" on every reload.
-    const sessionSettings = useMemo(
-        () => ({ bpm, patternSteps, masterVolume, packageName }),
-        [bpm, patternSteps, masterVolume, packageName]
-    );
-    const applySessionSettings = useCallback((s: { bpm?: number; patternSteps?: number; masterVolume?: number; packageName?: string }) => {
-        if (s.bpm !== undefined) setBpm(s.bpm);
-        if (s.patternSteps !== undefined) setPatternSteps(s.patternSteps);
-        if (s.masterVolume !== undefined) setMasterVolume(s.masterVolume);
-        if (s.packageName !== undefined) setPackageName(s.packageName);
-    }, []);
     // Save/load outcome, shown in a banner over the canvas. Errors stay up
     // until the next file action; successes auto-clear after a few seconds.
     const [fileStatus, setFileStatus] = useState<FileStatus | null>(null);
@@ -183,24 +177,25 @@ const EditorLayout = () => {
         reactFlowInstance,
         setNodes,
         setEdges,
-        resetHistory,
-        resetHistory,
-        sequencerStateHooks.tracks,
-        sequencerStateHooks.loadTracks,
-        sessionSettings,
+        history,
+        tracks,
+        loadTracks,
+        session,
         applySessionSettings,
         notifyFileStatus
     );
 
     const sequencerState = {
         isPlaying,
-        currentStep: sequencerStateHooks.currentStep,
-        tracks: sequencerStateHooks.tracks
+        currentStep,
+        tracks
     };
 
     const handleFocusNode = useCallback((nodeId: string) => {
         if (!reactFlowInstance) return;
-        const node = nodes.find(n => n.id === nodeId);
+        // nodesRef, not the render closure: Export-Step focuses the node it just
+        // created in the same tick, which is not in `nodes` yet.
+        const node = nodesRef.current.find(n => n.id === nodeId);
         if (node) {
             // Select the node
             setNodes(nds => nds.map(n => ({
@@ -211,32 +206,24 @@ const EditorLayout = () => {
             // Focus view
             reactFlowInstance.fitView({ nodes: [node], duration: 800, padding: 1.5 });
         }
-    }, [reactFlowInstance, nodes, setNodes]);
+    }, [reactFlowInstance, nodesRef, setNodes]);
 
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // Check for valid targets (ignore inputs)
             if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
 
-            // Global Undo/Redo
+            // Global Undo/Redo. ONE stack, ONE pop — this used to call the
+            // graph's undo and the sequencer's undo side by side, which is
+            // exactly how the two stacks came apart (SKB-008 item 1).
             if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
                 e.preventDefault();
-                if (e.shiftKey) {
-                    // Redo
-                    handleRedo();
-                    sequencerStateHooks.handleRedo();
-                } else {
-                    // Undo
-                    handleUndo();
-                    sequencerStateHooks.handleUndo();
-                }
+                if (e.shiftKey) handleRedo(); else handleUndo();
                 return;
             }
             if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
                 e.preventDefault();
-                // Redo
                 handleRedo();
-                sequencerStateHooks.handleRedo();
                 return;
             }
 
@@ -282,7 +269,7 @@ const EditorLayout = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [nodes, handleFocusNode, handleUndo, handleRedo, handleCopy, handlePaste, sequencerStateHooks]);
+    }, [nodes, handleFocusNode, handleUndo, handleRedo, handleCopy, handlePaste]);
 
     // Inject AnalyserNode into Output Nodes for Visualizer
     useEffect(() => {
@@ -309,62 +296,13 @@ const EditorLayout = () => {
     // internal store made those edits silently inert.)
     const graphActions = useMemo(() => ({ updateNodeData }), [updateNodeData]);
 
-    const handleExportStep = (trackId: string, step: number) => {
-        const track = sequencerStateHooks.tracks.find(t => t.id === trackId);
-        if (!track) return;
-        const note = track.notes.find(n => n.step === step);
-        if (!note) return;
-
-        const sourceNode = nodes.find(n => n.id === track.targetNodeId);
-        if (!sourceNode) return;
-
-        // Clone
-        const newNode = JSON.parse(JSON.stringify(sourceNode));
-        const generateSimpleId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-        newNode.id = generateSimpleId();
-
-        // Offset
-        newNode.position.x += 250;
-        newNode.position.y += 0;
-        newNode.selected = true;
-
-        const label: string = sourceNode.data.label || sourceNode.type || 'Node';
-        newNode.data.label = suffixForStepExport(label, step);
-
-        // An Instrument's `name` (not `label`) is the identity codegen
-        // derives asset names from. Without this, an exported step and its
-        // source Instrument claim the same identity in generated code
-        // (F-A09-7) even though the label above already reads as distinct.
-        if (newNode.type === 'instrument' && typeof newNode.data.name === 'string') {
-            newNode.data.name = suffixForStepExport(newNode.data.name, step);
-        }
-
-        // Apply Overrides
-        if (note.patchOverrides) {
-            Object.entries(note.patchOverrides).forEach(([key, val]) => {
-                const [targetLabel, paramName] = key.split(':');
-
-                if (newNode.type === 'instrument' && newNode.data.subgraph) {
-                    const internalNode = newNode.data.subgraph.nodes.find((n: any) => (n.data.label || n.type) === targetLabel);
-                    if (internalNode) {
-                        internalNode.data[paramName] = val;
-                    }
-                } else {
-                    // Simple node matches label
-                    if (targetLabel === label) {
-                        newNode.data[paramName] = val;
-                    }
-                }
-            });
-        }
-
-        // Deselect others
-        const updatedNodes = nodes.map(n => ({ ...n, selected: false }));
-        setNodes([...updatedNodes, newNode]);
-
-        // Focus new node?
-        handleFocusNode(newNode.id);
-    };
+    // The Export-Step action itself lives in useEditorState (so its undo entry
+    // is pushed next to the edit it describes); the component keeps only the
+    // viewport concern.
+    const onExportStep = useCallback((trackId: string, step: number) => {
+        const newNodeId = handleExportStep(trackId, step);
+        if (newNodeId) handleFocusNode(newNodeId);
+    }, [handleExportStep, handleFocusNode]);
 
     return (
         <div style={appContainerStyles}>
@@ -388,7 +326,7 @@ const EditorLayout = () => {
                 <div style={workspaceContainerStyles}>
                     <div style={sidebarPanelStyles}>
                         <Sidebar
-                            onGenerate={() => handleGenerate(nodes, edges, sequencerStateHooks.tracks, bpm, masterVolume, packageName, outputPath, patternSteps, nearestInScale)}
+                            onGenerate={() => handleGenerate(nodes, edges, tracks, bpm, masterVolume, packageName, outputPath, patternSteps, nearestInScale)}
                             onPlay={handlePlay}
                             onStop={handleStop}
                             isPlaying={isPlaying}
@@ -408,6 +346,14 @@ const EditorLayout = () => {
                             onPackageNameChange={setPackageName}
                             outputPath={outputPath}
                             onSelectOutputPath={handleSelectOutputPath}
+                            onUndo={handleUndo}
+                            onRedo={handleRedo}
+                            canUndo={history.canUndo}
+                            canRedo={history.canRedo}
+                            undoDepth={history.undoDepth}
+                            redoDepth={history.redoDepth}
+                            undoLabel={history.undoLabel}
+                            redoLabel={history.redoLabel}
                         />
                     </div>
                     <div style={mainCanvasStyles} ref={reactFlowWrapper}>
@@ -495,9 +441,9 @@ const EditorLayout = () => {
                                 allEdges={edges}
                                 bpm={bpm}
                                 selectedStep={selectedStep}
-                                tracks={sequencerStateHooks.tracks}
-                                onUpdateNote={sequencerStateHooks.updateNote}
-                                onExportStep={handleExportStep}
+                                tracks={tracks}
+                                onUpdateNote={updateNote}
+                                onExportStep={onExportStep}
                             />
                         )}
                     </div>
@@ -516,16 +462,16 @@ const EditorLayout = () => {
                     onStop={handleStop}
                     onToggleLoop={() => setIsLooping(!isLooping)}
                     isLooping={isLooping}
-                    onMuteToggle={sequencerStateHooks.toggleMute}
-                    onSoloToggle={sequencerStateHooks.toggleSolo}
+                    onMuteToggle={toggleMute}
+                    onSoloToggle={toggleSolo}
                     onFocusTrack={(trackId) => {
-                        const track = sequencerStateHooks.tracks.find(t => t.id === trackId);
+                        const track = tracks.find(t => t.id === trackId);
                         if (track) handleFocusNode(track.targetNodeId);
                         setSelectedStep(null);
                     }}
-                    onToggleStep={sequencerStateHooks.toggleStep}
-                    onUpdateNote={sequencerStateHooks.updateNote}
-                    onUpdateSteps={sequencerStateHooks.updateTrackSteps}
+                    onToggleStep={toggleStep}
+                    onUpdateNote={updateNote}
+                    onUpdateSteps={updateTrackSteps}
                     analyserNode={analyserNode?.current || null}
                     masterGainNode={masterGainNode?.current || null}
                     onStepSelect={(trackId, step) => {

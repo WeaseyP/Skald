@@ -10,22 +10,22 @@ import { useCallback } from 'react';
 import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import { SequencerTrack } from '../../definitions/types';
 import { ImportedGraph, layOutImportBatch } from '../../utils/importLayout';
+import { EditorHistoryApi, SessionSettings } from './editorSnapshot';
 
-// Song-level settings that live outside the graph/tracks but shape how the
-// project sounds and exports. They used to be dropped from saves entirely:
-// a 140 BPM / 32-step song reloaded as 120 BPM / 16 steps.
-//
-// packageName (SKB-036 / F-B06-11): the export package name, e.g. so a save
-// authored against `my_game_audio` doesn't reload as `generated_audio`. Its
-// absence on read is treated as the current default, same as the other
-// fields here — this is a value carried through an existing free-form block,
-// not a schema change, so it needs no migration (roadmap §4 constraint 4).
-export interface SessionSettings {
-    bpm: number;
-    patternSteps: number;
-    masterVolume: number;
-    packageName: string;
-}
+// SessionSettings (bpm / patternSteps / masterVolume / packageName) is defined
+// with the undo snapshot it belongs to, in editorSnapshot.ts — the session block
+// is part of the save file AND part of one undo step. Re-exported here because
+// this hook is where the save/load schema is read and written.
+export type { SessionSettings };
+
+/**
+ * The history operations the file layer needs.
+ *
+ * `resetHistory` (not "push"): Load replaces the entire document, so the only
+ * safe history is an empty one. Import Patch, by contrast, is an edit like any
+ * other and pushes one entry.
+ */
+export type FileIOHistoryHooks = Pick<EditorHistoryApi, 'pushHistory' | 'resetHistory' | 'markSaved'>;
 
 export type FileStatus = { kind: 'success' | 'error'; message: string };
 
@@ -96,8 +96,7 @@ export const useFileIO = (
     reactFlowInstance: ReactFlowInstance | null,
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
     setEdges: React.Dispatch<React.SetStateAction<Edge[]>>,
-    setHistory: (history: any[]) => void,
-    setFuture: (future: any[]) => void,
+    history: FileIOHistoryHooks,
     sequencerTracks: SequencerTrack[],
     loadSequencerTracks: (tracks: SequencerTrack[]) => void,
     sessionSettings: SessionSettings,
@@ -118,6 +117,10 @@ export const useFileIO = (
         try {
             const result = await window.electron.saveGraph(graphJson);
             if (result?.saved) {
+                // The save point for the dirty flag exposed to packet B4. B3
+                // only records it; B4 decides what to do about it (title bar,
+                // confirm-on-Load, autosave).
+                history.markSaved();
                 notifyFileStatus({ kind: 'success', message: `Saved to ${result.path}` });
             } else if (result?.error) {
                 notifyFileStatus({ kind: 'error', message: `Save FAILED — nothing was written: ${result.error}` });
@@ -126,7 +129,7 @@ export const useFileIO = (
         } catch (e) {
             notifyFileStatus({ kind: 'error', message: `Save FAILED — nothing was written: ${e instanceof Error ? e.message : e}` });
         }
-    }, [reactFlowInstance, sequencerTracks, sessionSettings, notifyFileStatus]);
+    }, [reactFlowInstance, sequencerTracks, sessionSettings, notifyFileStatus, history]);
 
     const handleLoad = useCallback(async () => {
         let content: string | null;
@@ -196,9 +199,16 @@ export const useFileIO = (
             setTimeout(() => reactFlowInstance?.fitView(), 0);
         }
 
-        setHistory([]);
-        setFuture([]);
-    }, [reactFlowInstance, setNodes, setEdges, setHistory, setFuture, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
+        // The whole document was just replaced, so there is nothing coherent to
+        // undo BACK to: the pre-load graph and the newly loaded tracks are not a
+        // state the user ever authored. This is the SKB-005 data-loss path —
+        // previously only the graph stack was cleared while `loadTracks` PUSHED
+        // the outgoing project's tracks onto the sequencer stack, so one Ctrl+Z
+        // after Load swapped the just-opened project's notes for the previous
+        // project's and the registry pruned them as orphans. One history, one
+        // reset, and `loadTracks` no longer pushes anything.
+        history.resetHistory();
+    }, [reactFlowInstance, setNodes, setEdges, history, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
 
     // Import Patch merges one or more saved patches into the current graph.
     // The dialog is a multi-selection, so picking a whole drum kit is one trip
@@ -256,6 +266,13 @@ export const useFileIO = (
 
         const placed = layOutImportBatch(graphs, center, Date.now());
 
+        // Import Patch merges nodes, wires and tracks into the live document
+        // and left NO undo entry (F-B07-3): importing a whole drum kit by
+        // mistake could not be taken back, and Ctrl+Z afterwards undid whatever
+        // edit came before the import instead. Pushed before any state changes,
+        // so the entry holds the pre-import document.
+        history.pushHistory(graphs.length === 1 ? 'Import patch' : 'Import patches');
+
         setNodes(nds => nds.map((n): Node => ({ ...n, selected: false })).concat(placed.nodes));
         setEdges(eds => eds.concat(placed.edges));
         loadSequencerTracks([...sequencerTracks, ...placed.tracks]);
@@ -265,7 +282,7 @@ export const useFileIO = (
             kind: skipped.length ? 'error' : 'success',
             message: `Imported ${graphs.length} ${patchWord} (${placed.nodes.length} nodes, ${placed.tracks.length} tracks).${skippedNote}`,
         });
-    }, [reactFlowInstance, setNodes, setEdges, loadSequencerTracks, sequencerTracks, notifyFileStatus]);
+    }, [reactFlowInstance, setNodes, setEdges, loadSequencerTracks, sequencerTracks, notifyFileStatus, history]);
 
     return { handleSave, handleLoad, handleImportGraph };
 };
