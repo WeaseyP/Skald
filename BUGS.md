@@ -28,12 +28,16 @@ a workaround or narrow reach · **low** = real but small.
 
 ## Wave A remediation pass — 2026-08-01
 
-Twelve entries closed, on branch `review-fixes`, commits `c4c30e0`..`c56ef89`. Each was verified
+Sixteen entries closed, on branch `review-fixes`, commits `c4c30e0`..`6ce28f3`. Each was verified
 by neutralizing the fix and re-running the test, or by the before/after measurement quoted below —
 not by reading the code and agreeing with it.
 
 | Entry | Fix | Commit |
 |---|---|---|
+| SKB-000 | The audited tree is committed and CI-gated; **no compiler is tracked at all** now, which is the only form of the answer that holds | `5deff6b`, `c6a1fbb` |
+| SKB-001 | Binary untracked and built by `prestart`; identity is a content digest over all 8 backend sources, not a version constant; the app refuses a mismatch on three surfaces | `c6a1fbb` |
+| SKB-037 | Non-Latin and emoji names no longer collapse to indistinguishable underscore runs; falls back to the sanitised node id | `84ecfc6` |
+| SKB-052 | The `if unison_count > 0` guard that could never be false is gone; the sibling grep correctly rejected four look-alikes | `84ecfc6` |
 | SKB-003 | Deterministic instrument order + a double-run `fc /B` gate. Reproduced first: 6 distinct outputs / 14 runs, differing per binary; after, 1 hash / 32 runs / 2 binaries | `1a46357` |
 | SKB-027 | Worklet checks `skald_set_param`'s return; `canApplyParamLive` takes the value; name buffer 64→128 asserted at the boundary | `f769168` |
 | SKB-038 | Rebuild generation id — a stale rebuild can no longer swap into a post-Stop worklet | `f769168` |
@@ -47,11 +51,27 @@ not by reading the code and agreeing with it.
 | SKB-049 | Glide 0–5 on both sides (UI widened; narrowing would clamp saved patches) | `08d5875` |
 | SKB-051 | Noise `amplitude` override; an exposed-but-unstored value emitted 0.5, now 1.0 | `08d5875` |
 
-Partially closed, still open above: **SKB-000** (tree committed and CI-gated; `codegen.exe` waits on
-A2), **SKB-007** (the expose route is closed, the P-lock route needs B2), **SKB-024** (the UI reads
-the right default; the range-table half is deliberately deferred — it makes shipped patches 6 dB
-louder), **SKB-026** (the Piano Roll's range is documented correctly now; out-of-range notes are
-still invisible).
+Partially closed, still open above: **SKB-007** (the expose route is closed, the P-lock route needs
+B2), **SKB-024** (the UI reads the right default; the range-table half is deliberately deferred — it
+makes shipped patches 6 dB louder, and the A8 gate now pins it red rather than letting it pass),
+**SKB-026** (the Piano Roll's range is documented correctly now; out-of-range notes are still
+invisible), **SKB-020** (three of the four tracked `generated_audio.odin` copies regenerated and now
+gated by `regen_generated.bat`; one is deliberately left stale because two manual chapters cite it by
+line number and re-pointing those is A9/Wave D — the gate names the exclusion out loud).
+
+**SKB-050** (BPM bounds: UI 20–300 vs backend 20–999) is still open *and now watched*: A8's parity
+gate pins it as an allowlist entry recording both sides' values, so the entry goes stale — and fails —
+the moment either side moves, including when someone fixes it.
+
+Three defects the *fixes themselves* introduced or exposed, all caught before landing and worth
+recording because they are the failure mode this pass is meant to break:
+the all-underscore identifier fallback forced `allow_leading_digit`, which emitted
+`1785492489424_0_amplitude: f32,` for an imported node with a Japanese label — code Odin rejects
+outright, i.e. a hard build failure where the old bug merely collided silently (`84ecfc6`);
+a golden-only fixture dropped in the flat `tests/fixtures/` directory turned the acceptance suite red,
+because anything there is automatically an acceptance fixture and fails on an unknown name
+(`b901bbc`); and A8's defaults test initially passed **vacuously** — keyed with a NUL, looked up with
+a space, so all 30 comparisons hit `continue` — now guarded by a coverage-floor assertion (`6ce28f3`).
 
 Two defects found *while* fixing these, both closed in the same pass and neither previously filed:
 the topology signature masked live params to `null` while `JSON.stringify(NaN)` is also `null`, so a
@@ -64,7 +84,7 @@ would have shipped with no notes (`c4c30e0`).
 
 ## Critical
 
-- [ ] **SKB-000 — The audited tree is not the committed tree: 17 untracked paths and 10 modified files, including the audit's own ground truth.**
+- [x] **SKB-000 — The audited tree is not the committed tree: 17 untracked paths and 10 modified files, including the audit's own ground truth.**
   Verified by the coordinator against the working tree: `git ls-files "*.exe"` returns exactly
   one file — `skald-ui/skald_codegen.exe` (1,153,536 bytes, 2026-07-24), the stale binary
   (SKB-001) — while `skald-backend/codegen.exe` (1,161,216 bytes), the fresh compiler **every
@@ -76,16 +96,21 @@ would have shipped with no notes (`c4c30e0`).
   product; no release can be cut from this tree. (A few untracked paths — `docs/manual/`,
   `scripts/manual/`, `src/main/dialogDefaults.ts` + test — were created by the coordinator during
   the audit and are expected; the pre-existing ones are the problem.)
-  **Status 2026-08-01 — mostly fixed.** Committed on `review-fixes` in eight commits
+  **Progress, earlier the same day.** Committed on `review-fixes` in eight commits
   (`3a4ab40`..`e941703`): the manual sources, `scripts/manual/`, `snes-kit/`, the CODEX brief, both
   untracked source modules, the 10 modified files as deliberate commits, and the audit documents
   with the 27 source reports under `docs/audit/0.2/`. `git status` clean, 174 tests and `tsc
   --noEmit` green. `docs/manual/` is now gitignored as build output (packaging builds it — B6).
-  **Still open:** the CI untracked-files step, and `skald-backend/codegen.exe`, which stays
-  untracked until A2 — gated on A13 — so the audit's baseline binary is still one local file.
-  *Findings:* D2-2 (post-audit), subsuming F-C1-6. *Roadmap:* **A1** (§3.2).
+  **FIXED 2026-08-01.** The last two pieces landed: the untracked-files CI step (`5deff6b`, one per
+  job, failing on stray paths under `docs/`, `examples/`, `skald-backend/`, `skald-ui/src/`), and the
+  binary question, answered by A2 (`c6a1fbb`) in the only way that holds — **no compiler is tracked
+  at all**; both are built from source by the same path contributors use, and CI fails if any build
+  artifact is tracked. The audit's ground-truth binary is no longer "one local file" in the sense
+  that mattered: it is reproducible from the tree, and its identity is checkable via the `-version`
+  digest.
+  *Findings:* D2-2 (post-audit), subsuming F-C1-6. *Roadmap:* **A1** (§3.2), completed by **A2**.
 
-- [ ] **SKB-001 — The committed codegen binary is stale; in the committed tree every exposed-parameter knob is a silent no-op during playback.**
+- [x] **SKB-001 — The committed codegen binary is stale; in the committed tree every exposed-parameter knob is a silent no-op during playback.**
   `skald-ui/skald_codegen.exe` is tracked (`.gitignore:2` ignores `*.exe`, `:7` un-ignores this
   one) and is what the app spawns for preview and Generate (`skald-ui/src/main.ts:70-73`,
   `forge.config.ts:20`). Last committed 2026-07-24 (`af6500c`); nine commits to
@@ -101,12 +126,20 @@ would have shipped with no notes (`c4c30e0`).
   hardening that let this hide). **Ordering:** the fix (untrack the exe, build on `prestart`)
   must land *after* SKB-057's toolchain-resolution fix, or "preview silently broken" becomes
   "app will not start" for the documented setup path (roadmap §4.8).
-  **Status 2026-08-01: unblocked, not fixed.** Both gating conditions are now met — SKB-057's
-  resolver landed in `53b807c`, and A6's hardening (`f769168`) means a binary missing the `::` alias
-  now raises a visible `previewStale` naming the key instead of silently dropping the write, so this
-  can no longer hide the same way. A2 is assignable. Until it lands, the tree still ships a binary
-  nine backend commits stale, and `build_codegen.bat` writing over the tracked file is what trips
-  the untracked-files CI gate added in `5deff6b`.
+  **FIXED 2026-08-01 in `c6a1fbb` (packet A2).** The binary is untracked (`git ls-files -- '*.exe'`
+  is empty), built by `prestart`/`premake` via `scripts/ensure-codegen.mjs`, and identified by an
+  FNV-1a-64 digest over the bytes of all 8 backend sources rather than a version constant — a
+  hand-bumped constant would have read the same through all nine stale commits and *certified* them.
+  The app refuses to spawn a mismatched binary on three surfaces (launch box, preview rejection to
+  the on-canvas banner, before the Generate spawn), and five CI steps gate provenance, including one
+  that fails if any build artifact is tracked at all — one `git add -f` would otherwise put a stale
+  compiler back. Closed empirically, not by inspection: on one fixture the committed blob emitted
+  `attack_start = 0` (voice-steal click re-introduced) against `3` from a fresh build, and the
+  committed binary exits 1 on `-version`.
+  **Correction to this entry's earlier status note:** it claimed `build_codegen.bat` overwriting the
+  tracked file was what tripped the untracked-files gate from `5deff6b`. It never could have — that
+  step's pathspec is `skald-ui/src`, and the binary sat at `skald-ui/`. Nothing in that job built the
+  CLI either. The comment in `ci.yml` carried the same error and is fixed.
 
 - [ ] **SKB-002 — The CLI/bare-graph ingestion path silently discards the session (tempo, master volume, pattern length) and every P-lock.**
   100 of 101 files under `examples/` are bare-graph shaped and route through
@@ -421,7 +454,7 @@ would have shipped with no notes (`c4c30e0`).
   `app.tsx:86` state, absent from `sessionSettings` (`app.tsx:149-151`) and `saveData`.
   *Findings:* F-B06-11. *Roadmap:* **A7 item 16**.
 
-- [ ] **SKB-037 — Non-Latin or emoji instrument/label names collapse to indistinguishable runs of underscores in every generated symbol.**
+- [x] **SKB-037 — Non-Latin or emoji instrument/label names collapse to indistinguishable runs of underscores in every generated symbol.**
   `sanitize_identifier` maps per byte (`param_utils.odin:43-62`); **reproduced**: "キック" and
   "🎵🎵" → `_________Processor` / `__________Processor`. The empty-name fallback exists right
   next to it and isn't used for this case.
@@ -506,7 +539,7 @@ would have shipped with no notes (`c4c30e0`).
   `bpm.ts:18-19` vs `param_ranges.odin`. *F-B02-9 → A8 catches; unify with runtime-BPM work.*
 - [x] **SKB-051 — Noise `amplitude` default: generic table 0.5 vs UI/codegen 1.0; the node-type override switch built for this omits Noise.**
   `param_ranges.odin:88-89` vs `node-definitions.ts:98-101`. *F-A02-6 → A7 item 9.*
-- [ ] **SKB-052 — Generated oscillator code emits a guard that can never be false (`if unison_count > 0` on a literal floored at 1).**
+- [x] **SKB-052 — Generated oscillator code emits a guard that can never be false (`if unison_count > 0` on a literal floored at 1).**
   `codegen.odin:179-186`, `:219`. Same smell the codebase fixed once before. *F-C1-10 → A7 item 25.*
 - [ ] **SKB-053 — `process()` constructs two fresh Float32Array views per render quantum.**
   `skaldWasm.worklet.ts:146-153`; ~40-byte views, small but avoidable. *F-B08-6.*
