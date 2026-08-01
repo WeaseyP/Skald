@@ -269,11 +269,22 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
             </>);
         case 'mapper':
+            // Exposable (B11): the pre-B11 inline bypass in ParameterPanel
+            // already offered the toggle here (its `wrapper` calls default to
+            // `isExposable = true`), and the backend resolves an exposed
+            // `inMin`/`inMax`/`outMin`/`outMax` through the ordinary generic
+            // `exposed_resolutions` path (`param_utils.odin`'s `get_f32_param`)
+            // exactly like any other f32 param — there is no backend gap here
+            // the way there is for `syncRate` below. Passing `false` (as this
+            // case did before B11) would have been unreachable dead code —
+            // the bypass returned first — and deleting that bypass without
+            // flipping this would have silently regressed exposability, the
+            // same trap SKB-043 hit for mixer levels.
             return (<>
-                {renderControlWrapper('inMin', 'Input Min', numberField('inMin', 0), false)}
-                {renderControlWrapper('inMax', 'Input Max', numberField('inMax', 1), false)}
-                {renderControlWrapper('outMin', 'Output Min', numberField('outMin', 0), false)}
-                {renderControlWrapper('outMax', 'Output Max', numberField('outMax', 1), false)}
+                {renderControlWrapper('inMin', 'Input Min', numberField('inMin', 0), true)}
+                {renderControlWrapper('inMax', 'Input Max', numberField('inMax', 1), true)}
+                {renderControlWrapper('outMin', 'Output Min', numberField('outMin', 0), true)}
+                {renderControlWrapper('outMax', 'Output Max', numberField('outMax', 1), true)}
             </>);
         case 'mixer': {
             const inputCount = Math.min(Math.max(Number(data.inputCount) || 4, 1), 32);
@@ -324,6 +335,29 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 )}
             </>);
         }
+        case 'midiInput':
+            // Restored here (B11): the pre-B11 inline bypass in ParameterPanel
+            // rendered this locally and returned before this switch was ever
+            // reached, so this case never existed — deleting that bypass
+            // without adding this would have dropped both controls from the
+            // sidebar entirely, not just their exposability. Kept identical to
+            // the old bypass: `device` mirrors its custom option labels
+            // ("Device A (Mock)" etc., not just the raw value) and is not
+            // exposable; `useMpe` stays an unwrapped checkbox with no expose
+            // affordance, exactly as before.
+            return (<>
+                {renderControlWrapper('device', 'MIDI Device', (
+                    <select name="device" value={data.device ?? 'All'} onChange={(e) => onChange('device', e.target.value)} style={inputStyles}>
+                        <option value="All">All Devices</option>
+                        <option value="Device A">Device A (Mock)</option>
+                        <option value="Device B">Device B (Mock)</option>
+                    </select>
+                ), false)}
+                <div style={{ margin: '10px 0' }}>
+                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Enable MPE</label>
+                    <input type="checkbox" checked={data.useMpe ?? false} onChange={e => onChange('useMpe', e.target.checked)} />
+                </div>
+            </>);
         case 'panner':
             return (<>
                 {renderControlWrapper('pan', 'Pan', slider('pan', -1, 1, 0))}

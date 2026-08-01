@@ -253,3 +253,55 @@ describe('A7-11 Mod Index slider travel is tapered, not linear', () => {
         expect(positionFor(dragged)).toBeCloseTo(21.544, 1);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Packet B11 — deleting ParameterPanel's inline mixer/mapper/midiInput bypass
+// branches makes this component the ONE path those node types render through.
+// Both traps below existed only because the bypass reached the user first:
+// mapper's exposability and midiInput's controls entirely.
+// ---------------------------------------------------------------------------
+
+describe('B11 mapper inMin/inMax/outMin/outMax are exposable', () => {
+    it('offers the expose affordance on every mapper field', () => {
+        // Before B11, ParameterPanel's inline mapper bypass returned before
+        // this switch was reached and already offered the toggle (its
+        // `wrapper` defaults to `isExposable = true`). This case said `false`,
+        // which was unreachable dead code — exactly the shape of trap SKB-043
+        // hit for mixer levels. Deleting the bypass without flipping this
+        // would have silently regressed a working feature.
+        const { exposability } = renderControls('mapper', { inMin: 0, inMax: 1, outMin: 0, outMax: 1 });
+        expect(exposability.inMin).toBe(true);
+        expect(exposability.inMax).toBe(true);
+        expect(exposability.outMin).toBe(true);
+        expect(exposability.outMax).toBe(true);
+    });
+});
+
+describe('B11 midiInput controls are reachable through NodeParameterControls', () => {
+    it('renders the MIDI device select and writes to `device`', () => {
+        // Before B11, ParameterPanel's inline midiInput bypass rendered these
+        // controls locally and returned before this switch was ever reached —
+        // there was no `midiInput` case here at all. Deleting the bypass
+        // without adding one would have dropped the controls from the sidebar
+        // entirely (falling through to "No standard controls for midiInput"),
+        // not just their exposability.
+        const { container, onChange, exposability } = renderControls('midiInput', { device: 'All', useMpe: false });
+
+        const select = container.querySelector('[data-param="device"] select');
+        if (!(select instanceof HTMLSelectElement)) throw new Error('Missing MIDI device select');
+        expect(exposability.device).toBe(false);
+
+        fireEvent.change(select, { target: { value: 'Device B' } });
+        expect(onChange).toHaveBeenCalledWith('device', 'Device B');
+    });
+
+    it('renders the Enable MPE checkbox and writes to `useMpe`', () => {
+        const { container, onChange } = renderControls('midiInput', { device: 'All', useMpe: false });
+
+        const checkbox = container.querySelector('input[type="checkbox"]');
+        if (!(checkbox instanceof HTMLInputElement)) throw new Error('Missing Enable MPE checkbox');
+
+        fireEvent.click(checkbox);
+        expect(onChange).toHaveBeenCalledWith('useMpe', true);
+    });
+});

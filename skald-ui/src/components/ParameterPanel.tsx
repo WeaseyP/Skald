@@ -1,6 +1,5 @@
 import React from 'react';
 import { Node, Edge } from '@xyflow/react';
-import { CustomSlider } from './controls/CustomSlider';
 import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
@@ -167,21 +166,6 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         onUpdateNode(selectedNode.id, dataToUpdate, subNodeId);
     };
 
-    const handleMixerChange = (channelId: number, newLevel: number, subNodeId?: string) => {
-        const nodeToUpdate = subNodeId
-            ? (allNodes.find((n: Node<NodeParams>) => n.id === subNodeId) || selectedNode.data.subgraph?.nodes.find((n: Node<NodeParams>) => n.id === subNodeId))
-            : selectedNode;
-
-        if (!nodeToUpdate || nodeToUpdate.type !== 'mixer') return;
-
-        const currentLevels = nodeToUpdate.data.levels || [];
-        const newLevels = currentLevels.map((ch: any) =>
-            ch.id === channelId ? { ...ch, level: newLevel } : ch
-        );
-
-        handleParameterChange('levels', newLevels, subNodeId);
-    };
-
     const handleGenericChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, subNodeId?: string) => {
         const { name, value, type } = e.target;
         let parsedValue: string | number | boolean = value;
@@ -206,8 +190,15 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             ? currentExposed.filter(p => p !== paramKey)
             : [...currentExposed, paramKey];
 
-        const newData = { ...nodeToUpdate.data, exposedParameters: newExposed };
-        onUpdateNode(selectedNode.id, newData, subNodeId);
+        // Delta only. Its sibling `handleParameterChange` above already learned
+        // this lesson: `{ ...nodeToUpdate.data, exposedParameters: newExposed }`
+        // spreads a snapshot of `nodeToUpdate.data` captured when THIS closure
+        // was created. If a concurrent edit to the same node (e.g. a slider
+        // drag) has landed in the store since then but the panel hasn't
+        // re-rendered with the fresh node yet, that snapshot is stale — writing
+        // it back silently reverts the concurrent edit (SKB-022). `onUpdateNode`
+        // merges the delta into the LATEST state, same as `handleParameterChange`.
+        onUpdateNode(selectedNode.id, { exposedParameters: newExposed }, subNodeId);
     };
 
 
@@ -318,8 +309,8 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             );
         }
 
-        // Special handling for Output/Input/Mixer/Mapper/MIDI (Not yet extracted or complex)
-        // Ideally extract these too, but for now fallback or implement
+        // Special handling for Output/Input ports, which aren't parameter
+        // controls at all.
         if (type === 'output' || type === 'InstrumentOutput') {
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -335,47 +326,12 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         }
         if (type === 'InstrumentInput') return <p>Instrument input port.</p>;
 
-        if (type === 'mixer') {
-            return (
-                <>
-                    {(data.levels || []).map((channel: any) =>
-                        wrapper(`level${channel.id}`, `Input ${channel.id} Level`,
-                            <CustomSlider min={0} max={1} value={channel.level} onChange={val => handleMixerChange(channel.id, val, subNodeId || node.id)} />
-                            , true)
-                    )}
-                </>
-            );
-        }
-        if (type === 'mapper') {
-            return (
-                <>
-                    {wrapper('inMin', 'Input Min', <CustomSlider min={-100} max={100} value={data.inMin ?? 0} onChange={val => handleControlChange('inMin', val)} />)}
-                    {wrapper('inMax', 'Input Max', <CustomSlider min={-100} max={100} value={data.inMax ?? 1} onChange={val => handleControlChange('inMax', val)} />)}
-                    {wrapper('outMin', 'Output Min', <CustomSlider min={-10000} max={10000} value={data.outMin ?? 0} onChange={val => handleControlChange('outMin', val)} />)}
-                    {wrapper('outMax', 'Output Max', <CustomSlider min={-10000} max={10000} value={data.outMax ?? 1} onChange={val => handleControlChange('outMax', val)} />)}
-                </>
-            );
-        }
-        if (type === 'midiInput') {
-            // ... handle midi input locally for now as it uses local select logic
-            return (
-                <>
-                    {wrapper('device', 'MIDI Device',
-                        <select name="device" value={data.device ?? 'All'} onChange={(e) => handleGenericChange(e, subNodeId || node.id)} style={inputStyles}>
-                            <option value="All">All Devices</option>
-                            <option value="Device A">Device A (Mock)</option>
-                            <option value="Device B">Device B (Mock)</option>
-                        </select>,
-                        false
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                        <label style={labelStyles}>Enable MPE</label>
-                        <input type="checkbox" name="useMpe" checked={data.useMpe ?? false} onChange={(e) => handleGenericChange(e, subNodeId || node.id)} style={{ height: '18px', width: '18px', cursor: 'pointer' }} />
-                    </div>
-                </>
-            );
-        }
-
+        // Mixer/mapper/midiInput used to have inline bypass branches here that
+        // returned before `NodeParameterControls` was ever reached (B11). They
+        // duplicated (and in mixer's case, incompletely duplicated — no
+        // `inputCount` control at all) what the shared component already
+        // renders, so they are gone; `NodeParameterControls` below is now the
+        // single path for every node type.
 
         // Default: Use Shared Component
         return (
