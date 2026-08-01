@@ -12,10 +12,18 @@ Rules of this file:
   added three findings no tier agent had (SKB-000, SKB-057, and the A5 glob correction). Items
   marked **measured** or **reproduced** were demonstrated against the real toolchain, not
   inferred from reading.
-- The example corpus, verbatim and authoritative wherever a count appears: **101 JSON files =
-  80 `.skald.json` + 21 bare `.json`; 100 graph-shaped, 1 project-shaped; 26 unplayable; 1 fails
-  codegen (`archive/PulsarBeam.json`)**. The counts 62, 75, 81 and 94 all appear somewhere in
-  the audit tiers and are all wrong.
+- The example corpus: **99 JSON files = 80 `.skald.json` + 19 bare `.json`; 98 graph-shaped, 1
+  project-shaped; 26 unplayable (25 instrument-less + the project-shaped file the editor rejects at
+  parse); 1 fails codegen (`archive/PulsarBeam.json`)**.
+  **Corrected 2026-08-01, and the correction is the lesson.** This rule previously declared
+  "101 = 80 + 21" *verbatim and authoritative* and dismissed 62, 75, 81 and 94 as wrong. The 101 was
+  itself wrong. Measured with `git ls-files 'examples/**/*.json'`: 99 at HEAD, and **63** at
+  `af6500c` — the pre-audit tree — so the "62" it dismissed was nearly right for the tree it was
+  measured against, and the replacement figure was off by two. Everything else in the original
+  reconciled exactly. **Stop treating any count here as authoritative:** it is commit-dependent, and
+  five different numbers have now been asserted with confidence. The corpus gate
+  (`skald-ui/src/tests/corpus/`, packet A5) globs and never hardcodes a count, and its only
+  numeric assertion is that an empty enumeration fails loudly. Quote the gate, not this line.
 - The previous contents of this file are preserved at the bottom as **closed history**. Every one
   of those checked items was independently re-verified as still fixed (zero regressions), with
   one caveat noted there.
@@ -332,7 +340,17 @@ would have shipped with no notes (`c4c30e0`).
   with. `forge.config.ts:20` copies the whole `examples/` tree, including `archive/PulsarBeam.json`
   (**reproduced**: exit 1, unknown port `input_delayTime`) and `songs/loops/to implement/`; the
   Load dialog opens one folder away (`dialogDefaults.ts:107-110`).
-  *Findings:* F-C4-3, F-B06-5, CODEX W2/B1. *Roadmap:* **B6**.
+  **Now detected, not fixed (2026-08-01, packet A5).** The corpus gate drives every example through
+  the real editor path in CI, so each of these files fails visibly instead of surprising a reader. All
+  26 are **quarantined by name** — 25 instrument-less files plus the project-shaped one the editor
+  rejects at parse — with the premise pinned (0 instruments serialized) as well as the failure, and
+  the list fails if an entry starts passing or its file disappears. `archive/PulsarBeam.json` is
+  quarantined separately with its exact stderr symptom, so a *different* failure cannot hide behind
+  the entry. **Nothing a user experiences has changed**: the 25 still refuse to play and PulsarBeam
+  still ships in every packaged build. B6's auto-wrap is the fix, and when it lands the gate goes red
+  demanding these quarantine entries be deleted — which is the intended pressure.
+  (The "26 of 101" in the title is the count corrected in rule 3 above: 26 of 99.)
+  *Findings:* F-C4-3, F-B06-5, CODEX W2/B1. *Roadmap:* **B6** (fix), **A5** (detection).
 
 - [ ] **SKB-020 — Every checked-in `generated_audio.odin` (six copies, including the integration demo games copy from) is stale and re-introduces the fixed voice-steal click.**
   `grep -c attack_start` → 0 in all six; 3–6 in the corresponding goldens. Symptom of SKB-001 —
