@@ -36,7 +36,7 @@ a workaround or narrow reach · **low** = real but small.
 
 ## Wave A remediation pass — 2026-08-01
 
-Nineteen entries closed, on branch `review-fixes`, commits `c4c30e0`..`ed4c873`. Each was verified
+Twenty-three entries closed, on branch `review-fixes`, commits `c4c30e0`..`05b52ea`. Each was verified
 by neutralizing the fix and re-running the test, or by the before/after measurement quoted below —
 not by reading the code and agreeing with it.
 
@@ -61,6 +61,10 @@ not by reading the code and agreeing with it.
 | SKB-034 | Save is atomic — temp file then rename. Proven by simulating a real partial write: without the fix the pre-existing good save is left as `{"n` | `ed4c873` |
 | SKB-035 | Saved viewport restored on load, `fitView()` for older or malformed saves, both after the nodes commit | `ed4c873` |
 | SKB-036 | `packageName` round-trips through `SessionSettings`; absence leaves the current value alone, no migration | `ed4c873` |
+| SKB-022 | Expose toggle sends a delta, not a closure-captured spread; deleting the three bypasses also found mapper and midiInput disagreeing with the shared path | `24a05e4` |
+| SKB-008 | One ordered history behind a labelled `pushHistory`; all seven defects with individual neutralize-and-rerun evidence | `8e44c86` |
+| SKB-004 | `Maybe(T)` presence signal: absent → 1.0, authored 0 → silence. Rendered peak 0.294 → 0.000, measured on a shipped file | `05b52ea` |
+| SKB-002 | `build_project_from_graph` deleted; one reader via a pure normaliser. The collapse changed no output — goldens byte-identical, 201/201 corpus green | `05b52ea` |
 
 Partially closed, still open above: **SKB-007** (the expose route is closed, the P-lock route needs
 B2), **SKB-024** (the UI reads the right default; the range-table half is deliberately deferred — it
@@ -152,7 +156,7 @@ would have shipped with no notes (`c4c30e0`).
   step's pathspec is `skald-ui/src`, and the binary sat at `skald-ui/`. Nothing in that job built the
   CLI either. The comment in `ci.yml` carried the same error and is fixed.
 
-- [ ] **SKB-002 — The CLI/bare-graph ingestion path silently discards the session (tempo, master volume, pattern length) and every P-lock.**
+- [x] **SKB-002 — The CLI/bare-graph ingestion path silently discards the session (tempo, master volume, pattern length) and every P-lock.**
   100 of 101 files under `examples/` are bare-graph shaped and route through
   `build_project_from_graph`, which hardcodes `project.bpm = 120` (`json.odin:298`) and
   `master_volume = 1.0` (`:299`), never sets `pattern_steps`, and never reads the `session` block
@@ -177,7 +181,11 @@ would have shipped with no notes (`c4c30e0`).
   at parse time and a session-less legacy file must keep exporting at unity. That collides with
   SKB-004/packet B1, which has to make an authored `0` mean silence — and `Session_Raw` cannot yet
   distinguish "absent" from "authored zero", because Odin's unmarshaller does not report key presence.
-  *Findings:* F-C3-2, F-C2-7, F-C1-5. *Roadmap:* **A4** (step 1 done, step 2 open).
+  **Step 2 done 2026-08-01 (`05b52ea`): `build_project_from_graph` is deleted.** Its replacement is a pure
+  normaliser into `build_project_from_raw`, and `main.odin`'s try-both-unmarshals sniffing is replaced by a
+  declarative top-level key check. There is one reader now, not two that agree. The collapse changed **no**
+  output: all goldens byte-identical and 201/201 corpus tests green across it.
+  *Findings:* F-C3-2, F-C2-7, F-C1-5. *Roadmap:* **A4** (both steps done).
 
 - [x] **SKB-003 — Codegen output is non-deterministic on the bare-graph path; regenerating the same file can reassign which instrument is asset 0.**
   `build_project_from_graph` iterates `graph.nodes` (a `map[string]Node`) unsorted
@@ -189,12 +197,18 @@ would have shipped with no notes (`c4c30e0`).
   wired to the wrong instrument by a rebuild with no edits.
   *Findings:* F-B04-1, F-C3-3, F-C4-9. *Roadmap:* **A3**.
 
-- [ ] **SKB-004 — Master volume of exactly 0 exports at full volume.**
+- [x] **SKB-004 — Master volume of exactly 0 exports at full volume.**
   The dock slider reaches 0 (`SequencerDock.tsx:211`, `min="0"`); `projectSerializer.ts:110`
   passes it through with no floor — while instrument volume is floored at `:197-199` *with a
   comment explaining precisely this hazard* — and the backend treats `<= 0.0` as "field absent"
   and substitutes `1.0` (`codegen.odin:2455-2456`). **Reproduced**: `master_volume: 0` emits
   `tanh(mixed_left * 1.000000000)`. A deliberately muted project ships loud.
+  **FIXED 2026-08-01 (`05b52ea`, packet B1-backend).** `Maybe(T)` session fields give the parser a presence
+  signal, so absent → 1.0 and authored 0 → 0.0, resolved in one proc both readers share. Measured on
+  `geowars/hat-static`: authored 0 rendered peak **0.294 before, 0.000 after**; absent still renders 0.286.
+  **Changelog-visible:** a patch saved at `masterVolume: 0` now exports silent, and the generator warns on
+  stderr every time, naming both the old and new behaviour. An explicit JSON `null` counts as absent, which
+  matters because a UI NaN serialises to null.
   *Findings:* F-A05-1 (+F-B11-5: no test exercises the value). *Roadmap:* **B1**.
 
 - [ ] **SKB-005 — Load destroys the session in one click, and one Ctrl+Z immediately after Load destroys the *newly opened* project's sequencer data.**
@@ -205,6 +219,11 @@ would have shipped with no notes (`c4c30e0`).
   Ctrl+Z after Load swaps in the previous project's tracks, and `useInstrumentRegistry.ts:31-35`
   prunes them as orphans and re-adds empty ones. Every note in the just-opened file, gone,
   unrecoverable.
+  **Half fixed 2026-08-01 (`8e44c86`, packet B3).** The undo half is closed: Load now resets one ordered
+  history, and `LoadThenUndo.test.tsx` asserts the opened file's nodes, tracks and notes survive Ctrl+Z —
+  comment out `resetHistory()` and it fails with the previous project back on screen. **Still open:** the
+  Load itself is still unguarded — no dirty flag, no confirm, no window-title marker, no autosave/recovery.
+  B3 exposed `isDirty`/`editsSinceSave`/`markSaved()`/`captureSnapshot()` for exactly that work.
   *Findings:* F-C4-5, F-B06-2 (as strengthened by C1), F-B07-4. *Roadmap:* **B4**.
 
 ---
@@ -240,7 +259,7 @@ would have shipped with no notes (`c4c30e0`).
   B2's hard error on a P-lock resolving to an inert parameter.
   *Findings:* F-C1-2. *Roadmap:* **A7 item 5** (done) + **B2** (the remaining half).
 
-- [ ] **SKB-008 — Undo is unreliable in seven distinct ways; the most common editor gestures leave no undo entry.**
+- [x] **SKB-008 — Undo is unreliable in seven distinct ways; the most common editor gestures leave no undo entry.**
   (1) Two independent stacks popped by one Ctrl+Z (`app.tsx:209-228`; graph capped at 50,
   sequencer unbounded — divergence guaranteed). (2) Drag snapshots on the last tick, so undo
   moves a node a few pixels (`useGraphState.ts:81-83`). (3) Palette drop untracked
@@ -249,6 +268,10 @@ would have shipped with no notes (`c4c30e0`).
   neither stack (`app.tsx:76,78,82`). (7) 500 ms wall-clock coalescing merges unrelated edits and
   splits slow drags (`useGraphState.ts:57-64`). Deleting an Instrument also hard-deletes its
   whole track with no confirm (`useInstrumentRegistry.ts:27-36`).
+  **FIXED 2026-08-01 (`8e44c86`, packet B3).** One ordered history of `{nodes, edges, tracks, session}`
+  behind a single labelled `pushHistory`; the second stack is gone. All seven defects have their own
+  neutralize-and-rerun evidence — restoring the key-blind 500 ms timer alone fails 10 tests, including both
+  opposite symptoms it produced (unrelated edits merged, a 2 s drag split into five).
   *Findings:* F-C4-6 (consolidating F-B01-2/3/9, F-B07-1/2/3/9, F-B09b-5). *Roadmap:* **B3**.
 
 - [ ] **SKB-009 — Renaming or deleting a P-locked node makes the whole build fail, and the orphaned override is invisible in the UI.**
