@@ -21,17 +21,26 @@ let loadTracks: ReturnType<typeof vi.fn>;
 let applySession: ReturnType<typeof vi.fn>;
 let notify: ReturnType<typeof vi.fn>;
 
-const rfInstance = {
+let setViewport: ReturnType<typeof vi.fn>;
+let fitView: ReturnType<typeof vi.fn>;
+
+const rfInstance = () => ({
     toObject: () => ({ nodes: [{ id: 'n1' }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }),
     getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
-} as unknown as ReactFlowInstance;
+    setViewport,
+    fitView,
+} as unknown as ReactFlowInstance);
 
-const session = { bpm: 140, patternSteps: 32, masterVolume: 0.3 };
+const session = { bpm: 140, patternSteps: 32, masterVolume: 0.3, packageName: 'my_game_audio' };
+
+// The real setTimeout(0) the hook defers viewport restoration through — one
+// real macrotask tick is enough for it to fire.
+const flushTimers = () => new Promise((r) => setTimeout(r, 10));
 
 const renderFileIO = () =>
     renderHook(() =>
         useFileIO(
-            rfInstance,
+            rfInstance(),
             setNodes as unknown as React.Dispatch<React.SetStateAction<Node[]>>,
             setEdges as unknown as React.Dispatch<React.SetStateAction<Edge[]>>,
             vi.fn() as unknown as (history: unknown[]) => void,
@@ -53,6 +62,8 @@ beforeEach(() => {
     loadTracks = vi.fn();
     applySession = vi.fn();
     notify = vi.fn();
+    setViewport = vi.fn();
+    fitView = vi.fn();
     (window as unknown as { electron: unknown }).electron = { saveGraph, loadGraph, importPatches };
 });
 
@@ -144,6 +155,107 @@ describe('useFileIO — load validation', () => {
         await act(async () => { await result.current.handleLoad(); });
         expect(notify).not.toHaveBeenCalled();
         expect(setNodes).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// SKB-036 / F-B06-11 — packageName never round-tripped through save/load;
+// every reload reset the export package to "generated_audio". It now rides
+// the session block exactly like bpm/patternSteps/masterVolume.
+// ---------------------------------------------------------------------------
+describe('useFileIO — packageName round-trip (SKB-036)', () => {
+    it('carries packageName in the save payload', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/track.json' });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        expect(written.session.packageName).toBe('my_game_audio');
+    });
+
+    it('restores packageName from a save that has one', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                session: { bpm: 90, patternSteps: 64, masterVolume: 0.5, packageName: 'my_game_audio' },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(applySession).toHaveBeenCalledWith(
+            expect.objectContaining({ packageName: 'my_game_audio' })
+        );
+    });
+
+    it('leaves the current packageName alone for an older save with no packageName field — no default is invented', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                session: { bpm: 90, patternSteps: 64, masterVolume: 0.5 },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const restored = applySession.mock.calls[0][0];
+        expect(restored).not.toHaveProperty('packageName');
+    });
+
+    it('ignores a blank packageName instead of restoring an empty export package name', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                session: { bpm: 90, patternSteps: 64, masterVolume: 0.5, packageName: '   ' },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const restored = applySession.mock.calls[0][0];
+        expect(restored).not.toHaveProperty('packageName');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// SKB-035 / F-B06-10 — flow.viewport was saved and never restored, and
+// nothing re-fit the view after load, so a project saved scrolled off the
+// node cluster reopened looking like a blank canvas.
+// ---------------------------------------------------------------------------
+describe('useFileIO — viewport restore on load (SKB-035)', () => {
+    it('restores a saved viewport verbatim', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                viewport: { x: -450, y: 220, zoom: 0.6 },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        await flushTimers();
+        expect(setViewport).toHaveBeenCalledWith({ x: -450, y: 220, zoom: 0.6 });
+        expect(fitView).not.toHaveBeenCalled();
+    });
+
+    it('falls back to fitView() for an older save with no viewport at all', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({ nodes: [{ id: 'a' }], edges: [] }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        await flushTimers();
+        expect(fitView).toHaveBeenCalled();
+        expect(setViewport).not.toHaveBeenCalled();
+    });
+
+    it('falls back to fitView() when the saved viewport is malformed rather than restoring garbage', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                viewport: { x: 'nope', y: null, zoom: 1 },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        await flushTimers();
+        expect(fitView).toHaveBeenCalled();
+        expect(setViewport).not.toHaveBeenCalled();
     });
 });
 

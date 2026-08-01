@@ -94,7 +94,9 @@ const EditorLayout = () => {
     const [outputPath, setOutputPath] = useState("");
 
     const handleSelectOutputPath = async () => {
-        const path = await window.electron.selectOutputPath();
+        // Pass the current selection back so the dialog defaults to it next
+        // time instead of resetting to the tester path on every click.
+        const path = await window.electron.selectOutputPath(outputPath || undefined);
         if (path) setOutputPath(path);
     };
 
@@ -140,7 +142,7 @@ const EditorLayout = () => {
     useInstrumentRegistry(nodes, sequencerStateHooks);
     const { nearestInScale } = useScale();
 
-    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode, previewError, previewStale } = useWasmAudioEngine(
+    const { isPlaying, handlePlay, handleStop, analyserNode, masterGainNode, previewError, previewStale, isBuilding } = useWasmAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -153,14 +155,18 @@ const EditorLayout = () => {
 
     // resetHistory wired for real: the old no-op callbacks meant "undo"
     // after loading a file restored the stale pre-load graph.
+    // packageName rides along here (SKB-036) so it round-trips through
+    // save/load exactly like bpm/patternSteps/masterVolume instead of
+    // resetting to "generated_audio" on every reload.
     const sessionSettings = useMemo(
-        () => ({ bpm, patternSteps, masterVolume }),
-        [bpm, patternSteps, masterVolume]
+        () => ({ bpm, patternSteps, masterVolume, packageName }),
+        [bpm, patternSteps, masterVolume, packageName]
     );
-    const applySessionSettings = useCallback((s: { bpm?: number; patternSteps?: number; masterVolume?: number }) => {
+    const applySessionSettings = useCallback((s: { bpm?: number; patternSteps?: number; masterVolume?: number; packageName?: string }) => {
         if (s.bpm !== undefined) setBpm(s.bpm);
         if (s.patternSteps !== undefined) setPatternSteps(s.patternSteps);
         if (s.masterVolume !== undefined) setMasterVolume(s.masterVolume);
+        if (s.packageName !== undefined) setPackageName(s.packageName);
     }, []);
     // Save/load outcome, shown in a banner over the canvas. Errors stay up
     // until the next file action; successes auto-clear after a few seconds.
@@ -499,6 +505,7 @@ const EditorLayout = () => {
 
                 <SequencerDock
                     state={sequencerState}
+                    isBuilding={isBuilding}
                     bpm={bpm}
                     setBpm={setBpm}
                     patternSteps={patternSteps}

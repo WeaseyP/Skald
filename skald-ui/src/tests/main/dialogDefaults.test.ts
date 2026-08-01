@@ -4,11 +4,12 @@ import path from 'node:path';
 import {
     DialogPathEnv,
     DialogPathProbes,
-    IMPORT_SUBDIR,
     resolveExamplesDir,
     openDialogDefaultPath,
     importDialogDefaultPath,
     saveDialogDefaultPath,
+    outputPathDefaultPath,
+    testerGeneratedAudioDefault,
 } from '../../main/dialogDefaults';
 
 // Path resolution only — no Electron, no real directories. The probes are
@@ -85,41 +86,38 @@ describe('openDialogDefaultPath — Load and Import', () => {
 });
 
 describe('importDialogDefaultPath — Import Patch', () => {
-    const DEV_KIT = path.join(DEV_EXAMPLES, IMPORT_SUBDIR);
-    const PACKAGED_KIT = path.join(PACKAGED_EXAMPLES, IMPORT_SUBDIR);
+    // Roadmap A7 item 23 / F-C4-11: Import Patch used to default into
+    // `examples/snes-kit` specifically (the removed IMPORT_SUBDIR constant).
+    // Pointing every installation's Import at one author's kit is arbitrary
+    // for anyone not using it, so it now opens on `examples/` itself, same as
+    // Load — `SKALD_IMPORT_DIR` is still the way to point it at a kit.
+    const DEV_KIT = path.join(DEV_EXAMPLES, 'snes-kit');
 
-    it('opens on the patch kit inside examples', () => {
+    it('opens on examples/ itself, not any subfolder', () => {
         expect(importDialogDefaultPath(DEV, probes([DEV_EXAMPLES, DEV_KIT])))
-            .toBe(path.resolve(DEV_KIT));
-    });
-
-    it('finds the kit in a packaged build too', () => {
-        expect(importDialogDefaultPath(PACKAGED, probes([PACKAGED_EXAMPLES, PACKAGED_KIT])))
-            .toBe(path.resolve(PACKAGED_KIT));
-    });
-
-    it('falls back to examples when the kit folder has been renamed away', () => {
-        // Pointing the picker at a path that no longer exists is worse than
-        // opening one level up, so a missing kit is not fatal.
-        expect(importDialogDefaultPath(DEV, probes([DEV_EXAMPLES])))
             .toBe(path.resolve(DEV_EXAMPLES));
+    });
+
+    it('opens on examples/ in a packaged build too', () => {
+        expect(importDialogDefaultPath(PACKAGED, probes([PACKAGED_EXAMPLES])))
+            .toBe(path.resolve(PACKAGED_EXAMPLES));
     });
 
     it('leaves defaultPath undefined when there is no examples folder', () => {
         expect(importDialogDefaultPath(DEV, probes([]))).toBeUndefined();
     });
 
-    it('honours SKALD_IMPORT_DIR above the built-in kit', () => {
-        const custom = 'D:/my-patches';
+    it('honours SKALD_IMPORT_DIR above examples/, e.g. to point at a specific kit', () => {
+        const custom = DEV_KIT;
         const env = { ...DEV, importOverride: custom };
-        expect(importDialogDefaultPath(env, probes([custom, DEV_EXAMPLES, DEV_KIT])))
+        expect(importDialogDefaultPath(env, probes([custom, DEV_EXAMPLES])))
             .toBe(path.resolve(custom));
     });
 
-    it('ignores SKALD_IMPORT_DIR when it points at nothing', () => {
+    it('ignores SKALD_IMPORT_DIR when it points at nothing, falling back to examples/', () => {
         const env = { ...DEV, importOverride: 'D:/deleted-last-week' };
         expect(importDialogDefaultPath(env, probes([DEV_EXAMPLES, DEV_KIT])))
-            .toBe(path.resolve(DEV_KIT));
+            .toBe(path.resolve(DEV_EXAMPLES));
     });
 });
 
@@ -145,5 +143,31 @@ describe('saveDialogDefaultPath', () => {
     it('degrades to a bare filename when even Documents is unknown', () => {
         const env = { ...DEV, documentsPath: undefined };
         expect(saveDialogDefaultPath('song.json', env, probes([]))).toBe('song.json');
+    });
+});
+
+// Roadmap A7 item 23 / F-C4-11: the Generate/export "select output path"
+// dialog used to reset to the tester default on EVERY click, forgetting
+// whatever the user had chosen the moment the dialog closed.
+describe('outputPathDefaultPath — Generate/export output path', () => {
+    const TESTER_DIR = path.join(DEV_EXAMPLES, '..', 'skald-backend', 'tester', 'generated_audio');
+
+    it('remembers a previously-chosen path above everything else', () => {
+        const remembered = 'D:/my-game/audio/generated_audio.odin';
+        expect(outputPathDefaultPath(remembered, DEV, probes([TESTER_DIR])))
+            .toBe(remembered);
+    });
+
+    it('falls back to the tester default the FIRST time, when the tester dir exists', () => {
+        expect(outputPathDefaultPath(undefined, DEV, probes([TESTER_DIR])))
+            .toBe(testerGeneratedAudioDefault(DEV));
+    });
+
+    it('falls back to a bare filename when there is no remembered path and no tester dir', () => {
+        expect(outputPathDefaultPath(undefined, DEV, probes([]))).toBe('generated_audio.odin');
+    });
+
+    it('treats an empty remembered path the same as none at all', () => {
+        expect(outputPathDefaultPath('', DEV, probes([]))).toBe('generated_audio.odin');
     });
 });

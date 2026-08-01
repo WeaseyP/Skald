@@ -377,6 +377,57 @@ describe('useWasmAudioEngine — live edits while playing', () => {
     });
 });
 
+describe('useWasmAudioEngine — isBuilding status (roadmap A7 item 3)', () => {
+    it('is true only while the initial Play build is actually in flight', async () => {
+        let resolveBuild!: (b: ArrayBuffer) => void;
+        buildWasmPreview.mockImplementation(() => new Promise<ArrayBuffer>((res) => { resolveBuild = res; }));
+
+        const { result } = renderEngine([makeInstrument()]);
+        expect(result.current.isBuilding).toBe(false);
+
+        let playPromise!: Promise<void>;
+        act(() => { playPromise = result.current.handlePlay(); });
+        expect(result.current.isBuilding).toBe(true);
+
+        await act(async () => {
+            resolveBuild(new ArrayBuffer(8));
+            await playPromise;
+        });
+        expect(result.current.isBuilding).toBe(false);
+        expect(result.current.isPlaying).toBe(true);
+    });
+
+    it('is true only while a hot-swap rebuild is actually in flight, and clears even when the rebuild fails', async () => {
+        vi.useFakeTimers();
+        const { result, rerender } = renderEngine([makeInstrument(440)]);
+        await act(async () => { await result.current.handlePlay(); });
+        expect(result.current.isBuilding).toBe(false);
+
+        let resolveRebuild!: (b: ArrayBuffer) => void;
+        buildWasmPreview.mockImplementationOnce(
+            () => new Promise<ArrayBuffer>((res) => { resolveRebuild = res; })
+        );
+
+        await act(async () => { rerender({ n: [makeInstrument(220)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+        // Debounce elapsed and the rebuild is now parked mid-flight.
+        expect(result.current.isBuilding).toBe(true);
+
+        await act(async () => { resolveRebuild(new ArrayBuffer(8)); });
+        expect(result.current.isBuilding).toBe(false);
+    });
+
+    it('clears even when the initial Play build fails outright', async () => {
+        buildWasmPreview.mockRejectedValueOnce(new Error('Odin compiler not found'));
+        const { result } = renderEngine([makeInstrument()]);
+
+        await act(async () => { await result.current.handlePlay(); });
+
+        expect(result.current.isBuilding).toBe(false);
+        expect(result.current.previewError).toContain('Odin compiler not found');
+    });
+});
+
 describe('useWasmAudioEngine — stop→play stale-swap race (F-B09b-6)', () => {
     it('a rebuild that resolves AFTER Stop→Play never swaps its stale module into the new session\'s worklet', async () => {
         vi.useFakeTimers();

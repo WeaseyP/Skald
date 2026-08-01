@@ -64,6 +64,17 @@ export const useWasmAudioEngine = (
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [previewStale, setPreviewStale] = useState<string | null>(null);
 
+    // True while a codegen+odin build is actually in flight — either the
+    // initial Play build or a debounced hot-swap rebuild. `-o:none` made
+    // rebuilds fast (~172ms measured on the snes demo, was 702ms), which
+    // solved the "live edits feel slow" problem but created a smaller one: a
+    // SLOW successful rebuild (a big patch, a loaded machine) is now
+    // indistinguishable from nothing happening at all, because nothing ever
+    // showed work in progress. Reusing this state (rather than a second
+    // channel) keeps the preview's health surfaced through one place, same as
+    // previewError/previewStale above.
+    const [isBuilding, setIsBuilding] = useState(false);
+
     const lastSignature = useRef<string | null>(null);
     const prevInstruments = useRef<Node[]>([]);
     const rebuildTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -165,7 +176,8 @@ export const useWasmAudioEngine = (
             const context = new AudioContext();
             audioContext.current = context;
 
-            const { bytes, signature, stepAsset } = await buildModule();
+            setIsBuilding(true);
+            const { bytes, signature, stepAsset } = await buildModule().finally(() => setIsBuilding(false));
             if (audioContext.current !== context) return; // stopped while building
 
             const workletUrl = URL.createObjectURL(
@@ -318,6 +330,7 @@ export const useWasmAudioEngine = (
                 return;
             }
             buildInFlight.current = true;
+            setIsBuilding(true);
             // Stamp the rebuild with the CURRENT lineage id. If Stop (or
             // Stop→Play) happens during the await, the id moves on and this
             // completion is dropped: the workletNode null-check alone cannot
@@ -352,6 +365,7 @@ export const useWasmAudioEngine = (
                 }
             } finally {
                 buildInFlight.current = false;
+                setIsBuilding(false);
                 if (rebuildQueued.current) {
                     rebuildQueued.current = false;
                     scheduleRebuild();
@@ -461,5 +475,9 @@ export const useWasmAudioEngine = (
         // toolchain failures indistinguishable from a silent patch).
         previewError,
         previewStale,
+        // True while a preview build (Play or a hot-swap rebuild) is
+        // actually running — drives the small status pip in SequencerToolbar
+        // (roadmap A7 item 3, second half).
+        isBuilding,
     };
 };

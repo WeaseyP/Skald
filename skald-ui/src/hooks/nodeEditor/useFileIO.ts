@@ -14,10 +14,17 @@ import { ImportedGraph, layOutImportBatch } from '../../utils/importLayout';
 // Song-level settings that live outside the graph/tracks but shape how the
 // project sounds and exports. They used to be dropped from saves entirely:
 // a 140 BPM / 32-step song reloaded as 120 BPM / 16 steps.
+//
+// packageName (SKB-036 / F-B06-11): the export package name, e.g. so a save
+// authored against `my_game_audio` doesn't reload as `generated_audio`. Its
+// absence on read is treated as the current default, same as the other
+// fields here — this is a value carried through an existing free-form block,
+// not a schema change, so it needs no migration (roadmap §4 constraint 4).
 export interface SessionSettings {
     bpm: number;
     patternSteps: number;
     masterVolume: number;
+    packageName: string;
 }
 
 export type FileStatus = { kind: 'success' | 'error'; message: string };
@@ -162,11 +169,36 @@ export const useFileIO = (
             if (Number.isFinite(flow.session.masterVolume) && flow.session.masterVolume >= 0) {
                 restored.masterVolume = flow.session.masterVolume;
             }
+            if (typeof flow.session.packageName === 'string' && flow.session.packageName.trim().length > 0) {
+                restored.packageName = flow.session.packageName;
+            }
             applySessionSettings(restored);
         }
+
+        // Restore the camera (SKB-035 / F-B06-10). Older saves carry no
+        // viewport at all — for those, fitView() is the fallback rather than
+        // leaving the camera wherever the PREVIOUS project's viewport left
+        // it, which could easily be scrolled off every node in the new one
+        // (an empty-looking canvas with a perfectly good graph loaded).
+        //
+        // Both branches are deferred a tick: this callback runs synchronously
+        // right after setNodes/setEdges above, before React Flow's internal
+        // store has absorbed the new nodes on the next render — calling
+        // setViewport/fitView before that commits would apply against the
+        // PREVIOUS graph's node set.
+        const viewport = flow.viewport;
+        const hasValidViewport =
+            viewport && typeof viewport === 'object' &&
+            Number.isFinite(viewport.x) && Number.isFinite(viewport.y) && Number.isFinite(viewport.zoom);
+        if (hasValidViewport) {
+            setTimeout(() => reactFlowInstance?.setViewport(viewport), 0);
+        } else {
+            setTimeout(() => reactFlowInstance?.fitView(), 0);
+        }
+
         setHistory([]);
         setFuture([]);
-    }, [setNodes, setEdges, setHistory, setFuture, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
+    }, [reactFlowInstance, setNodes, setEdges, setHistory, setFuture, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
 
     // Import Patch merges one or more saved patches into the current graph.
     // The dialog is a multi-selection, so picking a whole drum kit is one trip

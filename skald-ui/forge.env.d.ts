@@ -12,7 +12,9 @@ export interface IElectronAPI {
         files: { name: string; content: string }[];
         skipped: { name: string; error: string }[];
     }>,
-    selectOutputPath: () => Promise<string | null>,
+    // currentPath: pass back the already-selected output path so the dialog
+    // remembers it instead of resetting to the tester default every time.
+    selectOutputPath: (currentPath?: string) => Promise<string | null>,
     buildWasmPreview: (projectJson: string) => Promise<ArrayBuffer>,
 }
 

@@ -9,6 +9,7 @@ import {
   DialogPathEnv,
   importDialogDefaultPath,
   openDialogDefaultPath,
+  outputPathDefaultPath,
   saveDialogDefaultPath,
 } from './main/dialogDefaults';
 import {
@@ -20,6 +21,7 @@ import {
   CodegenStampEnv,
   createCodegenGuard,
 } from './main/codegenStamp';
+import { atomicWriteFileSync } from './main/atomicSave';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -355,28 +357,6 @@ ipcMain.handle('build-wasm-preview', (_, projectJson: string): Promise<ArrayBuff
   return run;
 });
 
-// Handler for selecting output path
-ipcMain.handle('select-output-path', async () => {
-  // Default the dialog to the tester's generated_audio package — the one
-  // place build_and_test.bat reads from. Landing anywhere else in the
-  // tester tree breaks the harness build (one Odin package per directory).
-  let defaultPath = 'generated_audio.odin';
-  const testerDefault = path.join(
-    app.getAppPath(), '..', 'skald-backend', 'tester', 'generated_audio', 'generated_audio.odin'
-  );
-  if (fs.existsSync(path.dirname(testerDefault))) {
-    defaultPath = testerDefault;
-  }
-  const { filePath } = await dialog.showSaveDialog({
-    title: 'Select Output File',
-    buttonLabel: 'Select',
-    defaultPath,
-    filters: [{ name: 'Odin Source File', extensions: ['odin'] }],
-  });
-  return filePath || null;
-});
-
-
 // Load / Save / Import all open on the examples folder, so the patches every
 // manual chapter's "Try it" section references are one click away instead of
 // wherever the OS last left the picker. See src/main/dialogDefaults.ts.
@@ -387,6 +367,22 @@ const dialogPathEnv = (): DialogPathEnv => ({
   documentsPath: app.getPath('documents'),
   envOverride: process.env.SKALD_EXAMPLES_DIR,
   importOverride: process.env.SKALD_IMPORT_DIR,
+});
+
+// Handler for selecting output path. `currentPath` is whatever the renderer
+// already has selected this session (app.tsx's `outputPath` state) — passing
+// it back is what makes the dialog remember a choice instead of resetting to
+// the tester default on every click (roadmap A7 item 23 / F-C4-11). Before
+// this, exporting to your own project directory meant re-navigating there
+// every single time Generate's "..." button was pressed.
+ipcMain.handle('select-output-path', async (_, currentPath?: string) => {
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'Select Output File',
+    buttonLabel: 'Select',
+    defaultPath: outputPathDefaultPath(currentPath || undefined, dialogPathEnv()),
+    filters: [{ name: 'Odin Source File', extensions: ['odin'] }],
+  });
+  return filePath || null;
 });
 
 // Handler for saving the graph. Returns an explicit result: the renderer
@@ -404,7 +400,13 @@ ipcMain.handle('save-graph', async (_, graphJson: string): Promise<{ saved: bool
     return { saved: false }; // user canceled — not an error
   }
   try {
-    fs.writeFileSync(filePath, graphJson, { encoding: 'utf8' });
+    // Atomic write (SKB-034): a straight fs.writeFileSync onto filePath
+    // truncates the target before any new bytes land, so a write that fails
+    // partway through (full disk, a locked file, a permission error) used to
+    // destroy the previous good save along with it. Writing to a temp file
+    // beside the target and renaming over it means the target only ever
+    // changes via one atomic filesystem operation — see main/atomicSave.ts.
+    atomicWriteFileSync(filePath, graphJson);
     return { saved: true, path: filePath };
   } catch (err) {
     console.error(`[Skald] Failed to save graph to ${filePath}:`, err);

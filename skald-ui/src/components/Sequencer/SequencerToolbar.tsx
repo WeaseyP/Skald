@@ -5,6 +5,11 @@ import { MAX_PATTERN_STEPS, clampPatternSteps } from './stepMetrics';
 
 interface SequencerToolbarProps {
     isPlaying: boolean;
+    // True while a preview build (Play or a hot-swap rebuild) is actually
+    // running. `-o:none` made rebuilds fast, which made a slow SUCCESSFUL
+    // one indistinguishable from nothing happening — this pip is the fix
+    // (roadmap A7 item 3, second half).
+    isBuilding: boolean;
     bpm: number;
     isLooping: boolean;
     onPlay: () => void;
@@ -61,6 +66,7 @@ import { useScale, NOTES, SCALES, NoteName, ScaleName } from '../../contexts/Sca
 
 export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
     isPlaying,
+    isBuilding,
     bpm,
     isLooping,
     onPlay,
@@ -92,6 +98,34 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
                     Play
                 </button>
                 <button style={buttonStyles} onClick={onStop}>Stop</button>
+                {isBuilding && (
+                    // Visually quiet on purpose — a status pip, not a modal.
+                    // Rebuilds are fast now (-o:none, ~157ms measured), but a
+                    // slow one used to be silent and indistinguishable from
+                    // nothing happening at all.
+                    <span
+                        data-testid="build-status-pip"
+                        title="Rebuilding the audio preview…"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '10px',
+                            color: '#e0a030',
+                        }}
+                    >
+                        <span
+                            style={{
+                                display: 'inline-block',
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: '#e0a030',
+                            }}
+                        />
+                        Building…
+                    </span>
+                )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>

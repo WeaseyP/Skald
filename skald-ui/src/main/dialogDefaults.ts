@@ -18,17 +18,6 @@ import fs from 'node:fs';
 
 export const EXAMPLES_DIR_NAME = 'examples';
 
-/**
- * Subfolder of `examples/` that the Import Patch dialog opens on.
- *
- * Import Patch is the "drop another instrument into the song I already have"
- * action, so it wants the single-instrument patch library rather than the top
- * of `examples/` — which is where Load starts, and which is four clicks from
- * anything importable. Point this at whichever kit you are working out of;
- * `SKALD_IMPORT_DIR` overrides it per machine.
- */
-export const IMPORT_SUBDIR = 'snes-kit';
-
 /** Everything about the host that path resolution depends on. */
 export interface DialogPathEnv {
     /** `app.getAppPath()` — the skald-ui project dir in dev, inside app.asar when packaged. */
@@ -110,11 +99,15 @@ export const openDialogDefaultPath = (
 ): string | undefined => resolveExamplesDir(env, probes) ?? undefined;
 
 /**
- * `defaultPath` for the Import Patch dialog: `examples/<IMPORT_SUBDIR>`.
+ * `defaultPath` for the Import Patch dialog: `examples/`.
  *
- * Falls back a step at a time rather than pointing the picker at a path that
- * isn't there — a renamed or deleted kit folder degrades to `examples/`, and
- * no examples folder at all degrades to `undefined` ("no opinion").
+ * Used to default into `examples/snes-kit` specifically (`IMPORT_SUBDIR`, now
+ * removed) — a deliberate earlier choice made because that was the kit being
+ * worked out of at the time. Roadmap A7 item 23 / F-C4-11 reversed it: pointing
+ * every installation's Import Patch at one author's kit is arbitrary for
+ * anyone not using it, and buries whatever other single-instrument patches
+ * ship under `examples/`. `SKALD_IMPORT_DIR` remains the way to point it at a
+ * specific kit (or anywhere else) per machine.
  */
 export const importDialogDefaultPath = (
     env: DialogPathEnv,
@@ -123,10 +116,7 @@ export const importDialogDefaultPath = (
     if (env.importOverride && probes.isDirectory(env.importOverride)) {
         return path.resolve(env.importOverride);
     }
-    const examples = resolveExamplesDir(env, probes);
-    if (!examples) return undefined;
-    const kit = path.join(examples, IMPORT_SUBDIR);
-    return probes.isDirectory(kit) ? path.resolve(kit) : examples;
+    return resolveExamplesDir(env, probes) ?? undefined;
 };
 
 /**
@@ -146,4 +136,35 @@ export const saveDialogDefaultPath = (
     if (dir && probes.isWritable(dir)) return path.join(dir, fileName);
     if (env.documentsPath) return path.join(env.documentsPath, fileName);
     return fileName;
+};
+
+/**
+ * The one path the Generate/export "select output path" dialog opened on
+ * before any output path had ever been chosen: `tester/generated_audio` is
+ * the only directory `build_and_test.bat` reads from, so it is a reasonable
+ * first guess — but only the FIRST time.
+ */
+export const testerGeneratedAudioDefault = (env: DialogPathEnv): string =>
+    path.join(env.appPath, '..', 'skald-backend', 'tester', 'generated_audio', 'generated_audio.odin');
+
+/**
+ * `defaultPath` for the Generate/export "select output path" dialog
+ * (roadmap A7 item 23 / F-C4-11).
+ *
+ * The dialog used to reopen on the tester default on EVERY click, forgetting
+ * whatever the user had picked the moment the dialog closed — useful only for
+ * the one workflow that builds against `tester/generated_audio`. Anyone
+ * exporting to their own project directory had to re-navigate there every
+ * single time. `rememberedPath` is whatever this session's caller last chose
+ * (or `undefined` before a first choice); it always wins over the tester
+ * default when present.
+ */
+export const outputPathDefaultPath = (
+    rememberedPath: string | undefined,
+    env: DialogPathEnv,
+    probes: DialogPathProbes = realProbes,
+): string => {
+    if (rememberedPath) return rememberedPath;
+    const testerDefault = testerGeneratedAudioDefault(env);
+    return probes.isDirectory(path.dirname(testerDefault)) ? testerDefault : 'generated_audio.odin';
 };

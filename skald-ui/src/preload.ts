@@ -17,8 +17,11 @@ contextBridge.exposeInMainWorld('electron', {
         skipped: { name: string; error: string }[];
     }> => ipcRenderer.invoke('import-patches'),
 
-    selectOutputPath: (): Promise<string | null> =>
-        ipcRenderer.invoke('select-output-path'),
+    // currentPath: the caller's already-selected output path, if any — passed
+    // back so the dialog defaults to it instead of forgetting it every time
+    // (roadmap A7 item 23 / F-C4-11).
+    selectOutputPath: (currentPath?: string): Promise<string | null> =>
+        ipcRenderer.invoke('select-output-path', currentPath),
 
     buildWasmPreview: (projectJson: string): Promise<ArrayBuffer> =>
         ipcRenderer.invoke('build-wasm-preview', projectJson),

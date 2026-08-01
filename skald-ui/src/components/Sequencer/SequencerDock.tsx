@@ -6,6 +6,9 @@ import { SequencerTrack, SequencerState , NoteEvent } from '../../definitions/ty
 
 interface SequencerDockProps {
     state: SequencerState;
+    // True while a preview build (Play or a hot-swap rebuild) is running —
+    // drives the small status pip next to Play/Stop (roadmap A7 item 3).
+    isBuilding: boolean;
     bpm: number;
     setBpm: (bpm: number) => void;
     patternSteps: number;
@@ -66,6 +69,7 @@ import { logger } from '../../utils/logger';
 
 export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: AnalyserNode | null; masterGainNode: GainNode | null }> = ({
     state,
+    isBuilding,
     bpm,
     setBpm,
     patternSteps,
@@ -180,6 +184,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
 
             <SequencerToolbar
                 isPlaying={state.isPlaying}
+                isBuilding={isBuilding}
                 bpm={bpm}
                 isLooping={isLooping}
                 onPlay={onPlay}

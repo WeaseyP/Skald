@@ -25,12 +25,11 @@ which chords) it is called out below so you can change it.
 3. Mute tracks in the sequencer dock (**M**) to hear how each part contributes.
 
 To pull single instruments into a song you are already writing, use Sidebar →
-**Import Patch**. It opens in this folder by default and takes a
-multi-selection, so ctrl-click `kick`, `snare` and `hat` and import the lot in
-one go — each patch lands as its own instrument card with its own sequencer
-track. (Point it somewhere else with the `SKALD_IMPORT_DIR` environment
-variable; the folder itself is `IMPORT_SUBDIR` in
-`skald-ui/src/main/dialogDefaults.ts`.)
+**Import Patch**. It opens on `examples/` and takes a multi-selection, so
+browse into this folder, ctrl-click `kick`, `snare` and `hat`, and import the
+lot in one go — each patch lands as its own instrument card with its own
+sequencer track. (Point it straight at this kit — or anywhere else — with the
+`SKALD_IMPORT_DIR` environment variable.)
 
 Read `docs/manual-source/00-foundations.md` alongside this. Every patch below is
 built out of the ideas in that chapter, and the manual explains *why* the
