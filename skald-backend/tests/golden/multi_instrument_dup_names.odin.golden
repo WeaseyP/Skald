@@ -280,7 +280,7 @@ Kick_process :: proc(p: ^Kick_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_2_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += math.sin(final_phase);
 			}
-			if unison_count > 0 do node_2_out = (unison_out / f32(unison_count)) * (f32(0.800000000));
+			node_2_out = (unison_out / f32(unison_count)) * (f32(0.800000000));
 		}
 
 		// --- ADSR Node 3 ---
@@ -568,7 +568,7 @@ Lead_process :: proc(p: ^Lead_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_2_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += ((final_phase / f32(math.PI)) - 1.0);
 			}
-			if unison_count > 0 do node_2_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+			node_2_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
 
 		// --- ADSR Node 3 ---
@@ -1078,7 +1078,7 @@ Bass_process :: proc(p: ^Bass_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += ((final_phase / f32(math.PI)) - 1.0);
 			}
-			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (f32(0.600000000));
+			node_1_out = (unison_out / f32(unison_count)) * (f32(0.600000000));
 		}
 
 		// --- Filter Node 2 (SVF) ---
@@ -1343,7 +1343,7 @@ Kick_3_process :: proc(p: ^Kick_3_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_2_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += (2.0 / f32(math.PI)) * math.asin(math.sin(final_phase));
 			}
-			if unison_count > 0 do node_2_out = (unison_out / f32(unison_count)) * (f32(0.700000000));
+			node_2_out = (unison_out / f32(unison_count)) * (f32(0.700000000));
 		}
 
 		// --- ADSR Node 3 ---
@@ -1628,7 +1628,7 @@ Lead_2_process :: proc(p: ^Lead_2_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_2_phase[i] + phase_rads, 2 * f32(math.PI));
 				if final_phase < 2 * f32(math.PI) * math.clamp(f32(f32(0.500000000)), 0.01, 0.99) do unison_out += 1.0; else do unison_out -= 1.0;
 			}
-			if unison_count > 0 do node_2_out = (unison_out / f32(unison_count)) * (f32(0.400000000));
+			node_2_out = (unison_out / f32(unison_count)) * (f32(0.400000000));
 		}
 
 		// --- ADSR Node 3 ---

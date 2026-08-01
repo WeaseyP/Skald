@@ -112,6 +112,8 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.bpm = 120.000000000
 	p.prng.state = 12345
 	p.loop = true
+	p.delay_3_buffer = {}
+	p.delay_3_write_index = 0
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -280,7 +282,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += math.sin(final_phase);
 			}
-			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+			node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
 
 		// --- ADSR Node 2 ---

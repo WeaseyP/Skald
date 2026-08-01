@@ -1,0 +1,55 @@
+{
+  "_comment": "A7 item 19 / F-B04-5: two Oscillators both expose 'amplitude', forcing the collision-prefix path (codegen.odin's exposed-param resolver) to disambiguate with the sanitized node label. Node 'oscemoji' labels itself with pure emoji, which sanitize_identifier alone collapses to a run of underscores indistinguishable from any other degenerate label - the fix falls back to the (sanitized) node id, so the golden pins field names oscemoji_amplitude / oscplain_amplitude, never an underscore-prefixed field.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "dualosc",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 4,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "oscemoji",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 220,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "label": "🎵🎵",
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "oscplain",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "out",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "oscemoji", "from_port": "output", "to_node": "out", "to_port": "input" },
+            { "from_node": "oscplain", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

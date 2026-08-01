@@ -314,7 +314,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += math.sin(final_phase);
 			}
-			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (f32(0.400000000));
+			node_1_out = (unison_out / f32(unison_count)) * (f32(0.400000000));
 		}
 
 		// --- Oscillator Node 2 (Unison/Detune) ---
@@ -330,7 +330,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_2_phase[i] + phase_rads, 2 * f32(math.PI));
 				if final_phase < 2 * f32(math.PI) * math.clamp(f32(f32(0.500000000)), 0.01, 0.99) do unison_out += 1.0; else do unison_out -= 1.0;
 			}
-			if unison_count > 0 do node_2_out = (unison_out / f32(unison_count)) * (f32(0.400000000));
+			node_2_out = (unison_out / f32(unison_count)) * (f32(0.400000000));
 		}
 
 		// --- ADSR Node 5 ---

@@ -61,6 +61,57 @@ sanitize_identifier :: proc(s: string, allow_leading_digit := false) -> string {
 	return out
 }
 
+// A sanitize_identifier result carries no information once every byte of the
+// source was outside [A-Za-z0-9_]: a run of underscores with no digit or
+// letter in it. This is distinct from the empty-input case (already handled
+// inside sanitize_identifier itself, which returns "n") — a NON-empty,
+// non-Latin-or-emoji name still passes through with len(out) > 0, it is just
+// entirely underscores (F-B04-5: "キック" and "🎵🎵" both sanitize to 8
+// underscores, indistinguishable from each other or from any other name of
+// similar byte-length).
+has_usable_identifier_chars :: proc(s: string) -> bool {
+	for i in 0 ..< len(s) {
+		c := s[i]
+		if c != '_' do return true
+	}
+	return false
+}
+
+// Sanitize a user-facing name (instrument name, node label) for use in an
+// emitted identifier, falling back to the node/instrument id when the name
+// sanitizes to a degenerate all-underscore run (F-B04-5). The id is run
+// through sanitize_identifier too rather than spliced in as-is — nothing
+// guarantees a UI-supplied id is clean ASCII either, and assuming so is
+// exactly the bug this whole function exists to prevent. If the id ALSO
+// turns out degenerate, this returns the (equally uninformative but still
+// deterministic and collision-suffix-safe) sanitized id rather than
+// inventing a third source of truth; a full transliteration table is out of
+// scope for this fix.
+sanitize_identifier_with_fallback :: proc(name: string, id: string, allow_leading_digit := false) -> string {
+	sanitized := sanitize_identifier(name, allow_leading_digit)
+	if has_usable_identifier_chars(sanitized) {
+		return sanitized
+	}
+	// The caller's allow_leading_digit must carry into the fallback; forcing
+	// `true` here emits code that does not compile. The exposed-parameter caller
+	// splices this into a bare struct field (`<this>_<param>`), and editor
+	// -created nodes carry ids like `1785492489424-0` (the paste/import remapping
+	// in skald-ui/src/utils/importLayout.ts), so a Japanese or emoji label on an
+	// imported node produced `1785492489424_0_amplitude: f32,` — and Odin
+	// rejects the struct outright:
+	//
+	//   Syntax Error: Expected 1 expressions on the right hand side, got 2
+	//     Asset_Processor :: struct { ...
+	//
+	// That traded F-B04-5's silent symbol collision for a hard build failure,
+	// which is worse — the collision at least compiled. The instrument-name
+	// caller is unaffected either way because it prefixes `Instrument_`.
+	// tests/fixtures/codegen_only/unicode_label_editor_id.json pins it with
+	// editor-shaped ids; its emission passes `odin check`, and reverting this
+	// line makes that fixture's golden differ.
+	return sanitize_identifier(id, allow_leading_digit)
+}
+
 get_output_var :: proc(node_id: string, port_name: string = "") -> string {
     if port_name == "pitch" do return fmt.tprintf("node_%s_out_pitch", node_id)
     if port_name == "gate" do return fmt.tprintf("node_%s_out_gate", node_id)

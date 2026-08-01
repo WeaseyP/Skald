@@ -68,6 +68,84 @@ is_voice_coupled_type :: proc(t: string) -> bool {
 	return false
 }
 
+// Non-fatal build-hygiene warnings (roadmap item 20; F-B04-4, F-A05-3). Both
+// cases already generate correct, compiling code today — dry/wet parallel
+// summing into one GraphOutput, or an oscillator dragged in to audition and
+// abandoned mid-wire, are legitimate/normal editing states — so these print
+// to stderr and change no emitted line; they exist only so "why is my patch
+// silent" or "why is my CPU cost higher than expected" leaves a build-time
+// trace instead of requiring the user to read the generated Odin by hand.
+
+// F-A05-3: warn when an instrument's subgraph has zero GraphOutput nodes
+// (silent-by-design, per output.md, but previously with no diagnostic at
+// all) or more than one (all of them are summed into the same shared
+// output_left/output_right pair by generate_graph_output_adds — no
+// separation, so a user expecting a second independent destination gets no
+// indication the second Output did nothing on its own).
+warn_graph_output_count :: proc(all_nodes: []Node, inst_name: string) {
+	count := 0
+	for node in all_nodes {
+		if node.type == "GraphOutput" do count += 1
+	}
+	if count == 0 {
+		fmt.eprintf(
+			"Warning: instrument %q has no GraphOutput node — it will generate but produce silence.\n",
+			inst_name)
+	} else if count > 1 {
+		fmt.eprintf(
+			"Warning: instrument %q has %d GraphOutput nodes — all of them sum into the same stereo output, there is no separate destination for each.\n",
+			inst_name, count)
+	}
+}
+
+// F-B04-4: warn about any node with no path (forward, through connections)
+// to a GraphOutput. Codegen still emits and executes it every sample forever
+// (no dead-node elimination — that is out of scope here, this only warns).
+// Skipped entirely when the instrument has no GraphOutput at all: every node
+// is trivially "unreachable" in that case and warn_graph_output_count above
+// already covers it — per-node spam on top would drown the one warning that
+// actually explains the silence.
+warn_unreachable_nodes :: proc(graph: ^Graph, all_nodes: []Node, inst_name: string) {
+	has_output := false
+	for node in all_nodes {
+		if node.type == "GraphOutput" {
+			has_output = true
+			break
+		}
+	}
+	if !has_output do return
+
+	live := make(map[string]bool)
+	defer delete(live)
+	queue := make([dynamic]string)
+	defer delete(queue)
+	for node in all_nodes {
+		if node.type == "GraphOutput" {
+			live[node.id] = true
+			append(&queue, node.id)
+		}
+	}
+	for len(queue) > 0 {
+		id := pop(&queue)
+		for conn in graph.connections {
+			if conn.to_node == id && !live[conn.from_node] {
+				live[conn.from_node] = true
+				append(&queue, conn.from_node)
+			}
+		}
+	}
+	// all_nodes is already the sorted-by-id view, so warning order is
+	// deterministic across runs regardless of map/queue iteration order above
+	// (only membership in `live` is used here, never its iteration order).
+	for node in all_nodes {
+		if !live[node.id] {
+			fmt.eprintf(
+				"Warning: instrument %q: node %s(%s) has no path to any GraphOutput — it will still be emitted and run every sample, contributing nothing to the output.\n",
+				inst_name, node.type, node.id)
+		}
+	}
+}
+
 // Split the graph into voice domain and bus domain. Delay/Reverb hold ONE
 // shared buffer on the processor — running them inside the per-voice loop
 // divided the delay time by the active-voice count, bled voices into each
@@ -216,7 +294,12 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	}
 
 	fmt.sbprint(sb, "\t\t\t}\n") // End of for loop
-	fmt.sbprintf(sb, "\t\t\tif unison_count > 0 do node_%s_out = (unison_out / f32(unison_count)) * (%s);\n", node.id, amp_str)
+	// F-C1-10: `unison_count` is emitted just above as a literal already
+	// floored to >= 1 (see the Odin-side guard at the top of this proc), so
+	// `if unison_count > 0` can never be false — a runtime branch on a
+	// codegen-time constant, the same smell BUG-WAVEFORM-CONST-SWITCH was
+	// fixed for above. Emit the division unconditionally.
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (unison_out / f32(unison_count)) * (%s);\n", node.id, amp_str)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
@@ -957,11 +1040,21 @@ collect_plock_targets :: proc(
 // Full sanitization, not just spaces: "808 Kick!" must become "n808_Kick_"
 // (leading digit prefixed, punctuation replaced), or every emitted proc
 // name is a syntax error.
+//
+// F-B04-5: a non-empty name entirely outside [A-Za-z0-9_] (non-Latin script,
+// emoji) sanitizes to a run of bare underscores that is indistinguishable
+// from any other name of similar byte-length — "キック" and "🎵🎵" both
+// collapsed to 8 underscores. Falls back to the (also-sanitized) id in that
+// case, same as the already-empty-name path below.
 clean_instrument_name :: proc(inst: ^Project_Instrument) -> string {
 	if len(inst.name) == 0 {
 		return fmt.tprintf("Instrument_%s", sanitize_identifier(inst.id, true))
 	}
-	return sanitize_identifier(inst.name)
+	sanitized := sanitize_identifier(inst.name)
+	if !has_usable_identifier_chars(sanitized) {
+		return fmt.tprintf("Instrument_%s", sanitize_identifier(inst.id, true))
+	}
+	return sanitized
 }
 
 // generate_processor_code generates the Odin source code for the audio processor logic.
@@ -1063,6 +1156,11 @@ generate_processor_code :: proc(
 	// Reject wires the generators would silently ignore (typoed port names,
 	// dangling node ids) before emitting anything.
 	validate_connections(graph, instrument.name)
+
+	// Non-fatal hygiene warnings (roadmap item 20) — do not change emitted
+	// code, only whether the user is told about it.
+	warn_graph_output_count(all_nodes, instrument.name)
+	warn_unreachable_nodes(graph, all_nodes, instrument.name)
 
 	bus_nodes := compute_bus_domain(graph, sorted_nodes, instrument.name)
 
@@ -1252,8 +1350,13 @@ generate_processor_code :: proc(
                     // Collision: prefix with the sanitized node label
                     // (falls back to node id — sanitize handles the
                     // digit-leading case, `2_pulseWidth` is not a
-                    // legal Odin identifier).
-                    label := sanitize_identifier(get_string_param(node, "label", node.id))
+                    // legal Odin identifier). F-B04-5: a label that sanitizes
+                    // to a bare underscore run (non-Latin script, emoji) is
+                    // just as uninformative as no label at all, so fall back
+                    // to the (sanitized) node id in that case too — a filter
+                    // labeled in Japanese must not produce a field name that
+                    // is pure underscores.
+                    label := sanitize_identifier_with_fallback(get_string_param(node, "label", node.id), node.id)
                     field_name = fmt.tprintf("%s_%s", label, p_name)
                 }
                 if used_fields[field_name] {
@@ -1373,13 +1476,22 @@ generate_processor_code :: proc(
     }
 
 	// Effect history is processor state, not allocator state. Explicitly clear
-	// Reverb's comb and pre-delay histories so calling init on an existing
-	// processor has the same reset semantics as initializing a fresh one.
+	// the Delay/Reverb ring buffer (and Reverb's extra pre-delay history) so
+	// calling init on an existing processor has the same reset semantics as
+	// initializing a fresh one. This guard used to read `!= "Reverb"`, so a
+	// Delay node's buffer was never cleared on re-init: a re-`_init`ed
+	// instrument played the tail of whatever was still sitting in
+	// `delay_%s_buffer` from its previous life (roadmap item 10, packet A7).
+	// This is only the ring-buffer clear — the fuller processor-state reset
+	// (voice state, envelope stages, RNG re-seed ordering, etc.) is packet
+	// B7d; deliberately left un-reset here.
 	for node in all_nodes {
-		if node.type != "Reverb" do continue
+		if node.type != "Reverb" && node.type != "Delay" do continue
 		fmt.sbprintf(&sb, "\tp.delay_%s_buffer = {{}}\n", node.id)
 		fmt.sbprintf(&sb, "\tp.delay_%s_write_index = 0\n", node.id)
-		fmt.sbprintf(&sb, "\tp.reverb_%s_pre_buffer = {{}}\n", node.id)
+		if node.type == "Reverb" {
+			fmt.sbprintf(&sb, "\tp.reverb_%s_pre_buffer = {{}}\n", node.id)
+		}
 	}
 
     // Init Exposed Parameters using resolved field names. stable_resolutions

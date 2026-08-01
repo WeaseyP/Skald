@@ -298,7 +298,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_osc_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += math.sin(final_phase);
 			}
-			if unison_count > 0 do node_osc_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+			node_osc_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
 
 		// --- Mixer Node mix (1 inputs) ---

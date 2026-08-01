@@ -1,0 +1,56 @@
+{
+  "_comment": "A7 item 19 / F-B04-5, the case unicode_label_collision.json misses: the SAME degenerate-label fallback, but with the node ids an editor actually produces. Imported and pasted nodes are re-keyed as `<timestamp>-<index>` (skald-ui/src/utils/importLayout.ts), which sanitizes to '1785492489424_0'. The exposed-parameter path emits '<label>_<param>' as a bare struct field, so a fallback that forces a leading digit through emits '1785492489424_0_amplitude' - not a legal Odin identifier, i.e. a hard compile failure where the old bug merely collided silently. The golden pins the 'n'-prefixed form, and the emitted file must pass `odin check`. Hand-authored ids like 'oscemoji' cannot catch this, which is why they didn't.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "1785492489424-9",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 4,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1785492489424-0",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 220,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "label": "キック",
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "1785492489424-1",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "label": "🎵🎵",
+                "exposedParameters": ["amplitude"]
+              }
+            },
+            {
+              "id": "1785492489424-2",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "1785492489424-0", "from_port": "output", "to_node": "1785492489424-2", "to_port": "input" },
+            { "from_node": "1785492489424-1", "from_port": "output", "to_node": "1785492489424-2", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

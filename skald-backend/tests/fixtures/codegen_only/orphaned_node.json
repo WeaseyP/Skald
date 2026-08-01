@@ -1,0 +1,43 @@
+{
+  "_comment": "A7 item 20(a) / F-B04-4: a second Oscillator ('deadosc') is wired to nothing - a normal editing pattern (dragged in to audition, then abandoned half-wired). Codegen performs no dead-node elimination, so it is still fully emitted and executed every sample forever, contributing nothing. This fixture pins that warn_unreachable_nodes prints a non-fatal stderr warning naming the orphaned node, while the emitted .odin (the golden) is completely unchanged - dead-code elimination itself is out of scope for this fix.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "orphantest",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 2,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "liveosc",
+              "type": "Oscillator",
+              "parameters": { "frequency": 440, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "deadosc",
+              "type": "Oscillator",
+              "parameters": { "frequency": 880, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "out",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "liveosc", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

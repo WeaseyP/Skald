@@ -1,0 +1,38 @@
+{
+  "_comment": "A7 item 20(b) / F-A05-3: instrument has zero GraphOutput nodes. Documented as 'not an error - it is silence' (output.md), but previously had no build-time diagnostic anywhere. codegen must still generate (it compiles and returns silence unconditionally via the output_left/output_right zero-init), but warn_graph_output_count must print a non-fatal stderr warning naming the instrument. The golden's emitted .odin is unchanged by this warning - only stderr differs, which the golden compare does not see.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "noout",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 2,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 440, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "2",
+              "type": "ADSR",
+              "parameters": { "attack": 0.001, "decay": 0.1, "sustain": 0.0, "release": 0.05, "depth": 1 }
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

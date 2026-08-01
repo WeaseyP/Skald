@@ -1,0 +1,44 @@
+{
+  "_comment": "A7 item 19 / F-B04-5: instrument name is entirely non-Latin script, so sanitize_identifier(name) collapses to a run of bare underscores with no letter/digit in it. clean_instrument_name must fall back to the (sanitized) node id instead of emitting the degenerate underscore run - the golden pins the emitted struct/proc name as Instrument_kickjp_*, not an underscore string.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "kickjp",
+        "name": "キック",
+        "mute": false,
+        "solo": false,
+        "voice_count": 4,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 220, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "2",
+              "type": "ADSR",
+              "parameters": { "attack": 0.001, "decay": 0.1, "sustain": 0.0, "release": 0.05, "depth": 1 }
+            },
+            {
+              "id": "3",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

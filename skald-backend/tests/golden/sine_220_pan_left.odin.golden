@@ -281,7 +281,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
 				unison_out += math.sin(final_phase);
 			}
-			if unison_count > 0 do node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
+			node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
 
 		// --- ADSR Node 2 ---

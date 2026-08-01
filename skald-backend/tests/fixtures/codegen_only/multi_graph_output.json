@@ -1,0 +1,49 @@
+{
+  "_comment": "A7 item 20(b) / F-A05-3: instrument has TWO GraphOutput nodes. generate_graph_output_adds sums whatever wires reach each Output into the same shared output_left/output_right - so a user expecting a second independent destination gets no separation and no indication. codegen must still generate identically to before this change (the golden pins that both Outputs' sources land in the one output_left/output_right accumulation), and warn_graph_output_count must print a non-fatal stderr warning naming the instrument and the count (2).",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "twoout",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 2,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 440, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "2",
+              "type": "Oscillator",
+              "parameters": { "frequency": 660, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "3",
+              "type": "GraphOutput",
+              "parameters": {}
+            },
+            {
+              "id": "4",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "4", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}
