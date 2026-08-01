@@ -124,14 +124,22 @@ Graph :: struct {
 // Project_Data_Raw uses for the same three quantities.
 //
 // Nothing in the backend had a field for this block until roadmap packet A4:
-// build_project_from_graph hardcoded bpm 120 and master_volume 1.0 and never
-// assigned pattern_steps, so a 140 BPM save exported at 120 with exit code 0
-// and no warning (BUGS.md SKB-002, finding F-C3-2).
+// the old graph-path constructor hardcoded bpm 120 and master_volume 1.0 and
+// never assigned pattern_steps, so a 140 BPM save exported at 120 with exit
+// code 0 and no warning (BUGS.md SKB-002, finding F-C3-2).
 //
-// Every field is optional. Odin's unmarshaller cannot report which keys were
-// present, so an absent block and a `"session": {}` both arrive as zeroes —
-// which mean the same thing, "not authored". build_project_from_graph applies
-// the defaults.
+// Every field is optional, and PRESENCE IS PART OF THE CONTRACT: an authored
+// `"masterVolume": 0` means the author pulled the master fader to silence
+// (SKB-004 / packet B1), while an absent key means "not authored" and takes
+// the documented default (unity master, 120 bpm). Odin's unmarshaller cannot
+// report which keys were present through a plain f32 — absent and authored-0
+// both arrive as 0 — so every field is a Maybe: the unmarshaller treats a
+// single-variant union as its variant, assigns it only when the key is
+// present with a usable value, and leaves it nil for an absent key OR an
+// explicit `null` (a UI NaN serializes as null, and "not a number" and "not
+// authored" must mean the same thing). resolved_master_volume and
+// build_project_from_graph_raw collapse the Maybes into final values in
+// exactly one place each.
 //
 // This struct deliberately covers only the three quantities that reach emitted
 // code, not everything SessionSettings carries — the editor also keeps
@@ -139,9 +147,9 @@ Graph :: struct {
 // keys are skipped by the unmarshaller. Add a field here only when the backend
 // actually needs to read it.
 Session_Raw :: struct {
-	bpm:          f32,
-	patternSteps: int,
-	masterVolume: f32,
+	bpm:          Maybe(f32),
+	patternSteps: Maybe(int),
+	masterVolume: Maybe(f32),
 }
 
 Graph_Raw :: struct {
@@ -173,17 +181,36 @@ Project_Instrument_Raw :: struct {
 	unison:      int,
 	detune:      f32,
 	volume:      f32,
+	// Per-asset output soft limit (packet B1, roadmap §3.7). Maybe because the
+	// default is TRUE and a plain bool zero-values to false: an absent key must
+	// mean "limited", so that the per-asset path — the one games link against,
+	// measured peaking at 3.93 on the manual's own canonical patch — can never
+	// exceed ±1 unless the author explicitly opts out.
+	limit:       Maybe(bool),
 	midi_config: Midi_Config,
 	audio_graph: Graph_Raw,
 }
 
 Project_Data_Raw :: struct {
 	bpm:           f32,
-	master_volume: f32,
+	// Maybe, not f32, for the same reason as Session_Raw.masterVolume: an
+	// authored 0 is silence (SKB-004 / packet B1) while an absent key is
+	// unity, and only the unmarshaller can tell them apart. bpm stays a plain
+	// f32 because 0 is not a legal tempo either way — absent and authored-0
+	// both take the 120 default (an authored bpm of 0 reached the generated
+	// step clock as a division by zero).
+	master_volume: Maybe(f32),
 	// Global loop length in steps (the UI's Pattern Steps control). Tracks
 	// shorter than this wrap polyrhythmically. 0 = fall back to track length.
 	pattern_steps: int,
 	instruments:   []Project_Instrument_Raw,
+	// Project-level sequencer tracks, referencing instruments by id. The
+	// editor's project export never writes these (its tracks travel inside
+	// each instrument's audio_graph — the refuted F-B09b-2 confirmed that),
+	// but the GRAPH shape carries its tracks at the top level, and the A4
+	// step-2 normaliser funnels them through here so build_project_from_raw
+	// is the one constructor for both shapes.
+	sequencer_tracks: []Sequencer_Track,
 }
 
 Project_Raw :: struct {
@@ -199,11 +226,19 @@ Project_Instrument :: struct {
 	glide:       f32,
 	unison:      int,
 	detune:      f32,
-	// Instrument output level, 0..1, baked into the generated process proc.
-	// 0 means "absent from the JSON" and defaults to 1.0 at parse time (the
-	// UI serializes an explicit floor of 0.001 instead of a true 0; muting
-	// is the `mute` flag's job).
+	// Instrument output level, 0..1. Since packet B1 this is a real runtime
+	// field on the generated processor (initialized to this value, driven by
+	// <Foo>_set_volume), not a baked literal. 0 means "absent from the JSON"
+	// and defaults to 1.0 at parse time (the UI serializes an explicit floor
+	// of 0.001 instead of a true 0; muting is the `mute` flag's job — note
+	// this is deliberately NOT the master_volume rule, where an authored 0 IS
+	// silence).
 	volume:      f32,
+	// Resolved from Project_Instrument_Raw.limit (or the Instrument node's
+	// `limit` param on the graph path); true when absent. When true, the
+	// generated <Foo>_process passes its post-volume output through
+	// skald_soft_limit so it can never exceed ±1.
+	limit:       bool,
 	midi_config: Midi_Config,
 	graph:       Graph,
 }

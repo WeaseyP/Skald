@@ -3,7 +3,6 @@ package skald_codegen
 import "core:fmt"
 import "core:os"
 import "core"
-import json "core:encoding/json"
 
 // =====================================================================
 // PROVENANCE STAMP  (roadmap packet A2 / BUGS.md SKB-001)
@@ -165,38 +164,17 @@ main :: proc() {
 	}
 	defer delete(input_bytes)
 
-    // Try parsing as Project first
-	project_raw: core.Project_Raw
-	parse_err := json.unmarshal(input_bytes, &project_raw)
-    
-    project: core.Project
-    is_project := false
-
-    if parse_err == nil && len(project_raw.project.instruments) > 0 {
-        is_project = true
-		project = core.build_project_from_raw(&project_raw)
-    }
-
-    if !is_project {
-        // Try parsing as Graph (single instrument/test setup)
-        graph_raw: core.Graph_Raw
-        parse_err_g := json.unmarshal(input_bytes, &graph_raw)
-        
-        if parse_err_g == nil && len(graph_raw.nodes) > 0 {
-             main_graph := core.build_graph_from_raw(&graph_raw)
-             // graph_raw.session carries the save's authored tempo, master
-             // volume and pattern length. It used to be parsed by nobody, and
-             // this constructor hardcoded 120 BPM / unity master (SKB-002,
-             // F-C3-2). Passed explicitly rather than hung off the in-memory
-             // Graph so that step 2 — folding this branch into a normalizer
-             // that calls build_project_from_raw — has the raw envelope in
-             // hand at the one place that needs it.
-             project = core.build_project_from_graph(&main_graph, graph_raw.session)
-        } else {
-             fmt.eprintf("Error: Input JSON must be valid Project or Graph.\nProject Error: %v\nGraph Error: %v\n", parse_err, parse_err_g)
-             os.exit(1)
-        }
-    }
+	// One reader for both input shapes (A4 step 2 / BUGS.md SKB-002). The
+	// shape decision — project export vs React Flow graph save — and both
+	// constructors live in core; the graph shape is a normaliser over
+	// build_project_from_raw, not a second parser. The structural sniffing
+	// that used to sit here ("unmarshal as project; no instruments? try
+	// graph") is gone with the second constructor that required it.
+	project, parse_err_msg := core.build_project_from_json(input_bytes)
+	if parse_err_msg != "" {
+		fmt.eprintf("Error: %s\n", parse_err_msg)
+		os.exit(1)
+	}
 
 	// BUG-EMPTY-PROJECT-SILENT: a graph that lacks any instrument-typed
 	// nodes silently produced an empty Project_State + no-op project_process

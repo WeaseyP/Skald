@@ -1,0 +1,39 @@
+{
+  "__comment": "Packet B1: Distortion `outputGain`, engaged. Identical patch to distortion_default_gain.json except outputGain is authored (1.5) AND exposed, so the golden pins: the makeup-gain multiply emits (clamped 0..4), the exposed param resolves to a live `p.outputGain` field defaulting to the authored 1.5, and DistGain_set_outputGain / the PARAMS row / set_param dispatch all exist with the 0..4/1.0 range-table row rather than the ±1e6 unknown-param fallback (the SKB-007 dead-setter class).",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "dist_gain_inst",
+        "name": "DistGain",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 110, "amplitude": 0.5, "waveform": "Sine" }
+            },
+            {
+              "id": "2",
+              "type": "Distortion",
+              "parameters": { "drive": 20, "tone": 4000, "mix": 0.5, "shape": "classic", "outputGain": 1.5, "exposedParameters": ["outputGain"] }
+            },
+            { "id": "3", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" }
+          ]
+        }
+      }
+    ]
+  }
+}

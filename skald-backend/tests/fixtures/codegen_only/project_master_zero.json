@@ -1,0 +1,32 @@
+{
+  "__comment": "SKB-004 / packet B1, project-shaped half: an AUTHORED master_volume of 0 in a project JSON means silence — the emitted project_init must read `p.master_volume = 0.000000000`. Both readers of .skald.json share resolved_master_volume, and this fixture plus graph_session_master_zero pin that they cannot drift apart. The flat-directory project fixtures (sine_440 etc.) all author a positive master_volume, so this is also the only project-shaped pin on the zero boundary. Golden-only on purpose: a silent render has no FFT features for the acceptance harness to assert.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0,
+    "instruments": [
+      {
+        "id": "muted_master_inst",
+        "name": "MutedMaster",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 440, "amplitude": 0.5, "waveform": "Sine" }
+            },
+            { "id": "2", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" }
+          ]
+        }
+      }
+    ]
+  }
+}

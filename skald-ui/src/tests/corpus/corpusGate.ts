@@ -350,17 +350,42 @@ export const emittedBpm = (code: string, context: string): number => {
 };
 
 /**
- * The master-volume coefficient inside the soft-limit tanh
- * (`mixed_left = math.tanh(mixed_left * <coeff>)`, codegen.odin).
+ * The authored master volume as it reaches the emitted export.
+ *
+ * Since packet B1 the master volume is a runtime field rather than a literal
+ * baked into the tanh: project_init emits `p.master_volume = <coeff>` and
+ * project_process applies it with `mixed_left *= p.master_volume` into
+ * `return skald_soft_limit(mixed_left, mixed_right)` (codegen.odin,
+ * generate_project_code). Reading the init literal ALONE would not prove the
+ * authored value reaches the export — a field nothing multiplies into the mix
+ * is exactly the silent re-levelling this assertion exists to catch — so this
+ * parser also requires the two application lines, and throws when any of the
+ * three is missing. (The pre-B1 shape was
+ * `mixed_left = math.tanh(mixed_left * <coeff>)`; the coefficient asserted
+ * against the file's authored session.masterVolume is the same quantity in
+ * both shapes, and SKB-004's authored-0 boundary is now representable: 0.0
+ * here means a deliberately silent export, not "absent".)
  */
 export const emittedMasterCoeff = (code: string, context: string): number => {
-    const m = /^\tmixed_left = math\.tanh\(mixed_left \* ([0-9]+\.[0-9]+)\)$/m.exec(code);
-    if (!m) {
+    const init = /^\tp\.master_volume = ([0-9]+\.[0-9]+)$/m.exec(code);
+    if (!init) {
         throw new Error(
-            `${context}: emitted code contains no master "math.tanh(mixed_left * <coeff>)" line. ` +
+            `${context}: emitted code contains no "p.master_volume = <literal>" project_init line. ` +
                 `Either codegen's emission format changed (update this parser) or the master ` +
-                `soft-limit was not generated — both must fail here, not skip.`,
+                `volume was not generated — both must fail here, not skip.`,
         );
     }
-    return Number(m[1]);
+    const applied =
+        /^\tmixed_left \*= p\.master_volume$/m.test(code) &&
+        /^\tmixed_right \*= p\.master_volume$/m.test(code) &&
+        /^\treturn skald_soft_limit\(mixed_left, mixed_right\)$/m.test(code);
+    if (!applied) {
+        throw new Error(
+            `${context}: project_init sets p.master_volume but project_process does not apply it ` +
+                `through skald_soft_limit — the authored master volume no longer provably reaches ` +
+                `the export. If codegen's composition changed shape, update this parser so the ` +
+                `assertion keeps proving the full path, not just the init literal.`,
+        );
+    }
+    return Number(init[1]);
 };

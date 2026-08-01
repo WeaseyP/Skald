@@ -58,6 +58,14 @@ skald_wavetable_sample :: proc(ph: f32, pos: f32) -> f32 {
 	return s1 + (s2 - s1) * frac
 }
 
+// Soft limiter with a ceiling that really is 1.0 — plain tanh, not
+// tanh(x*k)/k, which topped out above 1 and still clipped the device.
+// Transparent for small signals (tanh(x) ~= x below ~0.3), saturating
+// smoothly instead of clipping as the mix gets hot.
+skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
+	return math.tanh(l), math.tanh(r)
+}
+
 Note_Event :: struct {
 	note: u8,
 	velocity: f32,
@@ -103,11 +111,13 @@ Kick_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 }
 
 Kick_init :: proc(p: ^Kick_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 0.899999976
 	p.prng.state = 12345
 	p.loop = true
 }
@@ -218,6 +228,10 @@ Kick_set_loop :: proc(p: ^Kick_Processor, loop: bool) {
 	p.loop = loop
 }
 
+Kick_set_volume :: proc(p: ^Kick_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
+}
+
 Kick_is_playing :: proc(p: ^Kick_Processor) -> bool {
 	if p.playing do return true
 	for i in 0..<1 {
@@ -323,7 +337,7 @@ Kick_process :: proc(p: ^Kick_Processor) -> (f32, f32) {
 		if voice.adsr_3_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(0.899999976), output_right * f32(0.899999976)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Kick_process_sequence :: proc(p: ^Kick_Processor) {
 	if !p.playing do return
@@ -386,11 +400,13 @@ Lead_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 }
 
 Lead_init :: proc(p: ^Lead_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 0.750000000
 	p.prng.state = 12345
 	p.loop = true
 }
@@ -499,6 +515,10 @@ Lead_stop :: proc(p: ^Lead_Processor) {
 
 Lead_set_loop :: proc(p: ^Lead_Processor, loop: bool) {
 	p.loop = loop
+}
+
+Lead_set_volume :: proc(p: ^Lead_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
 }
 
 Lead_is_playing :: proc(p: ^Lead_Processor) -> bool {
@@ -611,7 +631,7 @@ Lead_process :: proc(p: ^Lead_Processor) -> (f32, f32) {
 		if voice.adsr_3_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(0.750000000), output_right * f32(0.750000000)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Lead_process_sequence :: proc(p: ^Lead_Processor) {
 }
@@ -645,11 +665,13 @@ Kick_2_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 }
 
 Kick_2_init :: proc(p: ^Kick_2_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 0.800000012
 	p.prng.state = 12345
 	p.loop = true
 	for i in 0..<1 {
@@ -761,6 +783,10 @@ Kick_2_set_loop :: proc(p: ^Kick_2_Processor, loop: bool) {
 	p.loop = loop
 }
 
+Kick_2_set_volume :: proc(p: ^Kick_2_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
+}
+
 Kick_2_is_playing :: proc(p: ^Kick_2_Processor) -> bool {
 	if p.playing do return true
 	for i in 0..<1 {
@@ -845,7 +871,7 @@ Kick_2_process :: proc(p: ^Kick_2_Processor) -> (f32, f32) {
 		if voice.adsr_2_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(0.800000012), output_right * f32(0.800000012)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Kick_2_process_sequence :: proc(p: ^Kick_2_Processor) {
 }
@@ -881,12 +907,14 @@ Bass_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 	cutoff: f32,
 }
 
 Bass_init :: proc(p: ^Bass_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 0.850000024
 	p.prng.state = 12345
 	p.loop = true
 	p.cutoff = 900.000000000
@@ -998,6 +1026,10 @@ Bass_stop :: proc(p: ^Bass_Processor) {
 
 Bass_set_loop :: proc(p: ^Bass_Processor, loop: bool) {
 	p.loop = loop
+}
+
+Bass_set_volume :: proc(p: ^Bass_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
 }
 
 Bass_is_playing :: proc(p: ^Bass_Processor) -> bool {
@@ -1132,7 +1164,7 @@ Bass_process :: proc(p: ^Bass_Processor) -> (f32, f32) {
 		if voice.adsr_3_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(0.850000024), output_right * f32(0.850000024)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Bass_process_sequence :: proc(p: ^Bass_Processor) {
 }
@@ -1166,11 +1198,13 @@ Kick_3_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 }
 
 Kick_3_init :: proc(p: ^Kick_3_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 0.949999988
 	p.prng.state = 12345
 	p.loop = true
 }
@@ -1281,6 +1315,10 @@ Kick_3_set_loop :: proc(p: ^Kick_3_Processor, loop: bool) {
 	p.loop = loop
 }
 
+Kick_3_set_volume :: proc(p: ^Kick_3_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
+}
+
 Kick_3_is_playing :: proc(p: ^Kick_3_Processor) -> bool {
 	if p.playing do return true
 	for i in 0..<1 {
@@ -1386,7 +1424,7 @@ Kick_3_process :: proc(p: ^Kick_3_Processor) -> (f32, f32) {
 		if voice.adsr_3_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(0.949999988), output_right * f32(0.949999988)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Kick_3_process_sequence :: proc(p: ^Kick_3_Processor) {
 	if !p.playing do return
@@ -1445,11 +1483,13 @@ Lead_2_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 }
 
 Lead_2_init :: proc(p: ^Lead_2_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 0.699999988
 	p.prng.state = 12345
 	p.loop = true
 }
@@ -1558,6 +1598,10 @@ Lead_2_stop :: proc(p: ^Lead_2_Processor) {
 
 Lead_2_set_loop :: proc(p: ^Lead_2_Processor, loop: bool) {
 	p.loop = loop
+}
+
+Lead_2_set_volume :: proc(p: ^Lead_2_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
 }
 
 Lead_2_is_playing :: proc(p: ^Lead_2_Processor) -> bool {
@@ -1671,7 +1715,7 @@ Lead_2_process :: proc(p: ^Lead_2_Processor) -> (f32, f32) {
 		if voice.adsr_3_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(0.699999988), output_right * f32(0.699999988)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Lead_2_process_sequence :: proc(p: ^Lead_2_Processor) {
 	if !p.playing do return
@@ -1711,9 +1755,11 @@ Project_State :: struct {
 	Bass: ^Bass_Processor,
 	Kick_3: ^Kick_3_Processor,
 	Lead_2: ^Lead_2_Processor,
+	master_volume: f32,
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
+	p.master_volume = 1.000000000
 	p.Kick = new(Kick_Processor)
 	Kick_init(p.Kick, sr)
 	Kick_start(p.Kick)
@@ -1731,6 +1777,10 @@ project_init :: proc(p: ^Project_State, sr: f32) {
 	Lead_2_start(p.Lead_2)
 }
 
+project_set_master_volume :: proc(p: ^Project_State, value: f32) {
+	p.master_volume = math.clamp(value, 0.0, 1.0)
+}
+
 project_process :: proc(p: ^Project_State) -> (f32, f32) {
 	mixed_left: f32 = 0.0
 	mixed_right: f32 = 0.0
@@ -1740,9 +1790,9 @@ project_process :: proc(p: ^Project_State) -> (f32, f32) {
 	{ l, r := Bass_process(p.Bass); mixed_left += l; mixed_right += r }
 	{ l, r := Kick_3_process(p.Kick_3); mixed_left += l; mixed_right += r }
 	{ l, r := Lead_2_process(p.Lead_2); mixed_left += l; mixed_right += r }
-	mixed_left = math.tanh(mixed_left * 1.000000000)
-	mixed_right = math.tanh(mixed_right * 1.000000000)
-	return mixed_left, mixed_right
+	mixed_left *= p.master_volume
+	mixed_right *= p.master_volume
+	return skald_soft_limit(mixed_left, mixed_right)
 }
 
 project_destroy :: proc(p: ^Project_State) {

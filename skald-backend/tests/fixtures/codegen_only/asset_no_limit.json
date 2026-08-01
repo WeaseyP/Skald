@@ -1,0 +1,40 @@
+{
+  "__comment": "Packet B1 / roadmap §3.7: the per-asset `limit` flag. This instrument authors `limit: false`, and its patch is deliberately hot — two unit-amplitude oscillators summed into the output peak at 2.0 — so the golden pins the opt-out shape: <Foo>_process returns `output_left * p.volume, ...` RAW, with no skald_soft_limit call, and the emission carries the 'deliberately unclamped' comment. Every other fixture in the suite omits the flag and therefore pins the default (limited) shape; F-C2-1 measured the manual's canonical patch at 3.93 on exactly this unclamped path.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "hot_unlimited_inst",
+        "name": "HotUnlimited",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "limit": false,
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 220, "amplitude": 1.0, "waveform": "Sine" }
+            },
+            {
+              "id": "2",
+              "type": "Oscillator",
+              "parameters": { "frequency": 331, "amplitude": 1.0, "waveform": "Sine" }
+            },
+            { "id": "3", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" }
+          ]
+        }
+      }
+    ]
+  }
+}

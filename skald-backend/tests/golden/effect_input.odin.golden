@@ -61,6 +61,14 @@ skald_wavetable_sample :: proc(ph: f32, pos: f32) -> f32 {
 	return s1 + (s2 - s1) * frac
 }
 
+// Soft limiter with a ceiling that really is 1.0 — plain tanh, not
+// tanh(x*k)/k, which topped out above 1 and still clipped the device.
+// Transparent for small signals (tanh(x) ~= x below ~0.3), saturating
+// smoothly instead of clipping as the mix gets hot.
+skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
+	return math.tanh(l), math.tanh(r)
+}
+
 Note_Event :: struct {
 	note: u8,
 	velocity: f32,
@@ -102,6 +110,7 @@ Asset_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 	filter_2_low: f32,
 	filter_2_band: f32,
 }
@@ -109,6 +118,7 @@ Asset_Processor :: struct {
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 1.000000000
 	p.prng.state = 12345
 	p.loop = true
 }
@@ -196,6 +206,10 @@ Asset_set_loop :: proc(p: ^Asset_Processor, loop: bool) {
 	p.loop = loop
 }
 
+Asset_set_volume :: proc(p: ^Asset_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
+}
+
 Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	if p.playing do return true
 	for i in 0..<8 {
@@ -259,7 +273,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		output_left += node_2_out
 		output_right += node_2_out
 	}
-	return output_left * f32(1.000000000), output_right * f32(1.000000000)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Asset_process_sequence :: proc(p: ^Asset_Processor) {
 }
@@ -267,20 +281,26 @@ Asset_process_sequence :: proc(p: ^Asset_Processor) {
 // --- Project Wrapper (test-harness convenience) ---
 Project_State :: struct {
 	Asset: ^Asset_Processor,
+	master_volume: f32,
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
+	p.master_volume = 0.800000012
 	p.Asset = new(Asset_Processor)
 	Asset_init(p.Asset, sr)
+}
+
+project_set_master_volume :: proc(p: ^Project_State, value: f32) {
+	p.master_volume = math.clamp(value, 0.0, 1.0)
 }
 
 project_process :: proc(p: ^Project_State) -> (f32, f32) {
 	mixed_left: f32 = 0.0
 	mixed_right: f32 = 0.0
 	{ l, r := Asset_process(p.Asset); mixed_left += l; mixed_right += r }
-	mixed_left = math.tanh(mixed_left * 0.800000012)
-	mixed_right = math.tanh(mixed_right * 0.800000012)
-	return mixed_left, mixed_right
+	mixed_left *= p.master_volume
+	mixed_right *= p.master_volume
+	return skald_soft_limit(mixed_left, mixed_right)
 }
 
 project_destroy :: proc(p: ^Project_State) {

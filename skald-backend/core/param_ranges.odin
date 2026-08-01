@@ -75,6 +75,11 @@ PARAM_RANGE_OVERRIDES := [?]Param_Range_Entry{
 	{"Noise", "amplitude", {0.0, 1.0, 1.0, ""}},
 	{"Wavetable", "position", {0.0, 3.0, 0.0, ""}},
 	{"Distortion", "tone", {100.0, 20000.0, 4000.0, "Hz"}},
+	// Post-distortion makeup/output gain (packet B1; F-A06-10). Default 1.0 —
+	// bit-identical for every patch that never authored it. Matches the
+	// generic "gain" row's 0..4 span, and the generator clamps to the same
+	// bounds at point of use.
+	{"Distortion", "outputGain", {0.0, 4.0, 1.0, "x"}},
 	// NOTE (SKB-024, deliberately absent): a `{"Wavetable", "amplitude",
 	// {0.0, 1.0, 1.0, ""}}` row belongs here byte-for-byte like the Noise row
 	// above, and is NOT added. The generic 0.5 stands because correcting it

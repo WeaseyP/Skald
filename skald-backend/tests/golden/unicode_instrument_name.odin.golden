@@ -58,6 +58,14 @@ skald_wavetable_sample :: proc(ph: f32, pos: f32) -> f32 {
 	return s1 + (s2 - s1) * frac
 }
 
+// Soft limiter with a ceiling that really is 1.0 — plain tanh, not
+// tanh(x*k)/k, which topped out above 1 and still clipped the device.
+// Transparent for small signals (tanh(x) ~= x below ~0.3), saturating
+// smoothly instead of clipping as the mix gets hot.
+skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
+	return math.tanh(l), math.tanh(r)
+}
+
 Note_Event :: struct {
 	note: u8,
 	velocity: f32,
@@ -103,11 +111,13 @@ Instrument_kickjp_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 }
 
 Instrument_kickjp_init :: proc(p: ^Instrument_kickjp_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 1.000000000
 	p.prng.state = 12345
 	p.loop = true
 }
@@ -218,6 +228,10 @@ Instrument_kickjp_set_loop :: proc(p: ^Instrument_kickjp_Processor, loop: bool) 
 	p.loop = loop
 }
 
+Instrument_kickjp_set_volume :: proc(p: ^Instrument_kickjp_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
+}
+
 Instrument_kickjp_is_playing :: proc(p: ^Instrument_kickjp_Processor) -> bool {
 	if p.playing do return true
 	for i in 0..<4 {
@@ -315,7 +329,7 @@ Instrument_kickjp_process :: proc(p: ^Instrument_kickjp_Processor) -> (f32, f32)
 		if voice.adsr_2_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(1.000000000), output_right * f32(1.000000000)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Instrument_kickjp_process_sequence :: proc(p: ^Instrument_kickjp_Processor) {
 }
@@ -323,20 +337,26 @@ Instrument_kickjp_process_sequence :: proc(p: ^Instrument_kickjp_Processor) {
 // --- Project Wrapper (test-harness convenience) ---
 Project_State :: struct {
 	Instrument_kickjp: ^Instrument_kickjp_Processor,
+	master_volume: f32,
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
+	p.master_volume = 0.800000012
 	p.Instrument_kickjp = new(Instrument_kickjp_Processor)
 	Instrument_kickjp_init(p.Instrument_kickjp, sr)
+}
+
+project_set_master_volume :: proc(p: ^Project_State, value: f32) {
+	p.master_volume = math.clamp(value, 0.0, 1.0)
 }
 
 project_process :: proc(p: ^Project_State) -> (f32, f32) {
 	mixed_left: f32 = 0.0
 	mixed_right: f32 = 0.0
 	{ l, r := Instrument_kickjp_process(p.Instrument_kickjp); mixed_left += l; mixed_right += r }
-	mixed_left = math.tanh(mixed_left * 0.800000012)
-	mixed_right = math.tanh(mixed_right * 0.800000012)
-	return mixed_left, mixed_right
+	mixed_left *= p.master_volume
+	mixed_right *= p.master_volume
+	return skald_soft_limit(mixed_left, mixed_right)
 }
 
 project_destroy :: proc(p: ^Project_State) {

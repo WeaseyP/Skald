@@ -696,6 +696,19 @@ generate_distortion_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	fmt.sbprintf(sb, "\t\t\t%sdist_%s_tone += tone_k_%s * (dist_wet_%s - %sdist_%s_tone);\n", sp, node.id, node.id, node.id, sp, node.id)
 	emit_f32_local(sb, "\t\t\t", fmt.tprintf("mix_%s", node.id), fmt.tprintf("math.clamp(f32(%s), 0.0, 1.0)", mix_str))
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = dist_in_%s * (1.0 - mix_%s) + %sdist_%s_tone * mix_%s;\n", node.id, node.id, node.id, sp, node.id, node.id)
+	// Post-distortion makeup/output gain (packet B1; F-A06-10). Default 1.0.
+	// The multiply is ELIDED when the param resolves to the static default
+	// literal — an absent or authored-1.0 outputGain emits byte-for-byte what
+	// this generator emitted before the param existed, so every shipped patch
+	// is provably bit-identical (`x * 1.0` would be value-identical anyway,
+	// but identical TEXT is the stronger claim and the goldens can prove it).
+	// An exposed or P-locked outputGain resolves to `p.<field>` and always
+	// emits, clamped to the same 0..4 range as its param_ranges row.
+	out_gain_str := get_f32_param(graph, node, "outputGain", "", 1.0)
+	if out_gain_str != f32_literal(1.0) {
+		emit_f32_local(sb, "\t\t\t", fmt.tprintf("out_gain_%s", node.id), fmt.tprintf("math.clamp(f32(%s), 0.0, 4.0)", out_gain_str))
+		fmt.sbprintf(sb, "\t\t\tnode_%s_out *= out_gain_%s;\n", node.id, node.id)
+	}
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
@@ -1193,6 +1206,10 @@ generate_processor_code :: proc(
 	    fmt.sbprint(&sb, "package generated_audio\n\n")
 	    fmt.sbprint(&sb, "import \"core:math\"\n")
 	    fmt.sbprint(&sb, "import \"core:math/rand\"\n\n")
+	    // Standalone emission must carry its own limiter: _process calls it
+	    // whenever the instrument's limit flag is on (the default). The
+	    // project-level emission defines it once in generate_project_code.
+	    emit_soft_limit_proc(&sb)
     }
 
 	// --- Struct Definitions ---
@@ -1273,7 +1290,12 @@ generate_processor_code :: proc(
 	// asset shapes (same convention as the transport fields above).
 	fmt.sbprint(&sb, "\text_in_l: f32,\n")
 	fmt.sbprint(&sb, "\text_in_r: f32,\n")
-    
+
+	// Asset output level, applied at the _process boundary. A real runtime
+	// field (initialized from the project JSON, driven by <Foo>_set_volume)
+	// rather than a baked literal — packet B1's runtime-setter half.
+	fmt.sbprint(&sb, "\tvolume: f32,\n")
+
     // Generate Processor state fields (Global effects buffers)
 	for node in all_nodes {
         // Delay and Reverb usage of delay buffer
@@ -1422,6 +1444,7 @@ generate_processor_code :: proc(
 	fmt.sbprintf(&sb, "%s_init :: proc(p: ^%s_Processor, sr: f32) {{\n", namespace_prefix, namespace_prefix)
 	fmt.sbprint(&sb, "\tp.sample_rate = sr\n")
     fmt.sbprintf(&sb, "\tp.bpm = %.9f\n", bpm)
+    fmt.sbprintf(&sb, "\tp.volume = %.9f\n", instrument.volume)
     fmt.sbprintf(&sb, "\tp.prng.state = 12345\n")
     fmt.sbprint(&sb, "\tp.loop = true\n")
 
@@ -1757,6 +1780,20 @@ generate_processor_code :: proc(
 		namespace_prefix,
 	)
 	fmt.sbprint(&sb, "\tp.loop = loop\n")
+	fmt.sbprint(&sb, "}\n\n")
+
+	// _set_volume: runtime asset level (packet B1). Clamped to the same 0..1
+	// the editor's volume control spans; the authored project value is the
+	// _init default. Applied at the _process output boundary, BEFORE the
+	// per-asset soft limit, so pulling an asset down also pulls it out of
+	// saturation.
+	fmt.sbprintf(
+		&sb,
+		"%s_set_volume :: proc(p: ^%s_Processor, value: f32) {{\n",
+		namespace_prefix,
+		namespace_prefix,
+	)
+	fmt.sbprint(&sb, "\tp.volume = math.clamp(value, 0.0, 1.0)\n")
 	fmt.sbprint(&sb, "}\n\n")
 
 	// _is_playing: true if the sequencer is running OR any voice is non-idle.
@@ -2118,10 +2155,20 @@ generate_processor_code :: proc(
 		fmt.sbprint(&sb, "\t}\n")
 	}
 
-	// Per-instrument level (parse guarantees > 0; unity for older JSONs).
-	// Applied at the asset boundary so a hot drum kit can be pulled down
-	// without fighting the master tanh saturator.
-	fmt.sbprintf(&sb, "\treturn output_left * f32(%.9f), output_right * f32(%.9f)\n", instrument.volume, instrument.volume)
+	// Per-instrument level (runtime field, initialized from the JSON; see
+	// <Foo>_set_volume). Applied at the asset boundary so a hot drum kit can
+	// be pulled down without fighting the master tanh saturator — and, when
+	// the instrument's `limit` flag is on (the default), the post-volume
+	// output goes through skald_soft_limit so the per-asset path a game links
+	// against can never exceed ±1 (packet B1 / roadmap §3.7: the manual's own
+	// canonical patch measured 1.61 on four notes and 3.93 with default
+	// Distortion on this exact path, with no clamp anywhere).
+	if instrument.limit {
+		fmt.sbprint(&sb, "\treturn skald_soft_limit(output_left * p.volume, output_right * p.volume)\n")
+	} else {
+		fmt.sbprint(&sb, "\t// limit: false authored on this instrument — output is deliberately unclamped.\n")
+		fmt.sbprint(&sb, "\treturn output_left * p.volume, output_right * p.volume\n")
+	}
 	fmt.sbprint(&sb, "}\n")
 
 	return strings.to_string(sb)
@@ -2377,6 +2424,23 @@ resolve_unique_names :: proc(project: ^Project) -> []string {
     return unique_names
 }
 
+// The one soft limiter in the generated package (packet B1 / roadmap §3.6).
+// A standalone proc rather than an inlined tanh so that the per-asset path —
+// the one games actually link against, where the audit measured the manual's
+// canonical patch peaking at 3.93 with no clamp anywhere (F-C2-1) — can call
+// the exact limiter the project mix uses. Consumed by <Foo>_process (when the
+// instrument's `limit` flag is on, the default), project_process, and the
+// wasm shim's skald_process.
+emit_soft_limit_proc :: proc(sb: ^strings.Builder) {
+	fmt.sbprint(sb, "// Soft limiter with a ceiling that really is 1.0 — plain tanh, not\n")
+	fmt.sbprint(sb, "// tanh(x*k)/k, which topped out above 1 and still clipped the device.\n")
+	fmt.sbprint(sb, "// Transparent for small signals (tanh(x) ~= x below ~0.3), saturating\n")
+	fmt.sbprint(sb, "// smoothly instead of clipping as the mix gets hot.\n")
+	fmt.sbprint(sb, "skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {\n")
+	fmt.sbprint(sb, "\treturn math.tanh(l), math.tanh(r)\n")
+	fmt.sbprint(sb, "}\n\n")
+}
+
 generate_project_code :: proc(project: ^Project, project_name: string, package_name: string) -> string {
     sb := strings.builder_make()
     // defer strings.builder_destroy(&sb)
@@ -2494,6 +2558,8 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "\treturn s1 + (s2 - s1) * frac\n")
     fmt.sbprint(&sb, "}\n\n")
 
+    emit_soft_limit_proc(&sb)
+
     fmt.sbprint(&sb, "Note_Event :: struct {\n")
     fmt.sbprint(&sb, "\tnote: u8,\n")
     fmt.sbprint(&sb, "\tvelocity: f32,\n")
@@ -2539,6 +2605,11 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     for i in 0 ..< len(project.instruments) {
         fmt.sbprintf(&sb, "\t%s: ^%s_Processor,\n", unique_names[i], unique_names[i])
     }
+    // Master volume is a runtime field (packet B1), initialized to the
+    // authored project value and driven by project_set_master_volume. An
+    // authored 0 arrives here as a real 0.0 — the parse layer resolves
+    // "absent" to unity, so 0 always means the author pulled the fader down.
+    fmt.sbprint(&sb, "\tmaster_volume: f32,\n")
     fmt.sbprint(&sb, "}\n\n")
 
     // project_init: allocate per-asset processors, init, and auto-start any
@@ -2546,6 +2617,16 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     // intervention. Game code that consumes per-asset procs directly should
     // call <Bar>_start themselves.
     fmt.sbprint(&sb, "project_init :: proc(p: ^Project_State, sr: f32) {\n")
+    // resolved_master_volume already collapsed absent -> 1.0 and authored 0
+    // -> 0.0 (with a parse-time warning) at the only layer that can tell them
+    // apart. The `< 0.0` backstop below is NOT the old `<= 0.0` "absent"
+    // sentinel — that misread an authored 0 as absent and exported a muted
+    // project at FULL volume (BUGS.md SKB-004). 0.0 is a real value now; a
+    // negative can only mean a Project constructed in code without going
+    // through the parse layer, and unity is the only sane reading of it.
+    master_vol := project.master_volume
+    if master_vol < 0.0 do master_vol = 1.0
+    fmt.sbprintf(&sb, "\tp.master_volume = %.9f\n", master_vol)
     for i in 0 ..< len(project.instruments) {
         n := unique_names[i]
         fmt.sbprintf(&sb, "\tp.%s = new(%s_Processor)\n", n, n)
@@ -2556,6 +2637,13 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     }
     fmt.sbprint(&sb, "}\n\n")
 
+    // project_set_master_volume: the runtime master fader (packet B1 — there
+    // was previously no runtime volume setter of any kind, F-C1-8/F-A05-8).
+    // Clamped to the editor's 0..1 master slider range; 0 is real silence.
+    fmt.sbprint(&sb, "project_set_master_volume :: proc(p: ^Project_State, value: f32) {\n")
+    fmt.sbprint(&sb, "\tp.master_volume = math.clamp(value, 0.0, 1.0)\n")
+    fmt.sbprint(&sb, "}\n\n")
+
     // project_process: stereo summation across all assets. Mute/solo flags
     // and master_volume come from the project JSON — they were parsed and
     // silently ignored before, so a muted track exported as an audible
@@ -2564,8 +2652,6 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     for i in 0 ..< len(project.instruments) {
         if project.instruments[i].solo do any_solo = true
     }
-    master_vol := project.master_volume
-    if master_vol <= 0.0 do master_vol = 1.0
 
     fmt.sbprint(&sb, "project_process :: proc(p: ^Project_State) -> (f32, f32) {\n")
     fmt.sbprint(&sb, "\tmixed_left: f32 = 0.0\n")
@@ -2584,11 +2670,12 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
             n,
         )
     }
-    // Master volume, then a soft limiter whose ceiling really is 1.0 —
-    // tanh(x*0.7)/0.7 topped out at 1.43 and still clipped the device.
-    fmt.sbprintf(&sb, "\tmixed_left = math.tanh(mixed_left * %.9f)\n", master_vol)
-    fmt.sbprintf(&sb, "\tmixed_right = math.tanh(mixed_right * %.9f)\n", master_vol)
-    fmt.sbprint(&sb, "\treturn mixed_left, mixed_right\n")
+    // Runtime master volume into the standalone soft limiter — the same
+    // composition, in the same order, as the wasm preview shim, so what was
+    // tuned by ear is what ships (SKB-011's backend half).
+    fmt.sbprint(&sb, "\tmixed_left *= p.master_volume\n")
+    fmt.sbprint(&sb, "\tmixed_right *= p.master_volume\n")
+    fmt.sbprint(&sb, "\treturn skald_soft_limit(mixed_left, mixed_right)\n")
     fmt.sbprint(&sb, "}\n\n")
 
     fmt.sbprint(&sb, "project_destroy :: proc(p: ^Project_State) {\n")
@@ -2630,6 +2717,12 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> stri
     for i in 0 ..< len(project.instruments) {
         fmt.sbprintf(&sb, "@(private=\"file\") wasm_%s: %s_Processor\n", unique_names[i], unique_names[i])
     }
+    // Runtime master volume, mirroring Project_State.master_volume: seeded to
+    // the authored project value in skald_init, driven live by
+    // skald_set_master_volume (the export the editor's dock slider drives —
+    // replacing the post-worklet JS GainNode whose vol*tanh(x) ordering never
+    // matched the exported tanh(vol*x), SKB-011).
+    fmt.sbprint(&sb, "@(private=\"file\") wasm_master_volume: f32\n")
     fmt.sbprint(&sb, "\n")
 
     // One Web Audio render quantum of planar stereo, plus the param-name
@@ -2649,11 +2742,28 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> stri
 
     fmt.sbprint(&sb, "@(export)\nskald_init :: proc \"c\" (sample_rate: f32) {\n")
     fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    // Same resolution + backstop as project_init; see the comment there.
+    {
+        master_vol := project.master_volume
+        if master_vol < 0.0 do master_vol = 1.0
+        fmt.sbprintf(&sb, "\twasm_master_volume = %.9f\n", master_vol)
+    }
     for i in 0 ..< len(project.instruments) {
         n := unique_names[i]
         fmt.sbprintf(&sb, "\twasm_%s = {{}}\n", n)
         fmt.sbprintf(&sb, "\t%s_init(&wasm_%s, sample_rate)\n", n, n)
     }
+    fmt.sbprint(&sb, "}\n\n")
+
+    // Master volume, live. Mirrors project_set_master_volume exactly (clamp
+    // included) so the preview's fader IS the export's fader. The getter lets
+    // the editor re-sync its slider after a hot-swap re-init.
+    fmt.sbprint(&sb, "@(export)\nskald_set_master_volume :: proc \"c\" (value: f32) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\twasm_master_volume = math.clamp(value, 0.0, 1.0)\n")
+    fmt.sbprint(&sb, "}\n\n")
+    fmt.sbprint(&sb, "@(export)\nskald_get_master_volume :: proc \"c\" () -> f32 {\n")
+    fmt.sbprint(&sb, "\treturn wasm_master_volume\n")
     fmt.sbprint(&sb, "}\n\n")
 
     // start_all mirrors project_init's auto-start policy: Music Layers only.
@@ -2720,6 +2830,17 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> stri
     }
     fmt.sbprint(&sb, "\t}\n\treturn 0\n}\n\n")
 
+    // Per-asset runtime volume, live (packet B1). Dispatches to the generated
+    // <Foo>_set_volume, so the clamp lives in exactly one place.
+    fmt.sbprint(&sb, "@(export)\nskald_set_volume :: proc \"c\" (asset: i32, value: f32) {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        n := unique_names[i]
+        fmt.sbprintf(&sb, "\tcase %d: %s_set_volume(&wasm_%s, value)\n", i, n, n)
+    }
+    fmt.sbprint(&sb, "\t}\n}\n\n")
+
     // Host writes the param name's UTF-8 bytes into skald_name_buf first.
     // Reuses the generated string-keyed <Foo>_set_param, so the name
     // contract is the exposed-param field names in <Foo>_PARAMS plus the
@@ -2768,13 +2889,13 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> stri
     fmt.sbprint(&sb, "\t}\n}\n\n")
 
     // Master mix — identical policy to project_process (mute/solo exclusion,
-    // master-volume tanh soft limit) so the preview IS the export.
+    // runtime master volume into skald_soft_limit) so the preview IS the
+    // export: tanh(vol * x) in both, never the JS GainNode's vol * tanh(x)
+    // (SKB-011 — concavity made every export louder than the preview).
     any_solo := false
     for i in 0 ..< len(project.instruments) {
         if project.instruments[i].solo do any_solo = true
     }
-    master_vol := project.master_volume
-    if master_vol <= 0.0 do master_vol = 1.0
 
     fmt.sbprint(&sb, "@(export)\nskald_process :: proc \"c\" (nframes: i32) -> i32 {\n")
     fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
@@ -2792,8 +2913,7 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string) -> stri
         }
         fmt.sbprintf(&sb, "\t\t{{ l, r := %s_process(&wasm_%s); mixed_left += l; mixed_right += r }}\n", n, n)
     }
-    fmt.sbprintf(&sb, "\t\tskald_left[i] = math.tanh(mixed_left * %.9f)\n", master_vol)
-    fmt.sbprintf(&sb, "\t\tskald_right[i] = math.tanh(mixed_right * %.9f)\n", master_vol)
+    fmt.sbprint(&sb, "\t\tskald_left[i], skald_right[i] = skald_soft_limit(mixed_left * wasm_master_volume, mixed_right * wasm_master_volume)\n")
     fmt.sbprint(&sb, "\t}\n")
     fmt.sbprint(&sb, "\treturn i32(n)\n")
     fmt.sbprint(&sb, "}\n")

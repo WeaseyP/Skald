@@ -2,6 +2,7 @@ package skald_core
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:slice"
 
 // =================================================================================
 // SECTION F: Main Execution & JSON Parsing (Refactored for correctness)
@@ -268,6 +269,48 @@ build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
 	return graph
 }
 
+/// Collapse an authored-or-absent master volume into the value the codegen
+/// bakes and the generated runtime setter starts from. THE one place the
+/// SKB-004 / packet B1 decision lives, for both readers:
+///
+///   absent (nil)   -> 1.0   a legacy or hand-written file with no master
+///                           volume keeps exporting at unity, exactly as both
+///                           paths always did;
+///   authored 0     -> 0.0   SILENCE. This is the deliberate, changelog-visible
+///                           behaviour change: a patch saved at masterVolume 0
+///                           used to export at FULL volume, because the old
+///                           codegen guard read `<= 0.0` as "field absent"
+///                           (codegen.odin, F-A05-1). A muted project now ships
+///                           muted — and warns, so it is never silent about
+///                           being silent;
+///   authored < 0   -> 0.0   clamped to silence with the same warning. No tool
+///                           in the repo has ever written one (the dock slider
+///                           floors at 0), so a negative is a hand edit, and
+///                           "below silence" has no other meaning;
+///   authored > 0   -> as authored (the codegen multiplies it into the mix
+///                           before the soft limit, so > 1 just drives the
+///                           tanh harder — same as it always has).
+resolved_master_volume :: proc(authored: Maybe(f32)) -> f32 {
+	v, present := authored.?
+	if !present do return 1.0
+	if v <= 0.0 {
+		warn_authored_master_silence(v)
+		return 0.0
+	}
+	return v
+}
+
+/// The loud half of the authored-0 contract. SKB-004's fix flips what a saved
+/// masterVolume of 0 means (full volume -> silence), so the one case that
+/// changes behaviour must announce itself on every generation, not just in the
+/// changelog.
+warn_authored_master_silence :: proc(v: f32) {
+	fmt.eprintf(
+		"Warning: this file authors masterVolume = %v, so THIS EXPORT IS SILENT. That is what an authored 0 means as of packet B1 (BUGS.md SKB-004): the master fader was pulled all the way down when the file was saved. Before B1 this exact file exported at FULL volume, because 0 was misread as \"no master volume authored\". If you wanted unity gain, delete the masterVolume key (absent still means 1.0) or set it above 0. The generated project_set_master_volume / skald_set_master_volume can also raise it at runtime.\n",
+		v,
+	)
+}
+
 build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 	project: Project
 	project.bpm = project_raw.project.bpm
@@ -275,20 +318,22 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 	// or a UI NaN serialized as null). A raw 0 reached the generated
 	// `samples_per_step_f := p.sample_rate * 60.0 / (p.bpm * 4.0)` as a
 	// division by zero — the sequence never advanced and every note duration
-	// went infinite. Default to 120, matching build_project_from_graph and
-	// the param_ranges table. Valid projects (bpm > 0) are never touched, so
-	// no existing save is retimed.
+	// went infinite. Default to 120, matching the param_ranges table (the
+	// graph normaliser passes an absent session bpm through as 0 to land in
+	// this same guard). Valid projects (bpm > 0) are never touched, so no
+	// existing save is retimed.
 	if project.bpm <= 0 do project.bpm = 120.0
-	project.master_volume = project_raw.project.master_volume
+	project.master_volume = resolved_master_volume(project_raw.project.master_volume)
 	project.pattern_steps = project_raw.project.pattern_steps
 	project.instruments = make([]Project_Instrument, len(project_raw.project.instruments))
 
 	for raw_inst, i in project_raw.project.instruments {
 		raw_graph_copy := raw_inst.audio_graph
 
-		// Same defaults/clamps as build_project_from_graph: a project JSON
-		// that omits voice_count or unison must not generate a zero-voice
-		// processor or a zero-iteration unison loop (permanently silent asset).
+		// A project JSON that omits voice_count or unison must not generate a
+		// zero-voice processor or a zero-iteration unison loop (permanently
+		// silent asset). These guards serve the graph shape too — the
+		// normaliser funnels everything through here.
 		voice_count := raw_inst.voice_count
 		if voice_count <= 0 do voice_count = 1
 		unison := raw_inst.unison
@@ -308,14 +353,23 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 			unison = unison,
 			detune = raw_inst.detune,
 			volume = volume,
+			// Absent -> limited: the safe default is the one games get without
+			// asking (see Project_Instrument_Raw.limit).
+			limit = raw_inst.limit.? or_else true,
 			midi_config = raw_inst.midi_config,
 			graph = build_graph_from_raw(&raw_graph_copy),
 		}
 	}
 
 	// Project-level sequencer tracks reference instruments by id; keep them
-	// consistent with the sanitized instrument ids above.
+	// consistent with the sanitized instrument ids above, and fold the
+	// editor's camelCase patchOverrides spelling exactly as the per-graph
+	// tracks get it inside build_graph_from_raw. Populated by the graph-shape
+	// normaliser (build_project_from_graph_raw); the editor's own project
+	// export carries its tracks inside each instrument's audio_graph instead.
+	project.sequencer_tracks = project_raw.project.sequencer_tracks
 	for i in 0 ..< len(project.sequencer_tracks) {
+		resolve_note_event_aliases(project.sequencer_tracks[i].events)
 		project.sequencer_tracks[i].target_node_id = sanitize_identifier(project.sequencer_tracks[i].target_node_id, true)
 	}
 
@@ -323,15 +377,17 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 }
 
 
-/// Did this file carry a usable `session` block at all? Odin's unmarshaller
-/// cannot report which keys were present, so presence is inferred from the
-/// values: if not one of the three is authored, there was no block (or an empty
-/// one, which means the same thing). A partial block — say bpm only — counts as
-/// present, and the missing fields take their documented defaults silently;
-/// only the total absence is worth shouting about, because that is the case
-/// where the export is at no authored tempo whatsoever.
+/// Did this file carry a usable `session` block at all? Presence is now real,
+/// not inferred: every Session_Raw field is a Maybe, so a key that was in the
+/// JSON is non-nil even when its value is 0 — which is what lets an authored
+/// `"masterVolume": 0` mean silence while a session-less legacy file keeps
+/// exporting at unity (SKB-004 / packet B1; this proc's previous version
+/// checked `> 0` and could not tell those apart). A partial block — say bpm
+/// only — counts as present, and the missing fields take their documented
+/// defaults silently; only the total absence is worth shouting about, because
+/// that is the case where the export is at no authored tempo whatsoever.
 session_has_values :: proc(session: Session_Raw) -> bool {
-	return session.bpm > 0 || session.masterVolume > 0 || session.patternSteps > 0
+	return session.bpm != nil || session.masterVolume != nil || session.patternSteps != nil
 }
 
 /// The warning that should have existed since the beginning. Silence is what
@@ -352,128 +408,187 @@ warn_legacy_session_defaults :: proc() {
 }
 
 /// Build a Project from a bare graph save — the shape every editor Save
-/// writes and 100 of 101 shipped examples under examples/ have. `session` is
-/// the save's top-level `session` block (Graph_Raw.session); pass a zeroed
-/// Session_Raw for a file that has none, and the legacy defaults below apply
-/// with a warning.
-build_project_from_graph :: proc(graph: ^Graph, session: Session_Raw) -> Project {
-    project: Project
-
-    // A4 / SKB-002 / F-C3-2. These three used to be hardcoded right here —
-    // `project.bpm = 120.0`, `project.master_volume = 1.0`, pattern_steps
-    // never assigned at all — while the editor wrote all three into a
-    // top-level `session` block that no struct had a field for. This is the
-    // path 100 of 101 shipped examples take, so a 140 BPM patch exported at
-    // 120 and every BPM-derived expression in the emitted file (the sequencer
-    // step clock, every note duration, every tempo-synced LFO and S&H) came
-    // out off by the tempo ratio, with exit code 0 and no warning.
-    //
-    // The defaults and clamps mirror build_project_from_raw exactly, and are
-    // written in the same order, so a reader can diff the two by eye. They
-    // must not drift again before step 2 collapses this proc into a normalizer
-    // that hands a Project_Raw to the single build_project_from_raw.
-    if !session_has_values(session) {
-        warn_legacy_session_defaults()
-    }
-
-    project.bpm = session.bpm
-    // Same guard, same reason as build_project_from_raw: bpm <= 0 means the
-    // field was absent or null, and a raw 0 reaches the generated
-    // `samples_per_step_f := p.sample_rate * 60.0 / (p.bpm * 4.0)` as a
-    // division by zero.
-    if project.bpm <= 0 do project.bpm = 120.0
-    project.master_volume = session.masterVolume
-    // masterVolume <= 0 means the field was absent (no `session` block, or a
-    // hand-written one that omits it) -> unity, which is what this path
-    // hardcoded before, so no session-less file changes emission. Applied here
-    // and not left to the codegen's own `master_vol <= 0.0 -> 1.0` guard
-    // because absence is only knowable at parse time: SKB-004 / packet B1 has
-    // to make an explicit 0 mean silence, and when it does, a legacy save with
-    // no session must still export at unity rather than go silent. B1 needs a
-    // presence signal to tell the two apart — see the note in Session_Raw.
-    if project.master_volume <= 0 do project.master_volume = 1.0
-    // 0 = "fall back to the longest active track", handled in the codegen
-    // (generate_sequencer_code's `global_steps <= 0` branch). Passed through
-    // unclamped, same as build_project_from_raw.
-    project.pattern_steps = session.patternSteps
-
-    // SKB-003 / F-B04-1: both loops below used to iterate `graph.nodes` (a
-    // map[string]Node) directly. Odin map iteration order is unspecified and
-    // varies run-to-run, so `project.instruments[idx]` was filled in hash
-    // order — the same input file produced six distinct outputs across 14
-    // runs, and the wasm shim's integer asset index permuted with it, so
-    // `skald_note_on(asset, ...)` addressed a different instrument on each
-    // regeneration. Iterate the sorted-by-id view (graph_utils.odin) instead;
-    // node ids are unique within a graph, so this is a total order.
-    sorted_nodes := nodes_sorted_by_id(graph)
-    defer delete(sorted_nodes)
-
-    // Count instruments
-    inst_count := 0
-    for node in sorted_nodes {
-        if node.type == "Instrument" || node.type == "instrument" {
-            inst_count += 1
-        }
-    }
-
-	// Legacy loose graphs have no Instrument wrapper. Treat the whole graph as
-	// one SFX named Asset so the old examples still codegen and can be loaded
-	// by the acceptance harness.
-	if inst_count == 0 && len(graph.nodes) > 0 {
-		project.instruments = make([]Project_Instrument, 1)
-		project.instruments[0] = Project_Instrument {
-			id = "Asset",
-			name = "Asset",
-			voice_count = 1,
-			glide = 0.0,
-			unison = 1,
-			detune = 0.0,
-			volume = 1.0,
-			graph = graph^,
-		}
-		project.sequencer_tracks = graph.sequencer_tracks
-		return project
+/// writes and nearly every shipped example has. A NORMALISER, not a second
+/// constructor (A4 step 2 / SKB-002): it translates the graph envelope into a
+/// Project_Raw and hands it to build_project_from_raw, so there is exactly one
+/// place defaults, clamps and the master-volume presence rule live. Its
+/// previous incarnation duplicated build_project_from_raw's defaulting blocks
+/// guard for guard "so a reader can diff the two by eye" — this deletes the
+/// need to.
+///
+/// The graph shape's own knowledge stays here, and only that:
+///   * the `session` block is where the graph shape authors bpm/masterVolume/
+///     patternSteps (A4 step 1 / F-C3-2 — before it, this path hardcoded
+///     bpm 120 / master 1.0 with exit code 0 and no warning), and total
+///     session absence is warned about here because only this shape has the
+///     legacy-fallback problem;
+///   * instrument metadata lives in node params (`data` in a React Flow save);
+///   * top-level sequencerTracks target instrument node ids and become
+///     project-level tracks;
+///   * a graph with no Instrument node at all is a legacy loose graph and is
+///     wrapped whole as one SFX named Asset, so the old examples still codegen
+///     and the acceptance harness can load them.
+build_project_from_graph_raw :: proc(graph_raw: ^Graph_Raw) -> Project {
+	session := graph_raw.session
+	if !session_has_values(session) {
+		warn_legacy_session_defaults()
 	}
 
-    project.instruments = make([]Project_Instrument, inst_count)
+	project_raw: Project_Raw
+	// absent -> 0 -> build_project_from_raw's `<= 0 -> 120` guard; an
+	// authored masterVolume passes through as a Maybe so the ONE resolver
+	// (resolved_master_volume, inside build_project_from_raw) decides between
+	// absent-is-unity and authored-0-is-silence. patternSteps 0 = "fall back
+	// to the longest active track" (generate_sequencer_code's
+	// `global_steps <= 0` branch).
+	project_raw.project.bpm = session.bpm.? or_else 0.0
+	project_raw.project.master_volume = session.masterVolume
+	project_raw.project.pattern_steps = session.patternSteps.? or_else 0
+	// Both track spellings (React Flow's camelCase, project snake_case),
+	// normalized and target-sanitized; build_project_from_raw resolves the
+	// per-note patchOverrides alias and re-sanitizes (idempotently).
+	project_raw.project.sequencer_tracks = sequencer_tracks_from_raw(graph_raw)
 
-    idx := 0
-    for node in sorted_nodes {
-        if node.type == "Instrument" || node.type == "instrument" {
-            // Extract Instrument parameters from Node Data
-            name := get_string_param(node, "name", "Untitled")
-            voice_count := int(get_f32_param_val(node, "voiceCount", 1.0))
-            if voice_count <= 0 do voice_count = 1
-            glide := get_f32_param_val(node, "glide", 0.0)
-            unison := int(get_f32_param_val(node, "unison", 1.0))
-            if unison <= 0 do unison = 1
-            detune := get_f32_param_val(node, "detune", 0.0)
-            volume := get_f32_param_val(node, "volume", 1.0)
-            if volume <= 0 do volume = 1.0
+	insts := make([dynamic]Project_Instrument_Raw)
+	used_ids := make(map[string]bool)
+	defer delete(used_ids)
+	for raw_node in graph_raw.nodes {
+		if normalize_node_type(raw_node.type) != "Instrument" do continue
 
-            inst_graph := Graph{}
-            if node.subgraph != nil {
-                inst_graph = node.subgraph^
-            }
+		params := raw_node.parameters
+		if len(params) == 0 && len(raw_node.data) > 0 {
+			params = raw_node.data
+		}
 
-            project.instruments[idx] = Project_Instrument {
-                id = node.id,
-                name = name,
-                voice_count = voice_count,
-                glide = glide,
-                unison = unison,
-                detune = detune,
-                volume = volume,
-                graph = inst_graph,
-            }
-            idx += 1
-        }
-    }
-    
-    // Copy sequencer tracks from the main graph to the project
-    project.sequencer_tracks = graph.sequencer_tracks
-    
-    return project
+		// Same duplicate-id policy as build_graph_from_raw: rename loudly
+		// rather than silently overwrite (SKB-021's warned-about compromise;
+		// B9 owns the hard error). Scoped to instrument nodes — an instrument
+		// colliding with a non-instrument helper node's id no longer triggers
+		// a rename, since they no longer share a map.
+		id := sanitize_identifier(raw_node.id, true)
+		if used_ids[id] {
+			base := id
+			suffix := 2
+			for {
+				candidate := fmt.aprintf("%s_dup%d", base, suffix)
+				if !used_ids[candidate] {
+					id = candidate
+					break
+				}
+				suffix += 1
+			}
+			fmt.eprintf(
+				"Warning: duplicate instrument node id %q - renamed to %q. Sequencer tracks still target the first instrument with this id.\n",
+				base,
+				id,
+			)
+		}
+		used_ids[id] = true
+
+		// The subgraph is passed through RAW; build_project_from_raw calls
+		// build_graph_from_raw on it exactly as it does for a project file's
+		// audio_graph, which is what makes this a normaliser rather than a
+		// parallel parser. An instrument with no subgraph normalises to an
+		// empty Graph_Raw -> an empty (silent) instrument, as before.
+		subgraph_raw: Graph_Raw
+		has_subgraph := false
+		if len(raw_node.subgraph) > 0 {
+			subgraph_raw, has_subgraph = extract_graph_raw_from_object(raw_node.subgraph)
+		}
+		if !has_subgraph {
+			if subgraph_val, ok := params["subgraph"]; ok {
+				if subgraph_obj, is_obj := subgraph_val.(json.Object); is_obj {
+					subgraph_raw, _ = extract_graph_raw_from_object(subgraph_obj)
+				}
+			}
+		}
+
+		// Node params carry presence natively (the key either is or is not in
+		// the json.Object), so the Maybe fields are populated only when
+		// authored — same contract as a project-shaped file.
+		meta := Node{parameters = params}
+		limit: Maybe(bool)
+		if _, has_limit := params["limit"]; has_limit {
+			limit = get_bool_param(meta, "limit", true)
+		}
+
+		append(&insts, Project_Instrument_Raw{
+			id          = id,
+			name        = get_string_param(meta, "name", "Untitled"),
+			voice_count = int(get_f32_param_val(meta, "voiceCount", 1.0)),
+			glide       = get_f32_param_val(meta, "glide", 0.0),
+			unison      = int(get_f32_param_val(meta, "unison", 1.0)),
+			detune      = get_f32_param_val(meta, "detune", 0.0),
+			volume      = get_f32_param_val(meta, "volume", 1.0),
+			limit       = limit,
+			audio_graph = subgraph_raw,
+		})
+	}
+
+	// Legacy loose graphs have no Instrument wrapper. Wrap the WHOLE envelope
+	// (nodes, connections, top-level events and tracks) as one SFX named
+	// Asset. volume/limit left at their absent values -> unity, limited.
+	if len(insts) == 0 && len(graph_raw.nodes) > 0 {
+		append(&insts, Project_Instrument_Raw{
+			id          = "Asset",
+			name        = "Asset",
+			voice_count = 1,
+			unison      = 1,
+			audio_graph = graph_raw^,
+		})
+	}
+
+	// SKB-003 / F-B04-1: instrument order = sorted by (sanitized) node id, a
+	// total order after the dedup above, matching what nodes_sorted_by_id
+	// gave the pre-collapse constructor. File order would also be
+	// deterministic, but changing the order changes every wasm shim's integer
+	// asset index — the exact wiring hazard A3 fixed.
+	slice.sort_by(insts[:], proc(a, b: Project_Instrument_Raw) -> bool {
+		return a.id < b.id
+	})
+	project_raw.project.instruments = insts[:]
+
+	return build_project_from_raw(&project_raw)
+}
+
+/// THE reader. Decides the input's shape by its declarative top-level key —
+/// `project` (a backend project export) or `nodes` (a React Flow editor save)
+/// — the same classification the examples-corpus gate uses
+/// (skald-ui/src/tests/corpus/corpusGate.ts listCorpus), then unmarshals with
+/// the matching raw struct and funnels BOTH shapes through
+/// build_project_from_raw. Replaces the CLI's structural sniffing
+/// ("unmarshal as project, and if that yields no instruments, re-unmarshal as
+/// graph and see if nodes appeared"), which existed because two independent
+/// constructors needed a guess about which one to run (A4 step 2 / roadmap
+/// §3.5). Returns an empty error string on success.
+build_project_from_json :: proc(input_bytes: []byte) -> (Project, string) {
+	root_val, root_err := json.parse(input_bytes)
+	if root_err != nil {
+		return Project{}, fmt.aprintf("input is not valid JSON: %v", root_err)
+	}
+	defer json.destroy_value(root_val)
+	root, is_obj := root_val.(json.Object)
+	if !is_obj {
+		return Project{}, "input JSON is not an object; a Skald input has either a top-level \"project\" object or a top-level \"nodes\" array"
+	}
+
+	if _, has_project := root["project"]; has_project {
+		project_raw: Project_Raw
+		if err := json.unmarshal(input_bytes, &project_raw); err != nil {
+			return Project{}, fmt.aprintf("project-shaped input failed to parse: %v", err)
+		}
+		return build_project_from_raw(&project_raw), ""
+	}
+
+	if _, has_nodes := root["nodes"]; has_nodes {
+		graph_raw: Graph_Raw
+		if err := json.unmarshal(input_bytes, &graph_raw); err != nil {
+			return Project{}, fmt.aprintf("graph-shaped input failed to parse: %v", err)
+		}
+		return build_project_from_graph_raw(&graph_raw), ""
+	}
+
+	return Project{}, "input JSON is neither project-shaped (top-level \"project\" object) nor graph-shaped (top-level \"nodes\" array)"
 }
 
 // Helper to get raw float value from parameters map without generating code string

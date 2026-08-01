@@ -58,6 +58,14 @@ skald_wavetable_sample :: proc(ph: f32, pos: f32) -> f32 {
 	return s1 + (s2 - s1) * frac
 }
 
+// Soft limiter with a ceiling that really is 1.0 — plain tanh, not
+// tanh(x*k)/k, which topped out above 1 and still clipped the device.
+// Transparent for small signals (tanh(x) ~= x below ~0.3), saturating
+// smoothly instead of clipping as the mix gets hot.
+skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
+	return math.tanh(l), math.tanh(r)
+}
+
 Note_Event :: struct {
 	note: u8,
 	velocity: f32,
@@ -105,12 +113,14 @@ Sfx_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 	cutoff: f32,
 }
 
 Sfx_init :: proc(p: ^Sfx_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 1.000000000
 	p.prng.state = 12345
 	p.loop = true
 	p.cutoff = 800.000000000
@@ -222,6 +232,10 @@ Sfx_stop :: proc(p: ^Sfx_Processor) {
 
 Sfx_set_loop :: proc(p: ^Sfx_Processor, loop: bool) {
 	p.loop = loop
+}
+
+Sfx_set_volume :: proc(p: ^Sfx_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
 }
 
 Sfx_is_playing :: proc(p: ^Sfx_Processor) -> bool {
@@ -356,7 +370,7 @@ Sfx_process :: proc(p: ^Sfx_Processor) -> (f32, f32) {
 		if voice.adsr_3_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(1.000000000), output_right * f32(1.000000000)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Sfx_process_sequence :: proc(p: ^Sfx_Processor) {
 }
@@ -390,11 +404,13 @@ Layer_Processor :: struct {
 	step_frac_acc: f32,
 	ext_in_l: f32,
 	ext_in_r: f32,
+	volume: f32,
 }
 
 Layer_init :: proc(p: ^Layer_Processor, sr: f32) {
 	p.sample_rate = sr
 	p.bpm = 120.000000000
+	p.volume = 1.000000000
 	p.prng.state = 12345
 	p.loop = true
 }
@@ -505,6 +521,10 @@ Layer_set_loop :: proc(p: ^Layer_Processor, loop: bool) {
 	p.loop = loop
 }
 
+Layer_set_volume :: proc(p: ^Layer_Processor, value: f32) {
+	p.volume = math.clamp(value, 0.0, 1.0)
+}
+
 Layer_is_playing :: proc(p: ^Layer_Processor) -> bool {
 	if p.playing do return true
 	for i in 0..<8 {
@@ -609,7 +629,7 @@ Layer_process :: proc(p: ^Layer_Processor) -> (f32, f32) {
 		if voice.adsr_11_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return output_left * f32(1.000000000), output_right * f32(1.000000000)
+	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 Layer_process_sequence :: proc(p: ^Layer_Processor) {
 	if !p.playing do return
@@ -647,9 +667,11 @@ Layer_process_sequence :: proc(p: ^Layer_Processor) {
 Project_State :: struct {
 	Sfx: ^Sfx_Processor,
 	Layer: ^Layer_Processor,
+	master_volume: f32,
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
+	p.master_volume = 0.800000012
 	p.Sfx = new(Sfx_Processor)
 	Sfx_init(p.Sfx, sr)
 	p.Layer = new(Layer_Processor)
@@ -657,14 +679,18 @@ project_init :: proc(p: ^Project_State, sr: f32) {
 	Layer_start(p.Layer)
 }
 
+project_set_master_volume :: proc(p: ^Project_State, value: f32) {
+	p.master_volume = math.clamp(value, 0.0, 1.0)
+}
+
 project_process :: proc(p: ^Project_State) -> (f32, f32) {
 	mixed_left: f32 = 0.0
 	mixed_right: f32 = 0.0
 	{ l, r := Sfx_process(p.Sfx); mixed_left += l; mixed_right += r }
 	{ l, r := Layer_process(p.Layer); mixed_left += l; mixed_right += r }
-	mixed_left = math.tanh(mixed_left * 0.800000012)
-	mixed_right = math.tanh(mixed_right * 0.800000012)
-	return mixed_left, mixed_right
+	mixed_left *= p.master_volume
+	mixed_right *= p.master_volume
+	return skald_soft_limit(mixed_left, mixed_right)
 }
 
 project_destroy :: proc(p: ^Project_State) {
