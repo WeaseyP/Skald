@@ -28,7 +28,7 @@ a workaround or narrow reach · **low** = real but small.
 
 ## Wave A remediation pass — 2026-08-01
 
-Sixteen entries closed, on branch `review-fixes`, commits `c4c30e0`..`6ce28f3`. Each was verified
+Nineteen entries closed, on branch `review-fixes`, commits `c4c30e0`..`ed4c873`. Each was verified
 by neutralizing the fix and re-running the test, or by the before/after measurement quoted below —
 not by reading the code and agreeing with it.
 
@@ -50,6 +50,9 @@ not by reading the code and agreeing with it.
 | SKB-044 | Reverb `preDelay` on the node card, plus a card ⊇ sidebar parity test that also caught Oscillator `phase` | `08d5875` |
 | SKB-049 | Glide 0–5 on both sides (UI widened; narrowing would clamp saved patches) | `08d5875` |
 | SKB-051 | Noise `amplitude` override; an exposed-but-unstored value emitted 0.5, now 1.0 | `08d5875` |
+| SKB-034 | Save is atomic — temp file then rename. Proven by simulating a real partial write: without the fix the pre-existing good save is left as `{"n` | `ed4c873` |
+| SKB-035 | Saved viewport restored on load, `fitView()` for older or malformed saves, both after the nodes commit | `ed4c873` |
+| SKB-036 | `packageName` round-trips through `SessionSettings`; absence leaves the current value alone, no migration | `ed4c873` |
 
 Partially closed, still open above: **SKB-007** (the expose route is closed, the P-lock route needs
 B2), **SKB-024** (the UI reads the right default; the range-table half is deliberately deferred — it
@@ -153,7 +156,20 @@ would have shipped with no notes (`c4c30e0`).
   lossy path. The editor's own Generate button is unaffected (always emits the `project` wrapper).
   (Corpus definition: 101 JSON files = 80 `.skald.json` + 21 bare `.json`; 100 graph-shaped,
   1 project-shaped.)
-  *Findings:* F-C3-2, F-C2-7, F-C1-5. *Roadmap:* **A4**.
+  **Step 1 fixed 2026-08-01 in `8e2c071`; the entry stays open for step 2.** The graph path now reads
+  `session` (bpm/masterVolume/patternSteps), resolves the `patchOverrides` alias for `Note_Event`, and
+  warns loudly when a file has no session block at all. Measured on shipped files:
+  `wobble-samplehold-bass` went from `p.bpm = 120` / master `1.0` to `140` / `0.7`, and
+  `geowars/hat-static` from 0 P-lock `set_param` calls to 4. 98 of 99 examples generate; the one
+  failure (`archive/PulsarBeam.json`) fails identically at HEAD.
+  **Still open:** step 2 — collapse the graph path into a normaliser over `build_project_from_raw` and
+  delete the structural sniffing, so there is one reader rather than two that merely agree today. One
+  real decision blocks a naive collapse: the raw path does not clamp `master_volume` (it relies on
+  codegen treating `<= 0` as absent) while the graph path now does, because absence is only knowable
+  at parse time and a session-less legacy file must keep exporting at unity. That collides with
+  SKB-004/packet B1, which has to make an authored `0` mean silence — and `Session_Raw` cannot yet
+  distinguish "absent" from "authored zero", because Odin's unmarshaller does not report key presence.
+  *Findings:* F-C3-2, F-C2-7, F-C1-5. *Roadmap:* **A4** (step 1 done, step 2 open).
 
 - [x] **SKB-003 — Codegen output is non-deterministic on the bare-graph path; regenerating the same file can reassign which instrument is asset 0.**
   `build_project_from_graph` iterates `graph.nodes` (a `map[string]Node`) unsorted
@@ -441,16 +457,16 @@ would have shipped with no notes (`c4c30e0`).
   the process canary.
   *Findings:* F-B07-7, F-B09a-3, CODEX W0. *Roadmap:* **A7 item 1**.
 
-- [ ] **SKB-034 — Save writes directly over the target file; a failed write destroys the previous good save.**
+- [x] **SKB-034 — Save writes directly over the target file; a failed write destroys the previous good save.**
   `fs.writeFileSync` straight to the path (`main.ts:323-329`); no tmp+rename.
   *Findings:* F-B06-3. *Roadmap:* **B4** (or A7 item 18).
 
-- [ ] **SKB-035 — The saved viewport is written but never restored, and nothing re-fits after Load — a load can land on an apparently empty canvas.**
+- [x] **SKB-035 — The saved viewport is written but never restored, and nothing re-fits after Load — a load can land on an apparently empty canvas.**
   `handleLoad` never reads `flow.viewport`; `fitView` applies only on initial mount
   (`useFileIO.ts:113-136`, `app.tsx:394-412`).
   *Findings:* F-B06-10. *Roadmap:* **A7 item 17**.
 
-- [ ] **SKB-036 — `packageName` never round-trips through save/load; every reload resets the export package to `generated_audio`.**
+- [x] **SKB-036 — `packageName` never round-trips through save/load; every reload resets the export package to `generated_audio`.**
   `app.tsx:86` state, absent from `sessionSettings` (`app.tsx:149-151`) and `saveData`.
   *Findings:* F-B06-11. *Roadmap:* **A7 item 16**.
 
