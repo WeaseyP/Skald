@@ -1,8 +1,14 @@
 # Archived examples
 
 Files moved out of the import-facing library (`sound-effects/`, `instruments/`,
-`songs/`) by the 2026-07-24 example audit (see `../AUDIT.md`). Kept for
-reference instead of deleted; safe to remove permanently whenever.
+`songs/`) by the 2026-07-24 example audit. Kept for reference instead of deleted;
+safe to remove permanently whenever.
+
+That audit's write-up (`../AUDIT.md`) has been deleted: every example is now
+checked on both ingestion paths by `skald-ui/src/tests/corpus/`, which runs in CI,
+so the gate is the document. `PulsarBeam.json` below is quarantined there by name
+with its exact symptom, and the quarantine entry fails if the file ever starts
+passing or disappears.
 
 | File | Why archived |
 | --- | --- |

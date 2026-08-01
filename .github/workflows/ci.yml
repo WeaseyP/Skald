@@ -185,13 +185,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The UI job needs Odin because the range-parity gate (packet A8) builds
-      # and runs the backend's own range dump rather than comparing against a
-      # committed copy of it — a committed copy would go stale exactly when
-      # someone edits the table without regenerating, which is the failure this
-      # repo has already had twice (the tracked codegen binary, the checked-in
-      # generated Odin). The gate throws rather than skipping when Odin is
-      # absent, so without this step the job fails by design.
+      # The UI job needs Odin because two gates build the backend from source
+      # per run rather than reading anything committed:
+      #   - the range-parity gate (packet A8) builds and runs the backend's own
+      #     range dump — a committed copy would go stale exactly when someone
+      #     edits the table without regenerating, the failure this repo has
+      #     already had twice (the tracked codegen binary, the checked-in
+      #     generated Odin);
+      #   - the examples-corpus gate (packet A5, src/tests/corpus/) builds
+      #     skald_codegen.exe by the same ensure-codegen.mjs path `npm start`
+      #     takes, runs every examples/**/*.json through BOTH ingestion paths
+      #     (the editor's parseSaveFile -> buildProjectData -> codegen, and the
+      #     CLI's -in fallback), and `odin check`s every emitted package.
+      # Both gates throw rather than skipping when Odin is absent, so without
+      # this step the job fails by design.
       # Same pinned release as the backend job; bump both together.
       - name: Install Odin
         shell: pwsh
@@ -211,6 +218,15 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # `npm test` includes the examples-corpus gate (roadmap packet A5,
+      # BUGS.md SKB-019/SKB-002): every JSON under examples/ — the glob is
+      # deliberately *.json, NOT *.skald.json, which would skip 19 files
+      # including the one known codegen failure — must load, generate and
+      # `odin check` cleanly on the editor path, generate and check on the CLI
+      # path, and honour its authored session block (tempo + master volume) in
+      # the emitted Odin. Known-broken files live in an explicit quarantine
+      # list in src/tests/corpus/corpusGate.ts that fails when an entry starts
+      # passing, so it cannot rot. This gate replaced examples/AUDIT.md.
       - name: Tests
         run: npm test
 
