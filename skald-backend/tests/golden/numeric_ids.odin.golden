@@ -245,8 +245,8 @@ Asset_set_n1_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_n1_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
-	if v > 1.000000000 do v = 1.000000000
+	if v < 0.010000000 do v = 0.010000000
+	if v > 0.990000010 do v = 0.990000010
 	p.n1_pulseWidth = v
 }
 
@@ -259,16 +259,16 @@ Asset_set_n2_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_n2_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
-	if v > 1.000000000 do v = 1.000000000
+	if v < 0.010000000 do v = 0.010000000
+	if v > 0.990000010 do v = 0.990000010
 	p.n2_pulseWidth = v
 }
 
 Asset_PARAMS := []Skald_Param_Info{
 	{"n1_amplitude", 0.000000000, 1.000000000, 0.400000006, ""},
-	{"n1_pulseWidth", 0.000000000, 1.000000000, 0.500000000, ""},
+	{"n1_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"n2_amplitude", 0.000000000, 1.000000000, 0.400000006, ""},
-	{"n2_pulseWidth", 0.000000000, 1.000000000, 0.500000000, ""},
+	{"n2_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 }
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {

@@ -256,14 +256,14 @@ Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 
 Asset_set_Env_decay :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.Env_decay = v
 }
 
 Asset_set_Verb_decay :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.Verb_decay = v
 }
@@ -277,7 +277,7 @@ Asset_set_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_attack :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.attack = v
 }
@@ -312,14 +312,14 @@ Asset_set_phase :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
-	if v > 1.000000000 do v = 1.000000000
+	if v < 0.010000000 do v = 0.010000000
+	if v > 0.990000010 do v = 0.990000010
 	p.pulseWidth = v
 }
 
 Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.release = v
 }
@@ -332,16 +332,16 @@ Asset_set_sustain :: proc(p: ^Asset_Processor, value: f32) {
 }
 
 Asset_PARAMS := []Skald_Param_Info{
-	{"Env_decay", 0.001000000, 10.000000000, 0.050000001, "s"},
-	{"Verb_decay", 0.001000000, 10.000000000, 0.500000000, "s"},
+	{"Env_decay", 0.000000000, 10.000000000, 0.050000001, "s"},
+	{"Verb_decay", 0.000000000, 10.000000000, 0.500000000, "s"},
 	{"amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
-	{"attack", 0.001000000, 10.000000000, 0.050000001, "s"},
+	{"attack", 0.000000000, 10.000000000, 0.050000001, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
 	{"frequency", 20.000000000, 20000.000000000, 440.000000000, "Hz"},
 	{"mix", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"pulseWidth", 0.000000000, 1.000000000, 0.500000000, ""},
-	{"release", 0.001000000, 10.000000000, 0.300000012, "s"},
+	{"pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
+	{"release", 0.000000000, 10.000000000, 0.300000012, "s"},
 	{"sustain", 0.000000000, 1.000000000, 0.899999976, ""},
 }
 

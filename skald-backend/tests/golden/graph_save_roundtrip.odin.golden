@@ -249,14 +249,14 @@ Asset_set_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_attack :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.attack = v
 }
 
 Asset_set_decay :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.decay = v
 }
@@ -277,7 +277,7 @@ Asset_set_frequency :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.release = v
 }
@@ -291,11 +291,11 @@ Asset_set_sustain :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_PARAMS := []Skald_Param_Info{
 	{"amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
-	{"attack", 0.001000000, 10.000000000, 0.010000000, "s"},
-	{"decay", 0.001000000, 10.000000000, 0.100000001, "s"},
+	{"attack", 0.000000000, 10.000000000, 0.010000000, "s"},
+	{"decay", 0.000000000, 10.000000000, 0.100000001, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
 	{"frequency", 20.000000000, 20000.000000000, 440.000000000, "Hz"},
-	{"release", 0.001000000, 10.000000000, 0.200000003, "s"},
+	{"release", 0.000000000, 10.000000000, 0.200000003, "s"},
 	{"sustain", 0.000000000, 1.000000000, 0.699999988, ""},
 }
 

@@ -277,8 +277,8 @@ Asset_set_Osc_A_phase :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_Osc_A_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
-	if v > 1.000000000 do v = 1.000000000
+	if v < 0.010000000 do v = 0.010000000
+	if v > 0.990000010 do v = 0.990000010
 	p.Osc_A_pulseWidth = v
 }
 
@@ -305,21 +305,21 @@ Asset_set_Osc_B_phase :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_Osc_B_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
-	if v > 1.000000000 do v = 1.000000000
+	if v < 0.010000000 do v = 0.010000000
+	if v > 0.990000010 do v = 0.990000010
 	p.Osc_B_pulseWidth = v
 }
 
 Asset_set_attack :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.attack = v
 }
 
 Asset_set_decay :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.decay = v
 }
@@ -333,7 +333,7 @@ Asset_set_depth :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
-	if v < 0.001000000 do v = 0.001000000
+	if v < 0.000000000 do v = 0.000000000
 	if v > 10.000000000 do v = 10.000000000
 	p.release = v
 }
@@ -349,15 +349,15 @@ Asset_PARAMS := []Skald_Param_Info{
 	{"Osc_A_amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"Osc_A_frequency", 20.000000000, 20000.000000000, 440.000000000, "Hz"},
 	{"Osc_A_phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"Osc_A_pulseWidth", 0.000000000, 1.000000000, 0.500000000, ""},
+	{"Osc_A_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"Osc_B_amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"Osc_B_frequency", 20.000000000, 20000.000000000, 660.000000000, "Hz"},
 	{"Osc_B_phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"Osc_B_pulseWidth", 0.000000000, 1.000000000, 0.500000000, ""},
-	{"attack", 0.001000000, 10.000000000, 0.050000001, "s"},
-	{"decay", 0.001000000, 10.000000000, 0.050000001, "s"},
+	{"Osc_B_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
+	{"attack", 0.000000000, 10.000000000, 0.050000001, "s"},
+	{"decay", 0.000000000, 10.000000000, 0.050000001, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
-	{"release", 0.001000000, 10.000000000, 0.500000000, "s"},
+	{"release", 0.000000000, 10.000000000, 0.500000000, "s"},
 	{"sustain", 0.000000000, 1.000000000, 0.899999976, ""},
 }
 
