@@ -364,7 +364,7 @@ would have shipped with no notes (`c4c30e0`).
   reaches the UI.
   *Findings:* F-B09b-1 (verified live by C1, promoted). *Roadmap:* **B9** (hard error).
 
-- [ ] **SKB-022 — Toggling a parameter's expose checkbox can clobber a concurrent edit on the same node.**
+- [x] **SKB-022 — Toggling a parameter's expose checkbox can clobber a concurrent edit on the same node.**
   `toggleParameterExposure` writes a closure-captured full `{...nodeToUpdate.data}` snapshot
   (`ParameterPanel.tsx:209-210`) instead of a delta (its sibling `handleParameterChange` is
   already delta-based). Last-writer-wins race, user-reachable during any slider drag. The same
@@ -543,6 +543,23 @@ would have shipped with no notes (`c4c30e0`).
 - [ ] **SKB-045 — Non-numeric P-locks (enum/string controls) are silently dropped at serialization with no UI warning that the lock vanished.**
   `projectSerializer.ts:174-182` filters them; `renderNodeOverrides` happily offers the controls.
   *Findings:* F-B01-11. *Roadmap:* **B5**.
+
+- [ ] **SKB-059 — MidiInput ships with `device` and `useMpe` in its default `exposedParameters`, and neither is an exposable parameter.**
+  Filed 2026-08-01 by the B11 agent, which found it while deleting the inline
+  `midiInput` bypass and correctly declined to fix it unscoped.
+  `node-definitions.ts:189-192` sets `defaultMidiInputParams.exposedParameters = ['device', 'useMpe']`,
+  so **every MIDI Input node ever created is born claiming two exposed parameters**. Neither has ever
+  had an expose toggle in any UI path — the bypass didn't offer one and the replacement case in
+  `NodeParameterControls` doesn't either (`device` non-exposable, `useMpe` an unwrapped checkbox).
+  Worse than cosmetic: `device` is a **string**, and both are compile-time configuration rather than
+  DSP parameters, so this is the same class as SKB-006/SKB-007 — a public API advertising setters for
+  things the DSP never reads, arriving by default rather than by a user's click. Check what the
+  resolution pass currently emits for them before deciding the fix; the honest answer is probably an
+  empty default plus B2's `param_is_live` predicate rejecting non-numeric and config-only fields.
+  Not fixed here because the default lives in a shared definitions file and changing it edits the
+  shape new nodes are born with.
+  *Findings:* none (post-audit). *Roadmap:* **B2** (the predicate), **C2** (the schema that would have
+  made it impossible).
 
 - [ ] **SKB-058 — `bpmSync: true` with no `syncRate` key silently becomes 1/4, and the node's stored rate is dead.**
   Filed 2026-08-01 while verifying A10. `bpm_sync_seconds_expr` (`codegen.odin:42`) defaults the
