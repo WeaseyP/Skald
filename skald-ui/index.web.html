@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- 'wasm-unsafe-eval' allows WebAssembly.compile() for the audio preview
+       without enabling JS eval(). connect-src stays same-origin: the codegen
+       and preview-build endpoints are served by the same web server. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' data: blob:;">
+  <title>Skald</title>
+  <style>
+    html,
+    body,
+    #root {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/web/main-web.tsx"></script>
+</body>
+
+</html>

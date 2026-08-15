@@ -1,0 +1,15 @@
+# Render blueprint: deploys the Skald web build as a free-tier web service.
+# In the Render dashboard: New -> Blueprint -> pick this repo, or create a
+# single Web Service with runtime "Docker" and this repo's Dockerfile.
+#
+# Free-tier behavior: the instance sleeps after ~15 minutes of no traffic and
+# cold-starts (~30-60s) on the next visit. Fine for sharing with friends.
+services:
+  - type: web
+    name: skald
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true

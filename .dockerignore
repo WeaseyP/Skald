@@ -1,0 +1,21 @@
+# Keep the build context small: the image needs skald-ui sources (minus
+# node_modules — Stage 1 installs its own) and skald-backend sources only.
+.git
+.github
+.tools
+docs
+examples
+fable-prompts
+release
+review-checkpoints
+scratch
+scripts
+skald-health-review
+skald-ui/node_modules
+skald-ui/dist-web
+skald-ui/out
+skald-ui/.vite
+skald-backend/*.exe
+skald-backend/tests/out
+Dockerfile
+.dockerignore
