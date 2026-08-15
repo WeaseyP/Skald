@@ -21,6 +21,7 @@
 |       `npx vite build --config vite.web.config.ts`)                         |
 ================================================================================
 */
+import crypto from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -133,6 +134,42 @@ const withTempDir = async (fn) => {
     }
 };
 
+// --- Build cache --------------------------------------------------------------
+//
+// The UI's serializer is deterministic and rebuilds are triggered by content
+// (topologySignature), so identical input JSON always yields identical output.
+// Cache compiled artifacts by content hash: Play after Stop, several visitors
+// on the same example patch, and A/B knob flips all become instant instead of
+// paying a full compile — which is the whole game on a 0.1-CPU free-tier host.
+//
+// The cache stores the build PROMISE, not the result, so N identical requests
+// arriving together share ONE compile instead of queueing N through the
+// semaphore. Failures evict themselves — a transient error (timeout under
+// load) must not poison the entry forever.
+//
+// Size: entries are ~36KB of wasm or ~50KB of source text; 64 entries is a
+// couple of MB against Render's 512MB.
+const CACHE_MAX_ENTRIES = 64;
+const buildCache = new Map(); // key -> Promise<Buffer|string>
+
+const cachedBuild = (kind, input, build) => {
+    const key = `${kind}:${crypto.createHash('sha256').update(input).digest('hex')}`;
+    const hit = buildCache.get(key);
+    if (hit) {
+        // Re-insert to make eviction LRU rather than insertion-order.
+        buildCache.delete(key);
+        buildCache.set(key, hit);
+        return hit;
+    }
+    const entry = build();
+    entry.catch(() => buildCache.delete(key));
+    buildCache.set(key, entry);
+    if (buildCache.size > CACHE_MAX_ENTRIES) {
+        buildCache.delete(buildCache.keys().next().value);
+    }
+    return entry;
+};
+
 // --- Endpoints ---------------------------------------------------------------
 
 // Input JSON goes to codegen as a FILE (-in:), not over stdin: the codegen
@@ -144,6 +181,7 @@ const withTempDir = async (fn) => {
 // inputs and sources separate costs nothing.
 
 const generateCode = (graphJson, packageName) =>
+    cachedBuild('codegen', `${packageName ?? ''} ${graphJson}`, () =>
     withBuildSlot(() => withTempDir(async (dir) => {
         const inFile = path.join(dir, 'input.json');
         const pkgDir = path.join(dir, 'pkg');
@@ -159,9 +197,10 @@ const generateCode = (graphJson, packageName) =>
         args.push(`-out:${outFile}`);
         await runProcess(CODEGEN_EXE, args);
         return fsp.readFile(outFile, 'utf8');
-    }));
+    })));
 
 const buildWasmPreview = (projectJson) =>
+    cachedBuild('wasm', projectJson, () =>
     withBuildSlot(() => withTempDir(async (dir) => {
         const inFile = path.join(dir, 'input.json');
         const pkgDir = path.join(dir, 'pkg');
@@ -182,7 +221,7 @@ const buildWasmPreview = (projectJson) =>
             `-out:${wasmFile}`,
         ]);
         return fsp.readFile(wasmFile);
-    }));
+    })));
 
 // --- HTTP plumbing -----------------------------------------------------------
 
