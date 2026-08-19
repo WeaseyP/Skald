@@ -25,4 +25,10 @@ contextBridge.exposeInMainWorld('electron', {
 
     buildWasmPreview: (projectJson: string): Promise<ArrayBuffer> =>
         ipcRenderer.invoke('build-wasm-preview', projectJson),
+
+    listExamples: (): Promise<any[]> =>
+        ipcRenderer.invoke('list-examples'),
+
+    loadExample: (examplePath: string): Promise<{ content: string | null; error?: string }> =>
+        ipcRenderer.invoke('load-example', examplePath),
 });

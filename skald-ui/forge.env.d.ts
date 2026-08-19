@@ -1,5 +1,14 @@
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
 
+export interface ExampleItem {
+    id: string;
+    name: string;
+    category: string;
+    categoryKey: string;
+    subcategory?: string;
+    path: string;
+}
+
 export interface IElectronAPI {
     invokeCodegen: (graphJson: string, options?: { packageName?: string, outputPath?: string }) => Promise<string>,
     // Save/load return explicit results so the renderer can surface
@@ -16,6 +25,8 @@ export interface IElectronAPI {
     // remembers it instead of resetting to the tester default every time.
     selectOutputPath: (currentPath?: string) => Promise<string | null>,
     buildWasmPreview: (projectJson: string) => Promise<ArrayBuffer>,
+    listExamples?: () => Promise<ExampleItem[]>,
+    loadExample?: (path: string) => Promise<{ content: string | null; error?: string }>,
 }
 
 declare global {

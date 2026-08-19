@@ -133,5 +133,28 @@ export const installElectronShim = (): void => {
             );
             return name && name.trim().length > 0 ? name.trim() : null;
         },
+
+        listExamples: async (): Promise<any[]> => {
+            try {
+                const res = await fetch('/api/examples');
+                if (!res.ok) return [];
+                return await res.json();
+            } catch (e) {
+                console.error('Failed to list examples:', e);
+                return [];
+            }
+        },
+
+        loadExample: async (examplePath: string): Promise<{ content: string | null; error?: string }> => {
+            try {
+                const res = await fetch(`/api/examples/${encodeURIComponent(examplePath)}`);
+                if (!res.ok) {
+                    return { content: null, error: `HTTP ${res.status}: Failed to load example` };
+                }
+                return { content: await res.text() };
+            } catch (e) {
+                return { content: null, error: e instanceof Error ? e.message : String(e) };
+            }
+        },
     };
 };

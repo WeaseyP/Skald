@@ -97,6 +97,7 @@ interface SidebarProps {
     isPlaying: boolean;
     onSave: () => void;
     onLoad: () => void;
+    onOpenExamples?: () => void;
     onCreateInstrument: () => void;
     onCreateGroup: () => void;
     canCreateInstrument: boolean;
@@ -135,6 +136,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     isPlaying,
     onSave,
     onLoad,
+    onOpenExamples,
     onCreateInstrument,
     onCreateGroup,
     canCreateInstrument,
@@ -211,6 +213,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <div>
                 <h2 style={sectionTitleStyles}>Graph Actions</h2>
+                {onOpenExamples && (
+                    <button
+                        style={{ ...secondaryButtonStyles, background: '#2B6CB0', marginBottom: '6px' }}
+                        onClick={onOpenExamples}
+                        title="Browse and load built-in demo songs, instruments, and sound effects"
+                    >
+                        📚 Examples Library
+                    </button>
+                )}
                 {!isPlaying ? (
                     <button style={secondaryButtonStyles} onClick={onPlay}>Play</button>
                 ) : (
@@ -222,9 +233,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                     {isLooping ? 'Looping' : 'Loop'}
                 </button>
-                <button style={secondaryButtonStyles} onClick={onSave}>Save</button>
-                <button style={secondaryButtonStyles} onClick={onLoad}>Load</button>
-                <button style={secondaryButtonStyles} onClick={onImport}>Import Patch</button>
+                <button style={secondaryButtonStyles} onClick={onSave} title="Save project (download in browser, file dialog on desktop)">Save File</button>
+                <button style={secondaryButtonStyles} onClick={onLoad} title="Open local project file from your computer">Open File...</button>
+                <button style={secondaryButtonStyles} onClick={onImport} title="Import patch files from your computer">Import Patch...</button>
             </div>
 
             <div>

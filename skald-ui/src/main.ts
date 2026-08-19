@@ -10,6 +10,7 @@ import {
   importDialogDefaultPath,
   openDialogDefaultPath,
   outputPathDefaultPath,
+  resolveExamplesDir,
   saveDialogDefaultPath,
 } from './main/dialogDefaults';
 import {
@@ -464,4 +465,75 @@ ipcMain.handle('import-patches', async (): Promise<{
     }
   }
   return { files, skipped };
+});
+
+const formatExampleName = (filename: string): string => {
+  const name = filename.replace(/\.skald\.json$/i, '').replace(/\.json$/i, '');
+  return name
+    .replace(/[-_]/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const scanExamplesSync = (dir: string, baseDir: string = dir): any[] => {
+  const results: any[] = [];
+  if (!fs.existsSync(dir)) return results;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'archive' || entry.name === 'integration_demo' || entry.name.startsWith('.')) continue;
+      results.push(...scanExamplesSync(fullPath, baseDir));
+    } else if (entry.isFile() && (entry.name.endsWith('.json') || entry.name.endsWith('.skald.json'))) {
+      const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+      const parts = relPath.split('/');
+      const categoryRaw = parts[0] || 'other';
+      let category = 'Other';
+      if (categoryRaw === 'songs') category = 'Songs & Loops';
+      else if (categoryRaw === 'instruments') category = 'Instruments';
+      else if (categoryRaw === 'snes-kit') category = 'SNES Kit';
+      else if (categoryRaw === 'sound-effects') category = 'Sound Effects';
+
+      let subcategory = '';
+      if (parts.length > 2) {
+        subcategory = formatExampleName(parts[1]);
+      } else if (categoryRaw === 'snes-kit' && parts.length > 1) {
+        subcategory = formatExampleName(parts[1]);
+      }
+
+      results.push({
+        id: relPath,
+        name: formatExampleName(entry.name),
+        category,
+        categoryKey: categoryRaw,
+        subcategory,
+        path: relPath,
+      });
+    }
+  }
+  return results.sort((a, b) => {
+    if (a.category !== b.category) return a.category.localeCompare(b.category);
+    if (a.subcategory !== b.subcategory) return a.subcategory.localeCompare(b.subcategory);
+    return a.name.localeCompare(b.name);
+  });
+};
+
+ipcMain.handle('list-examples', async () => {
+  const examplesDir = resolveExamplesDir(dialogPathEnv());
+  if (!examplesDir) return [];
+  return scanExamplesSync(examplesDir);
+});
+
+ipcMain.handle('load-example', async (_, relPath: string): Promise<{ content: string | null; error?: string }> => {
+  const examplesDir = resolveExamplesDir(dialogPathEnv());
+  if (!examplesDir) return { content: null, error: 'Examples directory not found' };
+  const targetFile = path.resolve(examplesDir, relPath);
+  if (!targetFile.startsWith(path.resolve(examplesDir) + path.sep) && targetFile !== path.resolve(examplesDir)) {
+    return { content: null, error: 'Forbidden' };
+  }
+  try {
+    return { content: fs.readFileSync(targetFile, 'utf-8') };
+  } catch (err) {
+    return { content: null, error: err instanceof Error ? err.message : String(err) };
+  }
 });

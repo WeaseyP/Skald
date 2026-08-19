@@ -150,36 +150,11 @@ export const useFileIO = (
         }
     }, [reactFlowInstance, sequencerTracks, sessionSettings, notifyFileStatus, history]);
 
-    const handleLoad = useCallback(async () => {
-        // SKB-005, the still-open half — Load replaced the session with no
-        // dirty check at all. Ask BEFORE anything happens: before the file
-        // picker even opens, so a decline touches nothing (no dialog was
-        // shown, no file was read, no state was mutated, no history reset).
-        // A clean document has nothing to lose, so it skips the prompt.
-        if (history.isDirty) {
-            const proceed = await confirmDiscardUnsaved();
-            if (!proceed) return;
-        }
-
-        let content: string | null;
-        try {
-            const result = await window.electron.loadGraph();
-            if (result?.error) {
-                notifyFileStatus({ kind: 'error', message: `Load failed — could not read the file: ${result.error}` });
-                return;
-            }
-            content = result?.content ?? null;
-        } catch (e) {
-            notifyFileStatus({ kind: 'error', message: `Load failed: ${e instanceof Error ? e.message : e}` });
-            return;
-        }
-        if (content === null) return; // canceled
-
+    const applySaveData = useCallback((content: string, sourceName?: string): boolean => {
         const { flow, error } = parseSaveFile(content);
         if (error) {
-            // The current graph is untouched — say so explicitly.
             notifyFileStatus({ kind: 'error', message: `Load failed — ${error}. Your current graph is unchanged.` });
-            return;
+            return false;
         }
 
         setNodes(flow.nodes);
@@ -212,12 +187,6 @@ export const useFileIO = (
         // leaving the camera wherever the PREVIOUS project's viewport left
         // it, which could easily be scrolled off every node in the new one
         // (an empty-looking canvas with a perfectly good graph loaded).
-        //
-        // Both branches are deferred a tick: this callback runs synchronously
-        // right after setNodes/setEdges above, before React Flow's internal
-        // store has absorbed the new nodes on the next render — calling
-        // setViewport/fitView before that commits would apply against the
-        // PREVIOUS graph's node set.
         const viewport = flow.viewport;
         const hasValidViewport =
             viewport && typeof viewport === 'object' &&
@@ -230,33 +199,56 @@ export const useFileIO = (
 
         // The whole document was just replaced, so there is nothing coherent to
         // undo BACK to: the pre-load graph and the newly loaded tracks are not a
-        // state the user ever authored. This is the SKB-005 data-loss path —
-        // previously only the graph stack was cleared while `loadTracks` PUSHED
-        // the outgoing project's tracks onto the sequencer stack, so one Ctrl+Z
-        // after Load swapped the just-opened project's notes for the previous
-        // project's and the registry pruned them as orphans. One history, one
-        // reset, and `loadTracks` no longer pushes anything.
+        // state the user ever authored.
         history.resetHistory();
-    }, [reactFlowInstance, setNodes, setEdges, history, loadSequencerTracks, applySessionSettings, notifyFileStatus, confirmDiscardUnsaved]);
+        if (sourceName) {
+            notifyFileStatus({ kind: 'success', message: `Loaded "${sourceName}"` });
+        }
+        return true;
+    }, [reactFlowInstance, setNodes, setEdges, history, loadSequencerTracks, applySessionSettings, notifyFileStatus]);
 
-    // Import Patch merges one or more saved patches into the current graph.
-    // The dialog is a multi-selection, so picking a whole drum kit is one trip
-    // rather than four; layout and id remapping live in layOutImportBatch.
-    const handleImportGraph = useCallback(async () => {
+    const loadContent = useCallback(async (content: string, sourceName?: string): Promise<boolean> => {
+        if (history.isDirty) {
+            const proceed = await confirmDiscardUnsaved();
+            if (!proceed) return false;
+        }
+        return applySaveData(content, sourceName);
+    }, [history, confirmDiscardUnsaved, applySaveData]);
+
+    const handleLoad = useCallback(async () => {
+        // SKB-005, the still-open half — Load replaced the session with no
+        // dirty check at all. Ask BEFORE anything happens: before the file
+        // picker even opens, so a decline touches nothing (no dialog was
+        // shown, no file was read, no state was mutated, no history reset).
+        // A clean document has nothing to lose, so it skips the prompt.
+        if (history.isDirty) {
+            const proceed = await confirmDiscardUnsaved();
+            if (!proceed) return;
+        }
+
+        let content: string | null;
+        try {
+            const result = await window.electron.loadGraph();
+            if (result?.error) {
+                notifyFileStatus({ kind: 'error', message: `Load failed — could not read the file: ${result.error}` });
+                return;
+            }
+            content = result?.content ?? null;
+        } catch (e) {
+            notifyFileStatus({ kind: 'error', message: `Load failed: ${e instanceof Error ? e.message : e}` });
+            return;
+        }
+        if (content === null) return; // canceled
+
+        applySaveData(content);
+    }, [history, confirmDiscardUnsaved, notifyFileStatus, applySaveData]);
+
+    const importBatch = useCallback((
+        files: { name: string; content: string }[],
+        skippedInit: { name: string; error: string }[] = []
+    ) => {
         if (!reactFlowInstance) return;
-        const result = await window.electron
-            .importPatches()
-            .catch((e: unknown) => ({
-                files: [] as { name: string; content: string }[],
-                skipped: [{ name: 'selection', error: String(e) }],
-            }));
-
-        const files = result?.files ?? [];
-        const skipped = [...(result?.skipped ?? [])];
-        if (files.length === 0 && skipped.length === 0) return; // canceled
-
-        // Parse everything before touching state: a bad file in the selection
-        // must not leave the canvas half-imported.
+        const skipped = [...skippedInit];
         const graphs: ImportedGraph[] = [];
         for (const file of files) {
             const { flow, error } = parseSaveFile(file.content);
@@ -313,5 +305,24 @@ export const useFileIO = (
         });
     }, [reactFlowInstance, setNodes, setEdges, loadSequencerTracks, sequencerTracks, notifyFileStatus, history]);
 
-    return { handleSave, handleLoad, handleImportGraph };
+    // Import Patch merges one or more saved patches into the current graph.
+    // The dialog is a multi-selection, so picking a whole drum kit is one trip
+    // rather than four; layout and id remapping live in layOutImportBatch.
+    const handleImportGraph = useCallback(async () => {
+        if (!reactFlowInstance) return;
+        const result = await window.electron
+            .importPatches()
+            .catch((e: unknown) => ({
+                files: [] as { name: string; content: string }[],
+                skipped: [{ name: 'selection', error: String(e) }],
+            }));
+
+        const files = result?.files ?? [];
+        const skipped = [...(result?.skipped ?? [])];
+        if (files.length === 0 && skipped.length === 0) return; // canceled
+
+        importBatch(files, skipped);
+    }, [reactFlowInstance, importBatch]);
+
+    return { handleSave, handleLoad, handleImportGraph, loadContent, importBatch };
 };

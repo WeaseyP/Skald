@@ -17,6 +17,7 @@ import { ShortcutLegend } from './components/ShortcutLegend';
 import ParameterPanel from './components/ParameterPanel';
 import CodePreviewPanel from './components/CodePreviewPanel';
 import NamePromptModal from './components/NamePromptModal';
+import ExamplesModal from './components/ExamplesModal';
 import { nodeTypes } from './definitions/nodeTypes';
 
 // Import your new hooks
@@ -179,7 +180,9 @@ const EditorLayout = () => {
             fileStatusTimer.current = setTimeout(() => setFileStatus(null), 4000);
         }
     }, []);
-    const { handleSave, handleLoad, handleImportGraph } = useFileIO(
+    const [isExamplesModalOpen, setIsExamplesModalOpen] = useState(false);
+
+    const { handleSave, handleLoad, handleImportGraph, loadContent, importBatch } = useFileIO(
         reactFlowInstance,
         setNodes,
         setEdges,
@@ -190,6 +193,14 @@ const EditorLayout = () => {
         applySessionSettings,
         notifyFileStatus
     );
+
+    const handleLoadExample = useCallback((content: string, name: string) => {
+        void loadContent(content, name);
+    }, [loadContent]);
+
+    const handleImportExample = useCallback((content: string, name: string) => {
+        importBatch([{ name, content }]);
+    }, [importBatch]);
 
     // Packet B4 (c) — the title bar (Electron mirrors document.title by
     // default; see useWindowTitle.ts) marks unsaved edits the same way every
@@ -356,6 +367,13 @@ const EditorLayout = () => {
                 />
             )}
 
+            <ExamplesModal
+                isOpen={isExamplesModalOpen}
+                onClose={() => setIsExamplesModalOpen(false)}
+                onLoadExample={handleLoadExample}
+                onImportExample={handleImportExample}
+            />
+
             <div style={{
                 flex: 1,
                 width: '100%',
@@ -373,6 +391,7 @@ const EditorLayout = () => {
                             isPlaying={isPlaying}
                             onSave={handleSave}
                             onLoad={handleLoad}
+                            onOpenExamples={() => setIsExamplesModalOpen(true)}
                             onImport={handleImportGraph}
                             onCreateInstrument={handleCreateInstrument}
                             onCreateGroup={handleCreateGroup}

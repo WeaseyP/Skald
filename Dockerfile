@@ -53,6 +53,7 @@ WORKDIR /app/skald-ui
 COPY --from=ui /build/skald-ui/dist-web ./dist-web
 COPY --from=codegen /build/skald_codegen ./skald_codegen
 COPY skald-ui/web-server ./web-server
+COPY examples/ /app/examples
 # Container is the one place binding beyond localhost is intended: the host's
 # proxy is the only route in, and the process runs unprivileged.
 ENV SKALD_ODIN=/usr/local/bin/odin \

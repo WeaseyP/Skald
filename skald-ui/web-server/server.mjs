@@ -36,6 +36,64 @@ const REPO_ROOT = path.join(UI_ROOT, '..');            // Skald/
 const STATIC_ROOT = path.join(UI_ROOT, 'dist-web');
 const CODEGEN_EXE = process.env.SKALD_CODEGEN ||
     path.join(UI_ROOT, process.platform === 'win32' ? 'skald_codegen.exe' : 'skald_codegen');
+const EXAMPLES_ROOT = process.env.SKALD_EXAMPLES_DIR ||
+    (fs.existsSync(path.join(REPO_ROOT, 'examples'))
+        ? path.join(REPO_ROOT, 'examples')
+        : path.join(UI_ROOT, 'examples'));
+
+const formatExampleName = (filename) => {
+    const name = filename.replace(/\.skald\.json$/i, '').replace(/\.json$/i, '');
+    return name
+        .replace(/[-_]/g, ' ')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const scanExamples = async (dir, baseDir = dir) => {
+    const results = [];
+    if (!fs.existsSync(dir)) return results;
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            if (entry.name === 'archive' || entry.name === 'integration_demo' || entry.name.startsWith('.')) {
+                continue;
+            }
+            const nested = await scanExamples(fullPath, baseDir);
+            results.push(...nested);
+        } else if (entry.isFile() && (entry.name.endsWith('.json') || entry.name.endsWith('.skald.json'))) {
+            const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+            const parts = relPath.split('/');
+            const categoryRaw = parts[0] || 'other';
+            let category = 'Other';
+            if (categoryRaw === 'songs') category = 'Songs & Loops';
+            else if (categoryRaw === 'instruments') category = 'Instruments';
+            else if (categoryRaw === 'snes-kit') category = 'SNES Kit';
+            else if (categoryRaw === 'sound-effects') category = 'Sound Effects';
+
+            let subcategory = '';
+            if (parts.length > 2) {
+                subcategory = formatExampleName(parts[1]);
+            } else if (categoryRaw === 'snes-kit' && parts.length > 1) {
+                subcategory = formatExampleName(parts[1]);
+            }
+
+            results.push({
+                id: relPath,
+                name: formatExampleName(entry.name),
+                category,
+                categoryKey: categoryRaw,
+                subcategory,
+                path: relPath,
+            });
+        }
+    }
+    return results.sort((a, b) => {
+        if (a.category !== b.category) return a.category.localeCompare(b.category);
+        if (a.subcategory !== b.subcategory) return a.subcategory.localeCompare(b.subcategory);
+        return a.name.localeCompare(b.name);
+    });
+};
 
 // PORT is what hosting platforms (Render, Railway, ...) inject.
 const PORT = Number(process.env.PORT || process.env.SKALD_WEB_PORT || 8787);
@@ -312,6 +370,26 @@ const server = http.createServer(async (req, res) => {
             }
             const code = await generateCode(parsed.graphJson, parsed.packageName);
             res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }).end(code);
+            return;
+        }
+        if (req.method === 'GET' && (req.url === '/api/examples' || req.url === '/api/examples/')) {
+            const examples = await scanExamples(EXAMPLES_ROOT);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(examples));
+            return;
+        }
+        if (req.method === 'GET' && req.url.startsWith('/api/examples/')) {
+            const requestedPath = decodeURIComponent(req.url.slice('/api/examples/'.length));
+            const targetFile = path.resolve(EXAMPLES_ROOT, requestedPath);
+            if (!targetFile.startsWith(path.resolve(EXAMPLES_ROOT) + path.sep) && targetFile !== path.resolve(EXAMPLES_ROOT)) {
+                res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Forbidden');
+                return;
+            }
+            try {
+                const content = await fsp.readFile(targetFile, 'utf8');
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }).end(content);
+            } catch (err) {
+                res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Example not found');
+            }
             return;
         }
         if (req.method === 'GET' || req.method === 'HEAD') {
