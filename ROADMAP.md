@@ -67,6 +67,7 @@
 - [ ] **B6-4** (S) — Fix the two README 404s; link the manual above the fold
 - [ ] **B6-5** (S) — Electron Help menu (Manual / Examples / About with codegen stamp)
 - [ ] **B6-6** (S) — Default first-run patch that makes a sound in 30 seconds
+- [ ] **B6-7** (S) — Rename "Generate Code" to "Download Code" / "Export .odin Package" — the WASM preview already runs the real generated code; the button just downloads it now
 
 ### B7 — Composition Correctness
 - [ ] **B7-1** (M) — Panner: normalize pan law to `cos/sin × 1.4142`; mono fallback becomes pan-independent pass-through — **SKB-013** (critical)
