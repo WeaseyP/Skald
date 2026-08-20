@@ -155,6 +155,7 @@
 - [ ] **E10** (M) — **Keyboard graph traversal.** Tab through nodes, focus ports, wire connections via hotkeys. *(§9.22)*
 - [ ] **E11** (S) — **Randomize button.** "Evolve" affordance on instrument panels for controlled parameter mutation. *(§9.23)*
 - [ ] **E12** (S) — **XY Pad macro routing.** 2D XY pad movements map to generated Odin; P-lock gestural recording. *(§9.4 item 1)*
+- [ ] **E13** (M–L) — **Mobile responsive pass.** Sidebar → bottom sheet/drawer; larger touch targets on node ports and sequencer cells; responsive toolbar → bottom nav; pinch-to-zoom polish on node graph; parameter slider thumb size increase for touch. Target: usable on 6"+ screens (Pixel 9 Pro, modern iPhones).
 
 ---
 
