@@ -121,15 +121,15 @@ get_output_var :: proc(node_id: string, port_name: string = "") -> string {
 	return fmt.tprintf("node_%s_out", node_id)
 }
 
-get_f32_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: f32) -> string {
+get_f32_param :: proc(graph: ^Graph, plan: ^Instrument_Plan, node: Node, param_name: string, input_port: string, default_val: f32) -> string {
     base_str := f32_literal(f64(default_val))
 
     // Phase 3: prefer the codegen-computed resolution (which knows the
     // collision-free field name) over the raw exposedParameters list.
     is_exposed := false
-    if graph != nil {
+    if plan != nil {
         key := fmt.tprintf("%s::%s", node.id, param_name)
-        if res, found := graph.exposed_resolutions[key]; found {
+        if res, found := plan.exposed_resolutions[key]; found {
             is_exposed = true
             base_str = fmt.tprintf("p.%s", res.field_name)
         }

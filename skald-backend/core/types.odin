@@ -1,4 +1,4 @@
-﻿package skald_core
+package skald_core
 
 import json "core:encoding/json"
 
@@ -108,12 +108,11 @@ Graph :: struct {
 	connections:      []Connection,
 	events:           []Note_Event,
 	sequencer_tracks: []Sequencer_Track,
-	// In-memory only; populated by the codegen, not parsed from JSON.
-	// Flat lookup keyed by `<node_id>::<param_name>` -> resolution. Flat
-	// because Odin maps don't allow nested-map element assignment, and the
-	// codegen needs a fast lookup from (node_id, param_name) pairs. Build
-	// keys via `fmt.tprintf("%s::%s", node_id, param_name)` consistently.
+}
+
+Instrument_Plan :: struct {
 	exposed_resolutions: map[string]Exposed_Resolution,
+	stable_resolutions: [dynamic]Exposed_Resolution,
 }
 
 // The song-level settings a save file carries alongside the graph. The editor

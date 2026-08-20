@@ -40,6 +40,10 @@ jobs:
         working-directory: skald-backend
         run: .\run_golden.bat check
 
+      - name: Corpus golden-file snapshot check
+        working-directory: skald-backend
+        run: .\run_corpus_golden.bat check
+
       # The parameter contract's own unit tests (roadmap packet A8): the range
       # table and the exposed-default resolution, per JSON value type. Six range
       # mismatches are on record and four of them were fixed once and re-found,
