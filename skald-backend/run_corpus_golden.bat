@@ -84,7 +84,7 @@ if errorlevel 1 (
 
 fc /B "%SHIM%" "%SHIM2%" >nul
 if errorlevel 1 (
-    echo NON-DETERMINISTIC %NAME% (shim)
+    echo NON-DETERMINISTIC %NAME% ^(shim^)
     set /a FAILED+=1
     set /a NONDET+=1
     goto :eof

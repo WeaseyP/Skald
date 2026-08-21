@@ -6,7 +6,7 @@ Skald is a Windows desktop application for building audio instruments, sound eff
 
 Version 0.1.0 is a prerelease. The main editing, sequencing, preview, save/load, and Odin export workflows are in place. Bugs are expected, and project files or generated APIs may change before 1.0.
 
-See the [v0.1.0 release notes](docs/releases/v0.1.0.md), [release process](docs/RELEASING.md), and [bug list](BUGS.md).
+See the [v0.1.0 release notes](docs/releases/v0.1.0.md), [release process](docs/RELEASING.md), [roadmap and issue tracker](ROADMAP.md), and [how to run and read the test gates](TESTING.md).
 
 ## Manual
 

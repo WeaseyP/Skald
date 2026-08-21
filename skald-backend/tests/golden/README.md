@@ -1,5 +1,18 @@
 # Golden-file snapshots
 
+> **A green golden gate means "nothing changed unintentionally." It never means
+> the output is correct.** These files pinned a Panner that attenuated a centred
+> signal by 3 dB (SKB-013) and an `is_playing` that cut Delay/Reverb tails off
+> (SKB-016) for as long as those bugs existed — the gate was green throughout,
+> because recording what the generator does, bugs included, is exactly its job.
+>
+> Before concluding a red gate is (or isn't) your fault, run
+> `scripts\verify-baseline.ps1 -Ref HEAD~1` from the repo root. See
+> [`TESTING.md`](../../../TESTING.md) for the discipline, the known-red-at-baseline
+> list, and why deleted lines in a golden diff deserve more attention than added
+> ones.
+
+
 Each `<fixture>.odin.golden` here is a byte-exact snapshot of the Odin source
 that `codegen.exe` emits for a fixture (package `generated_audio`). They pin the
 generator's **output text** so refactors can be proven output-preserving.

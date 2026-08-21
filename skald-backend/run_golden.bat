@@ -55,6 +55,19 @@ REM that on its own (it only ever compares one run), so the double-run check
 REM is a separate gate and it runs in `update` mode too: never record a
 REM golden from a generator that is not reproducible.
 REM
+REM BEFORE YOU BLAME YOURSELF (or clear yourself) FOR A RED GATE: run
+REM   scriptserify-baseline.ps1 -Ref HEAD~1
+REM from the repo root. It runs every gate against a pristine `git archive`
+REM export of that ref, so you can tell a regression you caused apart from one
+REM that was already there. Two of this repo's gates were red for a long time
+REM with nothing saying so - see TESTING.md.
+REM
+REM AND NOTE: a green golden gate means "nothing changed unintentionally". It
+REM does NOT mean the output is correct. These goldens faithfully pinned a pan
+REM law that attenuated a centred signal by 3dB, and an is_playing that cut
+REM effect tails off, for as long as those bugs existed. `update` on a diff you
+REM have not read launders a regression into the record as intent.
+REM
 REM Usage (run from skald-backend\):
 REM   run_golden.bat            Check current emission against the goldens.
 REM                             Exits non-zero on any diff, missing golden,
