@@ -1,12 +1,12 @@
 {
-  "__comment": "Packet B7-2 / B7-2-followup, BUGS.md SKB-016: this Delay exposes both delayTime and feedback, so a runtime set_param can move either one. Two constants get pinned as a result. ExposedTail_BUS_TAIL_SECONDS is still the PESSIMISTIC compile-time upper bound (delayTime range max 2.0s x the 135 passes it takes feedback range max 0.95 to fall 60dB = 270.0) — kept only as documentation, no longer read by the countdown. The countdown itself is now armed from ExposedTail_bus_tail_seconds(p), the LIVE proc pinned right below it, which reads p.delayTime/p.feedback instead of their range maxima: with the authored defaults (0.25s / 0.3) it would compute a true tail of 0.25 x ceil(ln(0.001)/ln(0.3)) passes = 0.25 x 6 = 1.5s, exactly what the same patch bakes when nothing is exposed at all. That is the fix: exposing a tail parameter no longer costs anything until a game actually moves it.",
+  "__comment": "B7-2-followup / BUGS.md SKB-016: proves the tail countdown is now computed from the LIVE field values at arm time, not baked from each exposed parameter's range maximum. delayTime and feedback are both exposed here, so the OLD code baked Asset_BUS_TAIL_SECONDS at the pessimistic 270s (delayTime max 2.0s x 135 passes for feedback max 0.95 to fall 60dB) regardless of what is authored. The authored values (delayTime 0.25, feedback 0.3) give a true live tail of 0.25 x ceil(ln(0.001)/ln(0.3)) = 0.25 x 6 = 1.5s. is_playing must go false shortly after that 1.5s tail, not 270s later.",
   "project": {
     "bpm": 120,
     "master_volume": 0.8,
     "instruments": [
       {
-        "id": "delay_tail_exposed_inst",
-        "name": "ExposedTail",
+        "id": "delaytaillivefixture",
+        "name": "Asset",
         "mute": false,
         "solo": false,
         "voice_count": 2,

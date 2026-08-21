@@ -176,6 +176,32 @@ emit_soft_limit_proc :: proc(sb: ^strings.Builder) {
 	fmt.sbprint(sb, "}\n\n")
 }
 
+// B7-2-followup / SKB-016: seconds for a feedback delay line to fall 60dB,
+// mirroring feedback_tail_seconds (codegen_analysis.odin) exactly, but
+// callable at runtime against LIVE field values instead of the compile-time
+// worst case. Each per-asset <Foo>_bus_tail_seconds proc calls this once per
+// note-off (when the tail arms), not once per sample, so the ln/pow stay off
+// the audio path.
+//
+// Guarded against the three ways this can go wrong feeding straight into a
+// u64(...) at the call site: ln(0) (gain <= 0.0 is handled before any ln
+// call), division by zero (same guard — g is never 0 when ln(g) runs), and a
+// NaN/negative/non-finite result (checked explicitly and discarded in favor
+// of the safe `period` fallback).
+emit_feedback_tail_proc :: proc(sb: ^strings.Builder) {
+	fmt.sbprint(sb, "skald_feedback_tail_seconds :: proc(period: f32, gain: f32) -> f32 {\n")
+	fmt.sbprint(sb, "\tif math.is_nan(period) || period <= 0.0 do return 0.0\n")
+	fmt.sbprint(sb, "\t// 0.95 is the DSP's own feedback ceiling (see generate_delay_code /\n")
+	fmt.sbprint(sb, "\t// generate_reverb_code), so no live value can ring longer than this.\n")
+	fmt.sbprint(sb, "\tg := math.clamp(gain, 0.0, 0.95)\n")
+	fmt.sbprint(sb, "\tif g <= 0.0 do return period\n")
+	fmt.sbprint(sb, "\tpasses := math.ceil(math.ln(f32(0.001)) / math.ln(g))\n")
+	fmt.sbprint(sb, "\tresult := period * passes\n")
+	fmt.sbprint(sb, "\tif math.is_nan(result) || math.is_inf(result) || result < 0.0 do return period\n")
+	fmt.sbprint(sb, "\treturn result\n")
+	fmt.sbprint(sb, "}\n\n")
+}
+
 generate_project_code :: proc(project: ^Project, project_name: string, package_name: string) -> string {
     sb := strings.builder_make()
 
@@ -290,6 +316,7 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "}\n\n")
 
     emit_soft_limit_proc(&sb)
+    emit_feedback_tail_proc(&sb)
 
     fmt.sbprint(&sb, "Note_Event :: struct {\n")
     fmt.sbprint(&sb, "\tnote: u8,\n")

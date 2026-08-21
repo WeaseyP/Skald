@@ -74,6 +74,18 @@ skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
 	return math.tanh(l), math.tanh(r)
 }
 
+skald_feedback_tail_seconds :: proc(period: f32, gain: f32) -> f32 {
+	if math.is_nan(period) || period <= 0.0 do return 0.0
+	// 0.95 is the DSP's own feedback ceiling (see generate_delay_code /
+	// generate_reverb_code), so no live value can ring longer than this.
+	g := math.clamp(gain, 0.0, 0.95)
+	if g <= 0.0 do return period
+	passes := math.ceil(math.ln(f32(0.001)) / math.ln(g))
+	result := period * passes
+	if math.is_nan(result) || math.is_inf(result) || result < 0.0 do return period
+	return result
+}
+
 Note_Event :: struct {
 	note: u8,
 	velocity: f32,
@@ -121,6 +133,7 @@ Asset_Processor :: struct {
 	ext_in_r: f32,
 	volume: f32,
 	bus_tail_remaining: u64,
+	bus_tail_armed: bool,
 	delay_3_buffer: [96000]f32,
 	delay_3_write_index: int,
 	reverb_3_pre_buffer: [48000]f32,
@@ -136,12 +149,26 @@ Asset_Processor :: struct {
 	sustain: f32,
 }
 
-// Worst-case seconds this asset's Delay/Reverb tail keeps sounding after
-// the last voice releases; _is_playing stays true for that long so a game
-// polling it cannot free the asset mid-echo. Any tail parameter that is
-// exposed contributes its RANGE MAXIMUM, not its authored value, so no
-// runtime set_param can make the real tail outlast this count.
 Asset_BUS_TAIL_SECONDS :: f32(10.070000000)
+
+// B7-2-followup / SKB-016: the LIVE counterpart to the worst-case constant
+// above. Sums, over the same Delay/Reverb nodes compute_bus_tail_seconds
+// analyzed, the same feedback_tail_seconds formula — but against each
+// parameter's CURRENT value instead of its range maximum. Safe to call
+// outside the audio path (once per note-off, not once per sample)
+// because no Delay/Reverb parameter has a modulation port: get_f32_param
+// resolves every one of them to either a plain field read or a literal,
+// both valid wherever `p` is in scope.
+Asset_bus_tail_seconds :: proc(p: ^Asset_Processor) -> f32 {
+	total: f32 = 0.0
+	mix_3: f32 = (p.mix);
+	if mix_3 > 0.0 {
+		pre_3: f32 = math.clamp(f32(f32(0.020000000)), 0.0, 0.25);
+		decay_gain_3: f32 = math.clamp(math.pow(f32(0.001), f32(0.075000000) / math.max(f32(p.Verb_decay), 0.01)), 0.0, 0.95);
+		total += pre_3 + skald_feedback_tail_seconds(f32(0.075000000), decay_gain_3)
+	}
+	return total
+}
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.sample_rate = sr
@@ -158,6 +185,7 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.ext_in_l = 0.0
 	p.ext_in_r = 0.0
 	p.bus_tail_remaining = 0
+	p.bus_tail_armed = false
 	p.delay_3_buffer = {}
 	p.delay_3_write_index = 0
 	p.reverb_3_pre_buffer = {}
@@ -549,7 +577,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			delay_samples_3 := int(math.clamp((0.075000000) * sample_rate, 0, 96000-1));
 			read_index_3 := (p.delay_3_write_index - delay_samples_3 + len(p.delay_3_buffer)) % len(p.delay_3_buffer);
 			delayed_sample_3 := p.delay_3_buffer[read_index_3];
-			decay_gain_3: f32 = math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(p.Verb_decay), 0.01)), 0.0, 0.95);
+			decay_gain_3: f32 = math.clamp(math.pow(f32(0.001), f32(0.075000000) / math.max(f32(p.Verb_decay), 0.01)), 0.0, 0.95);
 			p.delay_3_buffer[p.delay_3_write_index] = pre_delayed_input_3 + delayed_sample_3 * decay_gain_3;
 			p.delay_3_write_index = (p.delay_3_write_index + 1) % len(p.delay_3_buffer);
 			node_3_out = ((node_2_out)) * (1.0 - (p.mix)) + delayed_sample_3 * (p.mix);
@@ -559,10 +587,12 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		output_right += node_3_out
 	}
 
-	// SKB-016: keep _is_playing true for as long as the effect tail can still
-	// be heard. Re-armed on every sample anything is sounding rather than on
-	// the falling edge, so the countdown is already full the moment the last
-	// voice goes inactive and no edge can be missed.
+	// B7-2-followup / SKB-016: a baked worst-case constant here held
+	// is_playing true for minutes on real content (every exposed tail param
+	// contributed its range maximum, so glassy-fm-pluck alone baked 202.5s
+	// for a true tail under 2s). Arm on the FALLING EDGE instead, from the
+	// live field values — that is one ln/pow per note-off rather than per
+	// sample, which is what keeps this proc off the audio path.
 	{
 		voice_alive := false
 		for i in 0..<8 {
@@ -572,7 +602,11 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			}
 		}
 		if voice_alive || p.playing {
-			p.bus_tail_remaining = u64(Asset_BUS_TAIL_SECONDS * sample_rate)
+			p.bus_tail_armed = false
+			p.bus_tail_remaining = 0
+		} else if !p.bus_tail_armed {
+			p.bus_tail_armed = true
+			p.bus_tail_remaining = u64(Asset_bus_tail_seconds(p) * sample_rate)
 		} else if p.bus_tail_remaining > 0 {
 			p.bus_tail_remaining -= 1
 		}

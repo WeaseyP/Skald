@@ -77,6 +77,7 @@ generate_processor_code :: proc(
 	    fmt.sbprint(&sb, "import \"core:math\"\n")
 	    fmt.sbprint(&sb, "import \"core:math/rand\"\n\n")
 	    emit_soft_limit_proc(&sb)
+	    emit_feedback_tail_proc(&sb)
     }
 
 	fmt.sbprintf(&sb, "%s_Voice_State :: struct {{\n", namespace_prefix)
@@ -140,6 +141,7 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\tvolume: f32,\n")
 	if has_bus_tail {
 		fmt.sbprint(&sb, "\tbus_tail_remaining: u64,\n")
+		fmt.sbprint(&sb, "\tbus_tail_armed: bool,\n")
 	}
 
 	for node in all_nodes {
@@ -182,12 +184,71 @@ generate_processor_code :: proc(
     fmt.sbprint(&sb, "}\n\n")
 
 	if has_bus_tail {
-		fmt.sbprint(&sb, "// Worst-case seconds this asset's Delay/Reverb tail keeps sounding after\n")
-		fmt.sbprint(&sb, "// the last voice releases; _is_playing stays true for that long so a game\n")
-		fmt.sbprint(&sb, "// polling it cannot free the asset mid-echo. Any tail parameter that is\n")
-		fmt.sbprint(&sb, "// exposed contributes its RANGE MAXIMUM, not its authored value, so no\n")
-		fmt.sbprint(&sb, "// runtime set_param can make the real tail outlast this count.\n")
+		// B7-2-followup / SKB-016: this used to be what _is_playing counted
+		// down from on EVERY sample anything was sounding, which meant every
+		// exposed tail parameter's RANGE MAXIMUM baked itself in permanently —
+		// 202.5s-415s on real shipped content for a tail that was actually
+		// under 2s. The live countdown below (bus_tail_seconds) replaced it.
+		// This constant is kept only as a documented, compile-time WORST CASE
+		// upper bound: the longest this asset's tail could ever be driven to
+		// by any legal set_param sequence, for tooling/diagnostics that want
+		// that number without instantiating a processor. Nothing in this
+		// generated file reads it for the countdown any more.
 		fmt.sbprintf(&sb, "%s_BUS_TAIL_SECONDS :: f32(%.9f)\n\n", namespace_prefix, bus_tail_seconds)
+
+		fmt.sbprint(&sb, "// B7-2-followup / SKB-016: the LIVE counterpart to the worst-case constant\n")
+		fmt.sbprint(&sb, "// above. Sums, over the same Delay/Reverb nodes compute_bus_tail_seconds\n")
+		fmt.sbprint(&sb, "// analyzed, the same feedback_tail_seconds formula — but against each\n")
+		fmt.sbprint(&sb, "// parameter's CURRENT value instead of its range maximum. Safe to call\n")
+		fmt.sbprint(&sb, "// outside the audio path (once per note-off, not once per sample)\n")
+		fmt.sbprint(&sb, "// because no Delay/Reverb parameter has a modulation port: get_f32_param\n")
+		fmt.sbprint(&sb, "// resolves every one of them to either a plain field read or a literal,\n")
+		fmt.sbprint(&sb, "// both valid wherever `p` is in scope.\n")
+		fmt.sbprintf(&sb, "%s_bus_tail_seconds :: proc(p: ^%s_Processor) -> f32 {{\n", namespace_prefix, namespace_prefix)
+		fmt.sbprint(&sb, "\ttotal: f32 = 0.0\n")
+		for node in all_nodes {
+			switch node.type {
+			case "Delay":
+				mix_str := get_f32_param(graph, plan, node, "mix", "", 0.5)
+				if _, has_mix := node.parameters["mix"]; !has_mix {
+					mix_str = get_f32_param(graph, plan, node, "wetDryMix", "", 0.5)
+				}
+				emit_f32_local(&sb, "\t", fmt.tprintf("mix_%s", node.id), fmt.tprintf("(%s)", mix_str))
+				fmt.sbprintf(&sb, "\tif mix_%s > 0.0 {{\n", node.id)
+				if sec_expr, synced := bpm_sync_seconds_expr(node); synced {
+					emit_f32_local(&sb, "\t\t", fmt.tprintf("period_%s", node.id), "0.0")
+					fmt.sbprint(&sb, "\t\tif p.bpm > 0.0 {\n")
+					fmt.sbprintf(&sb, "\t\t\tperiod_%s = %s\n", node.id, sec_expr)
+					fmt.sbprint(&sb, "\t\t}\n")
+				} else {
+					time_str := get_f32_param(graph, plan, node, "delayTime", "", 0.5)
+					emit_f32_local(&sb, "\t\t", fmt.tprintf("period_%s", node.id), fmt.tprintf("(%s)", time_str))
+				}
+				fdbk_str := get_f32_param(graph, plan, node, "feedback", "", 0.5)
+				emit_f32_local(&sb, "\t\t", fmt.tprintf("fdbk_%s", node.id), fmt.tprintf("(%s)", fdbk_str))
+				fmt.sbprintf(&sb, "\t\ttotal += skald_feedback_tail_seconds(period_%s, fdbk_%s)\n", node.id, node.id)
+				fmt.sbprint(&sb, "\t}\n")
+			case "Reverb":
+				mix_str := get_f32_param(graph, plan, node, "mix", "", 0.5)
+				if _, has_mix := node.parameters["mix"]; !has_mix {
+					mix_str = get_f32_param(graph, plan, node, "wetDryMix", "", 0.5)
+				}
+				emit_f32_local(&sb, "\t", fmt.tprintf("mix_%s", node.id), fmt.tprintf("(%s)", mix_str))
+				fmt.sbprintf(&sb, "\tif mix_%s > 0.0 {{\n", node.id)
+				pre_str := get_f32_param(graph, plan, node, "preDelay", "", 0.02)
+				emit_f32_local(&sb, "\t\t", fmt.tprintf("pre_%s", node.id), fmt.tprintf("math.clamp(f32(%s), 0.0, 0.25)", pre_str))
+				decay_str := get_f32_param(graph, plan, node, "decay", "", 0.5)
+				// Identical to the decay_gain expression generate_reverb_code
+				// emits (same REVERB_COMB_SECONDS, same 0.01 floor, same 0.95
+				// ceiling) — analysis, DSP and this live tail proc must not
+				// disagree about how fast the comb decays.
+				emit_f32_local(&sb, "\t\t", fmt.tprintf("decay_gain_%s", node.id), fmt.tprintf("math.clamp(math.pow(f32(0.001), f32(%.9f) / math.max(f32(%s), 0.01)), 0.0, 0.95)", REVERB_COMB_SECONDS, decay_str))
+				fmt.sbprintf(&sb, "\t\ttotal += pre_%s + skald_feedback_tail_seconds(f32(%.9f), decay_gain_%s)\n", node.id, REVERB_COMB_SECONDS, node.id)
+				fmt.sbprint(&sb, "\t}\n")
+			}
+		}
+		fmt.sbprint(&sb, "\treturn total\n")
+		fmt.sbprint(&sb, "}\n\n")
 	}
 
 	fmt.sbprintf(&sb, "%s_init :: proc(p: ^%s_Processor, sr: f32) {{\n", namespace_prefix, namespace_prefix)
@@ -225,6 +286,7 @@ generate_processor_code :: proc(
     fmt.sbprint(&sb, "\tp.ext_in_r = 0.0\n")
     if has_bus_tail {
         fmt.sbprint(&sb, "\tp.bus_tail_remaining = 0\n")
+        fmt.sbprint(&sb, "\tp.bus_tail_armed = false\n")
     }
     // Mirrors the bus-domain field emission in the _Processor struct above,
     // case for case. A node type that grows a bus-domain field there and not
@@ -831,10 +893,12 @@ generate_processor_code :: proc(
 	}
 
 	if has_bus_tail {
-		fmt.sbprint(&sb, "\n\t// SKB-016: keep _is_playing true for as long as the effect tail can still\n")
-		fmt.sbprint(&sb, "\t// be heard. Re-armed on every sample anything is sounding rather than on\n")
-		fmt.sbprint(&sb, "\t// the falling edge, so the countdown is already full the moment the last\n")
-		fmt.sbprint(&sb, "\t// voice goes inactive and no edge can be missed.\n")
+		fmt.sbprint(&sb, "\n\t// B7-2-followup / SKB-016: a baked worst-case constant here held\n")
+		fmt.sbprint(&sb, "\t// is_playing true for minutes on real content (every exposed tail param\n")
+		fmt.sbprint(&sb, "\t// contributed its range maximum, so glassy-fm-pluck alone baked 202.5s\n")
+		fmt.sbprint(&sb, "\t// for a true tail under 2s). Arm on the FALLING EDGE instead, from the\n")
+		fmt.sbprint(&sb, "\t// live field values — that is one ln/pow per note-off rather than per\n")
+		fmt.sbprint(&sb, "\t// sample, which is what keeps this proc off the audio path.\n")
 		fmt.sbprint(&sb, "\t{\n")
 		fmt.sbprint(&sb, "\t\tvoice_alive := false\n")
 		fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
@@ -844,7 +908,11 @@ generate_processor_code :: proc(
 		fmt.sbprint(&sb, "\t\t\t}\n")
 		fmt.sbprint(&sb, "\t\t}\n")
 		fmt.sbprint(&sb, "\t\tif voice_alive || p.playing {\n")
-		fmt.sbprintf(&sb, "\t\t\tp.bus_tail_remaining = u64(%s_BUS_TAIL_SECONDS * sample_rate)\n", namespace_prefix)
+		fmt.sbprint(&sb, "\t\t\tp.bus_tail_armed = false\n")
+		fmt.sbprint(&sb, "\t\t\tp.bus_tail_remaining = 0\n")
+		fmt.sbprint(&sb, "\t\t} else if !p.bus_tail_armed {\n")
+		fmt.sbprint(&sb, "\t\t\tp.bus_tail_armed = true\n")
+		fmt.sbprintf(&sb, "\t\t\tp.bus_tail_remaining = u64(%s_bus_tail_seconds(p) * sample_rate)\n", namespace_prefix)
 		fmt.sbprint(&sb, "\t\t} else if p.bus_tail_remaining > 0 {\n")
 		fmt.sbprint(&sb, "\t\t\tp.bus_tail_remaining -= 1\n")
 		fmt.sbprint(&sb, "\t\t}\n")

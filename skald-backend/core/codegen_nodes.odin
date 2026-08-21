@@ -358,8 +358,11 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, pl
 	decay_str     := get_f32_param(graph, plan, node, "decay", "", 0.5)
 	pre_delay_str := get_f32_param(graph, plan, node, "preDelay", "", 0.02)
 	mix_str       := get_f32_param(graph, plan, node, "mix", "", 0.5)
-	
-	delay_time := 0.075 
+
+	// B7-x1: shared with the tail-length analysis and the runtime live-tail
+	// proc via REVERB_COMB_SECONDS — see its doc comment in
+	// codegen_analysis.odin.
+	delay_time := REVERB_COMB_SECONDS
 
 	fmt.sbprintf(sb, "\t\t// --- Reverb Node %s (pre-delay + feedback comb) ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
@@ -375,7 +378,7 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, pl
 	fmt.sbprintf(sb, "\t\t\tdelay_samples_%s := int(math.clamp((%.9f) * sample_rate, 0, %d-1));\n", node.id, delay_time, MAX_DELAY_SAMPLES)
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
-	emit_f32_local(sb, "\t\t\t", fmt.tprintf("decay_gain_%s", node.id), fmt.tprintf("math.clamp(math.pow(f32(0.001), f32(0.075) / math.max(f32(%s), 0.01)), 0.0, 0.95)", decay_str))
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("decay_gain_%s", node.id), fmt.tprintf("math.clamp(math.pow(f32(0.001), f32(%.9f) / math.max(f32(%s), 0.01)), 0.0, 0.95)", delay_time, decay_str))
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = pre_delayed_input_%s + delayed_sample_%s * decay_gain_%s;\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_write_index = (p.delay_%s_write_index + 1) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * (1.0 - (%s)) + delayed_sample_%s * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)

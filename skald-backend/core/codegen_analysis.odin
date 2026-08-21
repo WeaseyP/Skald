@@ -11,6 +11,14 @@ import json "core:encoding/json"
 MAX_DELAY_SAMPLES :: 96000
 MAX_REVERB_PREDELAY_SAMPLES :: 48000
 
+// B7-x1: the Reverb comb's feedback-line length. Used to live as an
+// independent `0.075` literal in both codegen_nodes.odin (the emitted DSP)
+// and here (the tail-length analysis) — a real drift risk, since nothing
+// would fail to compile if only one of the two ever changed. One named
+// constant, shared by both plus the runtime tail proc in
+// codegen_processor.odin, closes that gap.
+REVERB_COMB_SECONDS :: 0.075
+
 // The beat fraction a bpmSync'd node's time base resolves to. Split out of
 // bpm_sync_seconds_expr so the tail-length analysis (SKB-016) can read the
 // NUMBER instead of re-parsing the expression string that is emitted from it —
@@ -56,22 +64,30 @@ bpm_sync_seconds_expr :: proc(node: Node) -> (string, bool) {
 // audible.
 //
 // The tail length is knowable without running the DSP, so it is computed here
-// and baked into the emission as a per-asset seconds constant that _process
-// counts down. WHICH value each parameter contributes is the decision worth
-// stating:
+// and baked into the emission as a per-asset seconds constant — but as of
+// B7-2-followup, that constant is a documented WORST-CASE upper bound only
+// (still what gates whether the has-a-tail machinery is emitted at all); it
+// is no longer what _process counts down from. The countdown instead calls
+// <Asset>_bus_tail_seconds (codegen_processor.odin) once per note-off,
+// against LIVE field values, via skald_feedback_tail_seconds
+// (codegen_project.odin) — the runtime mirror of feedback_tail_seconds below.
+// WHICH value each parameter contributes to THIS worst-case analysis is still
+// the decision worth stating:
 //
 //   * a parameter nothing can change at runtime contributes its AUTHORED value
 //   * an exposed (or P-locked) parameter contributes its RANGE MAXIMUM
 //
-// The second rule is deliberately pessimistic. Baking the authored value would
-// make the constant a lower BOUND, so the first time a game raised an exposed
-// feedback the countdown would expire while the delay was still ringing — the
-// same bug back again, and now invisible, because it only reproduces for
-// values that never appear in the project file. Erring long merely delays the
-// asset's release; erring short is audible. The consequence is worth knowing:
-// exposing both delayTime and feedback over their full ranges bakes a 270s
-// tail (2.0s per pass, 135 passes to -60dB at feedback 0.95), so an author who
-// wants a tight is_playing should not expose them — or should narrow the range.
+// The second rule is deliberately pessimistic, which is exactly why it is no
+// longer what the countdown itself runs on: baking the range maximum in as a
+// constant meant the first time an author exposed a tail parameter at all,
+// _is_playing stayed true for however long the FULL RANGE could ring, not
+// however long the AUTHORED value actually does — 202.5s-415s on real shipped
+// content (B7-2-followup) for tails that were really under 2s. This worst
+// case remains useful as a compile-time upper bound (still `_BUS_TAIL_SECONDS`
+// in the emission) and as the signal for whether a tail exists at all: exposing
+// both delayTime and feedback over their full ranges worst-cases to 270s
+// (2.0s per pass, 135 passes to -60dB at feedback 0.95) even though the
+// countdown a game actually observes tracks the live value instead.
 //
 // Tails SUM rather than max: a Delay feeding a Reverb rings for the Delay's
 // tail and then the Reverb's, and a sum is still an upper bound when the two
@@ -157,8 +173,8 @@ tail_seconds_for_reverb :: proc(node: Node, plan: ^Instrument_Plan) -> f64 {
 	// the analysis and the DSP cannot disagree about how fast the comb decays
 	// (including at the top of the decay range, where the 0.95 ceiling bites
 	// and the real tail saturates around 10s rather than growing with decay).
-	gain := math.pow(f64(0.001), f64(0.075) / math.max(decay, f64(0.01)))
-	return pre + feedback_tail_seconds(0.075, gain)
+	gain := math.pow(f64(0.001), f64(REVERB_COMB_SECONDS) / math.max(decay, f64(0.01)))
+	return pre + feedback_tail_seconds(f64(REVERB_COMB_SECONDS), gain)
 }
 
 // Worst-case seconds the whole instrument's effect bus keeps sounding after

@@ -612,6 +612,47 @@ main :: proc() {
 			}
 		}
 
+	case "delay_tail_live":
+		// B7-2-followup / SKB-016: delayTime and feedback are both exposed, so
+		// the OLD baked constant was 270s (delayTime range max 2.0s x 135
+		// passes for feedback range max 0.95 to fall 60dB) no matter what is
+		// authored. The authored values here (delayTime 0.25, feedback 0.3)
+		// give a true live tail of 0.25 x 6 passes = 1.5s. This fixture fails
+		// under the old fixed-constant countdown (is_playing is still true at
+		// 2.5s — nowhere near its 270s expiry) and passes once the countdown
+		// is armed from the live field values instead.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.25)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				ga.Asset_trigger(p, 69, 1.0, 0.25)
+				// Note dies by ~0.30s (0.25s duration + 0.05s release). At 1.0s
+				// the live 1.5s tail is still ringing.
+				for _ in 0 ..< int(1.0 * sample_rate) do ga.Asset_process(p)
+				if !ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail_live: is_playing false at 1.0s, inside the live 1.5s tail",
+					)
+					all_pass = false
+				}
+				// By 2.5s the live tail (armed ~0.30s + 1.5s = expires ~1.80s)
+				// is long gone. The pre-fix baked constant would keep this true
+				// until ~270.3s, so this is the assertion that catches the bug.
+				for _ in 0 ..< int(1.5 * sample_rate) do ga.Asset_process(p)
+				if ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail_live: is_playing still true at 2.5s — the live tail should have expired around 1.8s, not the baked worst-case 270s",
+					)
+					all_pass = false
+				}
+			}
+		}
+
 	case "wavetable_morph":
 		// Wavetable at position 0 (sine) must track the note pitch, and
 		// sweeping position toward sawtooth must brighten the spectrum —
