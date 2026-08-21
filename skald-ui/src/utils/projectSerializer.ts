@@ -11,6 +11,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { NODE_DEFINITIONS } from '../definitions/node-definitions';
 import { NodeParams, SequencerTrack, InstrumentParams } from '../definitions/types';
+import { isExportablePlockValue } from './plockTargets';
 
 export interface ProjectStructure {
     project: {
@@ -176,9 +177,17 @@ export const buildProjectData = (
                     // the backend applies them through the f32 set_param
                     // API (a string override — e.g. a waveform switch —
                     // would fail the whole JSON parse backend-side).
+                    //
+                    // The filter is still silent HERE, on purpose: this is a
+                    // pure transform shared by the preview and the export, and
+                    // it must stay pure. SKB-045's report happens where the
+                    // user is — the step editor flags the override and
+                    // useCodeGeneration surfaces it on Generate — through
+                    // isExportablePlockValue, this same predicate, so what is
+                    // flagged is exactly what is dropped.
                     patch_overrides: Object.fromEntries(
                         Object.entries(n.patchOverrides ?? {})
-                            .filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+                            .filter(([, v]) => isExportablePlockValue(v))
                     )
                 }))
             }));

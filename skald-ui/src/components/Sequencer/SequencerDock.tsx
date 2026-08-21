@@ -29,10 +29,14 @@ interface SequencerDockProps {
     onMuteToggle: (trackId: string) => void;
     onSoloToggle: (trackId: string) => void;
     onFocusTrack: (trackId: string) => void;
-    onToggleStep: (trackId: string, step: number) => void;
+    onToggleStep: (trackId: string, step: number, notePitch?: number) => void;
+    // Right-click erase on a grid row: the row has no pitch axis, so it clears
+    // the step rather than deleting one arbitrary chord member (SKB-025).
+    onClearStep: (trackId: string, step: number) => void;
     onUpdateNote: (trackId: string, step: number, changes: Partial<any>, notePitch?: number) => void;
     onUpdateSteps: (trackId: string, steps: number) => void;
-    onStepSelect: (trackId: string, step: number) => void;
+    // notePitch: which note of the step the selection refers to.
+    onStepSelect: (trackId: string, step: number, notePitch: number) => void;
 }
 
 const dockContainerStyles: React.CSSProperties = {
@@ -83,6 +87,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     onSoloToggle,
     onFocusTrack,
     onToggleStep,
+    onClearStep,
     onUpdateNote,
     onUpdateSteps,
     onStepSelect,
@@ -222,9 +227,10 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                             currentStep={state.currentStep}
                             steps={patternSteps}
                             onToggleStep={onToggleStep}
+                            onClearStep={onClearStep}
                             onUpdateNote={onUpdateNote}
                             bpm={bpm}
-                            onStepContext={(trackId, step, x, y) => onStepSelect(trackId, step)}
+                            onStepContext={(trackId, step, notePitch) => onStepSelect(trackId, step, notePitch)}
                         />
 
                         {editingTrack && (
@@ -234,6 +240,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                                 onToggleStep={onToggleStep}
                                 currentStep={state.currentStep}
                                 steps={editingTrack.steps || 16}
+                                patternSteps={patternSteps}
                                 onClose={() => setEditingTrackId(null)}
                             />
                         )}

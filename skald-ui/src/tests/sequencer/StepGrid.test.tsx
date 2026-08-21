@@ -73,7 +73,11 @@ describe('StepGrid', () => {
         const cell = screen.getByTestId('step-track-1-2');
         fireEvent.mouseDown(cell, { button: 0 });
 
-        expect(onToggleStep).toHaveBeenCalledWith('track-1', 2);
+        // SKB-025: the pitch is no longer implicit. A cell click names the
+        // pitch it is about to create (middle C) rather than leaving
+        // toggleStep to default it, so that every gesture in this grid says
+        // which note it means.
+        expect(onToggleStep).toHaveBeenCalledWith('track-1', 2, 60);
     });
 
     it('should render active notes', () => {

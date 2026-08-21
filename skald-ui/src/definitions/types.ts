@@ -250,7 +250,17 @@ export interface NoteEvent {
   velocity: number;   // 0.0 to 1.0
   duration: number;   // In steps (defaults to 1)
   probability?: number; // 0.0 to 1.0, chance to play. Default 1.0 (100%)
-  patchOverrides?: Record<string, number>; // Parameter Name -> Value Overrides
+  /**
+   * "<NodeLabel>:<param>" -> per-step override value.
+   *
+   * `unknown`, not `number`: the step editor's controls write whatever the
+   * parameter holds, so a waveform string or a BPM-Sync boolean really can be
+   * in here (SKB-045) — projectSerializer then drops it, because the generated
+   * per-step setter takes an f32. Declaring `number` made the value look
+   * pre-validated and made `isExportablePlockValue` look like dead code, while
+   * every write site went through an `any` and stored the string anyway.
+   */
+  patchOverrides?: Record<string, unknown>;
 }
 
 /**

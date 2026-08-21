@@ -5,12 +5,19 @@ import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
 import { NumberInput } from './common/NumberInput';
-import { formatSyncTime } from '../definitions/bpm';
+import { DEFAULT_SYNC_RATE, bpmSyncToggleChanges, formatSyncTime } from '../definitions/bpm';
 
 interface NodeParameterControlsProps {
     node: Node;
     values?: Record<string, any>; // If provided, overrides node.data
     onChange: (paramName: string, value: any) => void;
+    // Write several parameters as ONE delta. Only callers that own node data
+    // pass this (the sidebar). The step-properties editor deliberately does
+    // not: there every onChange becomes a "<Label>:<param>" P-lock, and a
+    // `syncRate` P-lock is a hard codegen error (nothing in any node
+    // configuration ever makes syncRate live), so the BPM Sync toggle must
+    // stay a single-key write there. See bpmSyncToggleChanges.
+    onChangeMany?: (changes: Record<string, unknown>) => void;
     renderControlWrapper: (paramKey: string, label: string, control: React.ReactNode, isExposable?: boolean) => React.ReactNode;
     // Project tempo, for display only: BPM-synced controls annotate their
     // sync rate with the effective time at this tempo so the user can see
@@ -37,7 +44,7 @@ const labelStyles: React.CSSProperties = {
     marginBottom: '5px'
 }
 
-export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, renderControlWrapper, bpm }) => {
+export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, onChangeMany, renderControlWrapper, bpm }) => {
     const { type, data: nodeData } = node;
     const data = values || nodeData;
 
@@ -57,15 +64,47 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
     // {-1e6, 1e6, 0.0, ""} and emitted a `set_syncRate` writing a struct field
     // the DSP never reads — dead public API minted in one click, persisted into
     // the save file. The backend-side guard is B2's job; this is the UI half.
-    const syncRateControl = (defaultRate: string) => {
-        const rate = data.syncRate ?? defaultRate;
+    //
+    // SKB-058: the fallback used to be a per-node-type literal passed in by
+    // each caller below — "1/4" for LFO but "1/8" for Delay and SampleHold —
+    // while the backend defaults every type to "1/4". A Delay with bpmSync on
+    // and no stored rate therefore read as an eighth here and generated as a
+    // quarter. There is one fallback now, and when it is in play the control
+    // says so instead of passing an invented value off as the node's own.
+    const syncRateControl = () => {
+        const stored = typeof data.syncRate === 'string' ? data.syncRate : undefined;
+        const rate = stored ?? DEFAULT_SYNC_RATE;
         return (
             <>
                 <BpmSyncControl value={rate} onChange={val => onChange('syncRate', val)} />
                 {syncTimeHint(rate)}
+                {stored === undefined && (
+                    <div
+                        data-testid="sync-rate-implicit"
+                        style={{ color: '#e0a030', fontSize: '0.8em', marginTop: '4px' }}
+                    >
+                        No rate stored on this node — {DEFAULT_SYNC_RATE} is the generator's
+                        default. Pick a rate to author it explicitly.
+                    </div>
+                )}
             </>
         );
     };
+
+    // BPM Sync cannot be written alone: see bpmSyncToggleChanges.
+    const bpmSyncToggle = () => (
+        <div style={{ margin: '10px 0' }}>
+            <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
+            <input
+                type="checkbox"
+                checked={data.bpmSync || false}
+                onChange={e => {
+                    if (onChangeMany) onChangeMany(bpmSyncToggleChanges(e.target.checked, data));
+                    else onChange('bpmSync', e.target.checked);
+                }}
+            />
+        </div>
+    );
 
     const createSelect = (paramKey: string, options: string[]) => (
         <select name={paramKey} value={data[paramKey]} onChange={(e) => onChange(paramKey, e.target.value)} style={inputStyles}>
@@ -170,40 +209,30 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             return (<>
                 {renderControlWrapper('waveform', 'Waveform', createSelect('waveform', ['Sine', 'Sawtooth', 'Triangle', 'Square']), false)}
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/4'), false)
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false)
                     : renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 0.1, 50, 5, 'log'))
                 }
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
-                {/* BPM Sync Toggle is handled specially in main panel, but we might want it here? For now, skipping complex toggle logic or implementing basic checkbox */}
-                <div style={{ margin: '10px 0' }}>
-                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
-                    <input type="checkbox" checked={data.bpmSync || false} onChange={e => onChange('bpmSync', e.target.checked)} />
-                </div>
+                {bpmSyncToggle()}
             </>);
         case 'delay':
             return (<>
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'), false)
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false)
                     : renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0, 2, 0.5))
                 }
                 {renderControlWrapper('feedback', 'Feedback', slider('feedback', 0, 1, 0.5))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
-                <div style={{ margin: '10px 0' }}>
-                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
-                    <input type="checkbox" checked={data.bpmSync || false} onChange={e => onChange('bpmSync', e.target.checked)} />
-                </div>
+                {bpmSyncToggle()}
             </>);
         case 'sampleHold':
             return (<>
                 {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'), false)
+                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false)
                     : renderControlWrapper('rate', 'Rate (Hz)', slider('rate', 0.1, 50, 10, 'log'))
                 }
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
-                <div style={{ margin: '10px 0' }}>
-                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
-                    <input type="checkbox" checked={data.bpmSync || false} onChange={e => onChange('bpmSync', e.target.checked)} />
-                </div>
+                {bpmSyncToggle()}
             </>);
         case 'fmOperator':
             return (<>

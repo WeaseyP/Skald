@@ -27,6 +27,8 @@ import { useFileIO, FileStatus } from './hooks/nodeEditor/useFileIO';
 import { useWindowTitle } from './hooks/nodeEditor/useWindowTitle';
 import { useAutosave, readAutosave, clearAutosave, AutosaveRecord } from './hooks/nodeEditor/useAutosave';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
+import { useProjectIssues } from './hooks/nodeEditor/useProjectIssues';
+import { ProjectIssuesBanner } from './components/ProjectIssuesBanner';
 // import { NODE_DEFINITIONS } from './definitions/node-definitions'; // Unused
 import { SequencerDock } from './components/Sequencer/SequencerDock';
 import { useScale , ScaleProvider } from './contexts/ScaleContext';
@@ -81,7 +83,10 @@ const EditorLayout = () => {
     // Playback preference, not part of the document: neither saved nor
     // undoable, so it stays local instead of joining the session block.
     const [isLooping, setIsLooping] = useState(false);
-    const [selectedStep, setSelectedStep] = useState<{ trackId: string, step: number } | null>(null);
+    // `notePitch` is part of the selection now: a step can hold a chord, and a
+    // step-only selection meant every edit landed on an arbitrary member
+    // (SKB-025).
+    const [selectedStep, setSelectedStep] = useState<{ trackId: string, step: number, notePitch: number } | null>(null);
 
     // Not part of the document either: the Generate destination is a
     // session-scoped path, not project data.
@@ -131,6 +136,7 @@ const EditorLayout = () => {
         setCurrentStep,
         loadTracks,
         toggleStep,
+        clearStep,
         toggleMute,
         toggleSolo,
         updateNote,
@@ -151,9 +157,29 @@ const EditorLayout = () => {
         }
     }, [selectedNode]);
 
-    const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration();
+    // Save/load outcome, shown in a banner over the canvas. Errors stay up
+    // until the next file action; successes auto-clear after a few seconds.
+    const [fileStatus, setFileStatus] = useState<FileStatus | null>(null);
+    const fileStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const notifyFileStatus = useCallback((status: FileStatus) => {
+        if (fileStatusTimer.current) clearTimeout(fileStatusTimer.current);
+        setFileStatus(status);
+        if (status.kind === 'success') {
+            fileStatusTimer.current = setTimeout(() => setFileStatus(null), 4000);
+        }
+    }, []);
+
+    // Generate reports what serialization is about to drop through the same
+    // banner (SKB-009/045/010) — it used to drop it with no report at all.
+    const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration(notifyFileStatus);
 
     const { nearestInScale } = useScale();
+
+    // SKB-009 (b): the P-lock/step-range verdict, recomputed from the live
+    // document. Renaming a node breaks every override that named it, and until
+    // this existed the only thing that ever noticed was codegen — which does
+    // not warn, it exits.
+    const projectIssues = useProjectIssues(nodes, tracks, patternSteps);
 
     const { isPlaying, handlePlay, handleStop, analyserNode, previewError, previewStale, isBuilding } = useWasmAudioEngine(
         nodes,
@@ -169,17 +195,6 @@ const EditorLayout = () => {
         // hook's masterVolume param comment for why the two never agreed.
         masterVolume
     );
-    // Save/load outcome, shown in a banner over the canvas. Errors stay up
-    // until the next file action; successes auto-clear after a few seconds.
-    const [fileStatus, setFileStatus] = useState<FileStatus | null>(null);
-    const fileStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const notifyFileStatus = useCallback((status: FileStatus) => {
-        if (fileStatusTimer.current) clearTimeout(fileStatusTimer.current);
-        setFileStatus(status);
-        if (status.kind === 'success') {
-            fileStatusTimer.current = setTimeout(() => setFileStatus(null), 4000);
-        }
-    }, []);
     const [isExamplesModalOpen, setIsExamplesModalOpen] = useState(false);
 
     const { handleSave, handleLoad, handleImportGraph, loadContent, importBatch } = useFileIO(
@@ -351,10 +366,17 @@ const EditorLayout = () => {
     // The Export-Step action itself lives in useEditorState (so its undo entry
     // is pushed next to the edit it describes); the component keeps only the
     // viewport concern.
-    const onExportStep = useCallback((trackId: string, step: number) => {
-        const newNodeId = handleExportStep(trackId, step);
+    const onExportStep = useCallback((trackId: string, step: number, notePitch: number) => {
+        const newNodeId = handleExportStep(trackId, step, notePitch);
         if (newNodeId) handleFocusNode(newNodeId);
     }, [handleExportStep, handleFocusNode]);
+
+    // One definition of "select this note", shared by the grid and by the
+    // chord-member buttons in the step editor.
+    const onSelectStep = useCallback((trackId: string, step: number, notePitch: number) => {
+        setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+        setSelectedStep({ trackId, step, notePitch });
+    }, [setNodes]);
 
     return (
         <div style={appContainerStyles}>
@@ -464,6 +486,10 @@ const EditorLayout = () => {
                                 {previewError ?? previewStale}
                             </div>
                         )}
+                        <ProjectIssuesBanner
+                            lines={projectIssues.lines}
+                            blocksBuild={projectIssues.blocksBuild}
+                        />
                         {recoverableAutosave && (
                             <div
                                 data-testid="autosave-recovery-banner"
@@ -541,6 +567,7 @@ const EditorLayout = () => {
                                 selectedStep={selectedStep}
                                 tracks={tracks}
                                 onUpdateNote={updateNote}
+                                onSelectStep={onSelectStep}
                                 onExportStep={onExportStep}
                             />
                         )}
@@ -568,14 +595,11 @@ const EditorLayout = () => {
                         setSelectedStep(null);
                     }}
                     onToggleStep={toggleStep}
+                    onClearStep={clearStep}
                     onUpdateNote={updateNote}
                     onUpdateSteps={updateTrackSteps}
                     analyserNode={analyserNode?.current || null}
-                    onStepSelect={(trackId, step) => {
-                        // Deselect nodes
-                        setNodes(nds => nds.map(n => ({ ...n, selected: false })));
-                        setSelectedStep({ trackId, step });
-                    }}
+                    onStepSelect={onSelectStep}
                 />
             </div>
         </div>

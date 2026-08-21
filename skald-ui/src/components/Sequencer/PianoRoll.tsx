@@ -1,7 +1,20 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
 import { useScale } from '../../contexts/ScaleContext';
-import { PIANO_STEP_WIDTH_DEFAULT, PIANO_STEP_WIDTH_MIN, stepWidthFor } from './stepMetrics';
+import {
+    MIDI_NOTE_MAX,
+    MIDI_NOTE_MIN,
+    NOTE_ROW_HEIGHT,
+    PIANO_STEP_WIDTH_DEFAULT,
+    PIANO_STEP_WIDTH_MIN,
+    effectiveTrackSteps,
+    noteExtent,
+    outOfRangeNoteCount,
+    pitchRowsDescending,
+    scrollTopForPitch,
+    stepWidthFor,
+} from './stepMetrics';
+import { OutOfRangeNotice } from './OutOfRangeNotice';
 import { useElementWidth } from './useElementWidth';
 
 interface PianoRollProps {
@@ -10,16 +23,24 @@ interface PianoRollProps {
     onToggleStep: (trackId: string, step: number, note?: number) => void;
     currentStep: number;
     steps?: number;
+    // Global pattern length. The roll used to know only the track's own loop
+    // length, so it happily offered 32 editable columns under a 16-step
+    // pattern - half of them silently inaudible (SKB-010).
+    patternSteps?: number;
     onClose: () => void;
 }
 
-const NOTE_HEIGHT = 20;
+const NOTE_HEIGHT = NOTE_ROW_HEIGHT;
 const KEY_WIDTH = 50;
 const HEADER_HEIGHT = 30;
 
-// Visible range (MIDI notes)
-const MIN_NOTE = 21; // A0 (lowest key on an 88-key piano)
-const MAX_NOTE = 84; // C6
+// SKB-026: the range used to be local constants pinned to an 88-key piano
+// (21..84), which is not a chromatic editor's remit — a note the sequencer
+// happily played and exported above 84 had no row to appear in, so it could
+// neither be seen nor deleted. The range is the whole MIDI space now, shared
+// from stepMetrics with whatever else draws a pitch axis (roadmap F1's drum
+// roll). This container was already `overflow: auto`, so the taller canvas
+// costs nothing but the rows themselves.
 
 const pianoRollStyles: React.CSSProperties = {
     position: 'absolute',
@@ -78,6 +99,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     onToggleStep,
     currentStep,
     steps = 16,
+    patternSteps,
     onClose
 }) => {
     const { isInScale, rootNote, scaleName, nearestInScale } = useScale();
@@ -86,20 +108,22 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // Long patterns shrink their columns to fit rather than forcing a scroll
     // across dozens of bars; below the floor the grid scrolls as before. The
     // keys column is sticky, so subtract it from the space the steps can use.
+    // Steps the generated sequencer can actually reach, and the columns the
+    // roll draws. They differ in both directions: a track longer than the
+    // pattern has trailing columns that never play, and a note stranded past
+    // both counts still needs a column to be seen and deleted in.
+    const playableSteps = effectiveTrackSteps(steps, patternSteps ?? steps);
+    const columns = Math.max(steps, noteExtent([track]));
+    const strandedCount = outOfRangeNoteCount([track], patternSteps ?? steps);
+
     const [, containerWidth] = useElementWidth<HTMLDivElement>(scrollContainerRef);
-    const stepWidth = stepWidthFor(steps, Math.max(0, containerWidth - KEY_WIDTH), {
+    const stepWidth = stepWidthFor(columns, Math.max(0, containerWidth - KEY_WIDTH), {
         preferred: PIANO_STEP_WIDTH_DEFAULT,
         min: PIANO_STEP_WIDTH_MIN,
     });
 
-    // Generate note list (descending order for display)
-    const midiNotes = useMemo(() => {
-        const notes = [];
-        for (let i = MAX_NOTE; i >= MIN_NOTE; i--) {
-            notes.push(i);
-        }
-        return notes;
-    }, []);
+    // Highest pitch at the top, as on a score.
+    const midiNotes = useMemo(() => pitchRowsDescending(MIDI_NOTE_MIN, MIDI_NOTE_MAX), []);
 
     const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
     const getNoteName = (midi: number) => {
@@ -120,7 +144,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const relativeX = e.clientX - rect.left - KEY_WIDTH + scrollLeft;
         const clickedStep = Math.floor(relativeX / stepWidth);
 
-        if (clickedStep >= 0 && clickedStep < steps) {
+        if (clickedStep >= 0 && clickedStep < playableSteps) {
             setIsPainting(true);
 
             // Determine mode based on initial click
@@ -149,7 +173,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const relativeX = e.clientX - rect.left - KEY_WIDTH + scrollLeft;
         const hoveredStep = Math.floor(relativeX / stepWidth);
 
-        if (hoveredStep >= 0 && hoveredStep < steps) {
+        if (hoveredStep >= 0 && hoveredStep < playableSteps) {
             // Avoid double-toggling same step if we just processed it
             if (lastPaintedStep.current && lastPaintedStep.current.step === hoveredStep && lastPaintedStep.current.note === midiNote) {
                 return;
@@ -174,14 +198,12 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         lastPaintedStep.current = null;
     };
 
-    // Auto-scroll to center notes on mount
+    // Open on middle C. With the full MIDI range the default scroll position is
+    // no longer incidental: row 0 is now G9, five octaves above anything most
+    // patches use.
     useEffect(() => {
-        if (scrollContainerRef.current) {
-            const centerNoteIndex = midiNotes.findIndex(n => n === 60); // Middle C
-            if (centerNoteIndex !== -1) {
-                scrollContainerRef.current.scrollTop = (centerNoteIndex * NOTE_HEIGHT) - (scrollContainerRef.current.clientHeight / 2);
-            }
-        }
+        const el = scrollContainerRef.current;
+        if (el) el.scrollTop = scrollTopForPitch(60, el.clientHeight);
     }, []);
 
     // Global MouseUp to catch drags ending outside
@@ -221,6 +243,26 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                 </div>
             </div>
 
+            <OutOfRangeNotice count={strandedCount} patternSteps={patternSteps ?? steps} />
+
+            {columns > playableSteps && (
+                <div
+                    data-testid="piano-roll-out-of-range"
+                    style={{
+                        flex: '0 0 auto',
+                        padding: '3px 10px',
+                        fontSize: '10px',
+                        color: '#e0a030',
+                        backgroundColor: '#252526',
+                        borderBottom: '1px solid #333',
+                    }}
+                >
+                    Steps {playableSteps} to {columns - 1} are greyed: this track plays{' '}
+                    {playableSteps} steps, which is min(track length {steps}, pattern length{' '}
+                    {patternSteps ?? steps}).
+                </div>
+            )}
+
             <div style={gridContainerStyles} ref={scrollContainerRef} data-testid="piano-roll-scroll-container">
                 {/* Keys Column */}
                 <div style={keysColumnStyles}>
@@ -252,17 +294,20 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                 {/* Grid Content */}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {/* Header Row */}
-                    <div style={{ ...stepHeaderStyles, width: steps * stepWidth }}>
-                        {Array.from({ length: steps }).map((_, i) => (
+                    <div style={{ ...stepHeaderStyles, width: columns * stepWidth }}>
+                        {Array.from({ length: columns }).map((_, i) => (
                             <div
                                 key={i}
+                                title={i >= playableSteps
+                                    ? `Step ${i} is past the playable range (${playableSteps} steps = min(track ${steps}, pattern ${patternSteps ?? steps}))`
+                                    : `Step ${i}`}
                                 style={{
                                     width: stepWidth,
                                     borderRight: '1px solid #444',
                                     textAlign: 'center',
                                     fontSize: '10px',
                                     lineHeight: '30px',
-                                    color: i === currentStep ? '#0f0' : '#888',
+                                    color: i === currentStep ? '#0f0' : (i >= playableSteps ? '#5a5a5a' : '#888'),
                                     backgroundColor: i === currentStep ? 'rgba(0, 255, 0, 0.1)' : 'transparent'
                                 }}
                             >
@@ -283,7 +328,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                 data-testid={`piano-roll-note-${note}`}
                                 style={{
                                     height: NOTE_HEIGHT,
-                                    width: steps * stepWidth,
+                                    width: columns * stepWidth,
                                     display: 'flex',
                                     position: 'relative',
                                     backgroundColor: inScale ? (isBlack ? '#222' : '#2A2A2A') : (isBlack ? '#151515' : '#1F1F1F'),
@@ -293,7 +338,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                 onMouseEnter={(e) => handleGridMouseEnter(e, note)}
                             >
                                 {/* Vertical Grid Lines */}
-                                {Array.from({ length: steps }).map((_, i) => (
+                                {Array.from({ length: columns }).map((_, i) => (
                                     <div
                                         key={i}
                                         style={{
@@ -323,6 +368,23 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                         }}
                                     />
                                 ))}
+
+                                {/* Unreachable columns: greyed, never hidden -
+                                    the user has to see why the right-hand end
+                                    of the roll refuses to accept notes. */}
+                                {columns > playableSteps && (
+                                    <div
+                                        style={{
+                                            position: 'absolute',
+                                            left: playableSteps * stepWidth,
+                                            width: (columns - playableSteps) * stepWidth,
+                                            top: 0,
+                                            bottom: 0,
+                                            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+                                            pointerEvents: 'none'
+                                        }}
+                                    />
+                                )}
 
                                 {/* Playhead Highlight */}
                                 <div

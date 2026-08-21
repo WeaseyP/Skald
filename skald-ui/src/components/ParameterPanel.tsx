@@ -97,16 +97,20 @@ interface ParameterPanelProps {
     allEdges: Edge[];
     bpm: number;
     // Step Editing
-    selectedStep?: { trackId: string, step: number } | null;
+    // `notePitch` names which note of the step is selected: a step can hold a
+    // chord, and without it the editor edited whichever member came first in
+    // the array (SKB-025).
+    selectedStep?: { trackId: string, step: number, notePitch: number } | null;
     tracks?: SequencerTrack[];
     onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
-    onExportStep?: (trackId: string, step: number) => void;
+    onSelectStep?: (trackId: string, step: number, notePitch: number) => void;
+    onExportStep?: (trackId: string, step: number, notePitch: number) => void;
 }
 
 
 // --- MAIN COMPONENT ---
 
-const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm, selectedStep, tracks, onUpdateNote, onExportStep }) => {
+const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm, selectedStep, tracks, onUpdateNote, onSelectStep, onExportStep }) => {
 
     if (selectedStep && tracks && onUpdateNote) {
         const track = tracks.find(t => t.id === selectedStep.trackId);
@@ -115,11 +119,11 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         return (
             <div style={panelStyles}>
                 <div style={headerStyles}>
-                    <h3>Edit Step {selectedStep.step}</h3>
+                    <h3>Edit Step {selectedStep.step} (note {selectedStep.notePitch})</h3>
                     <div style={{ fontSize: '0.8em', color: '#888' }}>{track?.name || 'Unknown Track'}</div>
                     {onExportStep && (
                         <button
-                            onClick={() => onExportStep(selectedStep.trackId, selectedStep.step)}
+                            onClick={() => onExportStep(selectedStep.trackId, selectedStep.step, selectedStep.notePitch)}
                             style={{
                                 marginTop: '10px',
                                 padding: '6px 12px',
@@ -138,8 +142,10 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 <StepPropertiesEditor
                     trackId={selectedStep.trackId}
                     step={selectedStep.step}
+                    notePitch={selectedStep.notePitch}
                     track={track}
                     onUpdateNote={onUpdateNote}
+                    onSelectNote={onSelectStep}
                     instrumentNode={instrumentNode}
                 />
             </div>
@@ -269,6 +275,14 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             handleParameterChange(paramKey, value, subNodeId || node.id);
         };
 
+        // The sidebar owns node data, so it can accept a multi-key delta —
+        // which is what lets the BPM Sync toggle author `syncRate` in the same
+        // edit (SKB-058). updateNodeData merges deltas into the LATEST node
+        // data, so one delta is also one undo entry.
+        const handleControlChangeMany = (changes: Record<string, unknown>) => {
+            handleParameterChange('', changes, subNodeId || node.id);
+        };
+
         const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable = true) => {
             const isExposed = data.exposedParameters?.includes(paramKey) || false;
             return renderParameterControl(
@@ -293,6 +307,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                     <NodeParameterControls
                         node={node}
                         onChange={handleControlChange}
+                        onChangeMany={handleControlChangeMany}
                         renderControlWrapper={wrapper}
                         bpm={bpm}
                     />
@@ -338,6 +353,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             <NodeParameterControls
                 node={node}
                 onChange={handleControlChange}
+                onChangeMany={handleControlChangeMany}
                 renderControlWrapper={wrapper}
                 bpm={bpm}
             />

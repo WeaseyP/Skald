@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PianoRoll } from '../../components/Sequencer/PianoRoll';
 import { ScaleProvider } from '../../contexts/ScaleContext';
 import { SequencerTrack } from '../../definitions/types';
+import { scrollTopForPitch } from '../../components/Sequencer/stepMetrics';
 
 const track: SequencerTrack = {
     id: 'bass-track',
@@ -39,18 +40,55 @@ describe('PianoRoll bass register', () => {
         cleanup();
     });
 
-    it('renders the full A0-C6 range and existing bass notes', () => {
+    it('renders the bass register and existing bass notes', () => {
         renderPianoRoll();
 
         expect(screen.getByText('A0')).toBeTruthy();
         expect(screen.getByText('C6')).toBeTruthy();
-        expect(screen.queryByText('G#0')).toBeNull();
 
         const c1Row = screen.getByTestId('piano-roll-note-24');
         const paintedNote = c1Row.querySelector(
             'div[style*="left: 91px"][style*="width: 58px"]'
         );
         expect(paintedNote).toBeTruthy();
+    });
+
+    // SKB-026: the canvas was hardcoded to MIDI 21..84, so a chromatic editor
+    // could not reach the top two octaves of the MIDI range at all — a note at
+    // 96 or 108 existed in the track, played in the preview and shipped in the
+    // export, but had no row to render in and no way to be edited or deleted.
+    // The container was ALREADY `overflow: auto`, so the range was the only
+    // thing standing between this and the full 0..127 canvas roadmap E4 wants.
+    it('SKB-026: reaches every MIDI pitch, not just 21..84', () => {
+        renderPianoRoll();
+
+        for (const [pitch, name] of [
+            [0, 'C-1'], [21, 'A0'], [84, 'C6'], [96, 'C7'], [108, 'C8'], [127, 'G9'],
+        ] as const) {
+            expect(
+                screen.getByTestId(`piano-roll-note-${pitch}`),
+                `MIDI ${pitch} (${name}) has no row`,
+            ).toBeTruthy();
+            expect(screen.getByText(name), `${name} has no key label`).toBeTruthy();
+        }
+        expect(screen.getAllByTestId(/^piano-roll-note-\d+$/)).toHaveLength(128);
+    });
+
+    it('SKB-026: renders a note above the old ceiling instead of dropping it', () => {
+        render(
+            <ScaleProvider>
+                <PianoRoll
+                    track={{ ...track, notes: [{ step: 2, note: 100, velocity: 1, duration: 1 }] }}
+                    onUpdateNote={vi.fn()}
+                    onToggleStep={vi.fn()}
+                    currentStep={0}
+                    steps={16}
+                    onClose={vi.fn()}
+                />
+            </ScaleProvider>
+        );
+        const row = screen.getByTestId('piano-roll-note-100');
+        expect(row.querySelector('div[style*="left: 61px"]')).toBeTruthy();
     });
 
     it('paints the clicked low pitch at the correct step', () => {
@@ -68,6 +106,10 @@ describe('PianoRoll bass register', () => {
     it('keeps the initial viewport centred on middle C', () => {
         renderPianoRoll();
 
-        expect(screen.getByTestId('piano-roll-scroll-container').scrollTop).toBe(480);
+        // Rows descend from MIDI_NOTE_MAX, so middle C sits at index
+        // (127 - 60) = 67; jsdom reports clientHeight 0, so no half-viewport
+        // correction is subtracted here.
+        expect(screen.getByTestId('piano-roll-scroll-container').scrollTop)
+            .toBe(scrollTopForPitch(60, 0));
     });
 });

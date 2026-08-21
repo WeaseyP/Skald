@@ -40,11 +40,21 @@ export interface ParamField {
     // Set it to the codegen fallback, NOT to a value written back into the
     // node: this is a read-time default, not a backfill (roadmap §4
     // constraint 4 gates schema-touching writes behind C1's version field).
-    default?: number;
+    //
+    // `string` for select fields: a select with no stored value used to show
+    // `options[0]`, which for the sync-rate lists meant a card reading "1/1"
+    // over a node the backend clocked at "1/4" (SKB-058).
+    default?: number | string;
     // Hide fields that only mean something in a certain mode (e.g. the
     // frequency box only when fixedPitch is on — an editable-but-inert
     // control is a lie).
     showIf?: (data: Record<string, any>) => boolean;
+    // A field whose edit implies a companion write. BPM Sync is the case:
+    // switching it on without also authoring `syncRate` leaves the node in the
+    // SKB-058 state, where the card, the sidebar and the backend each invented
+    // a different rate for the absent key. Returning the whole delta (rather
+    // than post-hoc patching) keeps it one undoable edit.
+    deriveChanges?: (value: unknown, data: Record<string, any>) => Record<string, unknown>;
 }
 
 export interface ParamNodeConfig {
@@ -84,7 +94,7 @@ const FieldControl: React.FC<{
             <select
                 className="nodrag"
                 style={selectStyles}
-                value={String(value ?? field.options?.[0] ?? '')}
+                value={String(value ?? field.default ?? field.options?.[0] ?? '')}
                 onChange={(e) => update({ [field.key]: e.target.value })}
             >
                 {(field.options ?? []).map((opt) => (
@@ -99,7 +109,9 @@ const FieldControl: React.FC<{
                 type="checkbox"
                 className="nodrag"
                 checked={!!value}
-                onChange={(e) => update({ [field.key]: e.target.checked })}
+                onChange={(e) => update(field.deriveChanges
+                    ? field.deriveChanges(e.target.checked, data)
+                    : { [field.key]: e.target.checked })}
             />
         );
     }

@@ -19,6 +19,7 @@ import { useSessionSettings } from './useSessionSettings';
 import { useSequencerState } from '../sequencer/useSequencerState';
 import { useInstrumentRegistry } from '../sequencer/useInstrumentRegistry';
 import { EditorSnapshot, HistoryIO } from './editorSnapshot';
+import { effectiveTrackSteps } from '../../components/Sequencer/stepMetrics';
 
 // Export-Step's existing "(Step N)" suffix convention, applied to both the
 // node's display label and (F-A09-7) an Instrument's `name` — the field
@@ -70,11 +71,28 @@ export const useEditorState = () => {
      * Lives here rather than in app.tsx so the pushHistory call site is
      * reachable from a hook test. Returns the new node's id for the caller to
      * focus, keeping viewport concerns in the component.
+     *
+     * `notePitch` names WHICH note on the step is being exported. SKB-025: a
+     * step can hold a chord whose members carry different P-locks, and this
+     * used to bake `notes.find(n => n.step === step)` — the first in insertion
+     * order — silently discarding the rest. An explicit pitch that is not at
+     * the step exports nothing rather than falling back to a neighbour.
      */
-    const handleExportStep = useCallback((trackId: string, step: number): string | null => {
+    const handleExportStep = useCallback((trackId: string, step: number, notePitch?: number): string | null => {
         const track = tracksRef.current.find(t => t.id === trackId);
         if (!track) return null;
-        const note = track.notes.find(n => n.step === step);
+        // SKB-010: a step past min(track length, pattern length) is one the
+        // generated `switch p.current_step % track_steps` can never reach, so
+        // minting an Instrument "as this step sounds" would be minting a node
+        // for a sound that never happens. The editors grey such steps; this is
+        // the same judgement, from the same helper, at the action.
+        if (step >= effectiveTrackSteps(track.steps, sessionRef.current.patternSteps)) return null;
+        const atStep = track.notes.filter(n => n.step === step);
+        const note = notePitch === undefined
+            // No pitch given: only unambiguous when the step holds one note.
+            // Picking one out of a chord is what this fix removes.
+            ? (atStep.length === 1 ? atStep[0] : undefined)
+            : atStep.find(n => n.note === notePitch);
         if (!note) return null;
 
         const nodes = nodesRef.current;
@@ -128,7 +146,7 @@ export const useEditorState = () => {
         setNodes([...updatedNodes, newNode as Node<NodeParams>]);
 
         return newNode.id as string;
-    }, [tracksRef, nodesRef, setNodes, pushHistory]);
+    }, [tracksRef, nodesRef, sessionRef, setNodes, pushHistory]);
 
     return {
         history,
