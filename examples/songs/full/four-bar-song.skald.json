@@ -20,9 +20,6 @@
                         { "id": "8", "type": "output", "position": { "x": 1000, "y": 0 }, "data": { "label": "Out" } }
                     ],
                     "connections": [
-                        { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
-                        { "from_node": "1", "from_port": "gate", "to_node": "4", "to_port": "input" },
-                        { "from_node": "1", "from_port": "gate", "to_node": "7", "to_port": "input" },
                         { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
                         { "from_node": "4", "from_port": "output", "to_node": "3", "to_port": "input_cutoff" },
                         { "from_node": "3", "from_port": "output", "to_node": "5", "to_port": "input" },
@@ -53,8 +50,6 @@
                         { "id": "8", "type": "output", "position": { "x": 1200, "y": 0 }, "data": { "label": "Out" } }
                     ],
                     "connections": [
-                        { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
-                        { "from_node": "1", "from_port": "gate", "to_node": "5", "to_port": "input" },
                         { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
                         { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" },
                         { "from_node": "5", "from_port": "output", "to_node": "4", "to_port": "input_gain" },
@@ -84,9 +79,6 @@
                         { "id": "7", "type": "output", "position": { "x": 800, "y": 0 }, "data": { "label": "Out" } }
                     ],
                     "connections": [
-                        { "from_node": "1", "from_port": "pitch", "to_node": "2", "to_port": "input_freq" },
-                        { "from_node": "1", "from_port": "gate", "to_node": "4", "to_port": "input" },
-                        { "from_node": "1", "from_port": "gate", "to_node": "6", "to_port": "input" },
                         { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
                         { "from_node": "4", "from_port": "output", "to_node": "3", "to_port": "input_cutoff" },
                         { "from_node": "3", "from_port": "output", "to_node": "5", "to_port": "input" },
@@ -108,15 +100,13 @@
                     "nodes": [
                         { "id": "1", "type": "midiInput", "position": { "x": 0, "y": 0 }, "data": { "label": "MIDI" } },
                         { "id": "2", "type": "oscillator", "position": { "x": 200, "y": 0 }, "data": { "waveform": "Sine", "frequency": 50, "amplitude": 1.0, "label": "Osc" } },
-                        { "id": "3", "type": "adsr", "position": { "x": 200, "y": 200 }, "data": { "attack": 0.001, "decay": 0.08, "sustain": 0, "release": 0.05, "depth": 120, "label": "Pitch Env" } },
+                        { "id": "3", "type": "adsr", "position": { "x": 200, "y": 200 }, "data": { "attack": 0.001, "decay": 0.08, "sustain": 0, "release": 0.05, "depth": 1.5, "label": "Pitch Env" } },
                         { "id": "4", "type": "gain", "position": { "x": 400, "y": 0 }, "data": { "gain": 0, "label": "VCA" } },
                         { "id": "5", "type": "adsr", "position": { "x": 400, "y": 200 }, "data": { "attack": 0.001, "decay": 0.18, "sustain": 0, "release": 0.1, "label": "Amp Env" } },
                         { "id": "6", "type": "distortion", "position": { "x": 600, "y": 0 }, "data": { "drive": 4, "mix": 0.3, "label": "Dist" } },
                         { "id": "7", "type": "output", "position": { "x": 800, "y": 0 }, "data": { "label": "Out" } }
                     ],
                     "connections": [
-                        { "from_node": "1", "from_port": "gate", "to_node": "3", "to_port": "input" },
-                        { "from_node": "1", "from_port": "gate", "to_node": "5", "to_port": "input" },
                         { "from_node": "3", "from_port": "output", "to_node": "2", "to_port": "input_freq" },
                         { "from_node": "2", "from_port": "output", "to_node": "4", "to_port": "input" },
                         { "from_node": "5", "from_port": "output", "to_node": "4", "to_port": "input_gain" },
@@ -144,7 +134,6 @@
                         { "id": "6", "type": "output", "position": { "x": 800, "y": 0 }, "data": { "label": "Out" } }
                     ],
                     "connections": [
-                        { "from_node": "1", "from_port": "gate", "to_node": "5", "to_port": "input" },
                         { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
                         { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" },
                         { "from_node": "5", "from_port": "output", "to_node": "4", "to_port": "input_gain" },
@@ -310,5 +299,10 @@
             "isMuted": false,
             "isSolo": false
         }
-    ]
+    ],
+    "session": {
+        "bpm": 100,
+        "patternSteps": 64,
+        "masterVolume": 0.8
+    }
 }

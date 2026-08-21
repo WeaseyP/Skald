@@ -229,18 +229,6 @@
               "to_port": "input"
             },
             {
-              "from_node": "6",
-              "from_port": "pitch",
-              "to_node": "2",
-              "to_port": "input_freq"
-            },
-            {
-              "from_node": "6",
-              "from_port": "gate",
-              "to_node": "7",
-              "to_port": "input"
-            },
-            {
               "from_node": "7",
               "from_port": "output",
               "to_node": "4",
@@ -292,5 +280,10 @@
       "isMuted": false,
       "isSolo": false
     }
-  ]
+  ],
+  "session": {
+    "bpm": 120,
+    "patternSteps": 16,
+    "masterVolume": 0.8
+  }
 }

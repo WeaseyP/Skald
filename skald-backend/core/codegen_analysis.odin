@@ -273,6 +273,138 @@ warn_dead_exposed_params :: proc(all_nodes: []Node, inst_name: string) {
 	}
 }
 
+// =====================================================================
+// EXPONENT-PORT OVERDRIVE  (roadmap packet B8-3 / BUGS.md SKB-014)
+//
+// Oscillator.input_freq, Wavetable.input_freq and FmOperator's
+// input_carrier/input_freq (codegen_nodes.odin: generate_oscillator_code,
+// generate_wavetable_code, generate_fmoperator_code) are V/Oct exponential
+// ports: the summed modulation reaches the DSP as
+// `math.pow(2.0, math.clamp(mod, -10.0, 10.0))`. The clamp exists to keep
+// a runaway sum from NaN-ing the processor, not to validate authorial
+// intent, so an authored value that HITS it is a defect the clamp hides
+// rather than reports: the note still plays, just up to 1024x (2^10) away
+// from its unmodulated pitch, with no diagnostic anywhere. SKB-014's Kick
+// "Pitch Env" ADSR (depth: 120 feeding Oscillator.input_freq) is exactly
+// this — 120 clamps to 10 and the kick's pitch sweep silently becomes a
+// fixed 1024x pitch error instead of the ~1.5-octave sweep it was authored
+// to sound like.
+//
+// "Authored contribution" is only sometimes knowable at codegen time. This
+// warns for the cases that ARE provable from the graph alone and stays
+// silent otherwise — see exponent_source_peak for exactly which node
+// shapes qualify and why an exposed (or otherwise runtime-settable) source
+// is deliberately excluded rather than bounded by its declared range: the
+// Mapper outMin/outMax row in param_ranges.odin is +/-1e6 by default, and
+// warning off that fallback would fire on almost every exposed Mapper,
+// which is the "cries wolf" failure this proc is written to avoid.
+// =====================================================================
+
+@(private = "file") OSC_EXPONENT_PORTS := [?]string{"input_freq"}
+@(private = "file") FM_EXPONENT_PORTS := [?]string{"input_carrier", "input_freq"}
+
+// True when `param` on `node` has a live exposed_resolutions entry — i.e. a
+// setter exists and the value can change after codegen, so its AUTHORED
+// literal is not a ceiling on what the running asset can send into the
+// clamp. exponent_source_peak refuses to bound these rather than guess.
+exponent_param_is_exposed :: proc(plan: ^Instrument_Plan, node: Node, param: string) -> bool {
+	if plan == nil do return false
+	_, found := plan.exposed_resolutions[fmt.tprintf("%s::%s", node.id, param)]
+	return found
+}
+
+literal_f64_param :: proc(node: Node, param: string, fallback: f64) -> f64 {
+	if val, ok := node.parameters[param]; ok {
+		#partial switch v in val {
+		case json.Float:   return f64(v)
+		case json.Integer: return f64(v)
+		}
+	}
+	return fallback
+}
+
+// The provable peak MAGNITUDE `src` can contribute to a summed exponential
+// modulation port, or `ok = false` when nothing here can be bounded without
+// runtime information (an exposed/P-locked parameter, or — for ADSR — a
+// wired `input` port whose own magnitude this proc cannot see).
+//
+//   ADSR    — node_out = input * envelope * depth * vel_scale. envelope and
+//             vel_scale are each in [0,1] by construction (generate_adsr_code),
+//             so with nothing wired to `input` (default "1.0") the peak is
+//             exactly |depth|. A wired `input` breaks that bound (its own
+//             magnitude is unknown here), so it disqualifies the node.
+//   Mapper  — node_out = lerp(outMin, outMax, clamp(t, 0, 1)), which stays
+//             within [outMin, outMax] for ANY value of the mapped input —
+//             the clamp on t makes this true regardless of what is wired to
+//             Mapper's own `input`, so no such check is needed here.
+//   LFO     — node_out = amplitude * waveform(phase), and every waveform
+//             generate_lfo_code emits is within [-1, 1], so the peak is
+//             exactly |amplitude|. LFO has no audio-rate input port at all
+//             (graph_validate.odin's valid_input_ports has no LFO case).
+//   anything else — not provable; the port sums whatever this node emits
+//             and this proc does not model its DSP.
+exponent_source_peak :: proc(graph: ^Graph, src: Node, plan: ^Instrument_Plan) -> (peak: f64, ok: bool) {
+	switch src.type {
+	case "ADSR":
+		if exponent_param_is_exposed(plan, src, "depth") do return 0, false
+		wired := find_inputs_for_port(graph, src.id, "input")
+		defer delete(wired)
+		if len(wired) > 0 do return 0, false
+		return abs(literal_f64_param(src, "depth", 1.0)), true
+	case "Mapper":
+		if exponent_param_is_exposed(plan, src, "outMin") do return 0, false
+		if exponent_param_is_exposed(plan, src, "outMax") do return 0, false
+		out_min := literal_f64_param(src, "outMin", 0.0)
+		out_max := literal_f64_param(src, "outMax", 1.0)
+		peak = abs(out_min)
+		if abs(out_max) > peak do peak = abs(out_max)
+		return peak, true
+	case "LFO":
+		if exponent_param_is_exposed(plan, src, "amplitude") do return 0, false
+		return abs(literal_f64_param(src, "amplitude", 1.0)), true
+	}
+	return 0, false
+}
+
+warn_exponent_port_overdrive :: proc(graph: ^Graph, all_nodes: []Node, plan: ^Instrument_Plan, inst_name: string) {
+	for node in all_nodes {
+		ports: []string
+		switch node.type {
+		case "Oscillator", "Wavetable":
+			ports = OSC_EXPONENT_PORTS[:]
+		case "FmOperator":
+			ports = FM_EXPONENT_PORTS[:]
+		case:
+			continue
+		}
+
+		peak := 0.0
+		culprit_id := ""
+		culprit_type := ""
+		for port in ports {
+			sources := find_inputs_for_port(graph, node.id, port)
+			for src in sources {
+				src_node, found := graph.nodes[src.id]
+				if !found do continue
+				p, provable := exponent_source_peak(graph, src_node, plan)
+				if provable && p > peak {
+					peak = p
+					culprit_id = src_node.id
+					culprit_type = src_node.type
+				}
+			}
+			delete(sources)
+		}
+
+		if peak > 10.0 {
+			fmt.eprintf(
+				"Warning: instrument %q: %s(%s)'s exponential pitch input is fed by %s(%s), whose authored peak is %.1f — math.clamp(mod, -10.0, 10.0) silently caps that to 10.0 (2^10 = a 1024x pitch error) instead of the ~%.1f octaves of modulation you authored. Lower %s(%s)'s depth/amplitude/range so the peak stays within +/-10, or the note plays up to 1024x too high or low with no error and no clue why.\n",
+				inst_name, node.type, node.id, culprit_type, culprit_id, peak, peak, culprit_type, culprit_id,
+			)
+		}
+	}
+}
+
 // A modulation source that is not voice-coupled: it has no note, no envelope
 // stage and no per-voice pitch, so evaluating one once per sample in the bus
 // block is meaningful in a way that evaluating an Oscillator or an ADSR there

@@ -45,6 +45,7 @@ generate_processor_code :: proc(
 	warn_graph_output_count(all_nodes, instrument.name)
 	warn_unreachable_nodes(graph, all_nodes, instrument.name)
 	warn_dead_exposed_params(all_nodes, instrument.name)
+	warn_exponent_port_overdrive(graph, all_nodes, plan, instrument.name)
 
 	bus_nodes := compute_bus_domain(graph, sorted_nodes, instrument.name)
 
