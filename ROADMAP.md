@@ -137,7 +137,9 @@
     `input` — so the file is legacy content authored against an older editor. File it as
     "archived example unloadable against the current schema".
 - [ ] **B6-3** (S) — Curated `examples/start-here/` folder
-- [ ] **B6-4** (S) — Fix the two README 404s; link the manual above the fold
+- [/] **B6-4** (S) — ~~Fix the two README 404s~~ done `57df823`: `BUGS.md` had been replaced by
+  `ROADMAP.md` nine commits earlier and the link was never updated; every README link target now
+  resolves. **Remaining:** link the manual above the fold.
 - [ ] **B6-5** (S) — Electron Help menu (Manual / Examples / About with codegen stamp)
 - [ ] **B6-6** (S) — Default first-run patch that makes a sound in 30 seconds
 - [ ] **B6-7** (S) — Rename "Generate Code" to "Download Code" / "Export .odin Package" — the WASM preview already runs the real generated code; the button just downloads it now
@@ -350,11 +352,17 @@ Three gates were already red at `9563a57` and nothing recorded it. Verified agai
 
 | What | Detail |
 |---|---|
-| **`odin test tests\unit` did not compile** | 16 errors: `tests/unit/unison_wavetable_fm_test.odin` called `generate_wavetable_code`/`generate_fm_operator_code` without the `plan` parameter and `generate_processor_code` without `plan`, added by an earlier refactor. CI's parameter-contract step must have been red for some time. **Repaired in `fe05093`** (mechanically — `nil` for the node generators, `build_instrument_plan` for the processor), because B7's new tests could not otherwise run. Worth a look: passing `nil` for `plan` may quietly disable the parameter-resolution path those tests exist to cover. |
-| **`run_corpus_golden.bat check` is red for a silly reason** | Line 87 is `echo NON-DETERMINISTIC %NAME% (shim)`. The **unescaped `)` closes the enclosing `if errorlevel 1 (` at parse time**, so `set /a FAILED+=1`, `set /a NONDET+=1` and `goto :eof` run *unconditionally* for every fixture that clears codegen. That is the whole symptom set: 98 spurious `NONDET`, zero per-file status lines of any kind, and the golden comparison never reached. The non-determinism is fictional — all 98/98 `.odin` and 98/98 `.shim.odin` pairs are byte-identical. `run_golden.bat:176,183` escapes the same parens as `^(`/`^)`, which is why the real gate is sound. **One-line fix, not yet applied.** Also: zero goldens are tracked in `tests/golden/examples_corpus/`. |
+| **`odin test tests\unit` did not compile** (✅ repaired `fe05093`) | 16 errors: `tests/unit/unison_wavetable_fm_test.odin` called `generate_wavetable_code`/`generate_fm_operator_code` without the `plan` parameter and `generate_processor_code` without `plan`, added by an earlier refactor. CI's parameter-contract step must have been red for some time. **Repaired in `fe05093`** (mechanically — `nil` for the node generators, `build_instrument_plan` for the processor), because B7's new tests could not otherwise run. Worth a look: passing `nil` for `plan` may quietly disable the parameter-resolution path those tests exist to cover. |
+| **`run_corpus_golden.bat` counted passes as failures** | ✅ **FIXED** `57df823`. `echo NON-DETERMINISTIC %NAME% (shim)` left its parens unescaped, so cmd closed the enclosing `if errorlevel 1 (` at parse time and `FAILED+=1` / `NONDET+=1` / `goto :eof` ran **unconditionally for every fixture that passed**. Hence 98 reported non-deterministic emissions, zero individual status lines, and a golden comparison never reached — all 98 pairs were in fact byte-identical. Now emits 99 honest lines: 98 `MISSING GOLDEN` + 1 `CODEGEN FAILED`, zero `NON-DETERMINISTIC`. **Still legitimately red** — no corpus goldens have ever been recorded and `PulsarBeam.json` fails codegen, so it cannot go green until **B6-2** deletes it. Record the corpus goldens as part of B6-2, not before. |
 | **`tsc --noEmit` and `npm run lint` are red** | `TS2307: Cannot find module '../../forge.env'` in `src/tests/components/ExamplesModal.test.tsx`, plus two `import/no-unresolved` for the same specifier. `skald-ui/forge.env.d.ts` is tracked and present, so it is a resolution/config problem, not a missing file. **Not fixed** — it is the standing baseline (1 typecheck error, 2 lint errors) every Wave B agent was measured against. Note `npx eslint --ext .ts,.tsx .` behaves differently from `npm run lint`; use the npm script. |
 
-Exit criterion 1 ("four CI gates green") cannot be met until the first two are closed.
+Exit criterion 1 ("four CI gates green") now needs only the corpus goldens (with B6-2) and the
+`forge.env` resolution problem.
+
+**`scripts/verify-baseline.ps1` exists so this table never has to be rediscovered.** It runs every gate
+against a pristine `git archive` export of any ref, so "was this already broken?" is a command rather
+than an argument. `TESTING.md` holds the protocol and the current known-red list; `CLAUDE.md` points any
+agent at both before it reports a gate result.
 
 ## Verified baselines (at `a71c96f`)
 
