@@ -2,10 +2,11 @@
 
 > **Last updated:** 2026-08-21
 > **Wave A:** ✅ Complete (13/13 packets landed)
-> **Wave B:** 6 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
+> **Wave B:** 7 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
 > Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
-> landed `d9922a0` / `fe05093`, and B7-2's shipped tail defect was fixed in `a71c96f`.
-> Remaining: **B2, B6, B8, B9, B10, B12.**
+> landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was fixed in `a71c96f`, and B8 landed
+> `120081a`.
+> Remaining: **B2, B6, B9, B10, B12.**
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -186,26 +187,30 @@
   `Panner → Gain → GraphOutput` discards pan entirely. Defensible, but nothing notices: `panner_mono`
   asserts only audibility and pitch.
 
-### B8 — Flagship Content
-- [ ] **B8-1** (S) — Fix `four-bar-song`: delete 3 `MidiInput.pitch → input_freq` wires; kick pitch-env depth 120 → ~1.5; add `session` block — **SKB-014** (critical)
-  - *Confirmed by inspection 2026-08-21.* The 3 wires are in Lead, Pad and Bass. `input_freq` is a
-    **V/Oct exponential** port — `base * pow(2, clamp(mod, -10, 10))` — so a raw MIDI note number and
-    the Kick's `depth: 120` do not blow up to NaN, they **clamp to 2^10 = a 1024× pitch error**. The
-    clamp is silently hiding authored nonsense, which is exactly what B8-3 is for.
-  - ⚠️ **The packet is bigger than this line.** `MidiInput.gate` emits `1.0` while held and `0.0` once
-    released (`codegen_nodes.odin:548-549`), and the ADSR's `input` port **multiplies** the envelope
-    (`generate_adsr_code`, default `input_str := "1.0"`). So every `gate → ADSR.input` wire zeroes the
-    release tail. `ADSRNode.tsx` already carries a comment saying precisely this and naming sax3.json —
-    the relabel half of B8-2 landed and **the data was never fixed**. `four-bar-song` has that wire
-    **8 times** (Lead ×2, Pad, Bass ×2, Kick ×2, HiHat); `sax3.json` once. Deleting them is safe: with
-    nothing wired to `input` the ADSR emits the pure envelope × depth, which is what all these patches
-    use it for (they feed `input_gain`/`input_cutoff`, not an audio path).
-- [ ] **B8-2** (S) — Fix `sax3.json`: delete `MidiInput.pitch → Oscillator.input_freq` **and**
-  `MidiInput.gate → ADSR.input`; add a `session` block — **SKB-015** (high)
-  - The ADSR Gate→In **relabel is already done** (`ADSRNode.tsx`); only the data fix remains.
-- [ ] **B8-3** (S) — Build-time warning when an exponent-port's authored contribution can exceed ±10
-  - The exponential ports are exactly `Oscillator.input_freq`, `Wavetable.input_freq` and
-    `FmOperator.input_carrier` (`codegen_nodes.odin:33, 262, 306`).
+### B8 — Flagship Content  ✅ CLOSED `120081a`
+- [x] **B8-1** — SKB-014. `four-bar-song`: 3 `MidiInput.pitch → input_freq` wires deleted, **8**
+  `MidiInput.gate → ADSR.input` wires deleted, Kick pitch-env depth 120 → 1.5, `session` block added
+  with `patternSteps: 64` (at the old default of 16, three of its four bars did not play).
+- [x] **B8-2** — SKB-015. `sax3`: 1 pitch wire + 1 gate wire deleted, `session` added. The ADSR
+  Gate→In relabel was already done in `ADSRNode.tsx`.
+- [x] **B8-3** — `warn_exponent_port_overdrive`, deliberately conservative: warns only on a **provable**
+  peak (literal ADSR `depth` whose own `input` is unwired, literal Mapper `outMin`/`outMax`, literal LFO
+  `amplitude`) and stays silent on exposed/P-locked values whose declared ranges would make it cry wolf
+  on nearly every exposed Mapper.
+
+#### Two corrections to this packet's original diagnosis
+- `MidiInput.pitch` emits `(voice.note - 69.0) / 12.0`, **not** the raw note number, so its range is
+  ≈ −5.75..+4.83 and it can never reach the ±10 clamp on its own. The 1024× error was only ever the
+  Kick's `depth: 120`. The pitch wire is still a real audible defect — it double-applies pitch on top
+  of `voice.current_freq` — but by a different mechanism than first written down here.
+- `FmOperator` sums **both** `input_carrier` and `input_freq` into one clamp, so both are exponential
+  ports, not just `input_carrier`.
+
+#### A trap worth remembering
+The new B8-3 warning is **silent on `four-bar-song` as it originally shipped**. The Kick's pitch-env
+ADSR also carried a gate wire on its own `input`, and an ADSR with a wired input cannot be bounded — so
+the two defects masked each other, and the overdrive only becomes provable once the gate wire is gone.
+A conservative static warning cannot see a defect that another defect is hiding.
 
 ### B9 — Preflight Validation + CLI Hardening
 - [ ] **B9-1** (M) — Pre-emission validation pass: nested Instruments rejected with purpose-built message — **SKB-028** (high)
@@ -364,7 +369,7 @@ against a pristine `git archive` export of any ref, so "was this already broken?
 than an argument. `TESTING.md` holds the protocol and the current known-red list; `CLAUDE.md` points any
 agent at both before it reports a gate result.
 
-## Verified baselines (at `a71c96f`)
+## Verified baselines (at `120081a`)
 
 Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptance.bat"` fails.
 
@@ -372,8 +377,8 @@ Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptanc
 |---|---|---|
 | Acceptance (FFT) | `skald-backend` → `.\run_acceptance.bat` | 38/38 |
 | Goldens + determinism | `skald-backend` → `.\run_golden.bat` | 54/54 match, 54/54 identical on re-run |
-| Backend unit | `skald-backend` → `odin test tests\unit` | 66/66 |
-| UI | `skald-ui` → `npx vitest run` | 55 files / 694 tests |
+| Backend unit | `skald-backend` → `odin test tests\unit` | 77/77 |
+| UI | `skald-ui` → `npx vitest run` | 56 files / 699 tests |
 | Typecheck / lint | `skald-ui` → `npx tsc --noEmit` / `npm run lint` | 1 / 2 pre-existing errors (see above) |
 
 At `9563a57` these were 33/33, 48/48, **did not compile**, 44 files / 573 tests, 1 / 2. Note the UI
