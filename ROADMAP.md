@@ -1,6 +1,6 @@
 # Skald Roadmap — Issue Tracker
 
-> **Last updated:** 2026-08-21
+> **Last updated:** 2026-08-22
 > **Wave A:** ✅ Complete (13/13 packets landed)
 > **Wave B:** 7 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
 > Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
