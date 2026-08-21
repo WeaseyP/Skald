@@ -4,7 +4,8 @@
 > **Wave A:** ✅ Complete (13/13 packets landed)
 > **Wave B:** 6 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
 > Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
-> landed `d9922a0` / `fe05093`. Remaining: **B2, B6, B8, B9, B10, B12.**
+> landed `d9922a0` / `fe05093`, and B7-2's shipped tail defect was fixed in `a71c96f`.
+> Remaining: **B2, B6, B8, B9, B10, B12.**
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -157,21 +158,17 @@
 - [x] **B7-6** — SKB-023. Held notes replayed after hot-swap, success path only, plain-number payloads.
 
 #### B7 residue — carry into the next pass
-- [ ] **B7-2-followup** (M, **high**) — The tail constant is computed from each exposed parameter's
-  **range maximum**, and `bpmSync` independently drags `delayTime` to `(60/20)·beats` because `p.bpm`
-  is settable. Measured across the shipped library: `guitar/ambient-clean` bakes **415 s**,
-  `geowars/gold-midas-bells` **213 s**, and ten more (incl. `glassy-fm-pluck`, `synth-lead`,
-  `boss-battle-loop`, `pulse-lead`, `echo-bell`, `starfield-arp`, `space-funk`, `chase-loop`,
-  `disruptor-alarm`, `splitter-echo-stab`) **202.5 s**. Twelve examples report `is_playing == true` for
-  over three minutes after their last note. It also hits our own editor: `skaldWasm.worklet.ts:217`
-  posts `{type:'ended'}` on that falling edge, so a non-looping preview of `glassy-fm-pluck` will not
-  signal ended for 3m22s. **Fix (designed, costed, not applied):** add `bus_tail_armed: bool`, emit a
-  shared `skald_feedback_tail_seconds(d, g)` helper next to `skald_soft_limit`, and arm on the falling
-  edge from the **live** field values — `feedback`/`delayTime` are already range-clamped processor
-  fields when exposed, and no Delay/Reverb param has a modulation port, so `get_f32_param` yields
-  `p.<field>` or a literal, both valid at the end of `_process`. That is one `ln` **per note-off**, not
-  per sample. `glassy-fm-pluck` would go 202.5 s → its true 1.75 s. Residual hole: a game raising
-  `feedback` *during* a silent tail truncates slightly.
+- [x] **B7-2-followup** — ✅ **CLOSED** `a71c96f`. The countdown now arms from the **live** parameter
+  values on the falling edge (so the `ln` stays off the per-sample path, which was the constant's only
+  justification). Measured: `glassy-fm-pluck` 202.50s → **1.75s**, `guitar/ambient-clean` 415.06s →
+  **9.53s**, `geowars/gold-midas-bells` 212.56s → **4.20s**. `<Asset>_BUS_TAIL_SECONDS` survives as a
+  documented upper bound that nothing reads. Pinned by fixture `delay_tail_live`.
+- [ ] **B7-x3** (S) — `emit_feedback_tail_proc` is emitted unconditionally next to
+  `emit_soft_limit_proc`, so **every** generated file carries the 12-line
+  `skald_feedback_tail_seconds` helper — including patches with no Delay or Reverb, which B7-2-followup
+  was supposed to leave byte-identical. Harmless (it compiles, and `odin check` passes over the whole
+  corpus) but it is dead code in the majority of exports. Gate it on "any instrument in the project has
+  a tail" and regenerate.
 - [ ] **B7-3-followup** (S) — Hoisting stops at hoistable types and never checks what feeds them.
   `ADSR → Mapper → post-Delay Filter.cutoff` hoists the Mapper, which then reads `node_env_out_vsum` —
   the sum of per-voice envelopes. SKB-017 survives one node upstream, silently, and is now *harder* to
@@ -179,9 +176,10 @@
   hoist the source" over-claims: it is complete only when the hoisted node's inputs are domain-clean.
 - [ ] **B7-3-followup-2** (S) — A modulator feeding **only** a `GraphOutput` stays voice-domain and
   gets a `_vsum` (voice-summed, silent during the tail). Pre-existing, unchanged by B7.
-- [ ] **B7-x1** (S) — `compute_bus_tail_seconds` iterates `all_nodes`, so an orphaned Delay with no
-  path to `GraphOutput` still inflates the tail. Reverb's comb length `0.075` is an independent literal
-  in both `codegen_nodes.odin` and `codegen_analysis.odin` — a real drift risk.
+- [ ] **B7-x1** (S) — *Half closed in `a71c96f`*: the reverb comb length is now `REVERB_COMB_SECONDS`,
+  single-sourced across the analysis, the reverb emission and the live tail proc. **Still open:**
+  `compute_bus_tail_seconds` iterates `all_nodes`, so an orphaned Delay with no path to `GraphOutput`
+  still inflates the worst-case bound (which now only gates emission, so the impact is smaller).
 - [ ] **B7-x2** (S) — The Panner mono fallback is now a *complete* pass-through, so
   `Panner → Gain → GraphOutput` discards pan entirely. Defensible, but nothing notices: `panner_mono`
   asserts only audibility and pitch.
@@ -358,7 +356,7 @@ Three gates were already red at `9563a57` and nothing recorded it. Verified agai
 
 Exit criterion 1 ("four CI gates green") cannot be met until the first two are closed.
 
-## Verified baselines (at `d9922a0`)
+## Verified baselines (at `a71c96f`)
 
 Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptance.bat"` fails.
 
