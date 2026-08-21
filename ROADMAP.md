@@ -91,13 +91,17 @@
 - [x] **B5-6** — SKB-058. One `DEFAULT_SYNC_RATE`; the toggle authors the key.
 
 #### B5 residue — carry into the next pass
-- [ ] **B5-4-followup** (S, high) — `utils/plockTargets.ts` mirrors `resolve_plock_targets` but **not**
-  `param_is_reachable`. `collect_plock_targets` has a *second* `os.exit(1)`: once a key resolves, a
-  P-lock on a dead param is fatal. Repro: P-lock an Oscillator's `frequency` while `fixedPitch` is on
-  (the control is offered then), then turn `fixedPitch` off → Generate exits 1 with the banner silent.
-  The backend's own message ("toggle BPM Sync / fixedPitch as appropriate") shows this is the expected
-  user path, so it is the graph change most likely to turn a valid P-lock fatal — and the one B5-4 did
-  not validate.
+- [x] **B5-4-followup** — ✅ **CLOSED** `0764af0`. `paramIsReachable` / `paramDeadReason` now live in
+  `plockTargets.ts` beside the resolution mirror, so both of `collect_plock_targets`' `os.exit(1)` paths
+  are caught on graph change. The message distinguishes the two kinds because the fixes differ: a stale
+  reference can only be deleted, while a dead parameter can also be fixed by toggling
+  `bpmSync`/`fixedPitch` — except `syncRate`, which no configuration ever makes live. `blocksBuild` uses
+  the same `activeTrackIds` gate, so an override on a muted track is reported without claiming it fails
+  the build.
+  - *Found while mirroring:* `fixedPitch` and `bpmSync` both default to **false**, so a freshly placed
+    Oscillator/LFO/SampleHold/Delay starts with its pitch or time-base parameter **already dead**. Two
+    existing test fixtures had assumed `Osc:frequency` was live by default and were asserting against a
+    state the generator does not agree with.
 - [ ] **B5-x1** (S) — Three sites still bypass the normaliser (the SKB-002 pattern): both
   `StepPropertiesEditor`'s override demux and `useEditorState.handleExportStep` match with
   `(n.data.label || n.type) === targetLabel` — case-sensitive, React Flow's type, and
@@ -378,7 +382,7 @@ Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptanc
 | Acceptance (FFT) | `skald-backend` → `.\run_acceptance.bat` | 38/38 |
 | Goldens + determinism | `skald-backend` → `.\run_golden.bat` | 54/54 match, 54/54 identical on re-run |
 | Backend unit | `skald-backend` → `odin test tests\unit` | 77/77 |
-| UI | `skald-ui` → `npx vitest run` | 56 files / 699 tests |
+| UI | `skald-ui` → `npx vitest run` | 56 files / 725 tests |
 | Typecheck / lint | `skald-ui` → `npx tsc --noEmit` / `npm run lint` | 1 / 2 pre-existing errors (see above) |
 
 At `9563a57` these were 33/33, 48/48, **did not compile**, 44 files / 573 tests, 1 / 2. Note the UI
