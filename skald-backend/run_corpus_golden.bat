@@ -12,6 +12,7 @@ echo [CORPUS] Building codegen.exe...
 odin build main.odin -file -out:codegen.exe
 if errorlevel 1 exit /b 1
 
+if not exist tests\golden mkdir tests\golden
 if not exist tests\golden\examples_corpus mkdir tests\golden\examples_corpus
 if not exist tests\golden\examples_corpus\.gen mkdir tests\golden\examples_corpus\.gen
 

@@ -56,6 +56,10 @@ Source_File :: struct {
 CODEGEN_SOURCES := [?]Source_File {
 	{"main.odin", #load("main.odin")},
 	{"core/codegen.odin", #load("core/codegen.odin")},
+	{"core/codegen_analysis.odin", #load("core/codegen_analysis.odin")},
+	{"core/codegen_nodes.odin", #load("core/codegen_nodes.odin")},
+	{"core/codegen_processor.odin", #load("core/codegen_processor.odin")},
+	{"core/codegen_project.odin", #load("core/codegen_project.odin")},
 	{"core/graph_utils.odin", #load("core/graph_utils.odin")},
 	{"core/graph_validate.odin", #load("core/graph_validate.odin")},
 	{"core/json.odin", #load("core/json.odin")},
