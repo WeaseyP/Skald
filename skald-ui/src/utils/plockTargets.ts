@@ -55,6 +55,19 @@ export interface PlockTarget {
 export const plockNodeLabel = (node: Node<NodeParams>): string => {
     const label = (node.data as Record<string, unknown> | undefined)?.label;
     if (typeof label === 'string') return label;
+    return nodeCodegenType(node);
+};
+
+/**
+ * The type name the backend actually sees for this node — `Node.type` off the
+ * serialized JSON, which `projectSerializer.formatNodesForCodegen` writes as
+ * `NODE_DEFINITIONS[node.type].codegenType`, NOT React Flow's own type
+ * ("lfo" vs "LFO"). `param_is_reachable` switches on this same string, so it
+ * has to be computed the same way `plockNodeLabel`'s type fallback does
+ * rather than re-deriving it — a second derivation that drifted case would be
+ * exactly the SKB-002 pattern.
+ */
+const nodeCodegenType = (node: Node<NodeParams>): string => {
     const type = node.type ?? '';
     return NODE_DEFINITIONS[type]?.codegenType ?? type;
 };
@@ -79,6 +92,113 @@ const nodeHasParam = (node: Node<NodeParams>, param: string): boolean => {
     if (Object.prototype.hasOwnProperty.call(params, param)) return true;
     const exposed = params.exposedParameters;
     return Array.isArray(exposed) && exposed.some(name => name === param);
+};
+
+/**
+ * Mirror of `get_bool_param(node, name, false)`: the stored value counts ONLY
+ * when it is a genuine JSON boolean — a string `"true"` or a missing key both
+ * fall back to `false`, exactly as the Odin does (`val.(json.Boolean)` is a
+ * type-asserted switch, not a truthy coercion).
+ */
+const boolParam = (node: Node<NodeParams>, name: string): boolean => {
+    const v = backendParameters(node)[name];
+    return typeof v === 'boolean' ? v : false;
+};
+
+/**
+ * Mirror of `param_is_reachable` (codegen_analysis.odin). A P-lock resolving
+ * to a parameter this returns `false` for is `collect_plock_targets`'s
+ * SECOND `os.exit(1)` path — the key names a real node, but the node's
+ * current configuration means the generated struct never has a field for it,
+ * so the override would compile clean and then silently do nothing.
+ *
+ * Every branch below is transcribed case-by-case off the Odin, not reasoned
+ * out independently (SKB-002):
+ *
+ *   case "LFO":        syncRate → false; frequency → live only when !bpmSync
+ *   case "SampleHold":  syncRate → false; rate      → live only when !bpmSync
+ *   case "Delay":       syncRate → false; delayTime → live only when !bpmSync
+ *   case "Oscillator",
+ *        "Wavetable":   frequency → live only when fixedPitch is on
+ *   default:            true
+ *
+ * `bpm_sync_seconds_expr`'s `synced` flag (what "bpmSync" means here) is
+ * exactly `get_bool_param(node, "bpmSync", false)` — it does not also require
+ * `syncRate` to hold a recognised division; an unrecognised string still
+ * counts as synced and falls back to a quarter note. So the mirror below
+ * checks the boolean alone, same as the Odin.
+ */
+export const paramIsReachable = (node: Node<NodeParams>, param: string): boolean => {
+    switch (nodeCodegenType(node)) {
+        case 'LFO':
+            if (param === 'syncRate') return false;
+            if (param !== 'frequency') return true;
+            return !boolParam(node, 'bpmSync');
+        case 'SampleHold':
+            if (param === 'syncRate') return false;
+            if (param !== 'rate') return true;
+            return !boolParam(node, 'bpmSync');
+        case 'Delay':
+            if (param === 'syncRate') return false;
+            if (param !== 'delayTime') return true;
+            return !boolParam(node, 'bpmSync');
+        case 'Oscillator':
+        case 'Wavetable':
+            if (param !== 'frequency') return true;
+            return boolParam(node, 'fixedPitch');
+        default:
+            return true;
+    }
+};
+
+/**
+ * Mirror of `param_dead_reason`, wording lifted verbatim so the editor and
+ * the generator's `os.exit(1)` message tell the same story rather than two
+ * that can drift apart. `syncRate` is checked first and independently of
+ * node type, exactly as the Odin does — it is the one case with no
+ * configuration-based fix at all.
+ */
+export const paramDeadReason = (node: Node<NodeParams>, param: string): string => {
+    if (param === 'syncRate') {
+        return 'syncRate is only ever read at codegen time via get_string_param, straight off the authored parameter — never through an exposed struct field — so no bpmSync/fixedPitch toggle or any other configuration ever makes it live';
+    }
+    switch (nodeCodegenType(node)) {
+        case 'LFO':
+        case 'SampleHold':
+        case 'Delay':
+            return 'bpmSync is on, so its time base comes from syncRate instead';
+        case 'Oscillator':
+        case 'Wavetable':
+            return 'fixedPitch is off, so the played note drives pitch instead';
+        default:
+            return 'the current node configuration never reads it';
+    }
+};
+
+/**
+ * The first resolved target whose parameter is dead, in the same order
+ * `collect_plock_targets` would find it: that proc's `for t in resolved` walks
+ * `all_nodes` as returned by `nodes_sorted_by_id` — sorted by node id — so
+ * when a bare (no-label) key resolves to several nodes, the FIRST dead one in
+ * id order is what the backend reports and exits on. Returns `null` when
+ * every resolved target is live, meaning the key survives codegen.
+ *
+ * Only the ordering matters for which node/param ends up in the message; it
+ * does not change WHETHER the key is dead (that is true the moment any
+ * resolved target is dead), so callers that only need the boolean can skip
+ * this and call `paramIsReachable` directly.
+ */
+export const firstDeadTarget = (
+    nodes: Node<NodeParams>[],
+    targets: PlockTarget[],
+): { node: Node<NodeParams>; param: string } | null => {
+    const byId = new Map(nodes.map(n => [n.id, n] as const));
+    const sorted = [...targets].sort((a, b) => (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0));
+    for (const t of sorted) {
+        const node = byId.get(t.nodeId);
+        if (node && !paramIsReachable(node, t.param)) return { node, param: t.param };
+    }
+    return null;
 };
 
 /**

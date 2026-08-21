@@ -30,7 +30,10 @@ import { describe, it, expect } from 'vitest';
 import { Node } from '@xyflow/react';
 import { NodeParams } from '../../definitions/types';
 import {
+    firstDeadTarget,
     isExportablePlockValue,
+    paramDeadReason,
+    paramIsReachable,
     plockNodeLabel,
     resolvePlockTargets,
     plockTargetLabels,
@@ -159,6 +162,106 @@ describe('resolvePlockTargets mirrors resolve_plock_targets', () => {
 describe('plockTargetLabels — what the error message offers instead', () => {
     it('lists the labels the backend would print as "Valid targets"', () => {
         expect(plockTargetLabels([osc, lfoUnlabelled, filt])).toEqual(['Osc', 'LFO', 'Filter']);
+    });
+});
+
+describe('paramIsReachable mirrors param_is_reachable (B5-4-followup)', () => {
+    // codegen_analysis.odin, transcribed case-by-case:
+    //   LFO/SampleHold/Delay: syncRate -> false always; the type's own
+    //     time-base param (frequency/rate/delayTime) -> false while bpmSync.
+    //   Oscillator/Wavetable: frequency -> false unless fixedPitch.
+    //   Anything else: true.
+    it('says syncRate is never reachable on LFO, SampleHold or Delay', () => {
+        expect(paramIsReachable(node('l', 'lfo', {}), 'syncRate')).toBe(false);
+        expect(paramIsReachable(node('l', 'lfo', { bpmSync: true }), 'syncRate')).toBe(false);
+        expect(paramIsReachable(node('s', 'sampleHold', {}), 'syncRate')).toBe(false);
+        expect(paramIsReachable(node('d', 'delay', {}), 'syncRate')).toBe(false);
+    });
+
+    it('says LFO frequency is reachable only while bpmSync is off', () => {
+        expect(paramIsReachable(node('l', 'lfo', {}), 'frequency')).toBe(true);
+        expect(paramIsReachable(node('l', 'lfo', { bpmSync: false }), 'frequency')).toBe(true);
+        expect(paramIsReachable(node('l', 'lfo', { bpmSync: true }), 'frequency')).toBe(false);
+    });
+
+    it('says SampleHold rate and Delay delayTime follow the same bpmSync rule', () => {
+        expect(paramIsReachable(node('s', 'sampleHold', { bpmSync: true }), 'rate')).toBe(false);
+        expect(paramIsReachable(node('s', 'sampleHold', { bpmSync: false }), 'rate')).toBe(true);
+        expect(paramIsReachable(node('d', 'delay', { bpmSync: true }), 'delayTime')).toBe(false);
+        expect(paramIsReachable(node('d', 'delay', { bpmSync: false }), 'delayTime')).toBe(true);
+    });
+
+    // get_bool_param only honours a genuine JSON boolean — a stray string
+    // must fall back to the default (false), not be treated as truthy.
+    it('treats a non-boolean bpmSync as false, exactly as get_bool_param does', () => {
+        expect(paramIsReachable(node('l', 'lfo', { bpmSync: 'true' as unknown as boolean }), 'frequency')).toBe(true);
+    });
+
+    it('does not let bpmSync affect a DIFFERENT parameter on the same node', () => {
+        expect(paramIsReachable(node('l', 'lfo', { bpmSync: true }), 'amplitude')).toBe(true);
+    });
+
+    it('says Oscillator/Wavetable frequency is reachable only while fixedPitch is on', () => {
+        expect(paramIsReachable(node('o', 'oscillator', {}), 'frequency')).toBe(false);
+        expect(paramIsReachable(node('o', 'oscillator', { fixedPitch: false }), 'frequency')).toBe(false);
+        expect(paramIsReachable(node('o', 'oscillator', { fixedPitch: true }), 'frequency')).toBe(true);
+        expect(paramIsReachable(node('w', 'wavetable', {}), 'frequency')).toBe(false);
+        expect(paramIsReachable(node('w', 'wavetable', { fixedPitch: true }), 'frequency')).toBe(true);
+    });
+
+    it('leaves every other node type and parameter reachable', () => {
+        expect(paramIsReachable(node('f', 'filter', {}), 'cutoff')).toBe(true);
+        expect(paramIsReachable(node('o', 'oscillator', { fixedPitch: false }), 'amplitude')).toBe(true);
+    });
+});
+
+describe('paramDeadReason mirrors param_dead_reason, wording lifted verbatim', () => {
+    it('gives syncRate its own reason regardless of node type', () => {
+        const reason = paramDeadReason(node('l', 'lfo', {}), 'syncRate');
+        expect(reason).toContain('get_string_param');
+        expect(reason).toContain('no bpmSync/fixedPitch toggle');
+    });
+
+    it('names bpmSync for LFO, SampleHold and Delay', () => {
+        expect(paramDeadReason(node('l', 'lfo', {}), 'frequency')).toContain('bpmSync is on');
+        expect(paramDeadReason(node('s', 'sampleHold', {}), 'rate')).toContain('bpmSync is on');
+        expect(paramDeadReason(node('d', 'delay', {}), 'delayTime')).toContain('bpmSync is on');
+    });
+
+    it('names fixedPitch for Oscillator and Wavetable', () => {
+        expect(paramDeadReason(node('o', 'oscillator', {}), 'frequency')).toContain('fixedPitch is off');
+        expect(paramDeadReason(node('w', 'wavetable', {}), 'frequency')).toContain('fixedPitch is off');
+    });
+});
+
+describe('firstDeadTarget — what collect_plock_targets finds before exiting', () => {
+    it('returns null when every resolved target is live', () => {
+        const live = node('o', 'oscillator', { label: 'Osc', fixedPitch: true, frequency: 440 });
+        expect(firstDeadTarget([live], resolvePlockTargets([live], 'Osc:frequency'))).toBeNull();
+    });
+
+    it('finds the dead target once the node config changes underneath it', () => {
+        // The B5-4-followup repro: P-lock frequency while fixedPitch is on
+        // (the control is offered then), then flip fixedPitch off.
+        const now = node('o', 'oscillator', { label: 'Osc', fixedPitch: false, frequency: 440 });
+        const resolved = resolvePlockTargets([now], 'Osc:frequency');
+        expect(resolved).toEqual([{ nodeId: 'o', param: 'frequency' }]);
+        const dead = firstDeadTarget([now], resolved);
+        expect(dead).not.toBeNull();
+        expect(dead?.param).toBe('frequency');
+        expect(dead?.node.id).toBe('o');
+    });
+
+    // A bare (label-less) key can resolve to several nodes; the backend walks
+    // them in nodes_sorted_by_id (lexicographic id) order and exits on the
+    // FIRST dead one, so the mirror must pick the same one.
+    it('picks the first dead target in node-id order for a bare key', () => {
+        const b = node('b-node', 'oscillator', { fixedPitch: true, frequency: 1 });
+        const a = node('a-node', 'oscillator', { fixedPitch: false, frequency: 2 });
+        const resolved = resolvePlockTargets([b, a], 'frequency');
+        expect(resolved.map(t => t.nodeId).sort()).toEqual(['a-node', 'b-node']);
+        const dead = firstDeadTarget([b, a], resolved);
+        expect(dead?.node.id).toBe('a-node');
     });
 });
 

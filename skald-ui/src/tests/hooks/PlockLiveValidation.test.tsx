@@ -51,6 +51,26 @@ const bassInstrument = (): Node<NodeParams> => ({
     },
 } as unknown as Node<NodeParams>);
 
+// The B5-4-followup repro: an Oscillator with `fixedPitch` ON — the ONLY
+// configuration where NodeParameterControls even offers the frequency
+// control to P-lock in the first place (see the `data.fixedPitch &&` guard
+// in NodeParameterControls.tsx's 'oscillator' case).
+const bassInstrumentFixedPitch = (): Node<NodeParams> => {
+    const inst = bassInstrument();
+    return {
+        ...inst,
+        data: {
+            ...inst.data,
+            subgraph: {
+                ...(inst.data as { subgraph: { nodes: unknown[]; connections: unknown[] } }).subgraph,
+                nodes: [
+                    { id: 'osc-1', type: 'oscillator', position: { x: 0, y: 0 }, data: { label: 'Osc', frequency: 440, fixedPitch: true, amplitude: 0.5 } },
+                ],
+            },
+        },
+    } as unknown as Node<NodeParams>;
+};
+
 /** The editor plus the live validation the app renders its banner from. */
 const useHarness = () => {
     const editor = useEditorState();
@@ -105,7 +125,63 @@ describe('SKB-009 — a rename reports itself immediately', () => {
         act(() => { result.current.handleUndo(); });
         expect(result.current.issues.plocks).toEqual([]);
     });
+});
 
+describe('B5-4-followup — a P-lock is flagged the instant its target parameter goes dead', () => {
+    it('flags an Oscillator frequency override the instant fixedPitch is turned off', () => {
+        const { result } = renderHook(() => useHarness(), { wrapper });
+
+        // Author the P-lock while fixedPitch is ON — the only state in which
+        // NodeParameterControls offers the frequency control at all.
+        act(() => { result.current.setNodes([bassInstrumentFixedPitch()]); });
+        const trackId = result.current.tracks[0].id;
+        act(() => { result.current.toggleStep(trackId, 3, 60); });
+        act(() => {
+            result.current.updateNote(trackId, 3, {
+                patchOverrides: { 'Osc:frequency': 220 },
+            }, 60);
+        });
+
+        // Live: fixedPitch is on, so frequency is reachable.
+        expect(result.current.issues.lines).toEqual([]);
+        expect(result.current.issues.blocksBuild).toBe(false);
+
+        // The graph edit the backend's own error message names as the
+        // expected user path: flip fixedPitch off from the sidebar.
+        act(() => { result.current.updateNodeData('inst-1', { fixedPitch: false }, 'osc-1'); });
+
+        expect(result.current.issues.plocks).toHaveLength(1);
+        expect(result.current.issues.plocks[0]).toMatchObject({
+            kind: 'dead',
+            key: 'Osc:frequency',
+            deadParam: 'frequency',
+            step: 3,
+        });
+        expect(result.current.issues.blocksBuild).toBe(true);
+        expect(result.current.issues.lines[0]).toContain('Osc:frequency');
+        expect(result.current.issues.lines[0]).toContain('fixedPitch is off');
+    });
+
+    it('clears again when fixedPitch is undone', () => {
+        const { result } = renderHook(() => useHarness(), { wrapper });
+
+        act(() => { result.current.setNodes([bassInstrumentFixedPitch()]); });
+        const trackId = result.current.tracks[0].id;
+        act(() => { result.current.toggleStep(trackId, 3, 60); });
+        act(() => {
+            result.current.updateNote(trackId, 3, {
+                patchOverrides: { 'Osc:frequency': 220 },
+            }, 60);
+        });
+        act(() => { result.current.updateNodeData('inst-1', { fixedPitch: false }, 'osc-1'); });
+        expect(result.current.issues.plocks).toHaveLength(1);
+
+        act(() => { result.current.handleUndo(); });
+        expect(result.current.issues.plocks).toEqual([]);
+    });
+});
+
+describe('SKB-009 — a stranded note is reported too', () => {
     it('reports a stranded note without any build either', () => {
         const { result } = renderHook(() => useHarness(), { wrapper });
 

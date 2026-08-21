@@ -51,8 +51,13 @@ const track = (over: Partial<SequencerTrack> = {}): SequencerTrack => ({
     ...over,
 });
 
+// `fixedPitch: true` is deliberate: without it, `frequency` is DEAD by
+// param_is_reachable's default (get_bool_param(..., "fixedPitch", false)),
+// which would make every "still resolves, no problem" fixture below actually
+// describe a build failure (see the "dead parameters" block further down,
+// which exercises exactly that — with fixedPitch left off on purpose).
 const nodes = [instrument('inst-1', 'Bass', [
-    sub('osc-1', 'oscillator', { label: 'Osc', frequency: 440, amplitude: 0.5 }),
+    sub('osc-1', 'oscillator', { label: 'Osc', frequency: 440, fixedPitch: true, amplitude: 0.5 }),
     sub('flt-1', 'filter', { label: 'Filter', cutoff: 800, type: 'Lowpass' }),
 ])];
 
@@ -187,6 +192,77 @@ describe('collectPlockIssues — non-numeric values (SKB-045)', () => {
     });
 });
 
+describe('collectPlockIssues — dead parameters (B5-4-followup, SKB-009 second exit path)', () => {
+    // Repro straight off the roadmap: P-lock Oscillator frequency while
+    // fixedPitch is on (the only time the control is offered), then flip
+    // fixedPitch off. The key still resolves — the node is right there — but
+    // param_is_reachable now says no, which is collect_plock_targets' SECOND
+    // os.exit(1), never checked by collectPlockIssues before this packet.
+    const oscNodes = (fixedPitch: boolean) => [instrument('inst-1', 'Bass', [
+        sub('osc-1', 'oscillator', { label: 'Osc', frequency: 440, fixedPitch, amplitude: 0.5 }),
+    ])];
+
+    it('reports nothing while fixedPitch keeps frequency live', () => {
+        const issues = collectPlockIssues(oscNodes(true), [track({
+            notes: [{ step: 2, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Osc:frequency': 220 } }],
+        })]);
+        expect(issues).toEqual([]);
+    });
+
+    it('reports the override dead once fixedPitch turns off', () => {
+        const issues = collectPlockIssues(oscNodes(false), [track({
+            notes: [{ step: 2, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Osc:frequency': 220 } }],
+        })]);
+        expect(issues).toHaveLength(1);
+        expect(issues[0]).toMatchObject({
+            kind: 'dead',
+            key: 'Osc:frequency',
+            deadParam: 'frequency',
+            blocksBuild: true,
+        });
+        expect(issues[0].deadReason).toContain('fixedPitch is off');
+    });
+
+    it('does not claim the build fails for a dead override on a muted track', () => {
+        const issues = collectPlockIssues(oscNodes(false), [track({
+            isMuted: true,
+            notes: [{ step: 2, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Osc:frequency': 220 } }],
+        })]);
+        expect(issues).toHaveLength(1);
+        expect(issues[0].kind).toBe('dead');
+        expect(issues[0].blocksBuild).toBe(false);
+    });
+
+    it('reports syncRate on a Delay as dead no matter what', () => {
+        const delayNodes = [instrument('inst-1', 'Bass', [
+            // `syncRate` must be a stored key (or exposed) to RESOLVE at all —
+            // resolve_plock_targets only matches params the node actually
+            // carries. A Delay authors it once BpmSyncControl is used.
+            sub('dly-1', 'delay', { label: 'Dly', delayTime: 0.3, feedback: 0.2, mix: 0.5, syncRate: '1/4' }),
+        ])];
+        const issues = collectPlockIssues(delayNodes, [track({
+            notes: [{ step: 0, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Dly:syncRate': 1 } }],
+        })]);
+        expect(issues).toHaveLength(1);
+        expect(issues[0]).toMatchObject({ kind: 'dead', deadParam: 'syncRate' });
+        expect(issues[0].deadReason).toContain('no bpmSync/fixedPitch toggle');
+    });
+
+    it('prefers non-numeric over dead when a key is both', () => {
+        // A non-numeric value never survives projectSerializer's filter, so
+        // collect_plock_targets never even sees this key — claiming it also
+        // fails the dead-parameter check would be reporting something that
+        // cannot happen.
+        const issues = collectPlockIssues(oscNodes(false), [track({
+            notes: [{
+                step: 0, note: 60, velocity: 1, duration: 1,
+                patchOverrides: { 'Osc:frequency': 'high' } as unknown as Record<string, number>,
+            }],
+        })]);
+        expect(issues.map(i => i.kind)).toEqual(['non-numeric']);
+    });
+});
+
 describe('collectStepRangeIssues (SKB-010)', () => {
     it('reports the count per track and the boundary that stranded them', () => {
         const issues = collectStepRangeIssues([track({
@@ -228,6 +304,32 @@ describe('formatProjectIssues — one line per problem, naming the fix', () => {
         // Steps are 1-based in every user-facing string in the sequencer
         // (pushHistory's "Toggle step N" does the same).
         expect(lines.join('\n')).toContain('step 8');
+    });
+
+    it('names the toggle responsible for a dead parameter, and offers the second fix', () => {
+        const oscNodes = [instrument('inst-1', 'Bass', [
+            sub('osc-1', 'oscillator', { label: 'Osc', frequency: 440, fixedPitch: false }),
+        ])];
+        const lines = formatProjectIssues(collectProjectIssues(oscNodes, [track({
+            notes: [{ step: 4, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Osc:frequency': 220 } }],
+        })], 16));
+        expect(lines).toHaveLength(1);
+        // Reuses param_dead_reason's wording rather than inventing new text.
+        expect(lines[0]).toContain('fixedPitch is off');
+        // Unlike an unresolvable key, a dead one is fixable two ways.
+        expect(lines[0]).toContain('Toggle BPM Sync / fixedPitch');
+        expect(lines[0]).toContain('Osc:frequency');
+    });
+
+    it('says syncRate has only one fix: delete the override', () => {
+        const delayNodes = [instrument('inst-1', 'Bass', [
+            sub('dly-1', 'delay', { label: 'Dly', delayTime: 0.3, syncRate: '1/4' }),
+        ])];
+        const lines = formatProjectIssues(collectProjectIssues(delayNodes, [track({
+            notes: [{ step: 0, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Dly:syncRate': 1 } }],
+        })], 16));
+        expect(lines[0]).toContain('No node configuration makes `syncRate` live');
+        expect(lines[0]).not.toContain('Toggle BPM Sync');
     });
 
     it('includes the stranded-note count', () => {

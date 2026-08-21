@@ -89,8 +89,86 @@ describe('SKB-009 — an unresolvable override is visible at its step', () => {
     });
 
     it('says nothing when every key still resolves', () => {
-        renderEditor(trackWith({ 'Osc:frequency': 220 }));
+        // `amplitude`, unlike `frequency`, is reachable on an Oscillator
+        // regardless of fixedPitch — see the B5-4-followup describe block
+        // below for the frequency/fixedPitch interaction specifically.
+        renderEditor(trackWith({ 'Osc:amplitude': 0.25 }));
         expect(screen.queryByTestId('step-plock-issues')).toBeNull();
+    });
+});
+
+describe('B5-4-followup — a dead-parameter override is visible at its step', () => {
+    // instrumentNode's Osc has no `fixedPitch` at all, so it defaults off
+    // (get_bool_param's default), which is exactly the state
+    // param_is_reachable calls dead for Oscillator.frequency.
+    it('names the reason and the toggle responsible', () => {
+        renderEditor(trackWith({ 'Osc:frequency': 220 }));
+        const panel = screen.getByTestId('step-plock-issues');
+        expect(panel.textContent).toContain('Osc:frequency');
+        expect(panel.textContent).toContain('fixedPitch is off');
+        expect(panel.textContent).toContain('Toggle BPM Sync / fixedPitch');
+    });
+
+    it('offers to remove a dead override, same as an unresolvable one', () => {
+        const onUpdateNote = renderEditor(trackWith({ 'Osc:frequency': 220 }));
+        fireEvent.click(screen.getByTestId('remove-plock-Osc:frequency'));
+        expect(onUpdateNote).toHaveBeenCalledWith('t1', 3, { patchOverrides: {} }, 60);
+    });
+
+    it('says nothing once fixedPitch makes the parameter live again', () => {
+        const fixedPitchNode = {
+            ...instrumentNode,
+            data: {
+                ...instrumentNode.data,
+                subgraph: {
+                    ...instrumentNode.data.subgraph,
+                    nodes: [
+                        { id: 'osc-1', type: 'oscillator', position: { x: 0, y: 0 }, data: { label: 'Osc', frequency: 440, fixedPitch: true, amplitude: 0.5, waveform: 'Sawtooth' } },
+                    ],
+                },
+            },
+        } as unknown as Node<NodeParams>;
+        render(
+            <StepPropertiesEditor
+                trackId="t1"
+                step={3}
+                track={trackWith({ 'Osc:frequency': 220 })}
+                onUpdateNote={vi.fn()}
+                instrumentNode={fixedPitchNode}
+            />
+        );
+        expect(screen.queryByTestId('step-plock-issues')).toBeNull();
+    });
+
+    it('gives syncRate only the delete fix, since no toggle makes it live', () => {
+        const delayNode = {
+            id: 'inst-1',
+            type: 'instrument',
+            position: { x: 0, y: 0 },
+            data: {
+                label: 'Bass',
+                name: 'Bass',
+                subgraph: {
+                    nodes: [
+                        { id: 'dly-1', type: 'delay', position: { x: 0, y: 0 }, data: { label: 'Dly', delayTime: 0.3, feedback: 0.2, mix: 0.5, syncRate: '1/4' } },
+                    ],
+                    connections: [],
+                },
+            },
+        } as unknown as Node<NodeParams>;
+        render(
+            <StepPropertiesEditor
+                trackId="t1"
+                step={3}
+                track={trackWith({ 'Dly:syncRate': 1 })}
+                onUpdateNote={vi.fn()}
+                instrumentNode={delayNode}
+            />
+        );
+        const panel = screen.getByTestId('step-plock-issues');
+        expect(panel.textContent).toContain('Dly:syncRate');
+        expect(panel.textContent).toContain('No node configuration makes `syncRate` live');
+        expect(panel.textContent).not.toContain('Toggle BPM Sync');
     });
 });
 
@@ -114,7 +192,9 @@ describe('SKB-045 — a non-numeric override is visible instead of silently drop
     });
 
     it('leaves a numeric override alone', () => {
-        renderEditor(trackWith({ 'Osc:frequency': 220 }));
+        // `amplitude` is reachable regardless of fixedPitch; see the
+        // B5-4-followup block for `frequency`'s fixedPitch-gated case.
+        renderEditor(trackWith({ 'Osc:amplitude': 0.25 }));
         expect(screen.queryByTestId('step-plock-issues')).toBeNull();
     });
 });

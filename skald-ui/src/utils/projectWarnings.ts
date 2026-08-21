@@ -15,6 +15,13 @@
 |   the generated per-step setter takes an f32. That filter is correct and       |
 |   silent, which is the bug: a waveform or BPM-Sync override authored in the    |
 |   step editor disappeared between the preview and the export with no trace.   |
+| SKB-009 (B5-4-followup): `collect_plock_targets` has a SECOND os.exit(1) —      |
+|   a key that resolves fine but whose target parameter is not currently live    |
+|   (`param_is_reachable` says no, e.g. an Oscillator's `frequency` while         |
+|   `fixedPitch` is off). Toggling BPM Sync / fixedPitch AFTER a P-lock was       |
+|   authored is exactly the graph edit the backend's own error message points     |
+|   at as the expected user path, so it is the case most likely to turn a         |
+|   previously-fine override fatal with nothing in the editor saying so.          |
 | SKB-010: notes past min(track length, pattern length) are kept but never       |
 |   sound. Also reported here, so Generate says so once rather than the user     |
 |   discovering it by ear.                                                      |
@@ -27,13 +34,15 @@
 import { Node } from '@xyflow/react';
 import { NodeParams, NoteEvent, SequencerTrack } from '../definitions/types';
 import {
+    firstDeadTarget,
     isExportablePlockValue,
+    paramDeadReason,
     plockTargetLabels,
     resolvePlockTargets,
 } from './plockTargets';
 import { effectiveTrackSteps, outOfRangeNotes } from '../components/Sequencer/stepMetrics';
 
-export type PlockIssueKind = 'unresolvable' | 'non-numeric';
+export type PlockIssueKind = 'unresolvable' | 'dead' | 'non-numeric';
 
 export interface PlockIssue {
     kind: PlockIssueKind;
@@ -56,6 +65,13 @@ export interface PlockIssue {
     blocksBuild: boolean;
     /** The labels codegen would print after "Valid targets:". */
     validTargets: string[];
+    /**
+     * Only for `kind === 'dead'`: which parameter was found dead (there can be
+     * several resolved targets for a bare, label-less key) and `param_dead_reason`'s
+     * wording for why, so the editor and the generator's exit message agree.
+     */
+    deadParam?: string;
+    deadReason?: string;
 }
 
 export interface StepRangeIssue {
@@ -135,14 +151,25 @@ export const collectPlockIssues = (
 
         for (const note of track.notes) {
             for (const [key, value] of Object.entries(note.patchOverrides ?? {})) {
-                // An unresolvable key kills the build; a dropped value merely
-                // goes missing. Reporting both for one key is noise, so the
-                // fatal diagnosis wins.
-                const kind: PlockIssueKind | null =
-                    resolvePlockTargets(subNodes, key).length === 0 ? 'unresolvable'
-                        : !isExportablePlockValue(value) ? 'non-numeric'
-                            : null;
+                const resolved = resolvePlockTargets(subNodes, key);
+                let kind: PlockIssueKind | null = null;
+                let dead: { node: Node<NodeParams>; param: string } | null = null;
+
+                if (resolved.length === 0) {
+                    kind = 'unresolvable';
+                } else if (!isExportablePlockValue(value)) {
+                    // A non-numeric value never survives projectSerializer's
+                    // filter, so collect_plock_targets never even sees this
+                    // key — it cannot ALSO be the dead-parameter exit path.
+                    // Reporting both for one key would be noise even if it
+                    // could; this is why it can't.
+                    kind = 'non-numeric';
+                } else {
+                    dead = firstDeadTarget(subNodes, resolved);
+                    if (dead) kind = 'dead';
+                }
                 if (!kind) continue;
+
                 issues.push({
                     kind,
                     trackId: track.id,
@@ -151,8 +178,12 @@ export const collectPlockIssues = (
                     notePitch: note.note,
                     key,
                     value,
-                    blocksBuild: kind === 'unresolvable' && active.has(track.id),
+                    // `dead` mirrors the same os.exit(1) path `unresolvable`
+                    // does — both are hard codegen errors, so both defer to
+                    // activeTrackIds the same way.
+                    blocksBuild: (kind === 'unresolvable' || kind === 'dead') && active.has(track.id),
                     validTargets,
+                    ...(dead ? { deadParam: dead.param, deadReason: paramDeadReason(dead.node, dead.param) } : {}),
                 });
             }
         }
@@ -201,6 +232,26 @@ export const formatProjectIssues = ({ plocks, stepRange }: ProjectIssues): strin
                 + (issue.blocksBuild
                     ? 'Codegen rejects unresolvable overrides, so Generate will fail until this is removed or the label restored.'
                     : 'This track is silent right now, so Generate still succeeds — but unmuting it will fail the build.')
+            );
+        } else if (issue.kind === 'dead') {
+            // A dead parameter (unlike an unresolvable key) names a LIVE node,
+            // so removing the override is only one of two fixes — the other is
+            // reconfiguring the node so param_is_reachable says yes. syncRate
+            // is the one exception: no configuration ever makes it live, so
+            // only the delete fix exists (mirrors collect_plock_targets'
+            // separate wording for that case).
+            const onlyFixIsDelete = issue.deadParam === 'syncRate';
+            lines.push(
+                `${where}: the step override "${issue.key}" targets a parameter that is dead right `
+                + `now — ${issue.deadReason} — so the generated code never reads it and the override `
+                + 'would silently do nothing. '
+                + (onlyFixIsDelete
+                    ? 'No node configuration makes `syncRate` live, so the only fix is removing this override.'
+                    : 'Toggle BPM Sync / fixedPitch so the parameter is live again, or remove this override.')
+                + ' '
+                + (issue.blocksBuild
+                    ? 'Codegen rejects a dead-parameter override, so Generate will fail until this is fixed.'
+                    : 'This track is silent right now, so Generate still succeeds — but activating it will fail the build.')
             );
         } else {
             lines.push(

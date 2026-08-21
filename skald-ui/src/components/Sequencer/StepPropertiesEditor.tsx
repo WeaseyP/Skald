@@ -3,7 +3,13 @@ import { Node } from '@xyflow/react';
 import { NumberInput } from '../common/NumberInput';
 import { SequencerTrack, NoteEvent, NodeParams } from '../../definitions/types';
 import { NodeParameterControls } from '../NodeParameterControls';
-import { isExportablePlockValue, plockTargetLabels, resolvePlockTargets } from '../../utils/plockTargets';
+import {
+    firstDeadTarget,
+    isExportablePlockValue,
+    paramDeadReason,
+    plockTargetLabels,
+    resolvePlockTargets,
+} from '../../utils/plockTargets';
 
 interface StepPropertiesEditorProps {
     trackId: string;
@@ -127,18 +133,42 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
     // HARD codegen error (collect_plock_targets calls os.exit(1)), so one stale
     // override here stops the whole build — and the step that owns it is the
     // only place it can be deleted.
+    // SKB-009 (B5-4-followup): collect_plock_targets' SECOND os.exit(1) — the
+    // key resolves to a real node, but param_is_reachable says the parameter
+    // is dead under the node's CURRENT configuration (bpmSync/fixedPitch).
+    // Reachable when the P-lock was authored (that is the only time the
+    // control offering it renders at all) does not mean reachable now: the
+    // node's global config can change out from under a step override with no
+    // warning anywhere else, and once dead the control that would let you
+    // toggle the lock is gone too (NodeParameterControls stops rendering the
+    // parameter), so this panel is the ONLY remaining way to see or remove it.
     // SKB-045: a non-numeric value is filtered out by projectSerializer,
     // because the generated per-step setter takes an f32. Correct, and
     // previously silent: the override vanished between preview and export.
-    type BrokenOverride = { key: string; value: unknown; kind: 'unresolvable' | 'non-numeric' };
+    type BrokenOverride =
+        | { key: string; value: unknown; kind: 'unresolvable' }
+        | { key: string; value: unknown; kind: 'non-numeric' }
+        | { key: string; value: unknown; kind: 'dead'; deadParam: string; deadReason: string };
     const brokenOverrides: BrokenOverride[] = [];
     for (const [key, value] of Object.entries(note.patchOverrides ?? {})) {
-        // An unresolvable key kills the build; a dropped value merely goes
-        // missing. Reporting both diagnoses for one key would just be noise.
-        if (resolvePlockTargets(internalNodes, key).length === 0) {
+        // Precedence mirrors collectPlockIssues: unresolvable beats non-numeric
+        // beats dead, because a non-numeric value never reaches
+        // collect_plock_targets at all (projectSerializer strips it before
+        // export), so it can never ALSO be the dead-parameter exit path.
+        const resolved = resolvePlockTargets(internalNodes, key);
+        if (resolved.length === 0) {
             brokenOverrides.push({ key, value, kind: 'unresolvable' });
         } else if (!isExportablePlockValue(value)) {
             brokenOverrides.push({ key, value, kind: 'non-numeric' });
+        } else {
+            const dead = firstDeadTarget(internalNodes, resolved);
+            if (dead) {
+                brokenOverrides.push({
+                    key, value, kind: 'dead',
+                    deadParam: dead.param,
+                    deadReason: paramDeadReason(dead.node, dead.param),
+                });
+            }
         }
     }
     const validTargets = plockTargetLabels(internalNodes);
@@ -292,6 +322,14 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
                                         deleted. Code generation rejects overrides it cannot resolve, so
                                         this stops the whole build. Valid targets:{' '}
                                         {validTargets.length > 0 ? validTargets.join(', ') : 'none'}.
+                                    </>
+                                ) : issue.kind === 'dead' ? (
+                                    <>
+                                        targets a parameter that is dead right now — {issue.deadReason}.
+                                        Code generation rejects a dead-parameter override, so this stops
+                                        the whole build. {issue.deadParam === 'syncRate'
+                                            ? 'No node configuration makes `syncRate` live, so the only fix is removing this override.'
+                                            : 'Toggle BPM Sync / fixedPitch so the parameter is live again, or remove this override.'}
                                     </>
                                 ) : (
                                     <>

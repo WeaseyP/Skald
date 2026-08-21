@@ -4,12 +4,15 @@
 |                                                                              |
 | SKB-009 (b): validate the project on GRAPH CHANGE rather than at build time.  |
 |                                                                              |
-| An unresolvable P-lock key aborts codegen outright (os.exit(1) in             |
-| collect_plock_targets), and until now the ONLY thing that ever checked was    |
-| codegen itself. Renaming a node was therefore silent: the editor looked fine, |
-| autosave kept writing, and the failure surfaced at the next Generate as a     |
-| build error rather than as "step 4 of Bass names a node that no longer        |
-| exists".                                                                     |
+| collect_plock_targets has TWO os.exit(1) paths and until now the ONLY thing   |
+| that ever checked either was codegen itself: an unresolvable key (the node    |
+| was renamed or deleted) and — B5-4-followup — a key that still resolves but   |
+| whose target parameter param_is_reachable says is dead under the node's       |
+| CURRENT configuration (e.g. an Oscillator's frequency after fixedPitch is      |
+| switched off). Both were silent: the editor looked fine, autosave kept        |
+| writing, and the failure surfaced at the next Generate as a build error       |
+| rather than as "step 4 of Bass names a node that no longer exists" or         |
+| "step 4 of Bass P-locks a parameter that toggle just turned off".              |
 |                                                                              |
 | Deriving the answer from the live document instead means the rename reports    |
 | itself in the same frame it happens — and un-reports itself on Undo, because  |
