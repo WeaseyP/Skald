@@ -101,15 +101,12 @@ Asset_Voice_State :: struct {
 	glide_time: f32,
 	duration: f32,
 	osc_1_phase: [1]f32,
-	adsr_2_stage: ADSR_Stage,
-	adsr_2_release_level: f32,
-	adsr_2_attack_start: f32,
 }
 
 Asset_Processor :: struct {
 	sample_rate: f32,
 	bpm: f32,
-	voices: [2]Asset_Voice_State,
+	voices: [1]Asset_Voice_State,
 	prng: PRNG_State,
 	total_samples: u64,
 	playing: bool,
@@ -120,6 +117,7 @@ Asset_Processor :: struct {
 	ext_in_l: f32,
 	ext_in_r: f32,
 	volume: f32,
+	pan: f32,
 }
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
@@ -136,6 +134,7 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.step_frac_acc = 0.0
 	p.ext_in_l = 0.0
 	p.ext_in_r = 0.0
+	p.pan = 0.000000000
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -144,7 +143,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	if note > 127 do note = 127
 	velocity := math.clamp(velocity, 0.0, 1.0)
 	voice_idx := -1
-	for i in 0..<2 {
+	for i in 0..<1 {
 		if !p.voices[i].active {
 			voice_idx = i
 			break
@@ -154,7 +153,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	if voice_idx == -1 {
 		stolen = true
 		oldest_age: f32 = -1.0
-		for i in 0..<2 {
+		for i in 0..<1 {
 			if p.voices[i].age > oldest_age {
 				oldest_age = p.voices[i].age
 				voice_idx = i
@@ -164,20 +163,6 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 
 	v := &p.voices[voice_idx]
 	prev_freq := v.current_freq
-	adsr_2_prev_level: f32 = 0.0
-	if stolen && v.adsr_2_stage != .Idle {
-		adsr_2_prev_level = v.adsr_2_release_level
-		if v.adsr_2_stage == .Release {
-			rel_t_2: f32 = (f32(0.050000000));
-			if rel_t_2 > 0.0 {
-				rf_2 := 1.0 - (v.age - v.time_released) / math.max(rel_t_2, 0.000001)
-				if rf_2 < 0.0 do rf_2 = 0.0
-				adsr_2_prev_level *= rf_2
-			} else {
-				adsr_2_prev_level = 0.0
-			}
-		}
-	}
 	v.active = true
 	v.note = note
 	v.velocity = velocity
@@ -192,9 +177,6 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 		v.current_freq = freq
 	}
 	v.duration = duration
-	v.adsr_2_stage = .Attack
-	v.adsr_2_attack_start = adsr_2_prev_level
-	v.adsr_2_release_level = adsr_2_prev_level
 	if !stolen {
 		v.osc_1_phase = {}
 	}
@@ -206,9 +188,8 @@ Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
 	if note > 127 do note = 127
 	best := -1
 	best_age: f32 = -1.0
-	for i in 0..<2 {
+	for i in 0..<1 {
 		if p.voices[i].active && p.voices[i].note == note {
-			if p.voices[i].adsr_2_stage == .Release do continue
 			if p.voices[i].age > best_age {
 				best_age = p.voices[i].age
 				best = i
@@ -217,16 +198,14 @@ Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
 	}
 	if best >= 0 {
 		p.voices[best].time_released = p.voices[best].age
-		p.voices[best].adsr_2_stage = .Release
+		p.voices[best].active = false
 	}
 }
 
 Asset_trigger :: proc(p: ^Asset_Processor, note: u8 = 60, velocity: f32 = 1.0, duration: f32 = 0.0) {
 	d := duration
 	if d <= 0.0 {
-		d = 0.0
-		if (f32(0.001000000)) + (f32(0.100000000)) > d do d = (f32(0.001000000)) + (f32(0.100000000))
-		if d <= 0.0 do d = 0.001
+		d = 1.0
 	}
 	Asset_note_on(p, note, velocity, d)
 }
@@ -257,20 +236,37 @@ Asset_set_volume :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	if p.playing do return true
-	for i in 0..<2 {
+	for i in 0..<1 {
 		if p.voices[i].active do return true
 	}
 	return false
 }
 
+Asset_set_pan :: proc(p: ^Asset_Processor, value: f32) {
+	v := value
+	if v < -1.000000000 do v = -1.000000000
+	if v > 1.000000000 do v = 1.000000000
+	p.pan = v
+}
+
 Asset_PARAMS := []Skald_Param_Info{
+	{"pan", -1.000000000, 1.000000000, 0.000000000, ""},
 }
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
+	switch name {
+	case "pan", "2::pan":
+		Asset_set_pan(p, value)
+		return true
+	}
 	return false
 }
 
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
+	switch name {
+	case "pan", "2::pan":
+		return p.pan, true
+	}
 	return 0.0, false
 }
 
@@ -280,20 +276,18 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 	output_right: f32 = 0.0
 	p.total_samples += 1
 
-	for v_idx in 0..<2 {
+	for v_idx in 0..<1 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
 
 		voice.age += 1.0 / sample_rate;
 		if voice.age >= voice.duration && voice.duration > 0.0 {
-			if voice.adsr_2_stage != .Release && voice.adsr_2_stage != .Idle {
-				voice.adsr_2_stage = .Release
-				voice.time_released = voice.age
-			}
 		}
-		voice_busy := false
 		node_1_out: f32 = 0.0
 		node_2_out: f32 = 0.0
+		node_2_out_left: f32 = 0.0
+		node_2_out_right: f32 = 0.0
+		node_3_out: f32 = 0.0
 
 		// --- Oscillator Node 1 (Unison/Detune) ---
 		{
@@ -311,45 +305,25 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
 
-		// --- ADSR Node 2 ---
+		// --- Panner Node 2 ---
+		// Constant-power cos/sin law normalized by sqrt(2), so pan 0 is unity in
+		// BOTH channels and a centred Panner is a transparent insert. Full
+		// deflection therefore peaks at 1.4142 in one channel (+3dB).
 		{
-			envelope: f32 = 0.0;
-			switch voice.adsr_2_stage {
-			case .Idle:
-				envelope = 0.0;
-			case .Attack:
-				if (f32(0.001000000)) > 0 do envelope = voice.adsr_2_attack_start + (1.0 - voice.adsr_2_attack_start) * (voice.age / math.max(f32(f32(0.001000000)), 0.000001)); else do envelope = 1.0;
-				voice.adsr_2_release_level = envelope;
-				if voice.age >= (f32(0.001000000)) {
-					voice.adsr_2_stage = .Decay;
-				}
-			case .Decay:
-				time_in_decay := voice.age - (f32(0.001000000));
-				if (f32(0.100000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.100000000)), 0.000001)) * (1.0 - (f32(0.000000000))); else do envelope = (f32(0.000000000));
-				voice.adsr_2_release_level = envelope;
-				if time_in_decay >= (f32(0.100000000)) {
-					voice.adsr_2_stage = .Sustain;
-				}
-			case .Sustain:
-				envelope = (f32(0.000000000));
-				voice.adsr_2_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_2_stage = .Idle;
-			case .Release:
-				time_in_release := voice.age - voice.time_released;
-				if (f32(0.050000000)) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.050000000)), 0.000001))); else do envelope = 0.0;
-				if envelope <= 0 {
-					envelope = 0;
-					voice.adsr_2_stage = .Idle;
-				}
-			}
-			vel_scale_2: f32 = (1.0 - (f32(0.500000000))) + (f32(0.500000000)) * voice.velocity;
-			node_2_out = ((node_1_out)) * envelope * (f32(1.000000000)) * vel_scale_2;
+			pan_in_2: f32 = ((node_1_out));
+			pan_angle_2: f32 = (math.clamp(f32(p.pan), -1.0, 1.0) * 0.5 + 0.5) * f32(math.PI) / 2.0;
+			node_2_out_left = pan_in_2 * math.cos(pan_angle_2) * 1.4142136;
+			node_2_out_right = pan_in_2 * math.sin(pan_angle_2) * 1.4142136;
+			// Mono consumers get the input untouched: pan is not a level.
+			node_2_out = pan_in_2;
 		}
 
-		if voice.adsr_2_stage != .Idle do voice_busy = true
-		if !voice_busy do voice.active = false
+		output_left += node_2_out_left
+		output_right += node_2_out_right
+		if voice.duration > 0.0 && voice.age >= voice.duration do voice.active = false
 	}
-	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
+	// limit: false authored on this instrument — output is deliberately unclamped.
+	return output_left * p.volume, output_right * p.volume
 }
 Asset_process_sequence :: proc(p: ^Asset_Processor) {
 }
@@ -361,7 +335,7 @@ Project_State :: struct {
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
-	p.master_volume = 0.800000012
+	p.master_volume = 1.000000000
 	p.Asset = new(Asset_Processor)
 	Asset_init(p.Asset, sr)
 }

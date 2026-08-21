@@ -37,6 +37,11 @@ REM            its case to acceptance\main.odin
 REM     no  -> codegen_only\ (project shape) or graph\ (React Flow shape)
 REM   Fixture base names must be unique ACROSS all three directories - the
 REM   golden file name is derived from the base name alone.
+REM   A graph the generator is meant to REJECT belongs in neither: a non-zero
+REM   codegen exit is a suite failure here and in run_acceptance.bat, and there
+REM   is no expected-failure snapshot. Put it in tests\fixtures\_negative\ (the
+REM   same non-recursive escape _graph_seeds\ uses, so nothing globs it) and
+REM   gate the rule itself in tests\unit\ - see _negative\README.md.
 REM
 REM DETERMINISM GATE (roadmap packet A3 / BUGS.md SKB-003): every fixture is
 REM generated TWICE and the two emissions are compared with `fc /B`. Byte

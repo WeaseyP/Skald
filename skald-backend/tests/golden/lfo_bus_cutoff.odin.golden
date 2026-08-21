@@ -109,7 +109,7 @@ Asset_Voice_State :: struct {
 Asset_Processor :: struct {
 	sample_rate: f32,
 	bpm: f32,
-	voices: [2]Asset_Voice_State,
+	voices: [4]Asset_Voice_State,
 	prng: PRNG_State,
 	total_samples: u64,
 	playing: bool,
@@ -120,7 +120,20 @@ Asset_Processor :: struct {
 	ext_in_l: f32,
 	ext_in_r: f32,
 	volume: f32,
+	bus_tail_remaining: u64,
+	delay_3_buffer: [96000]f32,
+	delay_3_write_index: int,
+	filter_4_low: f32,
+	filter_4_band: f32,
+	lfo_5_phase: f32,
 }
+
+// Worst-case seconds this asset's Delay/Reverb tail keeps sounding after
+// the last voice releases; _is_playing stays true for that long so a game
+// polling it cannot free the asset mid-echo. Any tail parameter that is
+// exposed contributes its RANGE MAXIMUM, not its authored value, so no
+// runtime set_param can make the real tail outlast this count.
+Asset_BUS_TAIL_SECONDS :: f32(19.800000000)
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.sample_rate = sr
@@ -136,6 +149,12 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.step_frac_acc = 0.0
 	p.ext_in_l = 0.0
 	p.ext_in_r = 0.0
+	p.bus_tail_remaining = 0
+	p.filter_4_low = 0.0
+	p.filter_4_band = 0.0
+	p.lfo_5_phase = 0.0
+	p.delay_3_buffer = {}
+	p.delay_3_write_index = 0
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -144,7 +163,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	if note > 127 do note = 127
 	velocity := math.clamp(velocity, 0.0, 1.0)
 	voice_idx := -1
-	for i in 0..<2 {
+	for i in 0..<4 {
 		if !p.voices[i].active {
 			voice_idx = i
 			break
@@ -154,7 +173,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	if voice_idx == -1 {
 		stolen = true
 		oldest_age: f32 = -1.0
-		for i in 0..<2 {
+		for i in 0..<4 {
 			if p.voices[i].age > oldest_age {
 				oldest_age = p.voices[i].age
 				voice_idx = i
@@ -206,7 +225,7 @@ Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
 	if note > 127 do note = 127
 	best := -1
 	best_age: f32 = -1.0
-	for i in 0..<2 {
+	for i in 0..<4 {
 		if p.voices[i].active && p.voices[i].note == note {
 			if p.voices[i].adsr_2_stage == .Release do continue
 			if p.voices[i].age > best_age {
@@ -225,7 +244,7 @@ Asset_trigger :: proc(p: ^Asset_Processor, note: u8 = 60, velocity: f32 = 1.0, d
 	d := duration
 	if d <= 0.0 {
 		d = 0.0
-		if (f32(0.001000000)) + (f32(0.100000000)) > d do d = (f32(0.001000000)) + (f32(0.100000000))
+		if (f32(0.010000000)) + (f32(0.050000000)) > d do d = (f32(0.010000000)) + (f32(0.050000000))
 		if d <= 0.0 do d = 0.001
 	}
 	Asset_note_on(p, note, velocity, d)
@@ -257,9 +276,13 @@ Asset_set_volume :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	if p.playing do return true
-	for i in 0..<2 {
+	for i in 0..<4 {
 		if p.voices[i].active do return true
 	}
+	// The effect tail counts as playing: it is still audible after every
+	// voice went inactive, and reporting false here is what let a game free
+	// the asset mid-echo.
+	if p.bus_tail_remaining > 0 do return true
 	return false
 }
 
@@ -280,7 +303,8 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 	output_right: f32 = 0.0
 	p.total_samples += 1
 
-	for v_idx in 0..<2 {
+	node_2_out_vsum: f32 = 0.0
+	for v_idx in 0..<4 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
 
@@ -306,7 +330,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				phase_rads: f32 = f32(f32(0.000000000)) * (f32(math.PI) / 180.0);
 				voice.osc_1_phase[i] = math.mod(voice.osc_1_phase[i] + (2 * f32(math.PI) * detuned_freq / sample_rate), 2 * f32(math.PI));
 				final_phase := math.mod(voice.osc_1_phase[i] + phase_rads, 2 * f32(math.PI));
-				unison_out += math.sin(final_phase);
+				unison_out += ((final_phase / f32(math.PI)) - 1.0);
 			}
 			node_1_out = (unison_out / f32(unison_count)) * (f32(0.500000000));
 		}
@@ -318,20 +342,20 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			case .Idle:
 				envelope = 0.0;
 			case .Attack:
-				if (f32(0.001000000)) > 0 do envelope = voice.adsr_2_attack_start + (1.0 - voice.adsr_2_attack_start) * (voice.age / math.max(f32(f32(0.001000000)), 0.000001)); else do envelope = 1.0;
+				if (f32(0.010000000)) > 0 do envelope = voice.adsr_2_attack_start + (1.0 - voice.adsr_2_attack_start) * (voice.age / math.max(f32(f32(0.010000000)), 0.000001)); else do envelope = 1.0;
 				voice.adsr_2_release_level = envelope;
-				if voice.age >= (f32(0.001000000)) {
+				if voice.age >= (f32(0.010000000)) {
 					voice.adsr_2_stage = .Decay;
 				}
 			case .Decay:
-				time_in_decay := voice.age - (f32(0.001000000));
-				if (f32(0.100000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.100000000)), 0.000001)) * (1.0 - (f32(0.000000000))); else do envelope = (f32(0.000000000));
+				time_in_decay := voice.age - (f32(0.010000000));
+				if (f32(0.050000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.050000000)), 0.000001)) * (1.0 - (f32(0.800000000))); else do envelope = (f32(0.800000000));
 				voice.adsr_2_release_level = envelope;
-				if time_in_decay >= (f32(0.100000000)) {
+				if time_in_decay >= (f32(0.050000000)) {
 					voice.adsr_2_stage = .Sustain;
 				}
 			case .Sustain:
-				envelope = (f32(0.000000000));
+				envelope = (f32(0.800000000));
 				voice.adsr_2_release_level = envelope;
 				if envelope <= 0.0001 do voice.adsr_2_stage = .Idle;
 			case .Release:
@@ -346,8 +370,64 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			node_2_out = ((node_1_out)) * envelope * (f32(1.000000000)) * vel_scale_2;
 		}
 
+		node_2_out_vsum += node_2_out
 		if voice.adsr_2_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
+	}
+
+	// --- Bus effects (once per sample, post voice sum) ---
+	{
+		node_2_out := node_2_out_vsum
+		node_5_out: f32 = 0.0
+		node_3_out: f32 = 0.0
+		node_4_out: f32 = 0.0
+		// --- LFO Node 5 ---
+		p.lfo_5_phase = math.mod(p.lfo_5_phase + (2 * f32(math.PI) * (f32(2.000000000)) / sample_rate), 2 * f32(math.PI));
+		if p.lfo_5_phase < 0.0 do p.lfo_5_phase += 2 * f32(math.PI);
+		node_5_out = math.sin(p.lfo_5_phase) * (f32(3000.000000000));
+
+		// --- Delay Node 3 ---
+		{
+			delay_samples_3 := int(math.clamp((f32(0.300000000)) * sample_rate, 1, 96000-1));
+			read_index_3 := (p.delay_3_write_index - delay_samples_3 + len(p.delay_3_buffer)) % len(p.delay_3_buffer);
+			delayed_sample_3 := p.delay_3_buffer[read_index_3];
+			p.delay_3_buffer[p.delay_3_write_index] = ((node_2_out)) + delayed_sample_3 * math.clamp(f32(f32(0.900000000)), 0.0, 0.95);
+			p.delay_3_write_index = (p.delay_3_write_index + 1) % len(p.delay_3_buffer);
+			node_3_out = ((node_2_out)) * (1.0 - (f32(1.000000000))) + delayed_sample_3 * (f32(1.000000000));
+		}
+
+		// --- Filter Node 4 (SVF) ---
+		{
+			cutoff_c_4: f32 = math.clamp(f32((f32(3200.000000000)) + (node_5_out)), 10.0, sample_rate * 0.16);
+			f_4 := f32(2.0 * math.sin(f32(math.PI) * cutoff_c_4 / sample_rate));
+			q_4: f32 = math.clamp(1.0 / math.max(f32(f32(1.000000000)), 0.1), 0.05, 1.9 - f_4);
+			p.filter_4_low += f_4 * p.filter_4_band;
+			high_4 := f32(((node_3_out)) - p.filter_4_low - q_4 * p.filter_4_band);
+			p.filter_4_band += f_4 * high_4;
+			node_4_out = p.filter_4_low;
+		}
+
+		output_left += node_4_out
+		output_right += node_4_out
+	}
+
+	// SKB-016: keep _is_playing true for as long as the effect tail can still
+	// be heard. Re-armed on every sample anything is sounding rather than on
+	// the falling edge, so the countdown is already full the moment the last
+	// voice goes inactive and no edge can be missed.
+	{
+		voice_alive := false
+		for i in 0..<4 {
+			if p.voices[i].active {
+				voice_alive = true
+				break
+			}
+		}
+		if voice_alive || p.playing {
+			p.bus_tail_remaining = u64(Asset_BUS_TAIL_SECONDS * sample_rate)
+		} else if p.bus_tail_remaining > 0 {
+			p.bus_tail_remaining -= 1
+		}
 	}
 	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
@@ -361,7 +441,7 @@ Project_State :: struct {
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
-	p.master_volume = 0.800000012
+	p.master_volume = 1.000000000
 	p.Asset = new(Asset_Processor)
 	Asset_init(p.Asset, sr)
 }

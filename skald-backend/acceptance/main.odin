@@ -574,6 +574,42 @@ main :: proc() {
 					all_pass = false
 				}
 			}
+			// SKB-016: the audio kept ringing but _is_playing did not say so —
+			// it reported `p.playing || any(voice.active)`, both false by
+			// ~0.30s here (0.25s duration + 0.05s release). A game polling it
+			// to decide when to free the asset therefore cut the echo off. The
+			// baked countdown for this patch is exactly 5.0s: a 0.5s line at
+			// 0.5 feedback needs 10 passes to fall 60 dB, and nothing here is
+			// exposed, so no range maximum widens it.
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				ga.Asset_trigger(p, 69, 1.0, 0.25)
+				for _ in 0 ..< int(1.0 * sample_rate) do ga.Asset_process(p)
+				if !ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail: is_playing false at 1.0s, with every voice dead but the echo still ringing",
+					)
+					all_pass = false
+				}
+				for _ in 0 ..< int(3.5 * sample_rate) do ga.Asset_process(p)
+				if !ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail: is_playing false at 4.5s, inside the 5.0s tail",
+					)
+					all_pass = false
+				}
+				// ...and it has to expire, or the asset can never be freed at
+				// all and the fix is just a different bug.
+				for _ in 0 ..< int(1.5 * sample_rate) do ga.Asset_process(p)
+				if ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail: is_playing still true at 6.0s — the tail countdown never expires",
+					)
+					all_pass = false
+				}
+			}
 		}
 
 	case "wavetable_morph":
@@ -980,6 +1016,197 @@ main :: proc() {
 			all_pass &= assert_audible(buf, .Left)
 		}
 
+	case "lfo_bus_cutoff":
+		// SKB-017: the LFO modulates a Filter that sits DOWNSTREAM of the
+		// Delay, so it has to be evaluated once per sample in the bus block.
+		// Evaluated per voice — which is where it used to live — its output was
+		// summed into the cross-domain accumulator, so the modulation depth
+		// tracked the number of held notes and went to exactly ZERO once the
+		// last voice released. That happens at ~0.25s here (0.2s duration plus
+		// a 0.05s release) and the delay tail runs for seconds after it, so
+		// pre-fix the whole tail was filtered at a dead-constant 3200 Hz.
+		//
+		// The LFO is 2 Hz, so sin() peaks at t=0.625s (cutoff 6200) and
+		// troughs at t=0.875s (cutoff 200). Two 4096-sample windows centred on
+		// those instants must therefore differ hugely in brightness.
+		render_sfx_note_on_raw(buf, sample_rate, 69, 1.0, 0.2)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			WIN :: 4096 // fft_channel's power-of-two floor; pass it exactly
+			bright_start := int(0.625 * sample_rate) - WIN / 2
+			dark_start := int(0.875 * sample_rate) - WIN / 2
+			spec_bright := fft_channel(buf[bright_start:bright_start + WIN], .Left)
+			defer delete(spec_bright)
+			spec_dark := fft_channel(buf[dark_start:dark_start + WIN], .Left)
+			defer delete(spec_dark)
+			c_bright := spectral_centroid(spec_bright, sample_rate)
+			c_dark := spectral_centroid(spec_dark, sample_rate)
+			if c_bright < 2.0 * c_dark {
+				fmt.eprintfln(
+					"FAIL lfo_bus_cutoff: tail centroid %.1fHz at the LFO peak vs %.1fHz at the trough — the bus filter is not being modulated once every voice is gone",
+					c_bright,
+					c_dark,
+				)
+				all_pass = false
+			}
+		}
+
+	case "panner_center_unity":
+		// SKB-013: the pan law was bare cos/sin, so pan 0 handed both channels
+		// 0.7071 — inserting a Panner and leaving it centred cost 3 dB, i.e.
+		// the neutral setting was not neutral. The oscillator is 0.5 and the
+		// asset is limit:false, so "transparent" is the number 0.5, in both
+		// channels. Note the constant-power check below passes BEFORE the fix
+		// too: normalizing by sqrt(2) moves the 0 dB point without changing
+		// the shape of the law, and that is the whole point.
+		{
+			if !render_panner_at(buf, sample_rate, 0.0) {
+				fmt.eprintfln("FAIL panner_center_unity: set_param(\"pan\") was not accepted")
+				all_pass = false
+			}
+			pl := compute_peak(buf, .Left)
+			pr := compute_peak(buf, .Right)
+			if abs(pl - 0.5) > 0.005 || abs(pr - 0.5) > 0.005 {
+				fmt.eprintfln(
+					"FAIL panner_center_unity: pan 0 peaks L=%.4f R=%.4f, expected 0.5 (unity) in both",
+					pl, pr,
+				)
+				all_pass = false
+			}
+			hard := make([]Stereo_Sample, len(buf))
+			defer delete(hard)
+			render_panner_at(hard, sample_rate, -1.0)
+			hl := compute_peak(hard, .Left)
+			hr := compute_peak(hard, .Right)
+			center_power := pl * pl + pr * pr
+			hard_power := hl * hl + hr * hr
+			if abs(hard_power - center_power) > 0.02 {
+				fmt.eprintfln(
+					"FAIL panner_center_unity: L^2+R^2 = %.4f centred vs %.4f hard-left — the law is not constant-power",
+					center_power, hard_power,
+				)
+				all_pass = false
+			}
+			if hr > 0.01 {
+				fmt.eprintfln(
+					"FAIL panner_center_unity: pan -1 leaks %.4f into the right channel",
+					hr,
+				)
+				all_pass = false
+			}
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "panner_mono_sum":
+		// SKB-013, second half: the Panner's mono fallback was (L+R)*0.7071068,
+		// which encodes pan as LEVEL — unity at centre, 0.7071 hard over. The
+		// Gain downstream of the Panner reads that fallback, so the patch got
+		// quieter as it was panned. A mono sum carries no pan information at
+		// all, so the fallback is now a pass-through and the peak must be the
+		// oscillator's own 0.5 at every pan position.
+		{
+			hard_ok := render_panner_at(buf, sample_rate, -1.0)
+			hard_peak := compute_peak(buf, .Left)
+			center := make([]Stereo_Sample, len(buf))
+			defer delete(center)
+			center_ok := render_panner_at(center, sample_rate, 0.0)
+			center_peak := compute_peak(center, .Left)
+			if !hard_ok || !center_ok {
+				fmt.eprintfln("FAIL panner_mono_sum: set_param(\"pan\") was not accepted")
+				all_pass = false
+			}
+			if abs(hard_peak - center_peak) > 0.005 {
+				fmt.eprintfln(
+					"FAIL panner_mono_sum: mono peak %.4f at pan -1 vs %.4f at pan 0 — the mono sum still tracks pan",
+					hard_peak, center_peak,
+				)
+				all_pass = false
+			}
+			if abs(hard_peak - 0.5) > 0.005 {
+				fmt.eprintfln(
+					"FAIL panner_mono_sum: mono peak %.4f, expected the 0.5 input passed straight through",
+					hard_peak,
+				)
+				all_pass = false
+			}
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "double_init":
+		// SKB-018: _init assigned the scalars and the delay rings and left
+		// everything else alone, so a second _init — a game reloading a level
+		// on a processor it already used — resumed with the previous run's
+		// voices still flagged active (the held note below allocated a SECOND
+		// voice and both sounded) and the post-Delay filter mid-stream. Two
+		// runs from _init with the same held note must be bit-identical; that
+		// makes this a determinism assertion over the 12345 / 0xC0FFEE01 seeds
+		// at the same time, which is why it compares samples and not features.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			BLOCK :: 1024
+			first: [BLOCK]Stereo_Sample
+
+			ga.Asset_init(p, sample_rate)
+			ga.Asset_note_on(p, 69, 1.0, 0.0)
+			for i in 0 ..< BLOCK {
+				l, r := ga.Asset_process(p)
+				first[i] = {l, r}
+			}
+			// Run on for a second to dirty everything the reset has to clear:
+			// duration 0 holds the note (so the voice stays active), the delay
+			// ring fills, and the bus filter's state is mid-stream.
+			for _ in 0 ..< int(sample_rate) {
+				ga.Asset_process(p)
+			}
+
+			ga.Asset_init(p, sample_rate)
+			ga.Asset_note_on(p, 69, 1.0, 0.0)
+			for i in 0 ..< len(buf) {
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			for i in 0 ..< BLOCK {
+				if buf[i].l != first[i].l || buf[i].r != first[i].r {
+					fmt.eprintfln(
+						"FAIL double_init: sample %d differs after re-init: (%.9f, %.9f) vs (%.9f, %.9f)",
+						i, buf[i].l, buf[i].r, first[i].l, first[i].r,
+					)
+					all_pass = false
+					break
+				}
+			}
+			// A patch that rendered silence would satisfy the comparison for
+			// the wrong reason.
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "note_velocity_clamp":
+		// SKB-029: note_on's two arguments were used raw. This fixture authors
+		// limit:false (so an over-unity peak reaches the buffer instead of
+		// being folded by skald_soft_limit) and velocitySensitivity:1.0 (so
+		// the envelope's gain IS the velocity), then asks for note 200 at
+		// velocity 5.0. Unclamped that is a 2.5 peak — six dB past full
+		// scale — at 440*2^((200-69)/12) ≈ 850kHz, which at 48k is not a
+		// pitch at all but whatever it aliases to.
+		render_sfx_note_on_raw(buf, sample_rate, 200, 5.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			if peak := compute_peak(buf, .Both); peak > 1.0 {
+				fmt.eprintfln(
+					"FAIL note_velocity_clamp: peak %.4f exceeds full scale — velocity 5.0 was not clamped to 1.0",
+					peak,
+				)
+				all_pass = false
+			}
+			// note clamps to 127, so the oscillator tracks 440*2^(58/12).
+			all_pass &= assert_peak_freq(buf, sample_rate, 12543.85, 20.0, .Left)
+		}
+
 	case:
 		fmt.eprintfln("unknown fixture: %q", fixture)
 		os.exit(3)
@@ -1021,6 +1248,44 @@ render_sfx_one_shot :: proc(
 	defer free(p)
 	ga.Asset_init(p, sample_rate)
 	ga.Asset_trigger(p, note, velocity, duration)
+	for i in 0 ..< len(buf) {
+		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+}
+
+// Hold one note with the Panner's `pan` driven to an explicit value first.
+// Goes through the string setter so this compiles against every fixture; a
+// fixture that does not expose `pan` gets `false` back and the caller reports
+// it rather than silently measuring the authored value instead.
+render_panner_at :: proc(buf: []Stereo_Sample, sample_rate: f32, pan: f32) -> bool {
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	set_ok := ga.Asset_set_param(p, "pan", pan)
+	ga.Asset_note_on(p, 69, 1.0, 0.0)
+	for i in 0 ..< len(buf) {
+		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+	return set_ok
+}
+
+// Straight through _note_on, with whatever note and velocity the caller
+// passes — no _trigger, which would substitute its own duration. Deliberately
+// the raw path: a fixture that wants to prove the generated clamp bites has to
+// be able to hand the generated code an argument outside its domain.
+render_sfx_note_on_raw :: proc(
+	buf: []Stereo_Sample,
+	sample_rate: f32,
+	note: u8,
+	velocity: f32,
+	duration: f32,
+) {
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	ga.Asset_note_on(p, note, velocity, duration)
 	for i in 0 ..< len(buf) {
 		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}

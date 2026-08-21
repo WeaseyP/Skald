@@ -48,6 +48,12 @@ generate_processor_code :: proc(
 
 	bus_nodes := compute_bus_domain(graph, sorted_nodes, instrument.name)
 
+	// SKB-016: how long the Delay/Reverb tail outlives the last voice. Zero for
+	// a patch with no bus effects, in which case nothing below is emitted at
+	// all and _is_playing keeps its old two-line shape.
+	bus_tail_seconds := compute_bus_tail_seconds(all_nodes, plan)
+	has_bus_tail := bus_tail_seconds > 0.0
+
 	cross_vars := make(map[string]bool)
 	defer delete(cross_vars)
 	cross_vars_ordered := make([dynamic]string)
@@ -132,6 +138,9 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\text_in_l: f32,\n")
 	fmt.sbprint(&sb, "\text_in_r: f32,\n")
 	fmt.sbprint(&sb, "\tvolume: f32,\n")
+	if has_bus_tail {
+		fmt.sbprint(&sb, "\tbus_tail_remaining: u64,\n")
+	}
 
 	for node in all_nodes {
 		if node.type == "Delay" || node.type == "Reverb" {
@@ -171,13 +180,76 @@ generate_processor_code :: proc(
     }
 
     fmt.sbprint(&sb, "}\n\n")
-	
+
+	if has_bus_tail {
+		fmt.sbprint(&sb, "// Worst-case seconds this asset's Delay/Reverb tail keeps sounding after\n")
+		fmt.sbprint(&sb, "// the last voice releases; _is_playing stays true for that long so a game\n")
+		fmt.sbprint(&sb, "// polling it cannot free the asset mid-echo. Any tail parameter that is\n")
+		fmt.sbprint(&sb, "// exposed contributes its RANGE MAXIMUM, not its authored value, so no\n")
+		fmt.sbprint(&sb, "// runtime set_param can make the real tail outlast this count.\n")
+		fmt.sbprintf(&sb, "%s_BUS_TAIL_SECONDS :: f32(%.9f)\n\n", namespace_prefix, bus_tail_seconds)
+	}
+
 	fmt.sbprintf(&sb, "%s_init :: proc(p: ^%s_Processor, sr: f32) {{\n", namespace_prefix, namespace_prefix)
 	fmt.sbprint(&sb, "\tp.sample_rate = sr\n")
     fmt.sbprintf(&sb, "\tp.bpm = %.9f\n", bpm)
     fmt.sbprintf(&sb, "\tp.volume = %.9f\n", instrument.volume)
     fmt.sbprintf(&sb, "\tp.prng.state = 12345\n")
     fmt.sbprint(&sb, "\tp.loop = true\n")
+
+    // SKB-018: _init assigned the scalar settings and the Delay/Reverb ring
+    // buffers, and left everything else holding the previous run's values.
+    // Reloading a level — a perfectly ordinary reason to call _init a second
+    // time on the same processor — therefore restarted with voices still
+    // flagged active (the next note_on allocated a SECOND voice and both
+    // sounded), with the bus filters/LFOs/S&H holding mid-stream state, and
+    // with the step clock parked wherever the last pattern stopped. This block
+    // makes the contract "after _init the processor is indistinguishable from a
+    // freshly zeroed one" true, which is what the double_init fixture asserts
+    // bit-for-bit.
+    //
+    // ORDER IS LOAD-BEARING: `p.voices = {}` has to precede the per-voice PRNG
+    // seeding below, and the bus-state zeroing has to precede the bus PRNG
+    // seeding, or the reset wipes the seeds it was supposed to keep and every
+    // Noise/SampleHold in the patch restarts from state 0 (which xorshift
+    // latches on: next_float32's `if x == 0` guard papers over it with a fixed
+    // 0xDEADBEEF, so the symptom is a patch that sounds subtly identical on
+    // every voice rather than an obvious silence).
+    fmt.sbprint(&sb, "\tp.voices = {}\n")
+    fmt.sbprint(&sb, "\tp.total_samples = 0\n")
+    fmt.sbprint(&sb, "\tp.playing = false\n")
+    fmt.sbprint(&sb, "\tp.current_step = 0\n")
+    fmt.sbprint(&sb, "\tp.samples_until_next_step = 0\n")
+    fmt.sbprint(&sb, "\tp.step_frac_acc = 0.0\n")
+    fmt.sbprint(&sb, "\tp.ext_in_l = 0.0\n")
+    fmt.sbprint(&sb, "\tp.ext_in_r = 0.0\n")
+    if has_bus_tail {
+        fmt.sbprint(&sb, "\tp.bus_tail_remaining = 0\n")
+    }
+    // Mirrors the bus-domain field emission in the _Processor struct above,
+    // case for case. A node type that grows a bus-domain field there and not
+    // here reintroduces exactly this bug for that one node.
+    for node in all_nodes {
+        if !bus_nodes[node.id] do continue
+        switch node.type {
+        case "Filter":
+            fmt.sbprintf(&sb, "\tp.filter_%s_low = 0.0\n", node.id)
+            fmt.sbprintf(&sb, "\tp.filter_%s_band = 0.0\n", node.id)
+        case "LFO":
+            fmt.sbprintf(&sb, "\tp.lfo_%s_phase = 0.0\n", node.id)
+        case "Noise":
+            if noise_is_pink(node) {
+                fmt.sbprintf(&sb, "\tp.noise_%s_p0 = 0.0\n", node.id)
+                fmt.sbprintf(&sb, "\tp.noise_%s_p1 = 0.0\n", node.id)
+                fmt.sbprintf(&sb, "\tp.noise_%s_p2 = 0.0\n", node.id)
+            }
+        case "SampleHold":
+            fmt.sbprintf(&sb, "\tp.sh_%s_counter = 0\n", node.id)
+            fmt.sbprintf(&sb, "\tp.sh_%s_current_value = 0.0\n", node.id)
+        case "Distortion":
+            fmt.sbprintf(&sb, "\tp.dist_%s_tone = 0.0\n", node.id)
+        }
+    }
 
     needs_voice_rng_seed := false
     for node in all_nodes {
@@ -239,6 +311,20 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "}\n\n")
 
 	fmt.sbprintf(&sb, "%s_note_on :: proc(p: ^%s_Processor, note: u8, velocity: f32, duration: f32) {{\n", namespace_prefix, namespace_prefix)
+	// SKB-029: both arguments come straight from game code and were used raw.
+	// A note above 127 is outside MIDI range and reached
+	// `440 * pow(2, (note-69)/12)` unguarded — note 200 is a 45 kHz partial
+	// that aliases into whatever it likes at 48 kHz; a velocity outside [0,1]
+	// scaled the envelope past unity (or inverted the whole voice at a
+	// negative one). Clamping is SILENT on purpose: these are called at audio
+	// rate, from the sequencer as well as from the host, so a per-call
+	// diagnostic would be the louder bug. The clamp lives here rather than in
+	// _trigger and the wasm shim's skald_note_on/skald_trigger because both of
+	// those funnel through this proc — one gate, no second copy to drift.
+	fmt.sbprint(&sb, "\t// note and velocity are clamped silently to their MIDI/normalized domains.\n")
+	fmt.sbprint(&sb, "\tnote := note\n")
+	fmt.sbprint(&sb, "\tif note > 127 do note = 127\n")
+	fmt.sbprint(&sb, "\tvelocity := math.clamp(velocity, 0.0, 1.0)\n")
 	fmt.sbprint(&sb, "\tvoice_idx := -1\n")
 	fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
 	fmt.sbprint(&sb, "\t\tif !p.voices[i].active {\n")
@@ -335,6 +421,18 @@ generate_processor_code :: proc(
 		}
 	}
 	fmt.sbprintf(&sb, "%s_note_off :: proc(p: ^%s_Processor, note: u8) {{\n", namespace_prefix, namespace_prefix)
+	// SKB-029: this clamp is not defence in depth, it is the OTHER HALF of the
+	// one in _note_on. `note` is the voice-lookup key, so the two procs have to
+	// agree on the mapping or the key stops matching: _note_on(200) stores
+	// v.note = 127, and an unclamped _note_off(200) then finds no voice with
+	// note == 200 and releases nothing. On the held-note path (duration 0, the
+	// documented "drive _note_on/_note_off yourself" API) that voice never
+	// leaves .active — it burns a polyphony slot and pins _is_playing true
+	// forever. Clamping only the setter side turned an out-of-range note from
+	// an aliased pitch into a permanently stuck voice.
+	fmt.sbprint(&sb, "\t// Clamped to match _note_on: `note` is the voice key, so both must map it.\n")
+	fmt.sbprint(&sb, "\tnote := note\n")
+	fmt.sbprint(&sb, "\tif note > 127 do note = 127\n")
 	fmt.sbprint(&sb, "\tbest := -1\n")
 	fmt.sbprint(&sb, "\tbest_age: f32 = -1.0\n")
 	fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
@@ -454,6 +552,12 @@ generate_processor_code :: proc(
 	fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
 	fmt.sbprint(&sb, "\t\tif p.voices[i].active do return true\n")
 	fmt.sbprint(&sb, "\t}\n")
+	if has_bus_tail {
+		fmt.sbprint(&sb, "\t// The effect tail counts as playing: it is still audible after every\n")
+		fmt.sbprint(&sb, "\t// voice went inactive, and reporting false here is what let a game free\n")
+		fmt.sbprint(&sb, "\t// the asset mid-echo.\n")
+		fmt.sbprint(&sb, "\tif p.bus_tail_remaining > 0 do return true\n")
+	}
 	fmt.sbprint(&sb, "\treturn false\n")
 	fmt.sbprint(&sb, "}\n\n")
 
@@ -723,6 +827,27 @@ generate_processor_code :: proc(
 					node.type, node.id, instrument.name)
 			}
 		}
+		fmt.sbprint(&sb, "\t}\n")
+	}
+
+	if has_bus_tail {
+		fmt.sbprint(&sb, "\n\t// SKB-016: keep _is_playing true for as long as the effect tail can still\n")
+		fmt.sbprint(&sb, "\t// be heard. Re-armed on every sample anything is sounding rather than on\n")
+		fmt.sbprint(&sb, "\t// the falling edge, so the countdown is already full the moment the last\n")
+		fmt.sbprint(&sb, "\t// voice goes inactive and no edge can be missed.\n")
+		fmt.sbprint(&sb, "\t{\n")
+		fmt.sbprint(&sb, "\t\tvoice_alive := false\n")
+		fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
+		fmt.sbprint(&sb, "\t\t\tif p.voices[i].active {\n")
+		fmt.sbprint(&sb, "\t\t\t\tvoice_alive = true\n")
+		fmt.sbprint(&sb, "\t\t\t\tbreak\n")
+		fmt.sbprint(&sb, "\t\t\t}\n")
+		fmt.sbprint(&sb, "\t\t}\n")
+		fmt.sbprint(&sb, "\t\tif voice_alive || p.playing {\n")
+		fmt.sbprintf(&sb, "\t\t\tp.bus_tail_remaining = u64(%s_BUS_TAIL_SECONDS * sample_rate)\n", namespace_prefix)
+		fmt.sbprint(&sb, "\t\t} else if p.bus_tail_remaining > 0 {\n")
+		fmt.sbprint(&sb, "\t\t\tp.bus_tail_remaining -= 1\n")
+		fmt.sbprint(&sb, "\t\t}\n")
 		fmt.sbprint(&sb, "\t}\n")
 	}
 

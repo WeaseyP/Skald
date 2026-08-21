@@ -109,7 +109,7 @@ Asset_Voice_State :: struct {
 Asset_Processor :: struct {
 	sample_rate: f32,
 	bpm: f32,
-	voices: [2]Asset_Voice_State,
+	voices: [1]Asset_Voice_State,
 	prng: PRNG_State,
 	total_samples: u64,
 	playing: bool,
@@ -144,7 +144,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	if note > 127 do note = 127
 	velocity := math.clamp(velocity, 0.0, 1.0)
 	voice_idx := -1
-	for i in 0..<2 {
+	for i in 0..<1 {
 		if !p.voices[i].active {
 			voice_idx = i
 			break
@@ -154,7 +154,7 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	if voice_idx == -1 {
 		stolen = true
 		oldest_age: f32 = -1.0
-		for i in 0..<2 {
+		for i in 0..<1 {
 			if p.voices[i].age > oldest_age {
 				oldest_age = p.voices[i].age
 				voice_idx = i
@@ -206,7 +206,7 @@ Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
 	if note > 127 do note = 127
 	best := -1
 	best_age: f32 = -1.0
-	for i in 0..<2 {
+	for i in 0..<1 {
 		if p.voices[i].active && p.voices[i].note == note {
 			if p.voices[i].adsr_2_stage == .Release do continue
 			if p.voices[i].age > best_age {
@@ -225,7 +225,7 @@ Asset_trigger :: proc(p: ^Asset_Processor, note: u8 = 60, velocity: f32 = 1.0, d
 	d := duration
 	if d <= 0.0 {
 		d = 0.0
-		if (f32(0.001000000)) + (f32(0.100000000)) > d do d = (f32(0.001000000)) + (f32(0.100000000))
+		if (f32(0.001000000)) + (f32(0.001000000)) > d do d = (f32(0.001000000)) + (f32(0.001000000))
 		if d <= 0.0 do d = 0.001
 	}
 	Asset_note_on(p, note, velocity, d)
@@ -257,7 +257,7 @@ Asset_set_volume :: proc(p: ^Asset_Processor, value: f32) {
 
 Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	if p.playing do return true
-	for i in 0..<2 {
+	for i in 0..<1 {
 		if p.voices[i].active do return true
 	}
 	return false
@@ -280,7 +280,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 	output_right: f32 = 0.0
 	p.total_samples += 1
 
-	for v_idx in 0..<2 {
+	for v_idx in 0..<1 {
 		voice := &p.voices[v_idx]
 		if !voice.active do continue
 
@@ -294,6 +294,7 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		voice_busy := false
 		node_1_out: f32 = 0.0
 		node_2_out: f32 = 0.0
+		node_3_out: f32 = 0.0
 
 		// --- Oscillator Node 1 (Unison/Detune) ---
 		{
@@ -325,13 +326,13 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 				}
 			case .Decay:
 				time_in_decay := voice.age - (f32(0.001000000));
-				if (f32(0.100000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.100000000)), 0.000001)) * (1.0 - (f32(0.000000000))); else do envelope = (f32(0.000000000));
+				if (f32(0.001000000)) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(f32(0.001000000)), 0.000001)) * (1.0 - (f32(1.000000000))); else do envelope = (f32(1.000000000));
 				voice.adsr_2_release_level = envelope;
-				if time_in_decay >= (f32(0.100000000)) {
+				if time_in_decay >= (f32(0.001000000)) {
 					voice.adsr_2_stage = .Sustain;
 				}
 			case .Sustain:
-				envelope = (f32(0.000000000));
+				envelope = (f32(1.000000000));
 				voice.adsr_2_release_level = envelope;
 				if envelope <= 0.0001 do voice.adsr_2_stage = .Idle;
 			case .Release:
@@ -342,14 +343,17 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 					voice.adsr_2_stage = .Idle;
 				}
 			}
-			vel_scale_2: f32 = (1.0 - (f32(0.500000000))) + (f32(0.500000000)) * voice.velocity;
+			vel_scale_2: f32 = (1.0 - (f32(1.000000000))) + (f32(1.000000000)) * voice.velocity;
 			node_2_out = ((node_1_out)) * envelope * (f32(1.000000000)) * vel_scale_2;
 		}
 
+		output_left += node_2_out
+		output_right += node_2_out
 		if voice.adsr_2_stage != .Idle do voice_busy = true
 		if !voice_busy do voice.active = false
 	}
-	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
+	// limit: false authored on this instrument — output is deliberately unclamped.
+	return output_left * p.volume, output_right * p.volume
 }
 Asset_process_sequence :: proc(p: ^Asset_Processor) {
 }
@@ -361,7 +365,7 @@ Project_State :: struct {
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
-	p.master_volume = 0.800000012
+	p.master_volume = 1.000000000
 	p.Asset = new(Asset_Processor)
 	Asset_init(p.Asset, sr)
 }

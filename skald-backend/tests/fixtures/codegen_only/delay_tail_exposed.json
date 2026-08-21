@@ -1,0 +1,51 @@
+{
+  "__comment": "Packet B7-2 / BUGS.md SKB-016: the tail countdown baked into _is_playing, in its PESSIMISTIC form. This Delay exposes both delayTime and feedback, so a runtime set_param can move either one, and the codegen therefore has to assume each parameter's RANGE MAXIMUM rather than its authored 0.25s / 0.3 — otherwise the countdown would expire while a game-raised feedback was still ringing. The golden pins the consequence: Asset_BUS_TAIL_SECONDS = 270.0 (delayTime max 2.0s x the 135 passes it takes feedback 0.95 to fall 60dB), where the same patch with nothing exposed would bake 1.5s. That is the documented cost of exposing a tail parameter over its full range.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "delay_tail_exposed_inst",
+        "name": "ExposedTail",
+        "mute": false,
+        "solo": false,
+        "voice_count": 2,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 220, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "2",
+              "type": "ADSR",
+              "parameters": { "attack": 0.005, "decay": 0.05, "sustain": 0.7, "release": 0.05, "depth": 1 }
+            },
+            {
+              "id": "3",
+              "type": "Delay",
+              "parameters": {
+                "delayTime": 0.25,
+                "feedback": 0.3,
+                "mix": 0.5,
+                "exposedParameters": ["delayTime", "feedback"]
+              }
+            },
+            { "id": "4", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

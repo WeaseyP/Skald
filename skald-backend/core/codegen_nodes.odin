@@ -504,15 +504,36 @@ generate_mixer_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, pla
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
+// SKB-013. The law used to be bare cos/sin, which is constant-POWER but not
+// unity-gain: at pan 0 both channels came out at cos(pi/4) = 0.7071, so
+// dropping a Panner into a chain and leaving it centred cost 3 dB. A control
+// whose neutral position is not neutral is the defect — nobody expects the
+// pan knob to be a trim. Normalizing by sqrt(2) moves the 0 dB point from
+// "hard left/right" to "centre" and leaves the law constant-power, so a sweep
+// still holds its apparent loudness. The price is that full deflection now
+// peaks at 1.4142 in one channel; on a limited asset (the default)
+// skald_soft_limit absorbs that, and on an authored `limit: false` asset it is
+// the author's headroom to manage, same as any other hot sum.
+//
+// The mono fallback (node_<id>_out, read when a MONO-input node consumes the
+// Panner) used to be (L+R)*0.7071068, which is pan-dependent: unity at centre,
+// 0.7071 at either extreme. So sweeping the pan made a mono consumer duck. It
+// is now a pass-through, because a mono sum genuinely carries no pan
+// information and encoding it as level was the bug, not the fix.
 generate_panner_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan: ^Instrument_Plan) {
 	input_str := sum_port_inputs(graph, node.id, "input", "0.0")
 	pan_str := get_f32_param(graph, plan, node, "pan", "input_pan", 0.0)
 	fmt.sbprintf(sb, "\t\t// --- Panner Node %s ---\n", node.id)
+	fmt.sbprint(sb, "\t\t// Constant-power cos/sin law normalized by sqrt(2), so pan 0 is unity in\n")
+	fmt.sbprint(sb, "\t\t// BOTH channels and a centred Panner is a transparent insert. Full\n")
+	fmt.sbprint(sb, "\t\t// deflection therefore peaks at 1.4142 in one channel (+3dB).\n")
 	fmt.sbprint(sb, "\t\t{\n")
+	emit_f32_local(sb, "\t\t\t", fmt.tprintf("pan_in_%s", node.id), fmt.tprintf("(%s)", input_str))
 	emit_f32_local(sb, "\t\t\t", fmt.tprintf("pan_angle_%s", node.id), fmt.tprintf("(math.clamp(f32(%s), -1.0, 1.0) * 0.5 + 0.5) * f32(math.PI) / 2.0", pan_str))
-	fmt.sbprintf(sb, "\t\t\tnode_%s_out_left = (%s) * math.cos(pan_angle_%s);\n", node.id, input_str, node.id)
-	fmt.sbprintf(sb, "\t\t\tnode_%s_out_right = (%s) * math.sin(pan_angle_%s);\n", node.id, input_str, node.id)
-	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (node_%s_out_left + node_%s_out_right) * 0.7071068;\n", node.id, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out_left = pan_in_%s * math.cos(pan_angle_%s) * 1.4142136;\n", node.id, node.id, node.id)
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out_right = pan_in_%s * math.sin(pan_angle_%s) * 1.4142136;\n", node.id, node.id, node.id)
+	fmt.sbprint(sb, "\t\t\t// Mono consumers get the input untouched: pan is not a level.\n")
+	fmt.sbprintf(sb, "\t\t\tnode_%s_out = pan_in_%s;\n", node.id, node.id)
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 

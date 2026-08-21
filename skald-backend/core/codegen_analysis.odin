@@ -11,12 +11,16 @@ import json "core:encoding/json"
 MAX_DELAY_SAMPLES :: 96000
 MAX_REVERB_PREDELAY_SAMPLES :: 48000
 
-bpm_sync_seconds_expr :: proc(node: Node) -> (string, bool) {
+// The beat fraction a bpmSync'd node's time base resolves to. Split out of
+// bpm_sync_seconds_expr so the tail-length analysis (SKB-016) can read the
+// NUMBER instead of re-parsing the expression string that is emitted from it —
+// two parsers of the same syncRate spelling is one too many.
+bpm_sync_beats :: proc(node: Node) -> (f64, bool) {
 	synced := false
 	if v, ok := node.parameters["bpmSync"]; ok {
 		if b, is_b := v.(json.Boolean); is_b do synced = bool(b)
 	}
-	if !synced do return "", false
+	if !synced do return 0.0, false
 
 	rate := get_string_param(node, "syncRate", "1/4")
 	triplet := strings.has_suffix(rate, "t")
@@ -33,7 +37,144 @@ bpm_sync_seconds_expr :: proc(node: Node) -> (string, bool) {
 	}
 	beats := 4.0 / f64(denom) // whole note = 4 beats
 	if triplet do beats *= 2.0 / 3.0
+	return beats, true
+}
+
+bpm_sync_seconds_expr :: proc(node: Node) -> (string, bool) {
+	beats, synced := bpm_sync_beats(node)
+	if !synced do return "", false
 	return fmt.tprintf("((60.0 / p.bpm) * %.9f)", beats), true
+}
+
+// =====================================================================
+// BUS TAIL LENGTH  (roadmap packet B7 / BUGS.md SKB-016)
+//
+// A Delay or Reverb keeps producing output long after the last voice released,
+// and <Asset>_is_playing reported only `p.playing || any(voice.active)`. A game
+// polling it to decide when to free the asset therefore cut every echo and
+// every reverb tail off mid-ring — the asset went away while it was still
+// audible.
+//
+// The tail length is knowable without running the DSP, so it is computed here
+// and baked into the emission as a per-asset seconds constant that _process
+// counts down. WHICH value each parameter contributes is the decision worth
+// stating:
+//
+//   * a parameter nothing can change at runtime contributes its AUTHORED value
+//   * an exposed (or P-locked) parameter contributes its RANGE MAXIMUM
+//
+// The second rule is deliberately pessimistic. Baking the authored value would
+// make the constant a lower BOUND, so the first time a game raised an exposed
+// feedback the countdown would expire while the delay was still ringing — the
+// same bug back again, and now invisible, because it only reproduces for
+// values that never appear in the project file. Erring long merely delays the
+// asset's release; erring short is audible. The consequence is worth knowing:
+// exposing both delayTime and feedback over their full ranges bakes a 270s
+// tail (2.0s per pass, 135 passes to -60dB at feedback 0.95), so an author who
+// wants a tight is_playing should not expose them — or should narrow the range.
+//
+// Tails SUM rather than max: a Delay feeding a Reverb rings for the Delay's
+// tail and then the Reverb's, and a sum is still an upper bound when the two
+// are in parallel instead.
+// =====================================================================
+
+// Seconds for a feedback delay line to fall 60 dB. -60 dB is not an arbitrary
+// pick: the Reverb generator already defines its `decay` parameter through
+// `pow(0.001, 0.075/decay)`, so measuring Delay the same way means both node
+// types answer to one definition of "over".
+feedback_tail_seconds :: proc(delay_seconds: f64, gain: f64) -> f64 {
+	if delay_seconds <= 0.0 do return 0.0
+	// 0.95 is the DSP's own feedback ceiling (chosen for stability — at or
+	// above 1.0 the line diverges and NaN-latches the processor), so no
+	// authored or runtime value can ring longer than this.
+	g := clamp(gain, 0.0, 0.95)
+	if g <= 0.0 do return delay_seconds
+	passes := math.ceil(math.ln(f64(0.001)) / math.ln(g))
+	return delay_seconds * passes
+}
+
+// The value a tail computation has to assume for `param`: its range maximum
+// when a setter or a P-lock can move it while the asset plays, its authored
+// value otherwise.
+tail_param_worst_case :: proc(node: Node, plan: ^Instrument_Plan, param: string, fallback: f64) -> f64 {
+	if plan != nil {
+		if res, found := plan.exposed_resolutions[fmt.tprintf("%s::%s", node.id, param)]; found {
+			return f64(res.range_max)
+		}
+	}
+	if val, ok := node.parameters[param]; ok {
+		#partial switch v in val {
+		case json.Float:   return f64(v)
+		case json.Integer: return f64(v)
+		}
+	}
+	return fallback
+}
+
+// Delay/Reverb wet level. A fully dry node has no tail at all, so an authored
+// `mix: 0` must not bake a multi-second countdown onto a bypassed effect. The
+// `wetDryMix` fallback mirrors get_f32_param's alias handling; -1.0 is the
+// "neither key exists anywhere" sentinel, which a 0..1 mix can never be.
+tail_mix_worst_case :: proc(node: Node, plan: ^Instrument_Plan) -> f64 {
+	m := tail_param_worst_case(node, plan, "mix", -1.0)
+	if m < 0.0 do m = tail_param_worst_case(node, plan, "wetDryMix", 0.5)
+	return m
+}
+
+// Longest delay time this node can ever be asked for, in seconds.
+tail_delay_time_worst_case :: proc(node: Node, plan: ^Instrument_Plan) -> f64 {
+	// bpmSync replaces delayTime entirely with a fraction of the LIVE tempo,
+	// and p.bpm is settable, so the longest legal time is that beat value at
+	// the slowest legal tempo — the bpm range row's 20.
+	if beats, synced := bpm_sync_beats(node); synced {
+		return (60.0 / 20.0) * beats
+	}
+	// The legacy millisecond spelling, converted exactly as get_f32_param does.
+	if _, has := node.parameters["delayTime"]; !has {
+		if val, ok := node.parameters["time"]; ok {
+			#partial switch v in val {
+			case json.Float:   return f64(v) / 1000.0
+			case json.Integer: return f64(v) / 1000.0
+			}
+		}
+	}
+	return tail_param_worst_case(node, plan, "delayTime", 0.5)
+}
+
+tail_seconds_for_delay :: proc(node: Node, plan: ^Instrument_Plan) -> f64 {
+	if tail_mix_worst_case(node, plan) <= 0.0 do return 0.0
+	return feedback_tail_seconds(
+		tail_delay_time_worst_case(node, plan),
+		tail_param_worst_case(node, plan, "feedback", 0.5),
+	)
+}
+
+tail_seconds_for_reverb :: proc(node: Node, plan: ^Instrument_Plan) -> f64 {
+	if tail_mix_worst_case(node, plan) <= 0.0 do return 0.0
+	decay := tail_param_worst_case(node, plan, "decay", 0.5)
+	pre := clamp(tail_param_worst_case(node, plan, "preDelay", 0.02), 0.0, 0.25)
+	// Literally the expression generate_reverb_code emits for decay_gain, so
+	// the analysis and the DSP cannot disagree about how fast the comb decays
+	// (including at the top of the decay range, where the 0.95 ceiling bites
+	// and the real tail saturates around 10s rather than growing with decay).
+	gain := math.pow(f64(0.001), f64(0.075) / math.max(decay, f64(0.01)))
+	return pre + feedback_tail_seconds(0.075, gain)
+}
+
+// Worst-case seconds the whole instrument's effect bus keeps sounding after
+// its last voice goes inactive. 0 means the patch has no tail and _is_playing
+// needs no countdown at all.
+compute_bus_tail_seconds :: proc(all_nodes: []Node, plan: ^Instrument_Plan) -> f64 {
+	total := 0.0
+	for node in all_nodes {
+		switch node.type {
+		case "Delay":
+			total += tail_seconds_for_delay(node, plan)
+		case "Reverb":
+			total += tail_seconds_for_reverb(node, plan)
+		}
+	}
+	return total
 }
 
 is_voice_coupled_type :: proc(t: string) -> bool {
@@ -116,7 +257,33 @@ warn_dead_exposed_params :: proc(all_nodes: []Node, inst_name: string) {
 	}
 }
 
-compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: string) -> map[string]bool {
+// A modulation source that is not voice-coupled: it has no note, no envelope
+// stage and no per-voice pitch, so evaluating one once per sample in the bus
+// block is meaningful in a way that evaluating an Oscillator or an ADSR there
+// is not. These are the types that get hoisted by hoist_bus_modulators.
+is_hoistable_modulator_type :: proc(t: string) -> bool {
+	switch t {
+	case "LFO", "SampleHold", "Noise", "Mapper":
+		return true
+	}
+	return false
+}
+
+// A modulation source wired into BOTH domains at once. Reported as a value
+// rather than printed-and-exited so hoist_bus_modulators stays pure and the
+// rule can be exercised in `odin test tests\unit` — the hard-error paths in
+// this file that call os.exit directly have no in-process test at all, which
+// is how their exact wording drifts.
+Cross_Domain_Conflict :: struct {
+	node_id:        string,
+	node_type:      string,
+	voice_consumer: string,
+	bus_consumer:   string,
+}
+
+// Seed the bus domain with the nodes that DEFINE it and propagate downstream.
+// `sorted_nodes` must be in topological order so one pass suffices.
+seed_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node) -> map[string]bool {
 	bus_nodes := make(map[string]bool)
 	for node in sorted_nodes {
 		if node.type == "Delay" || node.type == "Reverb" || node.type == "GraphInput" {
@@ -129,6 +296,103 @@ compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: strin
 				break
 			}
 		}
+	}
+	return bus_nodes
+}
+
+// =====================================================================
+// SKB-017 — a modulator that feeds the bus has to LIVE in the bus.
+//
+// The domains are not a labelling convenience, they are two different clocks:
+// a voice-domain node's state advances once per ACTIVE VOICE per sample, a
+// bus-domain node's once per sample. Nothing checked what happened when a
+// modulation source sat in the voice domain and was wired into a bus node, and
+// the answer was worse than "picks one":
+//
+//   * the per-voice values were SUMMED into the cross-domain accumulator, so
+//     an LFO with amplitude 600 modulating a post-Delay filter cutoff swung
+//     ±2400 Hz while four notes were held and ±600 with one — the modulation
+//     depth was a function of how many keys were down
+//   * every voice ran its own phase, so the "LFO" the bus saw was the sum of
+//     four detuned copies beating against each other
+//   * with no voice active the accumulator was 0, so the modulation switched
+//     OFF mid-delay-tail, discontinuously
+//
+// The fix is to hoist the source into the bus domain, where it is evaluated
+// once per sample and keeps running through the tail. Hoisting is not a local
+// edit — the node's state fields move from the per-voice struct to the
+// processor struct and its update moves from the voice loop to the bus block —
+// but every emission site already keys off this map, so doing it HERE, before
+// anything reads the map, is what makes the rest fall out for free (including
+// the `!bus_nodes[node.id]` gate on _init's per-voice PRNG seeding).
+//
+// A source that feeds both domains is a HARD ERROR rather than a hoist. It
+// cannot be evaluated on two clocks, and silently picking one is precisely how
+// this bug class survived: the wiring stayed legal, the emission stayed
+// plausible, and the modulation was wrong in a way you have to hold four notes
+// to notice. Duplicating the modulator is the fix, and only the author knows
+// whether the two copies should share a rate.
+// =====================================================================
+//
+// Iterates sinks-first (reverse topological order) so a chain — LFO into a
+// Mapper into a bus Filter — hoists all the way up in one pass.
+hoist_bus_modulators :: proc(
+	graph: ^Graph,
+	sorted_nodes: []Node,
+	bus_nodes: ^map[string]bool,
+) -> (Cross_Domain_Conflict, bool) {
+	#reverse for node in sorted_nodes {
+		if bus_nodes[node.id] do continue
+		if !is_hoistable_modulator_type(node.type) do continue
+
+		voice_consumer := ""
+		bus_consumer := ""
+		for conn in graph.connections {
+			if conn.from_node != node.id do continue
+			consumer, ok := graph.nodes[conn.to_node]
+			if !ok do continue
+			// GraphOutput belongs to neither domain: generate_graph_output_adds
+			// runs in both passes and filters its sources by the domain each
+			// one actually landed in, so it follows this node either way and
+			// must not be read as a vote for one clock or the other.
+			if consumer.type == "GraphOutput" do continue
+			label := fmt.tprintf("%s(%s)", consumer.type, consumer.id)
+			if bus_nodes[conn.to_node] {
+				if bus_consumer == "" do bus_consumer = label
+			} else {
+				if voice_consumer == "" do voice_consumer = label
+			}
+		}
+
+		if bus_consumer == "" do continue
+		if voice_consumer != "" {
+			return Cross_Domain_Conflict{
+				node_id        = node.id,
+				node_type      = node.type,
+				voice_consumer = voice_consumer,
+				bus_consumer   = bus_consumer,
+			}, true
+		}
+		bus_nodes[node.id] = true
+	}
+	return Cross_Domain_Conflict{}, false
+}
+
+compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: string) -> map[string]bool {
+	bus_nodes := seed_bus_domain(graph, sorted_nodes)
+	if conflict, found := hoist_bus_modulators(graph, sorted_nodes, &bus_nodes); found {
+		fmt.eprintf(
+			"Error: instrument %q wires %s node (%s) into both a per-voice node (%s) and a post-effect node (%s). A modulator runs once per voice or once per sample, never both, and Skald will not pick one for you — the per-voice copy would be summed across held notes and the bus would see whichever voice ran last. Duplicate the %s: leave one copy feeding %s and give %s its own.\n",
+			inst_name,
+			conflict.node_type,
+			conflict.node_id,
+			conflict.voice_consumer,
+			conflict.bus_consumer,
+			conflict.node_type,
+			conflict.voice_consumer,
+			conflict.bus_consumer,
+		)
+		os.exit(1)
 	}
 	for node in sorted_nodes {
 		if bus_nodes[node.id] && is_voice_coupled_type(node.type) {

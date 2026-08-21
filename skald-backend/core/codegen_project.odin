@@ -223,6 +223,14 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "// the envelope holds through attack+decay, then releases (a patch with no\n")
     fmt.sbprint(&sb, "// envelope plays 1s). Pass an explicit duration in seconds to hold longer,\n")
     fmt.sbprint(&sb, "// or drive <Foo>_note_on / <Foo>_note_off yourself for full control.\n")
+    fmt.sbprint(&sb, "//\n")
+    fmt.sbprint(&sb, "// <Foo>_note_on clamps `note` to 0..127 and `velocity` to 0..1 SILENTLY —\n")
+    fmt.sbprint(&sb, "// it is called at audio rate, so an out-of-range argument cannot afford a\n")
+    fmt.sbprint(&sb, "// diagnostic. Check your own values if you need to know they were wrong.\n")
+    fmt.sbprint(&sb, "// <Foo>_note_off clamps `note` the same way, because `note` is the key it\n")
+    fmt.sbprint(&sb, "// matches voices on: if only one side clamped, note_off(200) would fail to\n")
+    fmt.sbprint(&sb, "// release the voice note_on(200) parked at 127, and that voice would never\n")
+    fmt.sbprint(&sb, "// free.\n")
     {
         any_graph_input := false
         scan: for i in 0 ..< len(project.instruments) {

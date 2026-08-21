@@ -77,7 +77,7 @@ test_wavetable_unison_emits_per_voice_phase_array_and_detune_spread :: proc(t: ^
 
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
-	core.generate_wavetable_code(&sb, n, nil, &inst)
+	core.generate_wavetable_code(&sb, n, nil, nil, &inst)
 	out := strings.to_string(sb)
 
 	testing.expectf(t, strings.contains(out, "unison_count := 3"), "expected a 3-voice unison_count literal: got %s", out)
@@ -105,7 +105,7 @@ test_wavetable_unison_1_is_structurally_a_noop :: proc(t: ^testing.T) {
 
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
-	core.generate_wavetable_code(&sb, n, nil, &inst)
+	core.generate_wavetable_code(&sb, n, nil, nil, &inst)
 	out := strings.to_string(sb)
 
 	testing.expectf(t, strings.contains(out, "unison_count := 1"), "expected unison_count := 1: got %s", out)
@@ -118,7 +118,7 @@ test_wavetable_unison_1_is_structurally_a_noop :: proc(t: ^testing.T) {
 	zero_inst := mk_instrument(0, 12.0)
 	sb2 := strings.builder_make()
 	defer strings.builder_destroy(&sb2)
-	core.generate_wavetable_code(&sb2, n, nil, &zero_inst)
+	core.generate_wavetable_code(&sb2, n, nil, nil, &zero_inst)
 	out2 := strings.to_string(sb2)
 	testing.expectf(t, strings.contains(out2, "unison_count := 1"), "unison<=0 must floor to 1: got %s", out2)
 }
@@ -134,7 +134,7 @@ test_fm_operator_unison_emits_per_voice_phase_array_and_detune_spread :: proc(t:
 
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
-	core.generate_fm_operator_code(&sb, n, nil, &inst)
+	core.generate_fm_operator_code(&sb, n, nil, nil, &inst)
 	out := strings.to_string(sb)
 
 	testing.expectf(t, strings.contains(out, "unison_count := 4"), "expected a 4-voice unison_count literal: got %s", out)
@@ -159,7 +159,7 @@ test_fm_operator_unison_1_is_structurally_a_noop :: proc(t: ^testing.T) {
 
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
-	core.generate_fm_operator_code(&sb, n, nil, &inst)
+	core.generate_fm_operator_code(&sb, n, nil, nil, &inst)
 	out := strings.to_string(sb)
 
 	testing.expectf(t, strings.contains(out, "unison_count := 1"), "expected unison_count := 1: got %s", out)
@@ -168,7 +168,7 @@ test_fm_operator_unison_1_is_structurally_a_noop :: proc(t: ^testing.T) {
 	zero_inst := mk_instrument(0, 25.0)
 	sb2 := strings.builder_make()
 	defer strings.builder_destroy(&sb2)
-	core.generate_fm_operator_code(&sb2, n, nil, &zero_inst)
+	core.generate_fm_operator_code(&sb2, n, nil, nil, &zero_inst)
 	out2 := strings.to_string(sb2)
 	testing.expectf(t, strings.contains(out2, "unison_count := 1"), "unison<=0 must floor to 1: got %s", out2)
 }
@@ -271,7 +271,8 @@ test_crunch_rhythm_fm_operator_now_participates_in_unison :: proc(t: ^testing.T)
 	testing.expect_value(t, inst.detune, f32(9.0))
 
 	asset_type := core.detect_asset_type(&inst, &project)
-	out := core.generate_processor_code(&inst.graph, &inst, "Asset", asset_type, project.bpm)
+	plan := core.build_instrument_plan(&inst.graph, &inst, nil)
+	out := core.generate_processor_code(&inst.graph, &inst, "Asset", asset_type, project.bpm, &plan)
 
 	testing.expect(
 		t,
@@ -293,7 +294,8 @@ test_pad_sequenced_wavetable_now_participates_in_unison :: proc(t: ^testing.T) {
 	testing.expect_value(t, inst.detune, f32(12.0))
 
 	asset_type := core.detect_asset_type(&inst, &project)
-	out := core.generate_processor_code(&inst.graph, &inst, "Asset", asset_type, project.bpm)
+	plan := core.build_instrument_plan(&inst.graph, &inst, nil)
+	out := core.generate_processor_code(&inst.graph, &inst, "Asset", asset_type, project.bpm, &plan)
 
 	testing.expect(
 		t,

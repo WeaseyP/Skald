@@ -10,7 +10,8 @@
 |                  -> wasm bytes -> AudioWorklet plays the real DSP           |
 |   Knob tweak  -> exposed params apply instantly via skald_set_param         |
 |                  (no recompile); anything else debounce-rebuilds the module |
-|                  and hot-swaps it, preserving the sequencer position        |
+|                  and hot-swaps it, preserving the sequencer position and    |
+|                  replaying whatever notes are still held down               |
 ================================================================================
 */
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -98,6 +99,67 @@ export const useWasmAudioEngine = (
     // (stop→play stale-swap race, F-B09b-6).
     const rebuildGeneration = useRef(0);
 
+    // Notes the HOST is currently holding down: a note-on with no duration and
+    // no matching note-off yet. Keyed "<asset>:<note>" and storing the asset
+    // verbatim so a replay reproduces the exact message that was sent — the
+    // MIDI path always addresses -1 ("every asset"), and re-deriving a concrete
+    // asset list would break the moment a rebuild changed the asset count.
+    //
+    // SKB-023: a hot-swap installs a NEW module whose voice pool is empty, so a
+    // sustained note went silent the instant the user touched the graph and
+    // stayed silent until they let go and pressed the key again. Nothing was
+    // wrong with the module; the engine had simply forgotten that the keyboard
+    // was still down.
+    const heldNotes = useRef<Map<string, { asset: number; note: number; velocity: number }>>(new Map());
+
+    // The one door notes go through, so the held set cannot drift from what the
+    // module was actually told. A note-on WITH a duration is a one-shot — it
+    // releases itself — so it plays but is never tracked; replaying one after a
+    // swap would retrigger a sound the player already heard finish.
+    const sendNoteOn = useCallback((asset: number, note: number, velocity: number, duration: number) => {
+        const port = workletNode.current?.port;
+        if (!port) return;
+        port.postMessage({ type: 'note-on', asset, note, velocity, duration });
+        if (duration <= 0) heldNotes.current.set(`${asset}:${note}`, { asset, note, velocity });
+    }, []);
+
+    // The delete happens whether or not a worklet exists: the key is up either
+    // way, and a note left in the map would be replayed into the next module as
+    // a phantom sustain.
+    const sendNoteOff = useCallback((asset: number, note: number) => {
+        heldNotes.current.delete(`${asset}:${note}`);
+        workletNode.current?.port.postMessage({ type: 'note-off', asset, note });
+    }, []);
+
+    // Only ever called after a 'swap' the worklet actually received. Replaying
+    // on a FAILED rebuild would push a second note-on into the module that is
+    // still sounding (the previewStale/amber case), doubling every held voice
+    // instead of restoring it.
+    const replayHeldNotes = useCallback(() => {
+        const port = workletNode.current?.port;
+        if (!port) return;
+        for (const held of heldNotes.current.values()) {
+            // Plain numbers only. A payload that fails structured
+            // serialization is dropped by the port with no event on the sender
+            // — the same trapdoor that swallowed every hot-swap for as long as
+            // they carried a compiled WebAssembly.Module (see the note on
+            // buildModule below, and the worklet's own header).
+            port.postMessage({
+                type: 'note-on',
+                asset: held.asset,
+                note: held.note,
+                velocity: held.velocity,
+                duration: 0.0,
+            });
+        }
+        if (heldNotes.current.size > 0) {
+            logger.info(
+                'WasmAudioEngine',
+                `Replayed ${heldNotes.current.size} held note(s) into the swapped module`
+            );
+        }
+    }, []);
+
     // The asset whose step clock drives the UI playhead: first instrument
     // with a non-muted, non-empty track (mirrors the backend's Music Layer
     // detection). -1 keeps the playhead still when nothing sequences.
@@ -141,6 +203,10 @@ export const useWasmAudioEngine = (
         // Invalidate any rebuild still in flight: its completion must never
         // reach a worklet created by a LATER Play (stale-swap race).
         rebuildGeneration.current++;
+        // The session is over, so nothing is held any more as far as the engine
+        // is concerned. A note left here would be replayed into the next
+        // session's first rebuild as a phantom sustain.
+        heldNotes.current.clear();
         if (rebuildTimer.current) {
             clearTimeout(rebuildTimer.current);
             rebuildTimer.current = null;
@@ -177,6 +243,7 @@ export const useWasmAudioEngine = (
         startInFlight.current = true;
         // New session: any rebuild completion from before this Play is stale.
         rebuildGeneration.current++;
+        heldNotes.current.clear();
         setPreviewError(null);
         setPreviewStale(null);
         try {
@@ -368,6 +435,10 @@ export const useWasmAudioEngine = (
                 workletNode.current.port.postMessage({ type: 'swap', bytes, stepAsset }, [bytes]);
                 lastSignature.current = signature;
                 setPreviewStale(null);
+                // SKB-023. Ordering is the whole trick: the port delivers in
+                // order, so these note-ons land on the module 'swap' just
+                // installed, not on the one it replaced.
+                replayHeldNotes();
                 logger.info('WasmAudioEngine', 'Hot-swapped rebuilt wasm module');
             } catch (e) {
                 // Keep playing the previous module: mid-edit states (e.g. a
@@ -393,7 +464,9 @@ export const useWasmAudioEngine = (
         // Stable identity (state lives in refs): the queued-rebuild recursion
         // in `finally` must call a scheduleRebuild that reads the LATEST
         // buildModuleRef, never one pinned to the render that started a build.
-    }, []);
+        // replayHeldNotes is itself dependency-free, so naming it here does not
+        // cost that stability.
+    }, [replayHeldNotes]);
 
     // React to edits while playing: instant param path first, then decide
     // whether the change needs a re-codegen (topology signature changed).
@@ -459,12 +532,15 @@ export const useWasmAudioEngine = (
                 const note = nearestInScale(data1); // Apply Scale Quantization
                 const velocity = data2 / 127;
                 logger.debug('WasmAudioEngine', `[MIDI In] Raw: ${data1} -> Quantized: ${note}`);
-                port.postMessage({ type: 'note-on', asset: -1, note, velocity, duration: 0.0 });
+                // Through sendNoteOn, not the port directly, so the note is
+                // recorded as held and survives a hot-swap (SKB-023).
+                sendNoteOn(-1, note, velocity, 0.0);
             } else if (command === 0x80 || (command === 0x90 && data2 === 0)) { // Note Off
                 // Quantize exactly like note-on: the generated note_off
                 // matches by note number, so an unquantized off leaves the
-                // quantized note stuck on.
-                port.postMessage({ type: 'note-off', asset: -1, note: nearestInScale(data1) });
+                // quantized note stuck on — and, since SKB-023, would leave it
+                // in the held set to be replayed after every later rebuild.
+                sendNoteOff(-1, nearestInScale(data1));
             }
         };
 
@@ -492,7 +568,7 @@ export const useWasmAudioEngine = (
                 }
             }
         };
-    }, [nearestInScale]);
+    }, [nearestInScale, sendNoteOn, sendNoteOff]);
 
     return {
         isPlaying,

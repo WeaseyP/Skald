@@ -16,6 +16,14 @@ package generated_audio
 // envelope plays 1s). Pass an explicit duration in seconds to hold longer,
 // or drive <Foo>_note_on / <Foo>_note_off yourself for full control.
 //
+// <Foo>_note_on clamps `note` to 0..127 and `velocity` to 0..1 SILENTLY —
+// it is called at audio rate, so an out-of-range argument cannot afford a
+// diagnostic. Check your own values if you need to know they were wrong.
+// <Foo>_note_off clamps `note` the same way, because `note` is the key it
+// matches voices on: if only one side clamped, note_off(200) would fail to
+// release the voice note_on(200) parked at 127, and that voice would never
+// free.
+//
 // Effect assets (instruments with an Input node) process external audio:
 // call <Foo>_feed_input(p, l, r) with one stereo sample, then <Foo>_process.
 //
@@ -111,11 +119,19 @@ Asset_Processor :: struct {
 	ext_in_l: f32,
 	ext_in_r: f32,
 	volume: f32,
+	bus_tail_remaining: u64,
 	delay_2_buffer: [96000]f32,
 	delay_2_write_index: int,
 	reverb_2_pre_buffer: [48000]f32,
 	preDelay: f32,
 }
+
+// Worst-case seconds this asset's Delay/Reverb tail keeps sounding after
+// the last voice releases; _is_playing stays true for that long so a game
+// polling it cannot free the asset mid-echo. Any tail parameter that is
+// exposed contributes its RANGE MAXIMUM, not its authored value, so no
+// runtime set_param can make the real tail outlast this count.
+Asset_BUS_TAIL_SECONDS :: f32(0.400000000)
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.sample_rate = sr
@@ -123,6 +139,15 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.volume = 1.000000000
 	p.prng.state = 12345
 	p.loop = true
+	p.voices = {}
+	p.total_samples = 0
+	p.playing = false
+	p.current_step = 0
+	p.samples_until_next_step = 0
+	p.step_frac_acc = 0.0
+	p.ext_in_l = 0.0
+	p.ext_in_r = 0.0
+	p.bus_tail_remaining = 0
 	p.delay_2_buffer = {}
 	p.delay_2_write_index = 0
 	p.reverb_2_pre_buffer = {}
@@ -130,6 +155,10 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
+	// note and velocity are clamped silently to their MIDI/normalized domains.
+	note := note
+	if note > 127 do note = 127
+	velocity := math.clamp(velocity, 0.0, 1.0)
 	voice_idx := -1
 	for i in 0..<1 {
 		if !p.voices[i].active {
@@ -168,6 +197,9 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 }
 
 Asset_note_off :: proc(p: ^Asset_Processor, note: u8) {
+	// Clamped to match _note_on: `note` is the voice key, so both must map it.
+	note := note
+	if note > 127 do note = 127
 	best := -1
 	best_age: f32 = -1.0
 	for i in 0..<1 {
@@ -221,6 +253,10 @@ Asset_is_playing :: proc(p: ^Asset_Processor) -> bool {
 	for i in 0..<1 {
 		if p.voices[i].active do return true
 	}
+	// The effect tail counts as playing: it is still audible after every
+	// voice went inactive, and reporting false here is what let a game free
+	// the asset mid-echo.
+	if p.bus_tail_remaining > 0 do return true
 	return false
 }
 
@@ -298,6 +334,25 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 
 		output_left += node_2_out
 		output_right += node_2_out
+	}
+
+	// SKB-016: keep _is_playing true for as long as the effect tail can still
+	// be heard. Re-armed on every sample anything is sounding rather than on
+	// the falling edge, so the countdown is already full the moment the last
+	// voice goes inactive and no edge can be missed.
+	{
+		voice_alive := false
+		for i in 0..<1 {
+			if p.voices[i].active {
+				voice_alive = true
+				break
+			}
+		}
+		if voice_alive || p.playing {
+			p.bus_tail_remaining = u64(Asset_BUS_TAIL_SECONDS * sample_rate)
+		} else if p.bus_tail_remaining > 0 {
+			p.bus_tail_remaining -= 1
+		}
 	}
 	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }

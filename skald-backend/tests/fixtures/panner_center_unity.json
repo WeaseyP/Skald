@@ -1,0 +1,52 @@
+{
+  "__comment": "Packet B7-1 / BUGS.md SKB-013: the Panner's pan law. Oscillator amplitude 0.5 straight into a Panner wired to the GraphOutput, limit:false so nothing folds the peak — so 'a centred Panner is transparent' is the literal number 0.5 in both channels. `pan` is exposed so the acceptance case can render the same graph at pan 0 and pan -1 and check the law is still constant-power.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 1.0,
+    "instruments": [
+      {
+        "id": "pannercenterfixture",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "limit": false,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0
+              }
+            },
+            {
+              "id": "2",
+              "type": "Panner",
+              "parameters": { "pan": 0, "exposedParameters": ["pan"] }
+            },
+            {
+              "id": "3",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}
