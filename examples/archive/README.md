@@ -12,8 +12,8 @@ so the gate is the document.
 — a port that has never existed in the backend (`graph_validate.odin` lists
 only `input` for Delay) — and was not a fixable data error, so roadmap B6-2
 deleted the file outright rather than quarantine it indefinitely. Its
-quarantine entries in `corpusGate.ts` (`EDITOR_UNPLAYABLE`, `CLI_CODEGEN_FAILS`)
-were removed in the same packet.
+quarantine entry went with it; B6-1 then removed the quarantine mechanism in
+`corpusGate.ts` altogether, once auto-wrapping made the loose graphs playable.
 
 | File | Why archived |
 | --- | --- |

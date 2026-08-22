@@ -28,11 +28,26 @@ import {
     formatProjectIssues,
 } from '../../utils/projectWarnings';
 
+/**
+ * The banner’s severity, and the ONE place the document’s issues collapse into
+ * a verdict. ‘error’ means codegen will exit(1) over a P-lock that resolves to
+ * nothing or to a dead parameter; ‘warning’ means a problem worth showing that
+ * still builds; ‘none’ means there is nothing to say and the banner does not
+ * render at all.
+ *
+ * Only conditions the user must ACT on belong here. A condition the app
+ * already handled — the loose-graph auto-wrap (SKB-019) — is announced once by
+ * the load-time success toast in useFileIO.ts, which auto-clears, because this
+ * banner is non-dismissible by design and a permanent notice about a handled
+ * condition reads as an unfixed problem.
+ */
+export type ProjectIssueSeverity = 'none' | 'warning' | 'error';
+
 export interface LiveProjectIssues extends ProjectIssues {
     /** One user-facing line per problem. */
     lines: string[];
-    /** True when at least one issue really does fail Generate right now. */
-    blocksBuild: boolean;
+    /** What ProjectIssuesBanner should style itself as. */
+    severity: ProjectIssueSeverity;
 }
 
 export const useProjectIssues = (
@@ -41,9 +56,16 @@ export const useProjectIssues = (
     patternSteps: number,
 ): LiveProjectIssues => useMemo(() => {
     const issues = collectProjectIssues(nodes, tracks, patternSteps);
+    const blocksBuild = issues.plocks.some(p => p.blocksBuild);
+    const hasWarnings = issues.plocks.length > 0 || issues.stepRange.length > 0;
+    const severity: ProjectIssueSeverity = blocksBuild
+        ? 'error'
+        : hasWarnings
+            ? 'warning'
+            : 'none';
     return {
         ...issues,
         lines: formatProjectIssues(issues),
-        blocksBuild: issues.plocks.some(p => p.blocksBuild),
+        severity,
     };
 }, [nodes, tracks, patternSteps]);

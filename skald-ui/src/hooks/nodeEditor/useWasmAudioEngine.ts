@@ -24,6 +24,7 @@ import {
     getInstrumentNodes,
     liveParamKey,
     topologySignature,
+    wrappedInstrumentNodes,
 } from '../../utils/projectSerializer';
 import { SequencerTrack } from '../../definitions/types';
 import { logger } from '../../utils/logger';
@@ -163,6 +164,15 @@ export const useWasmAudioEngine = (
     // The asset whose step clock drives the UI playhead: first instrument
     // with a non-muted, non-empty track (mirrors the backend's Music Layer
     // detection). -1 keeps the playhead still when nothing sequences.
+    //
+    // Deliberately `getInstrumentNodes`, NOT `wrappedInstrumentNodes`: on a
+    // loose graph (SKB-019 / packet B6-1) `instruments` is `[]`, `findIndex`
+    // short-circuits to -1, and `Math.max(computeStepAsset(...), 0)` at the
+    // call site lands on asset index 0 — which correctly IS the Asset, since
+    // buildProjectData emits it as the ONLY instrument. Checking a synthetic
+    // wrapped node's track membership here would be answering a question that
+    // does not apply: a loose graph's tracks all drive the same single asset
+    // regardless of which node they used to name, so asset 0 is always right.
     const computeStepAsset = useCallback((currentNodes: Node[], tracks: SequencerTrack[]): number => {
         const instruments = getInstrumentNodes(currentNodes);
         const idx = instruments.findIndex(inst => {
@@ -324,7 +334,11 @@ export const useWasmAudioEngine = (
 
             workletNode.current = node;
             lastSignature.current = signature;
-            prevInstruments.current = getInstrumentNodes(nodes);
+            // wrappedInstrumentNodes, not getInstrumentNodes: on a loose graph
+            // (SKB-019 / packet B6-1) this must seed the synthetic "Asset"
+            // stand-in, or sendChangedExposedParams below has nothing to diff
+            // against on the very first live edit after Play.
+            prevInstruments.current = wrappedInstrumentNodes(nodes);
             setAnalyserState(analyser);
             setIsPlaying(true);
             logger.info('WasmAudioEngine', 'Playing generated wasm module');
@@ -473,7 +487,15 @@ export const useWasmAudioEngine = (
     useDeepCompareEffect(() => {
         if (!isPlaying || !workletNode.current) return;
 
-        const instrumentNodes = getInstrumentNodes(nodes);
+        // wrappedInstrumentNodes, not getInstrumentNodes (SKB-019 / packet
+        // B6-1): on a loose graph the latter is always `[]`, so
+        // sendChangedExposedParams had nothing to diff and posted no
+        // `set-param` — while topologySignature below DOES walk the wrapped
+        // Asset's audio_graph and masks the same exposed param there, so the
+        // signature never changed either. NEITHER path fired: a live exposed
+        // frequency edit on a loose graph did nothing at all, the exact
+        // silent-drop topologySignature's own header forbids.
+        const instrumentNodes = wrappedInstrumentNodes(nodes);
         sendChangedExposedParams(instrumentNodes);
 
         const projectData = buildProjectData(nodes, edges, sequencerTracks, bpm, 1.0, patternSteps, nearestInScale);

@@ -263,6 +263,72 @@ describe('collectPlockIssues — dead parameters (B5-4-followup, SKB-009 second 
     });
 });
 
+describe('collectPlockIssues — loose graph, no Instrument node (SKB-019, packet B6-1)', () => {
+    // Plain top-level DSP nodes — no `instrument(...)` wrapper — the exact
+    // shape 24 shipped examples are. `fixedPitch: true` for the same reason
+    // as the top-of-file fixture: without it `frequency` is dead by default,
+    // which would make the "valid P-lock" case below actually describe a
+    // build failure.
+    const looseNodes = [
+        sub('osc-1', 'oscillator', { label: 'Osc', frequency: 440, fixedPitch: true, amplitude: 0.5 }),
+        sub('flt-1', 'filter', { label: 'Filter', cutoff: 800, type: 'Lowpass' }),
+    ];
+
+    it('resolves a VALID P-lock against the WHOLE top-level graph, not just whatever single node the track happens to target', () => {
+        // targetNodeId names one of the loose graph's own top-level nodes —
+        // there is no Instrument node for a track to legitimately target, but
+        // buildProjectData ignores targetNodeId here regardless: the
+        // loose-graph branch maps `sequencerTracks` UNCONDITIONALLY, so this
+        // track's notes end up in the SAME Asset's audio_graph as every other
+        // node, and its P-locks must resolve against the whole thing — not
+        // just whatever node its (now-vestigial) targetNodeId names.
+        //
+        // Before this fix: subgraphNodesFor looked the id up as if it were an
+        // INSTRUMENT node, found the oscillator itself (id match), read its
+        // (nonexistent) `.data.subgraph.nodes`, and got `[]` — so a P-lock
+        // naming the FILTER (a different, perfectly real node in the same
+        // graph) came back 'unresolvable': "Code generation will fail" for a
+        // project whose editor-path codegen actually exits 0.
+        const issues = collectPlockIssues(looseNodes, [track({
+            targetNodeId: 'osc-1',
+            notes: [{ step: 3, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Filter:cutoff': 1200 } }],
+        })]);
+        expect(issues).toEqual([]);
+    });
+
+    it('still reports a GENUINELY unresolvable key on a loose graph (the mirror is not a blanket pass)', () => {
+        const issues = collectPlockIssues(looseNodes, [track({
+            targetNodeId: 'osc-1',
+            notes: [{ step: 3, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Gone:frequency': 1 } }],
+        })]);
+        expect(issues).toHaveLength(1);
+        expect(issues[0]).toMatchObject({ kind: 'unresolvable', key: 'Gone:frequency' });
+    });
+
+    it('scopes solo across ALL tracks on a loose graph, not grouped by their (unrelated) targetNodeId', () => {
+        // buildProjectData funnels EVERY track into the SAME synthetic Asset
+        // regardless of targetNodeId, so activeTrackIds must treat them as
+        // ONE group too. 'ta' and 'tb' target different (arbitrary, pre-wrap)
+        // node ids that LOOK like two different instruments if grouped
+        // naively — but backend-side there is only the one Asset, so tb's
+        // solo silences ta exactly as it would if they shared one real
+        // Instrument's tracks.
+        const issues = collectPlockIssues(looseNodes, [
+            track({
+                id: 'ta', targetNodeId: 'osc-1',
+                notes: [{ step: 1, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Gone:frequency': 1 } }],
+            }),
+            track({ id: 'tb', targetNodeId: 'flt-1', isSolo: true, notes: [{ step: 0, note: 60, velocity: 1, duration: 1 }] }),
+        ]);
+        expect(issues).toHaveLength(1);
+        // Before this fix: grouped by raw targetNodeId ('osc-1' vs 'flt-1'
+        // read as two separate instruments), so tb's solo never reached ta
+        // and this asserted true — "Generate will fail" over a track that
+        // codegen never even evaluates, because tb's solo silences it first.
+        expect(issues[0].blocksBuild).toBe(false);
+    });
+});
+
 describe('collectStepRangeIssues (SKB-010)', () => {
     it('reports the count per track and the boundary that stranded them', () => {
         const issues = collectStepRangeIssues([track({

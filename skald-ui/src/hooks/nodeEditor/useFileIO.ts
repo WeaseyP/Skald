@@ -10,6 +10,7 @@ import { useCallback } from 'react';
 import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import { SequencerTrack } from '../../definitions/types';
 import { ImportedGraph, layOutImportBatch } from '../../utils/importLayout';
+import { getInstrumentNodes } from '../../utils/projectSerializer';
 import { EditorHistoryApi, SessionSettings } from './editorSnapshot';
 
 // SessionSettings (bpm / patternSteps / masterVolume / packageName) is defined
@@ -201,8 +202,29 @@ export const useFileIO = (
         // undo BACK to: the pre-load graph and the newly loaded tracks are not a
         // state the user ever authored.
         history.resetHistory();
-        if (sourceName) {
-            notifyFileStatus({ kind: 'success', message: `Loaded "${sourceName}"` });
+
+        // SKB-019 / packet B6-1: a graph with no Instrument node auto-wraps as
+        // one "Asset" SFX instrument on Play/Generate (buildProjectData). That
+        // is announced HERE — once, via the same auto-clearing success toast
+        // Save/Load already uses (app.tsx's notifyFileStatus auto-clears a
+        // 'success' after 4s) — rather than as a permanent banner: an earlier
+        // revision reported it in ProjectIssuesBanner instead, which is
+        // non-dismissible BY DESIGN (it reports unplayable data) and painted a
+        // problem's styling over a build that actually succeeds, on all 24
+        // shipped loose-graph examples. Same predicate buildProjectData uses,
+        // so this can't announce a wrap that doesn't actually happen (or stay
+        // silent about one that does).
+        const looseGraphNotice =
+            flow.nodes.length > 0 && getInstrumentNodes(flow.nodes).length === 0
+                ? 'no Instrument node — the whole graph will auto-wrap as one "Asset" SFX instrument for Play/Generate (SKB-019)'
+                : null;
+
+        if (sourceName || looseGraphNotice) {
+            const base = sourceName ? `Loaded "${sourceName}"` : 'Loaded';
+            notifyFileStatus({
+                kind: 'success',
+                message: looseGraphNotice ? `${base} — ${looseGraphNotice}` : base,
+            });
         }
         return true;
     }, [reactFlowInstance, setNodes, setEdges, history, loadSequencerTracks, applySessionSettings, notifyFileStatus]);

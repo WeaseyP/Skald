@@ -122,103 +122,34 @@ export const listCorpus = (repoRoot: string): CorpusFile[] => {
 };
 
 // ---------------------------------------------------------------------------
-// Quarantine — the explicit allowlist of known-broken examples.
+// Quarantine mechanism — REMOVED by packet B6-1.
 //
-// Rules (roadmap A5): every entry names the file, the symptom, and the packet
-// that owns the real fix. The gate FAILS when a quarantined file starts
-// passing (the entry must then be deleted — the list cannot rot) and FAILS
-// when a quarantined file no longer exists (same reason).
+// This used to hold two allowlists (`EDITOR_UNPLAYABLE`, `CLI_CODEGEN_FAILS`)
+// plus `QuarantineEntry`/`isQuarantined` (roadmap A5). `CLI_CODEGEN_FAILS` had
+// already gone empty in packet B6-2 (its one entry, `PulsarBeam.json`, was
+// deleted outright rather than quarantined forever). `EDITOR_UNPLAYABLE` held
+// exactly the 24 no-Instrument-node examples this packet makes playable
+// (SKB-019): buildProjectData now auto-wraps a loose graph as one "Asset" SFX
+// instrument instead of serializing zero instruments, so every one of those
+// files now passes the editor gate outright and the entry pinning its FAILURE
+// has nothing left to pin.
+//
+// With both lists empty, `isQuarantined` could only ever return `undefined` —
+// a function with no reachable true branch is the same "second thing that can
+// drift from reality" this repo deletes on sight rather than leaves as
+// speculative scaffolding (see B6-2's own choice to delete PulsarBeam.json
+// rather than quarantine an unfixable file forever). If a future example ever
+// needs a pinned, known-broken allowlist again, reintroduce this shape from
+// git history (see roadmap A5 / this comment in prior revisions) rather than
+// resurrecting an empty one now — a quarantine list with zero entries and no
+// caller is not "ready for later," it is untested until something is actually
+// in it.
+//
+// Consequence: ROADMAP item B6-2-x1 ("generalise the hardcoded
+// input_delayTime assertion before a second CLI_CODEGEN_FAILS entry is ever
+// added") is now moot — there is no CLI_CODEGEN_FAILS left to add a second
+// entry to.
 // ---------------------------------------------------------------------------
-
-export interface QuarantineEntry {
-    rel: string;
-    symptom: string;
-    owner: string;
-}
-
-/**
- * Files that cannot be played or generated from the editor because they carry
- * no Instrument node: `buildProjectData` emits instruments only from
- * Instrument nodes, so these serialize to a zero-instrument project the
- * backend rejects ("Input JSON must be valid Project or Graph", exit 1).
- * This is BUGS.md SKB-019 (25 unplayable = these 24 + the project-shaped
- * integration-demo file, which the editor rejects at parse). The editor gate
- * pins the failure; the CLI gate still fully covers these files, because the
- * CLI's legacy fallback wraps a loose graph as a single "Asset" SFX.
- *
- * `examples/archive/PulsarBeam.json` was on this list too, until packet B6-2
- * deleted the file outright: it also failed CLI-path codegen (see
- * CLI_CODEGEN_FAILS below), so quarantining it here alone would not have made
- * it playable, and its underlying defect was in the file, not fixable data.
- *
- * Owner: packet B6 (auto-wrap loose graphs on load/Play). When B6 lands, every
- * one of these starts generating through the editor path, this gate goes red
- * on "quarantined file passes", and the list gets deleted with the packet.
- */
-export const EDITOR_UNPLAYABLE: QuarantineEntry[] = [
-    'examples/archive/AlarmPulse.json',
-    'examples/archive/Sax2.json',
-    'examples/instruments/bass/lfo-filter-wobble-bass.skald.json',
-    'examples/instruments/bass/sine-sub-bass.skald.json',
-    'examples/instruments/drums/acoustic-electric/Cowbell.json',
-    'examples/instruments/drums/acoustic-electric/CyberCymbal.json',
-    'examples/instruments/drums/acoustic-electric/HiHat.json',
-    'examples/instruments/drums/acoustic-electric/KickDrum.json',
-    'examples/instruments/drums/acoustic-electric/SnareDrum.json',
-    'examples/instruments/keys/fm-bell-tone.skald.json',
-    'examples/instruments/keys/piano-and-keys/MellowElectricPiano.json',
-    'examples/instruments/keys/piano-and-keys/PianoChord.json',
-    'examples/instruments/leads/saw-lead.skald.json',
-    'examples/instruments/pads/ambient-reverb-pad.skald.json',
-    'examples/instruments/pads/complex-drone-machine.skald.json',
-    'examples/instruments/pads/pwm-pad.skald.json',
-    'examples/sound-effects/cosmic/AlienChatter.json',
-    'examples/sound-effects/cosmic/BlackHoleDrone.json',
-    'examples/sound-effects/cosmic/WarpDrive.json',
-    'examples/sound-effects/impacts/percussive-high-pass-hit.skald.json',
-    'examples/sound-effects/synth/LaserPew.json',
-    'examples/sound-effects/synth/PowerUp.json',
-    'examples/sound-effects/synth/band-pass-filter-sweep.skald.json',
-    'examples/sound-effects/synth/classic-delay-puck.skald.json',
-].map((rel) => ({
-    rel,
-    symptom:
-        'no Instrument node: Play refuses it and Generate serializes a zero-instrument ' +
-        'project the backend rejects (SKB-019)',
-    owner: 'B6 (auto-wrap loose graphs on load/Play)',
-}));
-
-/**
- * Files whose CLI-path codegen is expected to FAIL (non-zero exit).
- *
- * Empty as of packet B6-2. The one entry this ever held was
- * `examples/archive/PulsarBeam.json`, which wired an LFO ("Doppler Shift")
- * into `input_delayTime` on a Delay node — a port that has never existed in
- * any version of this repo's history (`graph_validate.odin` lists only
- * "input" for Delay). That was a defect in the FILE, not a fixable data
- * correction (dropping the wire would silence the patch's whole reason for
- * existing), so B6-2 deleted the file outright instead of leaving it
- * quarantined forever.
- *
- * The mechanism stays: this is still where a file gets listed if a future
- * example's CLI-path codegen is *expected* to fail for a similarly
- * unfixable, undeletable reason. Do not delete the mechanism just because
- * there is currently nothing to quarantine — but know exactly what is and
- * is not covered while the list is empty: the CLI gate’s `if (quarantined)`
- * body is dead code, and `isQuarantined` itself stays exercised only by the
- * EDITOR gate (`ExamplesCorpus.test.ts:233`). The gate-hygiene test does not
- * reach it — it iterates the arrays directly.
- *
- * ▲ Before a SECOND entry is ever added here, generalise the branch: it
- * asserts PulsarBeam’s specific stderr fragment `input_delayTime`
- * (`ExamplesCorpus.test.ts:309`), so any entry quarantined for a different
- * symptom fails on that assertion with a misleading message. Move the
- * fragment into `QuarantineEntry` first.
- */
-export const CLI_CODEGEN_FAILS: QuarantineEntry[] = [];
-
-export const isQuarantined = (list: QuarantineEntry[], rel: string): QuarantineEntry | undefined =>
-    list.find((q) => q.rel === rel);
 
 // ---------------------------------------------------------------------------
 // Toolchain: the codegen binary the app spawns, and an Odin for `odin check`

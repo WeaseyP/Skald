@@ -488,7 +488,7 @@ const EditorLayout = () => {
                         )}
                         <ProjectIssuesBanner
                             lines={projectIssues.lines}
-                            blocksBuild={projectIssues.blocksBuild}
+                            severity={projectIssues.severity}
                         />
                         {recoverableAutosave && (
                             <div

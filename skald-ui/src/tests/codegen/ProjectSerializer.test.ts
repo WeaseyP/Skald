@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Node } from '@xyflow/react';
+import { Node, Edge } from '@xyflow/react';
 import {
     buildProjectData,
     topologySignature,
@@ -138,5 +138,77 @@ describe('buildProjectData', () => {
         expect(inst.audio_graph.nodes).toHaveLength(3);
         expect(inst.audio_graph.sequencer_tracks).toEqual([]);
         expect(inst.midi_config).toEqual({ device: 'All', channel: 1 });
+    });
+});
+
+// Packet B6-1 (SKB-019): a graph with no Instrument node is a legacy "loose
+// graph" — 24 shipped examples are this shape. Before this packet,
+// buildProjectData serialized it to a ZERO-instrument project, which the
+// backend rejects outright ("Input JSON must be valid Project or Graph",
+// exit 1): Play and Generate could not touch a single one of them, even
+// though the CLI's own fallback (build_project_from_graph_raw,
+// skald-backend/core/json.odin:531) has always wrapped the same shape as one
+// SFX instrument named "Asset". This is a MIRROR of that fallback, not a
+// second one — same id/name, same voice_count/unison, and volume/limit left
+// out of the JSON entirely so the backend's own absent-value resolution
+// (`volume <= 0 -> 1.0`, `limit.? or_else true`) decides them.
+describe('buildProjectData — loose graph auto-wrap (SKB-019 / packet B6-1)', () => {
+    const looseNodes: Node[] = [
+        {
+            id: 'osc', type: 'oscillator', position: { x: 0, y: 0 },
+            data: { label: 'Osc', waveform: 'Sawtooth', frequency: 440, amplitude: 0.5 },
+        } as unknown as Node,
+        {
+            id: 'out', type: 'InstrumentOutput', position: { x: 0, y: 0 },
+            data: { label: 'Out', name: 'output' },
+        } as unknown as Node,
+    ];
+    const looseEdges: Edge[] = [
+        { id: 'e1', source: 'osc', sourceHandle: 'output', target: 'out', targetHandle: 'input' } as unknown as Edge,
+    ];
+
+    it('wraps a graph with no Instrument node as exactly one Asset instrument carrying the whole graph', () => {
+        const data = buildProjectData(looseNodes, looseEdges, [], 120, 1.0, 16);
+        expect(data.project.instruments).toHaveLength(1);
+        const inst = data.project.instruments[0];
+
+        expect(inst.id).toBe('Asset');
+        expect(inst.name).toBe('Asset');
+        expect(inst.voice_count).toBe(1);
+        expect(inst.unison).toBe(1);
+        // Left absent, not defaulted here — matches the CLI's literal, which
+        // sets only id/name/voice_count/unison/audio_graph and leaves
+        // everything else (including volume and limit) at Project_Instrument_Raw's
+        // zero value for the backend to resolve.
+        expect(inst).not.toHaveProperty('volume');
+        expect(inst).not.toHaveProperty('limit');
+
+        // The WHOLE envelope becomes the instrument's audio_graph: every
+        // top-level node, and the top-level edges translated to the
+        // from_node/to_node connection shape (same translation formatSubgraph
+        // does for a real instrument's subgraph).
+        expect(inst.audio_graph.nodes).toHaveLength(2);
+        expect(inst.audio_graph.nodes.map((n: any) => n.id)).toEqual(['osc', 'out']);
+        expect(inst.audio_graph.connections).toEqual([
+            { from_node: 'osc', from_port: 'output', to_node: 'out', to_port: 'input' },
+        ]);
+        expect(inst.audio_graph.sequencer_tracks).toEqual([]);
+    });
+
+    it('does not touch a graph that already has an Instrument node, even alongside stray top-level nodes', () => {
+        // Mirrors the CLI's guard exactly: `len(insts) == 0`, not
+        // `len(nodes) == 0` — a graph is only "loose" when NO Instrument node
+        // exists anywhere on the canvas, not when some other node also sits
+        // outside one.
+        const mixed = [...looseNodes, makeInstrument()];
+        const data = buildProjectData(mixed, looseEdges, [], 120, 1.0, 16);
+        expect(data.project.instruments).toHaveLength(1);
+        expect(data.project.instruments[0].id).toBe('inst-1');
+        expect(data.project.instruments[0].name).toBe('TestBass');
+    });
+
+    it('does not wrap an empty canvas into a phantom instrument', () => {
+        const data = buildProjectData([], [], [], 120, 1.0, 16);
+        expect(data.project.instruments).toEqual([]);
     });
 });

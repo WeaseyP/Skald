@@ -123,15 +123,33 @@
   the flagship. Also `OutOfRangeNotice` names `patternSteps` even when the *track* is the shorter one.
 
 ### B6 — First Hour
-- [ ] **B6-1** (M) — Auto-wrap loose graphs on load/Play with a toast (26 files affected)
-  - *Design is already written down*: the CLI **already does this** —
-    `build_project_from_graph_raw` (`json.odin:431`) wraps a graph with no Instrument node "whole as one
-    SFX named Asset". The editor path does not, because `buildProjectData` emits instruments only from
-    Instrument nodes. Mirror the CLI's fallback rather than inventing a second one (SKB-002).
-  - The exact 24-file list, the symptom and the ownership note are in
-    `skald-ui/src/tests/corpus/corpusGate.ts` → `EDITOR_UNPLAYABLE`. That gate **fails when a
-    quarantined file starts passing**, so landing B6-1 turns it red by design and the list must be
-    deleted with the packet.
+- [x] **B6-1** (M) — ✅ **CLOSED**. `buildProjectData` now mirrors the CLI’s
+  `build_project_from_graph_raw` (`json.odin:531`): a graph with no Instrument node is wrapped whole as
+  one SFX named `Asset`, so all **24** loose-graph examples load, play and generate from the editor.
+  All three call sites inherit it (`useWasmAudioEngine.ts:189,479`, `useCodeGeneration.ts:65`) because
+  the wrap lives inside the serializer, not at the callers. The quarantine mechanism went with the
+  packet — `EDITOR_UNPLAYABLE`, `CLI_CODEGEN_FAILS`, `QuarantineEntry` and `isQuarantined` are all
+  deleted, and the 24 files now run the full assertion set (codegen + `odin check` + session honoured)
+  that the quarantine branch used to `return` before reaching.
+  - **Verified byte-identical to the CLI by construction, twice.** The review drove all 97 graph-shaped
+    examples through the real editor pipeline in both the working tree and a `git worktree` of the
+    baseline, and diffed: the 73 instrument-carrying files emit identical Odin before and after, so the
+    shared `serializeTracks` extraction changed nothing on the path every ordinary project uses. All 24
+    loose graphs match the CLI except the known `p.master_volume` line (see B6-1-x2).
+  - The notice is a load-time success toast (`useFileIO.ts`), not a banner line. `ProjectIssuesBanner`
+    is non-dismissible by design because it reports data the user must fix; auto-wrap is a condition
+    the app already handled, and a permanent notice about a handled condition reads as an unfixed
+    problem. This is also why B5-x5 did not get worse.
+  - Three defects the wrap exposed elsewhere, all fixed in-packet: `useCodeGeneration.ts` painted a
+    permanent red "Export warnings" overlay over a successful build; `subgraphNodesFor` /
+    `activeTrackIds` (`projectWarnings.ts`) reported every loose-graph P-lock as unresolvable, so the
+    banner announced "Code generation will fail" for a project that generates; and live exposed-param
+    edits were silently dropped while playing a wrapped graph (`sendChangedExposedParams` saw no
+    instruments **and** `topologySignature` masked the param, so neither path fired).
+  - Original text: Auto-wrap loose graphs on load/Play with a toast. The header said "26 files
+    affected"; the real figure is 25 — 24 loose graphs plus the project-shaped demo, which is
+    unplayable for a different reason (the editor refuses it at PARSE) and is not fixed by this packet.
+
 - [x] **B6-2** (S) — ✅ **CLOSED**. `PulsarBeam.json` deleted; both quarantine entries naming it
   retired (`CLI_CODEGEN_FAILS` is now empty, `EDITOR_UNPLAYABLE` is 24); `archive/` excluded from the
   packaged build by a Forge `postPackage` hook (`forge.config.ts` →
@@ -151,11 +169,11 @@
     port, so the file was legacy content authored against an older editor — an archived example
     unloadable against the current schema.
 
-- [ ] **B6-2-x1** (S) — `ExamplesCorpus.test.ts:309` hardcodes PulsarBeam's stderr fragment
-  (`input_delayTime`) inside the `if (quarantined)` branch, so the next entry added to
-  `CLI_CODEGEN_FAILS` for any other symptom fails on that assertion with a misleading message. Move
-  the fragment into `QuarantineEntry` as a `stderrMatch` field. The comment at `corpusGate.ts` warns
-  about this, but a comment is not a gate.
+- [x] **B6-2-x1** (S) — ✅ **MOOT**, closed unimplemented. It asked for the hardcoded `input_delayTime`
+  assertion to be generalised before a second `CLI_CODEGEN_FAILS` entry could be added. B6-1 deleted
+  the quarantine mechanism outright, so there is no list to add an entry to and no branch to
+  generalise. Recorded rather than silently dropped because `corpusGate.ts` declared it moot in a code
+  comment first, and a source comment must not retire a tracked item on its own.
 
 - [ ] **B6-2-x2** (S) — `skald-ui/src/main/forgePostPackage.ts:45` guards on
   `fs.existsSync(archiveDir)` and cannot tell "already gone" from "wrong path": if `extraResource` is
@@ -175,6 +193,42 @@
   `examples_corpus/.gen/` via an unrooted `.gen/` pattern, not via any top-level rule. Confirmed with
   `git check-ignore -v`. Recorded so nobody adds a redundant `/skald-backend/tests/golden/
   examples_corpus/.gen/` entry believing the scratch dir is unignored.
+
+- [ ] **B6-1-x1** (S) — **Instrument ordering disagrees between the two paths.** `json.odin:546` sorts
+  instruments by sanitized id — deliberately, because "changing the order changes every wasm shim’s
+  integer asset index" (SKB-003 / F-B04-1) — while `projectSerializer.ts:186` emits them in canvas node
+  order. For all four multi-instrument songs the whole emission differs by permutation. The comment at
+  `projectSerializer.ts:156` calls its order "the instrument order every consumer agrees on"; the CLI
+  does not agree. Pre-existing, unchanged by B6-1, and invisible to the corpus gate because that gate
+  only asserts each path compiles, never that they agree.
+
+- [ ] **B6-1-x2** (S) — **Absent-value defaults disagree.** `projectSerializer.ts:274,276,278` default
+  `voiceCount` 8, `glide` 0.05 and `detune` 5.0 where the backend’s absent-value defaults are 1, 0.0
+  and 0.0 (`json.odin:517-520`). `four-bar-song` authors none of them, so an editor Generate bakes in a
+  50 ms glide and 5-cent detune that `-in:file` does not. Same file also shows the session-less master
+  volume split: the editor exports its live fader (0.8), the CLI resolves absent to unity (1.0) — the
+  sole difference across all 24 loose graphs. **Decide which path is authoritative and write it down**;
+  this blocks B6-1-x4.
+
+- [ ] **B6-1-x3** (S) — `getInstrumentNodes` (`projectSerializer.ts:158`) matches only lowercase
+  `'instrument'`, while `normalize_node_type` (`json.odin:13`) uses `strings.equal_fold`. A node typed
+  `"Instrument"` is auto-wrapped by the editor into an `Asset` whose only node serializes as
+  `type:"Unknown"`, while the CLI sees a real instrument and does not wrap. No shipped file does it, but
+  the wrap decision now rides on this predicate. The comment at `projectSerializer.ts:150` promises this
+  entry exists — it does now.
+
+- [ ] **B6-1-x4** (S) — **Cross-path emission equality in the corpus gate.** §4.2 forbids goldens there,
+  but asserting that the editor and CLI emit *the same text* for the same file is not a golden, and it
+  is the only thing that would catch B6-1-x1 and B6-1-x2 — both invisible today. The review built this
+  harness twice; it runs in ~2s for all 24 loose graphs. Needs B6-1-x2 decided first, or the master
+  volume line has to be an explicit documented exception.
+
+- [ ] **B6-1-x5** (S) — The false-positive class F2 fixed is still live for **non-loose** graphs:
+  `projectWarnings.ts:135-142`, a track whose `targetNodeId` names a non-Instrument node in a graph that
+  does have an instrument. `subgraphNodesFor` finds the node, reads its absent `.data.subgraph.nodes`,
+  returns `[]`, and every P-lock on it reports `blocksBuild: true` — for a track `buildProjectData`
+  drops entirely, so codegen never sees it. The doc comment at `:110-114` claims the predicate resolves
+  "against exactly the shape the backend will actually see"; that is true only in the loose branch.
 
 - [ ] **B6-3** (S) — Curated `examples/start-here/` folder
 - [/] **B6-4** (S) — ~~Fix the two README 404s~~ done `57df823`: `BUGS.md` had been replaced by
@@ -408,7 +462,7 @@ against a pristine `git archive` export of any ref, so "was this already broken?
 than an argument. `TESTING.md` holds the protocol and the current known-red list; `CLAUDE.md` points any
 agent at both before it reports a gate result.
 
-## Verified baselines (at B6-2)
+## Verified baselines (at B6-1)
 
 Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptance.bat"` fails.
 
@@ -418,10 +472,10 @@ Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptanc
 | Goldens + determinism | `skald-backend` → `.\run_golden.bat` | 56/56 match, 56/56 identical on re-run |
 | Examples corpus (backend) | `skald-backend` → `.\run_corpus_golden.bat` | 98/98 match (recorded by B6-2) |
 | Backend unit | `skald-backend` → `odin test tests\unit` | 77/77 |
-| UI | `skald-ui` → `npx vitest run` | 57 files / 726 tests |
-| Examples corpus (UI) | `skald-ui` → `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | 199/199 |
+| UI | `skald-ui` → `npx vitest run` | 57 files / 735 tests |
+| Examples corpus (UI) | `skald-ui` → `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | 198/198 |
 | Typecheck / lint | `skald-ui` → `npx tsc --noEmit` / `npm run lint` | 1 / 2 pre-existing errors (see above) |
-| Examples corpus (UI) | `skald-ui` @ `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | 199/199 |
+| Examples corpus (UI) | `skald-ui` @ `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | 198/198 |
 | Typecheck / lint | `skald-ui` @ `npx tsc --noEmit` / `npm run lint` | 1 / 2 pre-existing errors (see above) |
 
 At `9563a57` these were 33/33, 48/48, **did not compile**, 44 files / 573 tests, 1 / 2. Note the UI

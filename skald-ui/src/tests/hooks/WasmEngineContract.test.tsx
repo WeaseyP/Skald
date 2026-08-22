@@ -102,20 +102,45 @@ const renderEngine = (nodes: Node[], tracks: SequencerTrack[] = [], masterVolume
     );
 
 describe('useWasmAudioEngine — Play error path', () => {
-    it('rejects Play with no instruments: no worklet is built and the AudioContext does not leak', async () => {
-        const { result } = renderEngine([
-            { id: 'lonely-gain', type: 'gain', position: { x: 0, y: 0 }, data: { gain: 0.5 } } as unknown as Node,
-        ]);
+    it('rejects Play with a truly empty canvas: no worklet is built and the AudioContext does not leak', async () => {
+        const { result } = renderEngine([]);
 
         await act(async () => { await result.current.handlePlay(); });
 
         // Build was never dispatched — the empty-instruments check fires first.
+        // buildProjectData's loose-graph auto-wrap (packet B6-1) only fires
+        // when at least one node exists (SKB-019's guard,
+        // `instrumentNodes.length === 0 && nodes.length > 0`), so a genuinely
+        // empty canvas is the one case that must still hit this guard.
         expect(buildWasmPreview).not.toHaveBeenCalled();
         expect(createdWorklets).toHaveLength(0);
         expect(result.current.isPlaying).toBe(false);
         // The context created inside the click gesture is closed, not leaked.
         expect(createdContexts).toHaveLength(1);
         expect(createdContexts[0].close).toHaveBeenCalled();
+    });
+
+    // Packet B6-1 (SKB-019): before this packet, a graph with no Instrument
+    // node — the shape of 24 shipped examples — hit the SAME "no instruments"
+    // rejection above, because buildProjectData serialized it to zero
+    // instruments. It now auto-wraps as one "Asset" SFX instrument and plays,
+    // exactly as the CLI's fallback has always been able to build it.
+    it('auto-wraps a loose graph (no Instrument node) as one Asset instrument and plays it', async () => {
+        const { result } = renderEngine([
+            { id: 'lonely-gain', type: 'gain', position: { x: 0, y: 0 }, data: { gain: 0.5 } } as unknown as Node,
+        ]);
+
+        await act(async () => { await result.current.handlePlay(); });
+
+        expect(buildWasmPreview).toHaveBeenCalledTimes(1);
+        const sentProject = JSON.parse(buildWasmPreview.mock.calls[0][0] as string);
+        expect(sentProject.project.instruments).toHaveLength(1);
+        expect(sentProject.project.instruments[0].id).toBe('Asset');
+        expect(sentProject.project.instruments[0].audio_graph.nodes).toHaveLength(1);
+        expect(sentProject.project.instruments[0].audio_graph.nodes[0].id).toBe('lonely-gain');
+
+        expect(createdWorklets).toHaveLength(1);
+        expect(result.current.isPlaying).toBe(true);
     });
 });
 
@@ -284,6 +309,37 @@ describe('useWasmAudioEngine — live edits while playing', () => {
         // "<nodeId>::<param>" for every exposed param.
         expect(new TextDecoder().decode(setParamCalls[0].nameBytes)).toBe('flt::cutoff');
         void result;
+    });
+
+    // Packet B6-1 (SKB-019): a loose graph (no Instrument node) auto-wraps as
+    // one "Asset" SFX instrument. Before wrappedInstrumentNodes replaced
+    // getInstrumentNodes in this hook, `sendChangedExposedParams` was handed
+    // `[]` for a loose graph (nothing to diff, no set-param posted) while
+    // `topologySignature` — which walks buildProjectData's OWN wrapped
+    // Asset.audio_graph, independently of this list — masked the same param
+    // and kept the signature identical, so no rebuild fired either. The edit
+    // vanished with NEITHER path taking it.
+    const looseOsc = (freq: number): Node => ({
+        id: 'osc', type: 'oscillator', position: { x: 0, y: 0 },
+        data: { label: 'Osc', waveform: 'Sine', frequency: freq, amplitude: 0.5, exposedParameters: ['frequency'] },
+    } as unknown as Node);
+
+    it('a live exposed-param edit on a LOOSE graph (no Instrument node) reaches the engine via set-param, not silently dropped', async () => {
+        vi.useFakeTimers();
+        const { rerender } = await startPlaying([looseOsc(440)]);
+        const port = createdWorklets[0].port;
+        port.postMessage.mockClear();
+
+        await act(async () => { rerender({ n: [looseOsc(880)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+        expect(buildWasmPreview).toHaveBeenCalledTimes(1); // no rebuild — instant path only
+        const setParamCalls = port.postMessage.mock.calls
+            .map((c) => c[0])
+            .filter((m: { type: string }) => m.type === 'set-param');
+        expect(setParamCalls).toHaveLength(1);
+        expect(setParamCalls[0].value).toBe(880);
+        expect(new TextDecoder().decode(setParamCalls[0].nameBytes)).toBe('osc::frequency');
     });
 
     it('an exposed param edited to a value the f32 path cannot carry (NaN) falls back to a REBUILD instead of vanishing', async () => {

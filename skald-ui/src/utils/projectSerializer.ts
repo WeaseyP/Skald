@@ -87,8 +87,74 @@ const formatSubgraph = (subgraph: { nodes: Node[], connections: any[] }): any =>
     };
 };
 
+// The event-level view of a sequencer track the backend consumes: quantized
+// note, BPM-derived start_time, the probability floor, and the P-lock export
+// filter. Used IDENTICALLY by a real instrument's subgraph.sequencer_tracks
+// and the loose-graph wrap's audio_graph.sequencer_tracks (SKB-019 / packet
+// B6-1) — extracted so the BPM formula, the probability floor and the
+// patch_overrides filter live in exactly one place rather than two copies
+// that can silently drift apart (the defect class this whole packet exists to
+// stop, SKB-002).
+const serializeTracks = (
+    tracks: SequencerTrack[],
+    bpm: number,
+    nearestInScale?: (note: number) => number
+): any[] => tracks.map(track => ({
+    target_node_id: track.targetNodeId,
+    name: track.name,
+    mute: track.isMuted,
+    solo: track.isSolo,
+    // num_steps is an int track length (Sequencer_Track.num_steps).
+    num_steps: toInt(track.steps, 16, 1, 1024),
+    events: track.notes.map(n => ({
+        // Quantize at export with the same function the preview uses at
+        // schedule time — what you hear in the browser is what ships.
+        // `note` is a u8 (0..127 MIDI); force it whole and in range so it
+        // unmarshals.
+        note: toInt(nearestInScale ? nearestInScale(n.note) : n.note, 60, 0, 127),
+        velocity: n.velocity,
+        // step is an int grid index (Note_Event.step).
+        step: toInt(n.step, 0, 0, 1023),
+        // Seconds, BPM-derived (16th-note steps). The old value hardcoded
+        // 0.25s/step regardless of tempo.
+        start_time: n.step * (60.0 / bpm / 4.0),
+        // Duration is in STEPS; the preview defaults a missing/zero duration
+        // to 1 step, not 0.1.
+        duration: n.duration || 1,
+        // Chance the step fires each loop. Clamped away from 0 because the
+        // backend treats <=0 as "field absent — play always".
+        probability: Math.max(n.probability ?? 1, 0.001),
+        // P-locks: per-step parameter overrides. Numeric only: the backend
+        // applies them through the f32 set_param API (a string override —
+        // e.g. a waveform switch — would fail the whole JSON parse
+        // backend-side).
+        //
+        // The filter is still silent HERE, on purpose: this is a pure
+        // transform shared by the preview and the export, and it must stay
+        // pure. SKB-045's report happens where the user is — the step editor
+        // flags the override and useCodeGeneration surfaces it on Generate —
+        // through isExportablePlockValue, this same predicate, so what is
+        // flagged is exactly what is dropped.
+        patch_overrides: Object.fromEntries(
+            Object.entries(n.patchOverrides ?? {})
+                .filter(([, v]) => isExportablePlockValue(v))
+        )
+    }))
+}));
+
 // The instrument order every consumer (codegen asset indices, the wasm shim's
 // asset dispatch, the preview engine's set_param addressing) agrees on.
+//
+// CASE-SENSITIVE, unlike the backend: normalize_node_type
+// (skald-backend/core/json.odin:13) accepts both "instrument" and
+// "Instrument" (case-insensitive via strings.equal_fold, ASCII-only), but
+// this only ever matches the lowercase spelling React Flow itself writes as
+// `node.type`. A hand-authored file spelling it "Instrument" would therefore
+// read as instrument-LESS here (auto-wrap fires in the editor) while the CLI
+// sees a real instrument and does not wrap — a live editor/backend mismatch,
+// pre-existing but now load-bearing since the wrap decision (packet B6-1)
+// rides on this exact predicate. No shipped example does this; tracked as a
+// ROADMAP follow-up rather than widened here.
 export const getInstrumentNodes = (nodes: Node<NodeParams>[]): Node<NodeParams>[] =>
     nodes.filter(n => n.type === 'instrument');
 
@@ -119,6 +185,44 @@ export const buildProjectData = (
 
     const instrumentNodes = getInstrumentNodes(nodes);
 
+    // SKB-019 / packet B6-1: a graph with no Instrument node at all is a
+    // legacy "loose graph" — nearly every pre-Instrument-node example ships
+    // this shape. Without this branch it serialized to a ZERO-instrument
+    // project, which the backend rejects outright ("Input JSON must be valid
+    // Project or Graph", exit 1) — Play and Generate could not touch 24
+    // shipped examples the CLI has always been able to build.
+    //
+    // MIRROR, not a second fallback: this reproduces
+    // build_project_from_graph_raw's own loose-graph branch
+    // (skald-backend/core/json.odin:531) field-for-field — same id/name
+    // ("Asset"), same voice_count/unison (1/1), and volume/limit are left OUT
+    // of the emitted JSON entirely (not defaulted to 1.0/true here) so the
+    // backend's own absent-value resolution (`volume <= 0 -> 1.0`,
+    // `limit.? or_else true` in build_project_from_raw) is the ONE place that
+    // decides them, exactly as it is for the CLI's wrap. Guarded the same way
+    // too: an empty canvas (`nodes.length === 0`) must NOT be wrapped into a
+    // phantom instrument — buildModule's "No instruments on the canvas" guard
+    // (useWasmAudioEngine.ts) depends on a truly empty graph still producing
+    // zero instruments.
+    if (instrumentNodes.length === 0 && nodes.length > 0) {
+        // Same translation formatSubgraph does for a real instrument's
+        // subgraph (`edge.source`/`sourceHandle` -> `from_node`/`from_port`):
+        // the whole top-level graph stands in for a subgraph here, so it must
+        // go through the identical connection shape rather than a second copy
+        // of the mapping.
+        const audioGraph = formatSubgraph({ nodes, connections: edges } as any);
+        audioGraph.sequencer_tracks = serializeTracks(sequencerTracks, bpm, nearestInScale);
+
+        projectData.project.instruments = [{
+            id: 'Asset',
+            name: 'Asset',
+            voice_count: 1,
+            unison: 1,
+            audio_graph: audioGraph,
+        }];
+        return projectData;
+    }
+
     projectData.project.instruments = instrumentNodes.map(instNode => {
         const data = instNode.data as InstrumentParams;
         // ALL tracks targeting this instrument. Only the first used to be
@@ -145,54 +249,11 @@ export const buildProjectData = (
 
         const subgraph = formatSubgraph(data.subgraph as any);
 
-        // Inject the Sequencer Tracks for this instrument
-        if (subgraph && tracks.length > 0) {
-            subgraph.sequencer_tracks = tracks.map(track => ({
-                target_node_id: track.targetNodeId,
-                name: track.name,
-                mute: track.isMuted,
-                solo: track.isSolo,
-                // num_steps is an int track length (Sequencer_Track.num_steps).
-                num_steps: toInt(track.steps, 16, 1, 1024),
-                events: track.notes.map(n => ({
-                    // Quantize at export with the same function the
-                    // preview uses at schedule time — what you hear in
-                    // the browser is what ships. `note` is a u8 (0..127
-                    // MIDI); force it whole and in range so it unmarshals.
-                    note: toInt(nearestInScale ? nearestInScale(n.note) : n.note, 60, 0, 127),
-                    velocity: n.velocity,
-                    // step is an int grid index (Note_Event.step).
-                    step: toInt(n.step, 0, 0, 1023),
-                    // Seconds, BPM-derived (16th-note steps). The old
-                    // value hardcoded 0.25s/step regardless of tempo.
-                    start_time: n.step * (60.0 / bpm / 4.0),
-                    // Duration is in STEPS; the preview defaults a
-                    // missing/zero duration to 1 step, not 0.1.
-                    duration: n.duration || 1,
-                    // Chance the step fires each loop. Clamped away
-                    // from 0 because the backend treats <=0 as
-                    // "field absent — play always".
-                    probability: Math.max(n.probability ?? 1, 0.001),
-                    // P-locks: per-step parameter overrides. Numeric only:
-                    // the backend applies them through the f32 set_param
-                    // API (a string override — e.g. a waveform switch —
-                    // would fail the whole JSON parse backend-side).
-                    //
-                    // The filter is still silent HERE, on purpose: this is a
-                    // pure transform shared by the preview and the export, and
-                    // it must stay pure. SKB-045's report happens where the
-                    // user is — the step editor flags the override and
-                    // useCodeGeneration surfaces it on Generate — through
-                    // isExportablePlockValue, this same predicate, so what is
-                    // flagged is exactly what is dropped.
-                    patch_overrides: Object.fromEntries(
-                        Object.entries(n.patchOverrides ?? {})
-                            .filter(([, v]) => isExportablePlockValue(v))
-                    )
-                }))
-            }));
-        } else if (subgraph) {
-            subgraph.sequencer_tracks = [];
+        // Inject the Sequencer Tracks for this instrument. `serializeTracks`
+        // on an empty `tracks` array already yields `[]` — no separate
+        // "else assign []" branch needed.
+        if (subgraph) {
+            subgraph.sequencer_tracks = serializeTracks(tracks, bpm, nearestInScale);
         }
 
         return {
@@ -220,6 +281,37 @@ export const buildProjectData = (
     });
 
     return projectData;
+};
+
+/**
+ * The instrument-shaped node list live-edit plumbing (useWasmAudioEngine's
+ * sendChangedExposedParams / prevInstruments) should diff against: the real
+ * Instrument nodes normally, or — when buildProjectData's loose-graph wrap
+ * fires (SKB-019 / packet B6-1) — a single synthetic node standing in for the
+ * "Asset" instrument, whose `data.subgraph.nodes` IS the whole top-level
+ * graph.
+ *
+ * Without this, a loose graph's live exposed-param edits vanished with
+ * NEITHER effect happening: `getInstrumentNodes(nodes)` is `[]`, so
+ * `sendChangedExposedParams` has nothing to diff and posts no `set-param`;
+ * meanwhile `topologySignature` DOES walk the wrapped Asset's `audio_graph`
+ * (built by buildProjectData, independently of this list) and masks the same
+ * param there, so the signature does not change either — the exact
+ * silent-drop hazard `topologySignature`'s own header comment forbids, newly
+ * reachable because loose graphs can now be played at all.
+ *
+ * One predicate, same guard as the wrap itself, so this can't drift from what
+ * buildProjectData actually emits.
+ */
+export const wrappedInstrumentNodes = (nodes: Node<NodeParams>[]): Node<NodeParams>[] => {
+    const instrumentNodes = getInstrumentNodes(nodes);
+    if (instrumentNodes.length > 0 || nodes.length === 0) return instrumentNodes;
+    return [{
+        id: 'Asset',
+        type: 'instrument',
+        position: { x: 0, y: 0 },
+        data: { name: 'Asset', subgraph: { nodes, connections: [] } },
+    } as unknown as Node<NodeParams>];
 };
 
 // The key the generated set_param dispatch accepts for ANY exposed param,

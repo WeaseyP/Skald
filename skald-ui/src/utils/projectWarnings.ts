@@ -26,6 +26,25 @@
 |   sound. Also reported here, so Generate says so once rather than the user     |
 |   discovering it by ear.                                                      |
 |                                                                              |
+| SKB-019 (packet B6-1): a graph with no Instrument node is auto-wrapped as one  |
+|   SFX instrument named "Asset" by buildProjectData. That auto-wrap is NOT      |
+|   reported here — it is informational, not a problem, and this module's       |
+|   `formatProjectIssues` output is funneled into the SAME 'error'-kind status   |
+|   banner Save/Load uses (useCodeGeneration.ts), which never auto-clears. An    |
+|   earlier revision reported it here and painted a PERMANENT red "Export        |
+|   warnings" overlay over every one of the 24 loose-graph examples even though  |
+|   their build succeeded. It is announced once, on load, via the auto-clearing  |
+|   success toast instead (useFileIO.ts's applySaveData) — see that file.        |
+|                                                                              |
+|   The wrap DOES still change what this module reports: a loose graph puts     |
+|   EVERY sequencer track into the one synthetic Asset instrument regardless of  |
+|   its own targetNodeId (buildProjectData maps `sequencerTracks` unconditionally|
+|   in that branch, unlike the per-instrument path's                            |
+|   `.filter(t => t.targetNodeId === instNode.id)`), so `subgraphNodesFor` and   |
+|   `activeTrackIds` below mirror that same predicate — otherwise every P-lock   |
+|   on a loose graph misreported as unresolvable (SKB-019's worst regression:    |
+|   "Code generation will fail" over a build that actually exits 0).             |
+|                                                                              |
 | Every predicate here comes from plockTargets.ts / stepMetrics.ts, which mirror |
 | the backend. This module only decides what is worth SAYING, never what is      |
 | true — so it cannot drift away from what codegen actually does.                |
@@ -41,6 +60,7 @@ import {
     resolvePlockTargets,
 } from './plockTargets';
 import { effectiveTrackSteps, outOfRangeNotes } from '../components/Sequencer/stepMetrics';
+import { getInstrumentNodes } from './projectSerializer';
 
 export type PlockIssueKind = 'unresolvable' | 'dead' | 'non-numeric';
 
@@ -86,11 +106,35 @@ export interface ProjectIssues {
     stepRange: StepRangeIssue[];
 }
 
-/** The nodes a track's P-locks resolve against: its instrument's subgraph. */
+/**
+ * Same predicate buildProjectData uses to decide whether to wrap (SKB-019 /
+ * packet B6-1): a graph with at least one node but no Instrument node. Shared
+ * here so `subgraphNodesFor` and `activeTrackIds` resolve P-locks against
+ * exactly the shape the backend will actually see, not the pre-wrap one.
+ */
+const isLooseGraph = (nodes: Node<NodeParams>[]): boolean =>
+    nodes.length > 0 && getInstrumentNodes(nodes).length === 0;
+
+/**
+ * The nodes a track's P-locks resolve against.
+ *
+ * On a loose graph (no Instrument node), buildProjectData funnels EVERY
+ * sequencer track into the ONE synthetic "Asset" instrument's audio_graph
+ * regardless of the track's own targetNodeId — it maps `sequencerTracks`
+ * unconditionally in that branch, unlike the per-instrument path's
+ * `.filter(t => t.targetNodeId === instNode.id)`. So a loose graph's P-locks
+ * resolve against the WHOLE top-level graph, not whatever single (possibly
+ * unrelated, pre-wrap) node id the track happens to name. Getting this wrong
+ * was SKB-019's worst editor-side regression: every P-lock on a loose graph
+ * reported `kind: 'unresolvable'` / `blocksBuild: true` — "Code generation
+ * will fail" — for a project whose editor-path codegen actually exits 0.
+ */
 const subgraphNodesFor = (
     nodes: Node<NodeParams>[],
     track: SequencerTrack,
 ): Node<NodeParams>[] | null => {
+    if (isLooseGraph(nodes)) return nodes;
+
     const instrument = nodes.find(n => n.id === track.targetNodeId);
     if (!instrument) return null;
     const subgraph = (instrument.data as { subgraph?: { nodes?: unknown } } | undefined)?.subgraph;
@@ -101,26 +145,30 @@ const subgraphNodesFor = (
 /**
  * Mirror of `active_sequencer_tracks`.
  *
- * Two details are load-bearing and were both wrong when this was a one-line
- * `tracks.some(t => t.isSolo)`:
+ * Three details are load-bearing:
  *
  *  - the solo test is scoped to ONE instrument's tracks (`all` is built from
  *    the tracks whose target is this instrument), so soloing a drum track does
- *    not silence a bass track;
+ *    not silence a bass track — EXCEPT on a loose graph (SKB-019 / packet
+ *    B6-1), where buildProjectData puts every track under the SAME synthetic
+ *    Asset instrument regardless of targetNodeId, so grouping by targetNodeId
+ *    there would score solo/mute against groups that do not exist backend-side;
  *  - only a track that would otherwise sound counts as soloing —
  *    `t.solo && !t.mute && len(t.events) > 0`. A soloed-but-muted track leaves
  *    any_solo false, which means its unsoloed siblings stay ACTIVE.
  *
- * Getting either wrong makes this over-report inactivity, and `blocksBuild`
- * then tells the user "Generate still succeeds" about a project codegen exits
- * over. That is the one failure mode a mirror must not have.
+ * Getting any of these wrong makes this over- or under-report inactivity, and
+ * `blocksBuild` then lies about whether Generate actually fails. That is the
+ * one failure mode a mirror must not have.
  */
-const activeTrackIds = (tracks: SequencerTrack[]): Set<string> => {
+const activeTrackIds = (tracks: SequencerTrack[], nodes: Node<NodeParams>[]): Set<string> => {
+    const loose = isLooseGraph(nodes);
     const byInstrument = new Map<string, SequencerTrack[]>();
     for (const t of tracks) {
-        const group = byInstrument.get(t.targetNodeId);
+        const key = loose ? '__ASSET__' : t.targetNodeId;
+        const group = byInstrument.get(key);
         if (group) group.push(t);
-        else byInstrument.set(t.targetNodeId, [t]);
+        else byInstrument.set(key, [t]);
     }
 
     const active = new Set<string>();
@@ -139,7 +187,7 @@ export const collectPlockIssues = (
     nodes: Node<NodeParams>[],
     tracks: SequencerTrack[],
 ): PlockIssue[] => {
-    const active = activeTrackIds(tracks);
+    const active = activeTrackIds(tracks, nodes);
     const issues: PlockIssue[] = [];
 
     for (const track of tracks) {
@@ -216,6 +264,14 @@ export const collectProjectIssues = (
  * One human-readable line per problem, each naming what to do about it. Steps
  * are 1-based here, matching every other user-facing step string in the
  * sequencer (`pushHistory('Toggle step ${step + 1}')`).
+ *
+ * Deliberately does NOT report the loose-graph auto-wrap (SKB-019 / packet
+ * B6-1): it is informational, not a problem, and this function's output is
+ * funneled into the SAME 'error'-kind status banner Save/Load uses
+ * (useCodeGeneration.ts), which never auto-clears — reporting it here once
+ * painted a PERMANENT red "Export warnings" overlay over a build that
+ * actually succeeded, on all 24 loose-graph examples. It is announced once,
+ * on load, via the auto-clearing success toast instead (useFileIO.ts).
  */
 export const formatProjectIssues = ({ plocks, stepRange }: ProjectIssues): string[] => {
     const lines: string[] = [];

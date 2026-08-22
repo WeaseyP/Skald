@@ -147,18 +147,54 @@ describe('useFileIO — load validation', () => {
     });
 
     it('loads a valid save and restores the session block', async () => {
+        // `type: 'instrument'` matters here even though this test is about
+        // session restore, not SKB-019: an untyped node reads as a loose
+        // graph (no Instrument node) and triggers the auto-wrap load toast
+        // (packet B6-1) below, which is a different test's concern.
         loadGraph.mockResolvedValue({
             content: JSON.stringify({
-                nodes: [{ id: 'a' }], edges: [], sequencerTracks: [{ id: 't1' }],
+                nodes: [{ id: 'a', type: 'instrument' }], edges: [], sequencerTracks: [{ id: 't1' }],
                 session: { bpm: 90, patternSteps: 64, masterVolume: 0.5 },
             }),
         });
         const { result } = renderFileIO();
         await act(async () => { await result.current.handleLoad(); });
-        expect(setNodes).toHaveBeenCalledWith([{ id: 'a' }]);
+        expect(setNodes).toHaveBeenCalledWith([{ id: 'a', type: 'instrument' }]);
         expect(loadTracks).toHaveBeenCalledWith([{ id: 't1' }]);
         expect(applySession).toHaveBeenCalledWith({ bpm: 90, patternSteps: 64, masterVolume: 0.5 });
         expect(notify).not.toHaveBeenCalled(); // success is visible in the editor itself
+    });
+
+    // SKB-019 / packet B6-1: a loose graph (no Instrument node) auto-wraps as
+    // one "Asset" SFX instrument on Play/Generate. That is worth telling the
+    // user about, unlike an ordinary load — so it gets the ONE exception to
+    // "success is visible in the editor itself" above: a toast, via the same
+    // auto-clearing success channel Save already uses (app.tsx's
+    // notifyFileStatus clears a 'success' after 4s). It is NOT reported
+    // through ProjectIssuesBanner, which is non-dismissible by design (it
+    // reports unplayable data) and would otherwise paint a permanent
+    // "something is wrong" overlay over a build that actually succeeds.
+    it('announces a loose-graph auto-wrap via the load-time success toast', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'osc', type: 'oscillator' }], edges: [],
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(lastStatus().kind).toBe('success');
+        expect(lastStatus().message).toContain('auto-wrap');
+    });
+
+    it('does NOT announce anything extra for a graph that already has an Instrument node', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'inst-1', type: 'instrument' }], edges: [],
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(notify).not.toHaveBeenCalled();
     });
 
     it('treats a canceled dialog as a silent no-op', async () => {

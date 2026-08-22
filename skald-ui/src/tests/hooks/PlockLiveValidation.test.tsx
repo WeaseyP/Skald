@@ -93,7 +93,7 @@ describe('SKB-009 — a rename reports itself immediately', () => {
 
         // Resolvable while the label stands.
         expect(result.current.issues.lines).toEqual([]);
-        expect(result.current.issues.blocksBuild).toBe(false);
+        expect(result.current.issues.severity).toBe('none');
 
         act(() => { result.current.updateNodeData('inst-1', { label: 'Sub' }, 'osc-1'); });
 
@@ -103,7 +103,7 @@ describe('SKB-009 — a rename reports itself immediately', () => {
             key: 'Osc:amplitude',
             step: 3,
         });
-        expect(result.current.issues.blocksBuild).toBe(true);
+        expect(result.current.issues.severity).toBe('error');
         expect(result.current.issues.lines[0]).toContain('Osc:amplitude');
         expect(result.current.issues.lines[0]).toContain('"Sub"');
     });
@@ -144,7 +144,7 @@ describe('B5-4-followup — a P-lock is flagged the instant its target parameter
 
         // Live: fixedPitch is on, so frequency is reachable.
         expect(result.current.issues.lines).toEqual([]);
-        expect(result.current.issues.blocksBuild).toBe(false);
+        expect(result.current.issues.severity).toBe('none');
 
         // The graph edit the backend's own error message names as the
         // expected user path: flip fixedPitch off from the sidebar.
@@ -157,7 +157,7 @@ describe('B5-4-followup — a P-lock is flagged the instant its target parameter
             deadParam: 'frequency',
             step: 3,
         });
-        expect(result.current.issues.blocksBuild).toBe(true);
+        expect(result.current.issues.severity).toBe('error');
         expect(result.current.issues.lines[0]).toContain('Osc:frequency');
         expect(result.current.issues.lines[0]).toContain('fixedPitch is off');
     });

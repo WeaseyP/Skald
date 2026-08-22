@@ -17,25 +17,25 @@ afterEach(cleanup);
 
 describe('ProjectIssuesBanner', () => {
     it('renders nothing when there is nothing wrong', () => {
-        render(<ProjectIssuesBanner lines={[]} blocksBuild={false} />);
+        render(<ProjectIssuesBanner lines={[]} severity="none" />);
         expect(screen.queryByTestId('project-issues-banner')).toBeNull();
     });
 
     it('lists every line', () => {
-        render(<ProjectIssuesBanner lines={['first problem', 'second problem']} blocksBuild={false} />);
+        render(<ProjectIssuesBanner lines={['first problem', 'second problem']} severity="warning" />);
         const banner = screen.getByTestId('project-issues-banner');
         expect(banner.textContent).toContain('first problem');
         expect(banner.textContent).toContain('second problem');
     });
 
     it('says outright that the build will fail when it will', () => {
-        render(<ProjectIssuesBanner lines={['stale override']} blocksBuild />);
+        render(<ProjectIssuesBanner lines={['stale override']} severity="error" />);
         expect(screen.getByTestId('project-issues-banner').textContent)
             .toContain('Code generation will fail');
     });
 
     it('does not claim a failure for a warning-only project', () => {
-        render(<ProjectIssuesBanner lines={['a note will not sound']} blocksBuild={false} />);
+        render(<ProjectIssuesBanner lines={['a note will not sound']} severity="warning" />);
         expect(screen.getByTestId('project-issues-banner').textContent)
             .not.toContain('Code generation will fail');
     });
