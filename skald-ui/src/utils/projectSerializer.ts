@@ -271,7 +271,7 @@ export const topologySignature = (projectData: ProjectStructure): string => {
                     // null) produced IDENTICAL signatures, so neither the
                     // instant path nor a rebuild fired — the silent drop this
                     // masking exists to prevent.
-                    n.parameters[name] = ' __SKALD_LIVE_MASKED__';
+                    n.parameters[name] = '\0__SKALD_LIVE_MASKED__';
                 }
             }
         }
