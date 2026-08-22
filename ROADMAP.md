@@ -128,19 +128,54 @@
     `build_project_from_graph_raw` (`json.odin:431`) wraps a graph with no Instrument node "whole as one
     SFX named Asset". The editor path does not, because `buildProjectData` emits instruments only from
     Instrument nodes. Mirror the CLI's fallback rather than inventing a second one (SKB-002).
-  - The exact 25-file list, the symptom and the ownership note are in
+  - The exact 24-file list, the symptom and the ownership note are in
     `skald-ui/src/tests/corpus/corpusGate.ts` → `EDITOR_UNPLAYABLE`. That gate **fails when a
     quarantined file starts passing**, so landing B6-1 turns it red by design and the list must be
     deleted with the packet.
-- [ ] **B6-2** (S) — Exclude `archive/` from `extraResource`; delete `PulsarBeam.json` — **SKB-019** (high)
-  - `to implement/` no longer exists. `forge.config.ts:41` is
-    `extraResource: ['./skald_codegen.exe', '../examples']`. `PulsarBeam.json` is also the sole entry in
-    `corpusGate.ts` → `CLI_CODEGEN_FAILS`; delete both together.
-  - Review finding: PulsarBeam is **not** a live editor/backend mismatch. No Delay/Reverb parameter has
-    a modulation port (`generate_delay_code`/`generate_reverb_code` pass `""` for `delayTime`,
-    `feedback`, `mix`, `decay`, `preDelay`), and the current `DelayNode.tsx` declares only
-    `input` — so the file is legacy content authored against an older editor. File it as
-    "archived example unloadable against the current schema".
+- [x] **B6-2** (S) — ✅ **CLOSED**. `PulsarBeam.json` deleted; both quarantine entries naming it
+  retired (`CLI_CODEGEN_FAILS` is now empty, `EDITOR_UNPLAYABLE` is 24); `archive/` excluded from the
+  packaged build by a Forge `postPackage` hook (`forge.config.ts` →
+  `skald-ui/src/main/forgePostPackage.ts`), because `extraResource` copies a path verbatim and has no
+  ignore support. **The packet also recorded the 98 examples-corpus goldens** — `TESTING.md` had said
+  they could not be recorded until PulsarBeam was gone, and that is what closes exit criterion 1's
+  corpus gate. Corpus UI gate 201 → 199 (exactly PulsarBeam's editor + CLI cases).
+  - Review confirmed the hook against the real `@electron-forge` 7.8 typings: the `postPackage`
+    signature matches `shared-types/dist/index.d.ts:40-46`, the hook runs inside `package` before the
+    makers build distributables (`core/dist/api/make.js:147-152`), and `resources/examples` is the
+    correct win32 path (`@electron/packager/dist/platform.js:38,222`).
+  - The 98 goldens were checked for portability: no absolute paths, usernames, timestamps or
+    environment-varying stamps, and `fc` in text mode is CRLF-insensitive, so checkout eol cannot
+    break the gate.
+  - Original text: Exclude `archive/` from `extraResource`; delete `PulsarBeam.json` — **SKB-019**.
+    PulsarBeam was **not** a live editor/backend mismatch: no Delay/Reverb parameter has a modulation
+    port, so the file was legacy content authored against an older editor — an archived example
+    unloadable against the current schema.
+
+- [ ] **B6-2-x1** (S) — `ExamplesCorpus.test.ts:309` hardcodes PulsarBeam's stderr fragment
+  (`input_delayTime`) inside the `if (quarantined)` branch, so the next entry added to
+  `CLI_CODEGEN_FAILS` for any other symptom fails on that assertion with a misleading message. Move
+  the fragment into `QuarantineEntry` as a `stderrMatch` field. The comment at `corpusGate.ts` warns
+  about this, but a comment is not a gate.
+
+- [ ] **B6-2-x2** (S) — `skald-ui/src/main/forgePostPackage.ts:45` guards on
+  `fs.existsSync(archiveDir)` and cannot tell "already gone" from "wrong path": if `extraResource` is
+  renamed or the packager layout shifts, `archive/` ships and nothing fails. Assert that
+  `resources/examples` itself exists (throw if not), then tolerate `archive/` being absent. Note the
+  helper is win32-only by construction — on darwin resources live at `<App>.app/Contents/Resources`
+  (`@electron/packager/dist/mac.js:58`) — which is fine while both makers are `['win32']`, but the
+  file's doc comment overstates itself.
+
+- [ ] **B6-2-x3** (S) — `run_corpus_golden.bat:80` compares the WASM shim (`%SHIM%`) only against its
+  own re-run; **no shim golden is ever recorded**. The 98 new goldens pin only the game-facing
+  `.odin`, leaving the `@(export) skald_*` preview shim unpinned across the whole corpus — the
+  "two shapes from one analysis" split CLAUDE.md names as this repo's most common defect class.
+  Pre-existing script design, but B6-2 is what made it the permanent CI baseline.
+
+- [ ] **B6-2-x4** (S) — `skald-backend/tests/golden/.gitignore:10` covers
+  `examples_corpus/.gen/` via an unrooted `.gen/` pattern, not via any top-level rule. Confirmed with
+  `git check-ignore -v`. Recorded so nobody adds a redundant `/skald-backend/tests/golden/
+  examples_corpus/.gen/` entry believing the scratch dir is unignored.
+
 - [ ] **B6-3** (S) — Curated `examples/start-here/` folder
 - [/] **B6-4** (S) — ~~Fix the two README 404s~~ done `57df823`: `BUGS.md` had been replaced by
   `ROADMAP.md` nine commits earlier and the link was never updated; every README link target now
@@ -362,10 +397,10 @@ Three gates were already red at `9563a57` and nothing recorded it. Verified agai
 | What | Detail |
 |---|---|
 | **`odin test tests\unit` did not compile** (✅ repaired `fe05093`) | 16 errors: `tests/unit/unison_wavetable_fm_test.odin` called `generate_wavetable_code`/`generate_fm_operator_code` without the `plan` parameter and `generate_processor_code` without `plan`, added by an earlier refactor. CI's parameter-contract step must have been red for some time. **Repaired in `fe05093`** (mechanically — `nil` for the node generators, `build_instrument_plan` for the processor), because B7's new tests could not otherwise run. Worth a look: passing `nil` for `plan` may quietly disable the parameter-resolution path those tests exist to cover. |
-| **`run_corpus_golden.bat` counted passes as failures** | ✅ **FIXED** `57df823`. `echo NON-DETERMINISTIC %NAME% (shim)` left its parens unescaped, so cmd closed the enclosing `if errorlevel 1 (` at parse time and `FAILED+=1` / `NONDET+=1` / `goto :eof` ran **unconditionally for every fixture that passed**. Hence 98 reported non-deterministic emissions, zero individual status lines, and a golden comparison never reached — all 98 pairs were in fact byte-identical. Now emits 99 honest lines: 98 `MISSING GOLDEN` + 1 `CODEGEN FAILED`, zero `NON-DETERMINISTIC`. **Still legitimately red** — no corpus goldens have ever been recorded and `PulsarBeam.json` fails codegen, so it cannot go green until **B6-2** deletes it. Record the corpus goldens as part of B6-2, not before. |
+| **`run_corpus_golden.bat` counted passes as failures** | ✅ **FIXED** `57df823`. `echo NON-DETERMINISTIC %NAME% (shim)` left its parens unescaped, so cmd closed the enclosing `if errorlevel 1 (` at parse time and `FAILED+=1` / `NONDET+=1` / `goto :eof` ran **unconditionally for every fixture that passed**. Hence 98 reported non-deterministic emissions, zero individual status lines, and a golden comparison never reached — all 98 pairs were in fact byte-identical. Now emits 99 honest lines: 98 `MISSING GOLDEN` + 1 `CODEGEN FAILED`, zero `NON-DETERMINISTIC`. ✅ **Green as of B6-2**, which deleted `PulsarBeam.json` and recorded the 98 corpus goldens: `.un_corpus_golden.bat` now reports "All 98 goldens match" on two consecutive runs. |
 | **`tsc --noEmit` and `npm run lint` are red** | `TS2307: Cannot find module '../../forge.env'` in `src/tests/components/ExamplesModal.test.tsx`, plus two `import/no-unresolved` for the same specifier. `skald-ui/forge.env.d.ts` is tracked and present, so it is a resolution/config problem, not a missing file. **Not fixed** — it is the standing baseline (1 typecheck error, 2 lint errors) every Wave B agent was measured against. Note `npx eslint --ext .ts,.tsx .` behaves differently from `npm run lint`; use the npm script. |
 
-Exit criterion 1 ("four CI gates green") now needs only the corpus goldens (with B6-2) and the
+Exit criterion 1 ("four CI gates green") now needs only the
 `forge.env` resolution problem.
 
 **`scripts/verify-baseline.ps1` exists so this table never has to be rediscovered.** It runs every gate
@@ -373,17 +408,21 @@ against a pristine `git archive` export of any ref, so "was this already broken?
 than an argument. `TESTING.md` holds the protocol and the current known-red list; `CLAUDE.md` points any
 agent at both before it reports a gate result.
 
-## Verified baselines (at `120081a`)
+## Verified baselines (at B6-2)
 
 Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptance.bat"` fails.
 
 | Gate | Command (run from) | Green |
 |---|---|---|
-| Acceptance (FFT) | `skald-backend` → `.\run_acceptance.bat` | 38/38 |
-| Goldens + determinism | `skald-backend` → `.\run_golden.bat` | 54/54 match, 54/54 identical on re-run |
+| Acceptance (FFT) | `skald-backend` → `.\run_acceptance.bat` | 39/39 |
+| Goldens + determinism | `skald-backend` → `.\run_golden.bat` | 56/56 match, 56/56 identical on re-run |
+| Examples corpus (backend) | `skald-backend` → `.\run_corpus_golden.bat` | 98/98 match (recorded by B6-2) |
 | Backend unit | `skald-backend` → `odin test tests\unit` | 77/77 |
-| UI | `skald-ui` → `npx vitest run` | 56 files / 725 tests |
+| UI | `skald-ui` → `npx vitest run` | 57 files / 726 tests |
+| Examples corpus (UI) | `skald-ui` → `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | 199/199 |
 | Typecheck / lint | `skald-ui` → `npx tsc --noEmit` / `npm run lint` | 1 / 2 pre-existing errors (see above) |
+| Examples corpus (UI) | `skald-ui` @ `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | 199/199 |
+| Typecheck / lint | `skald-ui` @ `npx tsc --noEmit` / `npm run lint` | 1 / 2 pre-existing errors (see above) |
 
 At `9563a57` these were 33/33, 48/48, **did not compile**, 44 files / 573 tests, 1 / 2. Note the UI
 figure: 44/573 is the tracked-tree number, confirmed by running vitest in a `git archive HEAD` tree.

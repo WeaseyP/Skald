@@ -8,8 +8,10 @@
 |                                                                              |
 | Every `*.json` under `examples/`, recursively. NOT `*.skald.json`: the        |
 | originally proposed glob (finding F-B11-1) silently skipped the 19 bare      |
-| `.json` files — including `archive/PulsarBeam.json`, the one file known to   |
-| fail codegen. A gate that passes while missing the one thing it exists to    |
+| `.json` files then on disk — among them `archive/PulsarBeam.json`, at the    |
+| time the only file known to fail codegen. (B6-2 deleted that file; 17 bare   |
+| `.json` files remain and every one of them passes.) A gate that passes       |
+| while missing the one thing it exists to                                     |
 | catch is worse than no gate (roadmap A5, correction D2-4). No count is       |
 | hardcoded anywhere: the corpus is whatever is on disk, and the only floor    |
 | asserted is "not empty" (the A8 lesson — a silently-empty enumeration must   |
@@ -139,10 +141,15 @@ export interface QuarantineEntry {
  * no Instrument node: `buildProjectData` emits instruments only from
  * Instrument nodes, so these serialize to a zero-instrument project the
  * backend rejects ("Input JSON must be valid Project or Graph", exit 1).
- * This is BUGS.md SKB-019 (26 unplayable = these 25 + the project-shaped
+ * This is BUGS.md SKB-019 (25 unplayable = these 24 + the project-shaped
  * integration-demo file, which the editor rejects at parse). The editor gate
  * pins the failure; the CLI gate still fully covers these files, because the
  * CLI's legacy fallback wraps a loose graph as a single "Asset" SFX.
+ *
+ * `examples/archive/PulsarBeam.json` was on this list too, until packet B6-2
+ * deleted the file outright: it also failed CLI-path codegen (see
+ * CLI_CODEGEN_FAILS below), so quarantining it here alone would not have made
+ * it playable, and its underlying defect was in the file, not fixable data.
  *
  * Owner: packet B6 (auto-wrap loose graphs on load/Play). When B6 lands, every
  * one of these starts generating through the editor path, this gate goes red
@@ -150,7 +157,6 @@ export interface QuarantineEntry {
  */
 export const EDITOR_UNPLAYABLE: QuarantineEntry[] = [
     'examples/archive/AlarmPulse.json',
-    'examples/archive/PulsarBeam.json',
     'examples/archive/Sax2.json',
     'examples/instruments/bass/lfo-filter-wobble-bass.skald.json',
     'examples/instruments/bass/sine-sub-bass.skald.json',
@@ -185,26 +191,31 @@ export const EDITOR_UNPLAYABLE: QuarantineEntry[] = [
 /**
  * Files whose CLI-path codegen is expected to FAIL (non-zero exit).
  *
- * PulsarBeam wires an LFO ("Doppler Shift") into `input_delayTime` on a Delay
- * node. That is not a legacy port spelling `normalize_port` should map — the
- * Delay node has never had a modulation input in any version in this repo's
- * history (`graph_validate.odin` lists only "input" for Delay), so the bug is
- * in the FILE: a placeholder for an unimplemented feature, per its own adding
- * commit ("some need work"). The fix is not an unambiguous data correction —
- * dropping the wire would silence the patch's whole reason for existing — so
- * it is quarantined, not edited.
+ * Empty as of packet B6-2. The one entry this ever held was
+ * `examples/archive/PulsarBeam.json`, which wired an LFO ("Doppler Shift")
+ * into `input_delayTime` on a Delay node — a port that has never existed in
+ * any version of this repo's history (`graph_validate.odin` lists only
+ * "input" for Delay). That was a defect in the FILE, not a fixable data
+ * correction (dropping the wire would silence the patch's whole reason for
+ * existing), so B6-2 deleted the file outright instead of leaving it
+ * quarantined forever.
  *
- * Owner: packet B6, which deletes PulsarBeam.json and excludes archive/ from
- * packaging. If this file ever starts PASSING codegen (someone adds Delay-time
- * modulation, or "fixes" the file), the gate fails and this entry must go.
+ * The mechanism stays: this is still where a file gets listed if a future
+ * example's CLI-path codegen is *expected* to fail for a similarly
+ * unfixable, undeletable reason. Do not delete the mechanism just because
+ * there is currently nothing to quarantine — but know exactly what is and
+ * is not covered while the list is empty: the CLI gate’s `if (quarantined)`
+ * body is dead code, and `isQuarantined` itself stays exercised only by the
+ * EDITOR gate (`ExamplesCorpus.test.ts:233`). The gate-hygiene test does not
+ * reach it — it iterates the arrays directly.
+ *
+ * ▲ Before a SECOND entry is ever added here, generalise the branch: it
+ * asserts PulsarBeam’s specific stderr fragment `input_delayTime`
+ * (`ExamplesCorpus.test.ts:309`), so any entry quarantined for a different
+ * symptom fails on that assertion with a misleading message. Move the
+ * fragment into `QuarantineEntry` first.
  */
-export const CLI_CODEGEN_FAILS: QuarantineEntry[] = [
-    {
-        rel: 'examples/archive/PulsarBeam.json',
-        symptom: 'exit 1: connection into Delay uses unknown input port "input_delayTime"',
-        owner: 'B6 (delete PulsarBeam.json; archive/ excluded from packaging)',
-    },
-];
+export const CLI_CODEGEN_FAILS: QuarantineEntry[] = [];
 
 export const isQuarantined = (list: QuarantineEntry[], rel: string): QuarantineEntry | undefined =>
     list.find((q) => q.rel === rel);

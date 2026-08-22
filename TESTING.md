@@ -54,9 +54,13 @@ of them **worse**, that *is* yours. If it merely still fails, it isn't.
 |---|---|---|
 | `npx tsc --noEmit` | **1 error**: `TS2307: Cannot find module '../../forge.env'` in `src/tests/components/ExamplesModal.test.tsx`. `skald-ui/forge.env.d.ts` is tracked and present, so it is a resolution/config problem, not a missing file. | unassigned |
 | `npm run lint` | **2 errors**, both `import/no-unresolved` on that same specifier. | unassigned |
-| `.\run_corpus_golden.bat` | Reports honestly since the paren fix, and is **legitimately red**: 98 `MISSING GOLDEN` (no corpus goldens have ever been recorded) + 1 `CODEGEN FAILED` (`examples/archive/PulsarBeam.json` wires a Delay modulation port that has never existed). **It cannot be made green until roadmap B6-2 deletes PulsarBeam** — record the corpus goldens as part of that packet, not before. | roadmap B6-2 |
 
 `odin test tests\unit` was on this list and is now green (repaired in `fe05093`).
+
+`.\run_corpus_golden.bat` was on this list too — 98 `MISSING GOLDEN` (no corpus
+goldens had ever been recorded) + 1 `CODEGEN FAILED` (`examples/archive/PulsarBeam.json`
+wired a Delay modulation port that never existed). Roadmap B6-2 deleted
+PulsarBeam.json and recorded the corpus goldens; the gate is now green.
 
 Roadmap exit criterion 1 ("four CI gates green") cannot be met while anything
 above is outstanding.
