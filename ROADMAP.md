@@ -306,11 +306,15 @@ the two defects masked each other, and the overdrive only becomes provable once 
 A conservative static warning cannot see a defect that another defect is hiding.
 
 ### B9 — Preflight Validation + CLI Hardening
-- [ ] **B9-1** (M) — Pre-emission validation pass: nested Instruments rejected with purpose-built message — **SKB-028** (high)
-  - `build_graph_from_raw` (`json.odin:168`) already "recursively constructs ... any nested instrument
-    subgraphs", so a nested Instrument parses and then emits garbage. `graph_validate.odin` has only
-    four procs (`valid_input_ports`, `valid_output_port`, `mixer_input_count`, `validate_connections`) —
-    this is where the new pass belongs.
+- [x] **B9-1** (M) — ✅ **CLOSED**. `find_nested_instrument` + `validate_no_nested_instruments` in
+  `graph_validate.odin`, called from `generate_processor_code` beside `validate_connections`. Pinned by
+  `tests/unit/preflight_test.odin` and reproducible from `tests/fixtures/_negative/nested_instrument.json`.
+  **The defect was worse than filed:** "emits garbage" understated it. The emission dispatch's unknown-type
+  branch printed `Error: unknown node type "Instrument" ... Refusing to generate` and then **did not exit** —
+  the file was written, main printed `Codegen OK`, and the inner instrument's nodes were simply absent with
+  its output variable stuck at `0.0`. That branch now exits 1 too, so *any* type without a generator is a
+  real refusal. Original text: Pre-emission validation pass: nested Instruments rejected with purpose-built
+  message — **SKB-028** (high).
 - [ ] **B9-2** (S) — Duplicate node IDs become a hard error instead of silent mis-wire — **SKB-021** (high)
   - Both current sites are warn-and-rename and **already name this packet as the owner**:
     `json.odin:229` and `json.odin:481` ("SKB-021's warned-about compromise; B9 owns the hard error").

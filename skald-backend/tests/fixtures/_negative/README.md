@@ -24,3 +24,4 @@ Expect exit code 1 and the error on stderr.
 | fixture | rule | gated by |
 | --- | --- | --- |
 | `cross_domain_modulator.json` | SKB-017: a modulator feeding both the voice domain and the bus domain is a hard error, not a silent domain choice | `tests\unit\bus_domain_test.odin` |
+| `nested_instrument.json` | SKB-028 (B9-1): an Instrument node inside an instrument's subgraph is a hard error. Before B9-1 this file printed "unknown node type" and then **exited 0 and wrote the file** with the inner instrument's output stuck at 0.0 | `tests\unit\preflight_test.odin` |

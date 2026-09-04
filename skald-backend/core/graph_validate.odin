@@ -151,3 +151,42 @@ validate_connections :: proc(graph: ^Graph, inst_name: string) {
 		}
 	}
 }
+
+// =================================================================================
+// Preflight structural rules (roadmap packet B9-1 / B9-2).
+//
+// Each rule is a FINDER that returns what it found plus a caller that turns the
+// finding into a hard error. The split exists so `odin test tests\unit` can
+// exercise the rule (tests/unit/preflight_test.odin): every other hard-error
+// path in the codegen calls os.exit(1) inline and therefore has no in-process
+// test at all — the exit would take the test binary with it.
+// =================================================================================
+
+/// SKB-028 (packet B9-1). An Instrument node inside an instrument's graph.
+/// build_graph_from_raw parses it faithfully — it recurses into the inner
+/// subgraph — but there is no generator for the type, so the emission dispatch
+/// fell through to its "unknown node type" branch. That branch printed an
+/// error and did not exit: the file was written, "Codegen OK" was printed, and
+/// the inner instrument's nodes were simply absent from the export with its
+/// output variable stuck at 0.0. Sorted by id so two nested instruments name
+/// the same offender on every run (the error text is part of the output the
+/// determinism gate would otherwise see vary).
+find_nested_instrument :: proc(graph: ^Graph) -> (Node, bool) {
+	sorted := nodes_sorted_by_id(graph)
+	defer delete(sorted)
+	for node in sorted {
+		if node.type == "Instrument" do return node, true
+	}
+	return Node{}, false
+}
+
+validate_no_nested_instruments :: proc(graph: ^Graph, inst_name: string) {
+	inner, found := find_nested_instrument(graph)
+	if !found do return
+	inner_name := get_string_param(inner, "name", inner.raw_id)
+	fmt.eprintf(
+		"Error: instrument %q contains another Instrument (%q, node id %s). Skald has no generator for an instrument inside an instrument: its nodes would be left out of the export and its output would sit at 0.0 for the whole asset. In the editor, select the inner instrument and use Explode Instrument so its nodes join this graph, or move it onto the canvas as a top-level instrument of its own, then regenerate.\n",
+		inst_name, inner_name, inner.raw_id,
+	)
+	os.exit(1)
+}

@@ -1,0 +1,41 @@
+{
+  "nodes": [
+    {
+      "id": "outer",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "Outer",
+        "label": "Outer",
+        "voiceCount": 4,
+        "subgraph": {
+          "nodes": [
+            { "id": "1", "type": "oscillator", "data": { "label": "Osc", "waveform": "Sine", "amplitude": 0.5 } },
+            {
+              "id": "2",
+              "type": "instrument",
+              "data": {
+                "name": "Inner",
+                "label": "Inner",
+                "voiceCount": 2,
+                "subgraph": {
+                  "nodes": [
+                    { "id": "1", "type": "oscillator", "data": { "label": "InnerOsc", "waveform": "Square", "amplitude": 0.5 } },
+                    { "id": "2", "type": "output", "data": { "label": "Out" } }
+                  ],
+                  "connections": [ { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" } ]
+                }
+              }
+            },
+            { "id": "3", "type": "output", "data": { "label": "Out" } }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "3", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "session": { "bpm": 120, "patternSteps": 16, "masterVolume": 0.8 }
+}

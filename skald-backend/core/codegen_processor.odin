@@ -2,6 +2,7 @@ package skald_core
 
 import "core:fmt"
 import "core:math"
+import "core:os"
 import "core:strings"
 
 emit_param_case :: proc(sb: ^strings.Builder, res: Exposed_Resolution, alias: string) {
@@ -41,6 +42,7 @@ generate_processor_code :: proc(
 		// os.exit(1)
 	}
 	validate_connections(graph, instrument.name)
+	validate_no_nested_instruments(graph, instrument.name)
 
 	warn_graph_output_count(all_nodes, instrument.name)
 	warn_unreachable_nodes(graph, all_nodes, instrument.name)
@@ -803,9 +805,14 @@ generate_processor_code :: proc(
         case "GraphOutput":
              generate_graph_output_adds(&sb, node, graph, bus_nodes, false)
         case:
+            // The message has always said "refusing"; until packet B9-1 the
+            // branch then fell through, the file was written and main printed
+            // "Codegen OK" (the nested-Instrument case, SKB-028, reached here
+            // and exited 0 with the node's output stuck at 0.0). Exit for real.
             fmt.eprintf(
                 "Error: unknown node type %q (node id %s) in instrument %q — no code generator exists for it. Refusing to generate a silently-broken patch.\n",
                 node.type, node.id, instrument.name)
+            os.exit(1)
         }
     }
 
