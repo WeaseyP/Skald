@@ -1,5 +1,6 @@
 // main.ts
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron';
+import { aboutText, buildHelpMenu, MANUAL_FALLBACK_URL, resolveManualPath } from './main/helpMenu';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
@@ -141,7 +142,53 @@ const warnIfCodegenStale = async (): Promise<void> => {
   dialog.showErrorBox('Skald — code generator out of date', verdict.message);
 };
 
+// --- Help menu (roadmap packet B6-5) -----------------------------------------
+//
+// Manual: the compiled HTML when this checkout has built it (docs/manual/ is
+// gitignored build output), otherwise the manual source on GitHub. Examples:
+// the same directory every dialog and the Examples modal resolve. About: the
+// versions plus the code generator's provenance digest — the same digest
+// every generated header carries (B12), so a checked-in export can be matched
+// to the generator that made it.
+const manualCandidates = (): string[] => [
+  path.join(app.getAppPath(), '..', 'docs', 'manual', 'skald-manual.html'),
+  path.join(process.resourcesPath, 'manual', 'skald-manual.html'),
+];
+
+const helpMenu = buildHelpMenu({
+  openManual: async () => {
+    const local = resolveManualPath(manualCandidates(), (p) => fs.existsSync(p));
+    if (local) await shell.openPath(local);
+    else await shell.openExternal(MANUAL_FALLBACK_URL);
+  },
+  openExamplesFolder: async () => {
+    const dir = resolveExamplesDir(dialogPathEnv());
+    if (dir) await shell.openPath(dir);
+    else dialog.showErrorBox('Skald — examples not found', 'No examples directory was found next to this build.');
+  },
+  showAbout: async () => {
+    const verdict = await codegenGuard.check();
+    const detail = aboutText({
+      appVersion: app.getVersion(),
+      electronVersion: process.versions.electron ?? '?',
+      chromeVersion: process.versions.chrome ?? '?',
+      nodeVersion: process.versions.node ?? '?',
+      codegen: verdict.ok
+        ? { ok: true, digest: verdict.stamp.digest, verified: verdict.verified }
+        : { ok: false, message: verdict.message },
+    });
+    await dialog.showMessageBox({ type: 'info', title: 'About Skald', message: 'Skald', detail, buttons: ['OK'] });
+  },
+});
+
 app.on('ready', () => {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    helpMenu,
+  ]));
   createWindow();
   // Deliberately not awaited: the window must come up regardless, and the
   // probes are async precisely so they cannot block the main process.

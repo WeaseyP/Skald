@@ -293,7 +293,13 @@
   now resolves. The manual is now linked in the README's second paragraph, above the fold, pointing at
   `docs/manual-source/` (the compiled HTML is gitignored build output, so the source tree is the link
   that always resolves).
-- [ ] **B6-5** (S) — Electron Help menu (Manual / Examples / About with codegen stamp)
+- [x] **B6-5** (S) — ✅ **CLOSED**. `Menu.setApplicationMenu` with the default File/Edit/View/Window roles
+  plus a Help menu built by `src/main/helpMenu.ts`: **User Manual** (F1; the compiled `docs/manual/
+  skald-manual.html` when this checkout has built it, else the manual source on GitHub), **Open Examples
+  Folder** (the same directory every dialog resolves) and **About Skald** (app/Electron/Chromium/Node
+  versions and the code generator's provenance digest from the A2 handshake — the same digest every B12
+  header carries). `helpMenu.test.ts` pins the labels, the wiring, F1, the manual fallback and the About
+  text. Original text: Electron Help menu (Manual / Examples / About with codegen stamp).
 - [x] **B6-6** (S) — ✅ **CLOSED**. `useFirstRunPatch` loads the first Start Here example (the sequenced
   bass, one instrument + one track) on a genuinely fresh start — no autosave to recover, empty canvas, no
   `skald:first-run-patch:v1` marker — through the same loader the Examples modal uses
