@@ -222,7 +222,10 @@
   "two shapes from one analysis" split CLAUDE.md names as this repo's most common defect class.
   Pre-existing script design, but B6-2 is what made it the permanent CI baseline.
 
-- [ ] **B6-2-x4** (S) — `skald-backend/tests/golden/.gitignore:10` covers
+- [x] **B6-2-x4** (S) — ✅ **CLOSED as already documented**: the `.gitignore` in question carries a
+  nine-line comment explaining exactly this (unrooted `.gen/` matches `examples_corpus/.gen/`, verified
+  with `git check-ignore -v`, no top-level entry needed). Nothing to change. Original text:
+  `skald-backend/tests/golden/.gitignore:10` covers
   `examples_corpus/.gen/` via an unrooted `.gen/` pattern, not via any top-level rule. Confirmed with
   `git check-ignore -v`. Recorded so nobody adds a redundant `/skald-backend/tests/golden/
   examples_corpus/.gen/` entry believing the scratch dir is unignored.
