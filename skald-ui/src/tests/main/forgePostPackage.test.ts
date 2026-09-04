@@ -61,10 +61,29 @@ describe('removeArchiveFromPackagedExamples', () => {
         expect(fs.existsSync(path.join(win32, 'resources', 'examples', 'archive'))).toBe(false);
     });
 
-    it('does not throw when a packaged output has no examples/archive at all', () => {
+    it('tolerates resources/examples having no archive/ (already gone)', () => {
+        const outputPath = path.join(root, 'Skald-win32-x64');
+        fs.mkdirSync(path.join(outputPath, 'resources', 'examples', 'songs'), { recursive: true });
+
+        expect(() => removeArchiveFromPackagedExamples([outputPath])).not.toThrow();
+    });
+
+    // B6-2-x2: the old `existsSync(archiveDir)` guard could not tell "archive
+    // already gone" from "wrong path". A renamed extraResource or a shifted
+    // packager layout shipped archive/ with nothing failing.
+    it('throws when resources/examples itself is missing — the layout is not what the hook assumes', () => {
         const outputPath = path.join(root, 'Skald-win32-x64');
         fs.mkdirSync(path.join(outputPath, 'resources'), { recursive: true });
 
-        expect(() => removeArchiveFromPackagedExamples([outputPath])).not.toThrow();
+        expect(() => removeArchiveFromPackagedExamples([outputPath])).toThrow(/expected the packaged examples at .*examples/);
+    });
+
+    it('throws for the SECOND output path too, not only the first', () => {
+        const good = path.join(root, 'Skald-win32-x64');
+        const bad = path.join(root, 'Skald-win32-ia32');
+        makePackagedOutput(good);
+        fs.mkdirSync(path.join(bad, 'resources'), { recursive: true });
+
+        expect(() => removeArchiveFromPackagedExamples([good, bad])).toThrow(/Skald-win32-ia32/);
     });
 });

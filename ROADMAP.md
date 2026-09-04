@@ -207,13 +207,14 @@
   generalise. Recorded rather than silently dropped because `corpusGate.ts` declared it moot in a code
   comment first, and a source comment must not retire a tracked item on its own.
 
-- [ ] **B6-2-x2** (S) — `skald-ui/src/main/forgePostPackage.ts:45` guards on
-  `fs.existsSync(archiveDir)` and cannot tell "already gone" from "wrong path": if `extraResource` is
-  renamed or the packager layout shifts, `archive/` ships and nothing fails. Assert that
-  `resources/examples` itself exists (throw if not), then tolerate `archive/` being absent. Note the
-  helper is win32-only by construction — on darwin resources live at `<App>.app/Contents/Resources`
-  (`@electron/packager/dist/mac.js:58`) — which is fine while both makers are `['win32']`, but the
-  file's doc comment overstates itself.
+- [x] **B6-2-x2** (S) — ✅ **CLOSED**. `removeArchiveFromPackagedExamples` now throws when
+  `<outputPath>/resources/examples` does not exist (naming the path, so a renamed `extraResource` or a
+  shifted packager layout fails the package step instead of shipping `archive/`), and tolerates only
+  `archive/` itself being absent. The doc comment states the win32-only layout assumption and what would
+  happen if a darwin maker were added. `forgePostPackage.test.ts`: the old "no examples at all → no throw"
+  case was asserting the defect and now asserts the throw; both outputs are checked, not just the first.
+  Original text: `forgePostPackage.ts:45` guards on `fs.existsSync(archiveDir)` and cannot tell "already
+  gone" from "wrong path".
 
 - [ ] **B6-2-x3** (S) — `run_corpus_golden.bat:80` compares the WASM shim (`%SHIM%`) only against its
   own re-run; **no shim golden is ever recorded**. The 98 new goldens pin only the game-facing

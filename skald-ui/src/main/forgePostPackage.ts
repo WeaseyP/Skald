@@ -22,6 +22,13 @@
 | `archive/` itself must stay in the REPO (see corpusGate.ts's header on why  |
 | the corpus glob walks it) — this hook only ever touches the packaged        |
 | OUTPUT under outputPaths, never `../examples` itself.                      |
+|                                                                              |
+| WIN32 ONLY, by construction. `<outputPath>/resources/` is Electron          |
+| Packager's layout for win32 and linux (`platform.js`); on darwin resources  |
+| live at `<App>.app/Contents/Resources` (`mac.js`). forge.config.ts makes    |
+| only win32 targets, and the existence check below would throw rather than  |
+| silently ship archive/ if a mac maker were ever added without updating     |
+| this path.                                                                  |
 ================================================================================
 */
 import fs from 'node:fs';
@@ -34,13 +41,28 @@ import path from 'node:path';
  * (`<outputPath>/resources/...`, per `App#resourcesDir` in
  * `@electron/packager`) and is only a parameter so a test can point this at a
  * synthetic fixture tree without packaging a real app.
+ *
+ * B6-2-x2: the guard used to be `if (fs.existsSync(archiveDir))`, which cannot
+ * tell "archive/ already gone" from "wrong path" — had `extraResource` been
+ * renamed or the packager layout shifted, archive/ would have shipped and
+ * nothing would have failed. So `resources/examples` itself is REQUIRED to
+ * exist (throw otherwise: the layout this hook assumes is not the layout the
+ * packager produced), and only `archive/` being absent is tolerated.
  */
 export const removeArchiveFromPackagedExamples = (
     outputPaths: readonly string[],
     resourcesSubdir = 'resources',
 ): void => {
     for (const outputPath of outputPaths) {
-        const archiveDir = path.join(outputPath, resourcesSubdir, 'examples', 'archive');
+        const examplesDir = path.join(outputPath, resourcesSubdir, 'examples');
+        if (!fs.existsSync(examplesDir)) {
+            throw new Error(
+                `forgePostPackage: expected the packaged examples at ${examplesDir}, but it does not exist. ` +
+                `Either forge.config.ts's extraResource no longer copies ../examples, or the packager's ` +
+                `resources layout changed — in both cases examples/archive would ship unnoticed.`,
+            );
+        }
+        const archiveDir = path.join(examplesDir, 'archive');
         if (fs.existsSync(archiveDir)) {
             fs.rmSync(archiveDir, { recursive: true, force: true });
         }
