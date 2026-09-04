@@ -2,11 +2,11 @@
 
 > **Last updated:** 2026-08-22
 > **Wave A:** ✅ Complete (13/13 packets landed)
-> **Wave B:** 7 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
+> **Wave B:** 8 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
 > Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
-> landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was fixed in `a71c96f`, and B8 landed
-> `120081a`.
-> Remaining: **B2, B6, B9, B10, B12.**
+> landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was fixed in `a71c96f`, B8 landed
+> `120081a`, and B9 landed as five commits (2026-09-05).
+> Remaining: **B2, B6, B10, B12.**
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -326,10 +326,15 @@ A conservative static warning cannot see a defect that another defect is hiding.
   repeats `1..4` across six *separate* subgraphs, each its own map. Verified by running codegen over all 152
   fixtures and examples: zero duplicate-id warnings, so the hard error has no corpus fallout. Original text:
   Duplicate node IDs become a hard error instead of silent mis-wire — **SKB-021** (high).
-- [ ] **B9-3** (S) — `-check` and `-version` CLI flags; port `assertCodegenTargetSafe` into `main.odin`
-  - `-version` **already exists** (`main.odin:125`, answered before stdin is touched — preserve that
-    ordering, the handshake probe closes stdin). `-check` is missing. `assertCodegenTargetSafe` is TS
-    (`skald-ui/src/main/codegenGuards.ts:83`).
+- [x] **B9-3** (S) — ✅ **CLOSED**. `-check` runs parse, every preflight rule, both emissions (the shim
+  is generated even when no `-wasm-shim:` is given, so a shim-only failure is a check failure) and the
+  target guard, then writes nothing and prints `Check OK`. The guard is `core/target_guard.odin`, a
+  case-by-case mirror of `codegenGuards.ts` (same two guards, same order, same message text) pinned by
+  `tests/unit/target_guard_test.odin` one-for-one against `ipcGuards.test.ts`. `-out:nul` is exempt: it is
+  the documented diagnostics-only invocation and its "directory" is `skald-backend\`, which owns
+  `package skald_codegen`. `-version` ordering preserved. Before the fix, `-check` was silently ignored and
+  `-out:` onto a `package main` file overwrote it with exit 0 — reproduced by hand before wiring the guard.
+  Original text: `-check` and `-version` CLI flags; port `assertCodegenTargetSafe` into `main.odin`.
 - [x] **B9-4** (S) — ✅ **CLOSED**. One spawn helper, `skald-ui/src/main/runChild.ts`, now serves both
   `invoke-codegen` and the preview build's `runProcess` (which had its own timeout but no stdin handler
   either). Pinned by `src/tests/main/runChild.test.ts` against real child processes: the pre-fix run showed

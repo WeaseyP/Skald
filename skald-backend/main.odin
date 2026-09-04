@@ -2,6 +2,8 @@ package skald_codegen
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
+import "core:strings"
 import "core"
 
 // =====================================================================
@@ -65,6 +67,7 @@ CODEGEN_SOURCES := [?]Source_File {
 	{"core/json.odin", #load("core/json.odin")},
 	{"core/param_ranges.odin", #load("core/param_ranges.odin")},
 	{"core/param_utils.odin", #load("core/param_utils.odin")},
+	{"core/target_guard.odin", #load("core/target_guard.odin")},
 	{"core/types.odin", #load("core/types.odin")},
 }
 
@@ -120,10 +123,18 @@ main :: proc() {
 	wasm_shim_file := ""
 	package_name := "generated_audio"
 	want_version := false
+	want_check := false
 
 	for arg in os.args {
 		if arg == "-version" || arg == "--version" {
 			want_version = true
+		}
+		// Packet B9-3: run the whole pipeline — parse, every preflight rule,
+		// both emissions, the output-target guard — and write nothing. Exit 0
+		// means "-out would succeed"; every refusal exits 1 with the same
+		// message a real run would print.
+		if arg == "-check" || arg == "--check" {
+			want_check = true
 		}
 		if len(arg) > 6 && arg[0:6] == "-name:" {
 			name = arg[6:]
@@ -193,10 +204,37 @@ main :: proc() {
 
 	generated_code := core.generate_project_code(&project, name, package_name)
 
+	// The shim is emitted from the same analysis but is a second shape
+	// (CLAUDE.md: "two shapes from one analysis"); -check generates it even
+	// when nobody asked for the file, so a shim-only failure is a check
+	// failure too.
+	shim_code := ""
+	if wasm_shim_file != "" || want_check {
+		shim_code = core.generate_wasm_shim_code(&project, package_name)
+	}
+
 	// Always write to file. If output_file is empty, default to "generated_audio.odin"
 	target_file := output_file
 	if target_file == "" {
 		target_file = "generated_audio.odin"
+	}
+
+	// Packet B9-3: refuse to clobber a foreign Odin package, exactly as the
+	// editor has since the incident that killed the tester's test_harness.odin
+	// (skald-ui/src/main/codegenGuards.ts). Under -check with no -out nothing
+	// would be written anywhere, so there is no destination to judge.
+	if !(want_check && output_file == "") {
+		refuse_unsafe_target(target_file, package_name)
+		if wasm_shim_file != "" do refuse_unsafe_target(wasm_shim_file, package_name)
+	}
+
+	if want_check {
+		if output_file != "" {
+			fmt.printf("Check OK: %d instrument(s); -out:%s would be written\n", len(project.instruments), target_file)
+		} else {
+			fmt.printf("Check OK: %d instrument(s)\n", len(project.instruments))
+		}
+		os.exit(0)
 	}
 
 	write_bool := os.write_entire_file(target_file, transmute([]byte)generated_code)
@@ -208,7 +246,6 @@ main :: proc() {
 	// Editor-preview support: also emit the wasm export shim (same package,
 	// separate file) when asked. Game-facing generation never passes this.
 	if wasm_shim_file != "" {
-		shim_code := core.generate_wasm_shim_code(&project, package_name)
 		if !os.write_entire_file(wasm_shim_file, transmute([]byte)shim_code) {
 			fmt.eprintf("Error writing wasm shim file: %s\n", wasm_shim_file)
 			os.exit(1)
@@ -221,4 +258,19 @@ main :: proc() {
 	// the output file directly; this status line is kept for shell scripts
 	// piping codegen output.
 	fmt.printf("Codegen OK: %d instrument(s) -> %s\n", len(project.instruments), target_file)
+}
+
+/// The CLI half of assertCodegenTargetSafe. `nul` (and /dev/null) is a
+/// discard sink, not a directory entry: `-out:nul` is the documented way to
+/// run the generator for its diagnostics alone (tests/fixtures/_negative/
+/// README.md), and judging the current directory's siblings for it would
+/// refuse every such run made from skald-backend\ — main.odin here is
+/// `package skald_codegen`.
+refuse_unsafe_target :: proc(path: string, package_name: string) {
+	base := filepath.base(path)
+	if strings.equal_fold(base, "nul") || strings.equal_fold(path, "/dev/null") do return
+	if msg, conflict := core.codegen_target_conflict(path, package_name); conflict {
+		fmt.eprintf("Error: %s\n", msg)
+		os.exit(1)
+	}
 }

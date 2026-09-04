@@ -17,9 +17,11 @@ where the assertions live; these files exist so a human can reproduce the exact
 stderr a user would see. Run one by hand from `skald-backend\`:
 
     odin build main.odin -file -out:codegen.exe
-    .\codegen.exe -in:tests\fixtures\_negative\<name>.json -out:nul
+    .\codegen.exe -check -in:tests\fixtures\_negative\<name>.json
 
-Expect exit code 1 and the error on stderr.
+Expect exit code 1 and the error on stderr. (`-check`, packet B9-3, runs every
+rule and writes nothing; `-out:nul` still works and is exempt from the
+output-target guard for exactly this use.)
 
 | fixture | rule | gated by |
 | --- | --- | --- |
