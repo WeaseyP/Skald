@@ -113,18 +113,24 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
     };
 
     // BPM Sync cannot be written alone: see bpmSyncToggleChanges.
-    const bpmSyncToggle = () => (
-        <div style={{ margin: '10px 0' }}>
-            <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
-            <input
-                type="checkbox"
-                checked={data.bpmSync || false}
-                onChange={e => {
-                    if (onChangeMany) onChangeMany(bpmSyncToggleChanges(e.target.checked, data));
-                    else onChange('bpmSync', e.target.checked);
-                }}
-            />
-        </div>
+    //
+    // B5-x4: routed through renderControlWrapper (never exposable — the flag is
+    // read at codegen time, not through a struct field) so the step editor's
+    // wrapper can mark it "not automatable per step" and render it inert. As a
+    // raw div it bypassed that label, and a click minted a boolean P-lock the
+    // serializer then dropped without a word.
+    const bpmSyncToggle = () => renderControlWrapper(
+        'bpmSync',
+        'BPM Sync',
+        <input
+            type="checkbox"
+            checked={data.bpmSync || false}
+            onChange={e => {
+                if (onChangeMany) onChangeMany(bpmSyncToggleChanges(e.target.checked, data));
+                else onChange('bpmSync', e.target.checked);
+            }}
+        />,
+        false,
     );
 
     const createSelect = (paramKey: string, options: string[]) => (

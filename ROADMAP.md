@@ -149,11 +149,16 @@
 - [ ] **B5-x3** (S) — `(step, pitch)` uniqueness is load-bearing but only enforced for *new* edits: an
   imported file with two notes at one `(step, pitch)` gets a React duplicate-key warning and one block
   hidden. Needs a load-time normalisation pass (C1 territory).
-- [ ] **B5-x4** (S) — Step editor still mints P-locks the serializer then drops: `BpmSyncControl`'s
-  select authors `Label:syncRate` and the BPM Sync checkbox authors a boolean `Label:bpmSync` — that
-  toggle is a raw `div` that never passes through `renderControlWrapper`, so B5-5's "not automatable
-  per step" label never reaches it. Also `ParameterPanel.renderBpmSyncToggle` is ~40 dead lines that
-  still write `bpmSync` alone, and `bpmSync` cannot be exposed from the sidebar at all.
+- [x] **B5-x4** (S) — ✅ **CLOSED**. The step editor's `onChange` refuses any value
+  `isExportablePlockValue` rejects (a `syncRate` string, the `bpmSync` boolean), so such keys are never
+  minted into the save file; a control that cannot be automated is rendered inert (dimmed,
+  `pointer-events: none`, `data-testid="plock-inert-<key>"`) beside B5-5's label. The BPM Sync toggle now
+  goes through `renderControlWrapper` (never exposable), so that label reaches it. The ~40 dead lines of
+  `ParameterPanel.renderBpmSyncToggle` are deleted. On "`bpmSync` cannot be exposed from the sidebar":
+  correct, and by design — it is read at codegen time by `bpm_sync_seconds_expr`, never through a struct
+  field, so exposing it would mint the exact dead setter B2 exists to prevent. Pinned by two
+  `StepPropertiesIssues` cases that failed before. Original text: Step editor still mints P-locks the
+  serializer then drops.
 - [ ] **B5-x5** (S) — `ProjectIssuesBanner` is non-dismissible, so opening the flagship four-bar-song
   greets the user with a permanent six-line overlay. Defensible (the data *is* unplayable) but it is
   the flagship. Also `OutOfRangeNotice` names `patternSteps` even when the *track* is the shorter one.

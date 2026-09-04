@@ -248,37 +248,6 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         );
     };
 
-    const renderBpmSyncToggle = (node: Node<NodeParams>, subNodeId?: string) => {
-        const { data } = node;
-        const isBpmSyncExposed = data.exposedParameters?.includes('bpmSync') || false;
-        const uniqueId = `bpmSyncCheckbox-${subNodeId || node.id}`;
-
-        return (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <label htmlFor={uniqueId} style={{ ...labelStyles, cursor: 'pointer' }}>
-                    BPM Sync
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <input
-                        id={uniqueId}
-                        type="checkbox"
-                        name="bpmSync"
-                        checked={data.bpmSync || false}
-                        onChange={(e) => handleGenericChange(e, subNodeId || node.id)}
-                        style={{ height: '18px', width: '18px', cursor: 'pointer' }}
-                    />
-                    <button
-                        style={iconButtonStyles}
-                        onClick={() => toggleParameterExposure('bpmSync', subNodeId || node.id)}
-                        title={isBpmSyncExposed ? 'Un-expose "BPM Sync"' : 'Expose "BPM Sync" to public API'}
-                    >
-                        <LinkIcon isExposed={isBpmSyncExposed} />
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
     const renderNodeParameters = (node: Node<NodeParams>, subNodeId?: string) => {
         const { type, data } = node;
 

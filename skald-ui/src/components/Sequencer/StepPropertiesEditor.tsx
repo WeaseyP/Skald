@@ -276,7 +276,18 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
                        We just render the control.
                        But wait, if we want visuals to look "Locked", maybe opacity?
                     */}
-                    <div style={{ opacity: isLocked ? 0.7 : 1, transition: 'opacity 0.2s' }}>
+                    {/* B5-x4: a control that cannot be automated is shown but
+                        inert — an editable control whose edits are silently
+                        thrown away would be the lie B5-5's label exists to
+                        prevent. */}
+                    <div
+                        data-testid={canPlock ? undefined : `plock-inert-${paramKey}`}
+                        style={{
+                            opacity: canPlock ? (isLocked ? 0.7 : 1) : 0.4,
+                            pointerEvents: canPlock ? 'auto' : 'none',
+                            transition: 'opacity 0.2s',
+                        }}
+                    >
                         {control}
                     </div>
                 </div>
@@ -308,7 +319,10 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
                 // the bpmSync boolean) never becomes an override. The serializer
                 // already dropped such keys at export (B5-5); this stops them
                 // being minted into the save file in the first place.
-                onChange={(paramName, val) => handleOverrideChange(existingKeyFor(paramName) ?? `${label}:${paramName}`, val)}
+                onChange={(paramName, val) => {
+                    if (!isExportablePlockValue(val)) return;
+                    handleOverrideChange(existingKeyFor(paramName) ?? `${label}:${paramName}`, val);
+                }}
                 renderControlWrapper={wrapper}
             />
         );

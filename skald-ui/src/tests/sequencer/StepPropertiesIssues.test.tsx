@@ -245,3 +245,43 @@ describe('B5-x1 — an override spelled with a different case is the same overri
 });
 
 // ---------------------------------------------------------------------------
+// B5-x4 — controls that cannot be automated per step are inert here.
+// ---------------------------------------------------------------------------
+const lfoInstrument = {
+    id: 'inst-1',
+    type: 'instrument',
+    position: { x: 0, y: 0 },
+    data: {
+        label: 'Bass', name: 'Bass',
+        subgraph: {
+            nodes: [
+                { id: 'lfo-1', type: 'lfo', position: { x: 0, y: 0 }, data: { label: 'Wobble', frequency: 5, amplitude: 1, bpmSync: false, waveform: 'Sine' } },
+            ],
+            connections: [],
+        },
+    },
+} as unknown as Node<NodeParams>;
+
+describe('B5-x4 — BPM Sync and Sync Rate cannot mint step overrides', () => {
+    const renderLfoEditor = () => {
+        const onUpdateNote = vi.fn();
+        render(<StepPropertiesEditor trackId="t1" step={3} track={trackWith({})} onUpdateNote={onUpdateNote} instrumentNode={lfoInstrument} />);
+        return onUpdateNote;
+    };
+
+    it('labels BPM Sync "not automatable per step" and renders it inert', () => {
+        renderLfoEditor();
+        expect(screen.getByTestId('plock-unavailable-Wobble:bpmSync')).toBeTruthy();
+        expect(screen.getByTestId('plock-inert-Wobble:bpmSync')).toBeTruthy();
+    });
+
+    it('does not create a boolean or string override even if the control fires', () => {
+        const onUpdateNote = renderLfoEditor();
+        const inert = screen.getByTestId('plock-inert-Wobble:bpmSync');
+        const checkbox = inert.querySelector('input[type="checkbox"]') as HTMLInputElement;
+        // pointer-events:none stops a real click; a synthetic change event is
+        // the pessimistic case, and the onChange guard must still refuse it.
+        fireEvent.click(checkbox);
+        expect(onUpdateNote).not.toHaveBeenCalled();
+    });
+});
