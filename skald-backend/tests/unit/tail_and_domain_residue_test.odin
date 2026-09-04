@@ -22,6 +22,37 @@ import "core:encoding/json"
 import "core:strings"
 import "core:testing"
 
+// --- B7-x3 ----------------------------------------------------------------
+
+NO_TAIL_JSON :: `{ "project": { "bpm": 120, "instruments": [ { "id": "a", "name": "Asset", "voice_count": 1, "unison": 1,
+  "audio_graph": { "nodes": [
+    { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 440, "waveform": "Sine", "amplitude": 0.4 } },
+    { "id": "out", "type": "GraphOutput", "parameters": {} } ],
+  "connections": [ { "from_node": "osc", "from_port": "output", "to_node": "out", "to_port": "input" } ], "sequencer_tracks": [] } } ] } }`
+
+WITH_TAIL_JSON :: `{ "project": { "bpm": 120, "instruments": [ { "id": "a", "name": "Asset", "voice_count": 1, "unison": 1,
+  "audio_graph": { "nodes": [
+    { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 440, "waveform": "Sine", "amplitude": 0.4 } },
+    { "id": "dly", "type": "Delay", "parameters": { "delayTime": 0.25, "feedback": 0.5, "mix": 0.5 } },
+    { "id": "out", "type": "GraphOutput", "parameters": {} } ],
+  "connections": [
+    { "from_node": "osc", "from_port": "output", "to_node": "dly", "to_port": "input" },
+    { "from_node": "dly", "from_port": "output", "to_node": "out", "to_port": "input" } ], "sequencer_tracks": [] } } ] } }`
+
+@(test)
+test_tail_helper_emitted_only_when_an_asset_has_a_tail :: proc(t: ^testing.T) {
+	no_tail, err1 := core.build_project_from_json(transmute([]byte)string(NO_TAIL_JSON))
+	testing.expect(t, err1 == "", err1)
+	code := core.generate_project_code(&no_tail, "T", "generated_audio")
+	testing.expect(t, !strings.contains(code, "skald_feedback_tail_seconds :: proc"), "a patch with no Delay/Reverb must not carry the tail helper")
+
+	with_tail, err2 := core.build_project_from_json(transmute([]byte)string(WITH_TAIL_JSON))
+	testing.expect(t, err2 == "", err2)
+	code2 := core.generate_project_code(&with_tail, "T", "generated_audio")
+	testing.expect(t, strings.contains(code2, "skald_feedback_tail_seconds :: proc"), "a patch with a Delay needs the helper its _bus_tail_seconds calls")
+	testing.expect(t, strings.contains(code2, "skald_feedback_tail_seconds("), "and the per-asset tail proc calls it")
+}
+
 // --- B7-x1 ----------------------------------------------------------------
 
 @(test)

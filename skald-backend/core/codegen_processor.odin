@@ -80,7 +80,9 @@ generate_processor_code :: proc(
 	    fmt.sbprint(&sb, "import \"core:math\"\n")
 	    fmt.sbprint(&sb, "import \"core:math/rand\"\n\n")
 	    emit_soft_limit_proc(&sb)
-	    emit_feedback_tail_proc(&sb)
+	    // B7-x3: the tail helper only when something has a tail; a patch with
+	    // no Delay/Reverb used to carry 12 lines of dead code for it.
+	    if has_bus_tail do emit_feedback_tail_proc(&sb)
     }
 
 	fmt.sbprintf(&sb, "%s_Voice_State :: struct {{\n", namespace_prefix)

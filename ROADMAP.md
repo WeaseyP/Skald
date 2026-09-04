@@ -361,7 +361,11 @@
   justification). Measured: `glassy-fm-pluck` 202.50s → **1.75s**, `guitar/ambient-clean` 415.06s →
   **9.53s**, `geowars/gold-midas-bells` 212.56s → **4.20s**. `<Asset>_BUS_TAIL_SECONDS` survives as a
   documented upper bound that nothing reads. Pinned by fixture `delay_tail_live`.
-- [ ] **B7-x3** (S) — `emit_feedback_tail_proc` is emitted unconditionally next to
+- [x] **B7-x3** (S) — ✅ **CLOSED**. Both emission sites gate the helper on a tail actually existing:
+  `generate_project_code` on any asset's `compute_bus_tail_seconds > 0`, `generate_processor_code`'s
+  standalone header on its own `has_bus_tail`. Goldens regenerated; every deleted line is one of the
+  helper's 12 lines (plus its blank), audited before `update`. Pinned by
+  `tail_and_domain_residue_test.odin`. Original text: `emit_feedback_tail_proc` is emitted unconditionally next to
   `emit_soft_limit_proc`, so **every** generated file carries the 12-line
   `skald_feedback_tail_seconds` helper — including patches with no Delay or Reverb, which B7-2-followup
   was supposed to leave byte-identical. Harmless (it compiles, and `odin check` passes over the whole

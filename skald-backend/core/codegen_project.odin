@@ -371,7 +371,20 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "}\n\n")
 
     emit_soft_limit_proc(&sb)
-    emit_feedback_tail_proc(&sb)
+    // B7-x3: skald_feedback_tail_seconds is called only from an asset's
+    // <Foo>_bus_tail_seconds, which exists only when that asset has a
+    // Delay/Reverb tail. Emitting the helper unconditionally put 12 lines of
+    // dead code into every export without one — the majority of them.
+    {
+        any_tail := false
+        for i in 0 ..< len(project.instruments) {
+            inst := &project.instruments[i]
+            nodes := nodes_sorted_by_id(&inst.graph)
+            if compute_bus_tail_seconds(&inst.graph, nodes, &plans[i]) > 0.0 do any_tail = true
+            delete(nodes)
+        }
+        if any_tail do emit_feedback_tail_proc(&sb)
+    }
 
     fmt.sbprint(&sb, "Note_Event :: struct {\n")
     fmt.sbprint(&sb, "\tnote: u8,\n")
