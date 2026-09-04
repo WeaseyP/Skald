@@ -348,3 +348,63 @@ describe('examples corpus — gate hygiene', () => {
         );
     });
 });
+
+// ---------------------------------------------------------------------------
+// B6-1-x4 — cross-path emission equality. Not a golden (§4.2 forbids goldens
+// here): the assertion is that the editor path and the CLI path emit THE SAME
+// TEXT for the same file. It is the only check that would have caught
+// B6-1-x1 (instrument order) and B6-1-x2 (absent-value defaults) — both
+// invisible to a gate that only asserts each path compiles.
+//
+// Two documented exceptions are stripped before comparing:
+//   * the B12 provenance lines (`//   generator:` / `//   input:`): the two
+//     paths hand the generator different bytes for the same file by
+//     construction, so the input digest differs;
+//   * the master-volume literal in project_init (`p.master_volume = `): the
+//     editor exports its live fader, the CLI resolves an absent masterVolume
+//     to unity — the one decided editor/CLI difference (B6-1-x2 decision,
+//     documented at projectSerializer.ts's master_volume).
+// Nothing else is normalised. A new difference must be fixed or added HERE
+// with its reason, never worked around in the fixture.
+// ---------------------------------------------------------------------------
+const CROSS_PATH_STRIP: RegExp[] = [/^\/\/ {3}generator: /, /^\/\/ {3}input: /, /^\tp\.master_volume = /];
+const normaliseEmission = (text: string): string[] =>
+    text.split(/\r?\n/).filter((line) => !CROSS_PATH_STRIP.some((re) => re.test(line)));
+
+describe('examples corpus — cross-path equality (editor emission == CLI emission)', () => {
+    it.each(graphFiles.map((f) => [f.rel] as const))(
+        '%s',
+        async (rel) => {
+            const file = byRel.get(rel)!;
+            const outcome = await loadThroughEditor(fs.readFileSync(file.abs, 'utf8'));
+            expect(outcome.error, `${rel}: the editor refused to load it`).toBeNull();
+
+            const session = { ...EDITOR_SESSION_DEFAULTS, ...outcome.appliedSession };
+            const projectData = buildProjectData(
+                outcome.nodes, outcome.edges, outcome.tracks,
+                session.bpm, session.masterVolume, session.patternSteps, undefined,
+            );
+
+            const editorOut = path.join(nextPkgDir(), 'generated_audio.odin');
+            const cliOut = path.join(nextPkgDir(), 'generated_audio.odin');
+            const editor = runCodegenStdin(codegenExe, JSON.stringify(projectData, null, 2), editorOut);
+            const cli = runCodegenFile(codegenExe, file.abs, cliOut);
+            expect(editor.status, `${rel}: editor path failed.\n${editor.stderr}`).toBe(0);
+            expect(cli.status, `${rel}: CLI path failed.\n${cli.stderr}`).toBe(0);
+
+            const a = normaliseEmission(fs.readFileSync(editorOut, 'utf8'));
+            const b = normaliseEmission(fs.readFileSync(cliOut, 'utf8'));
+            const n = Math.max(a.length, b.length);
+            let firstDiff = -1;
+            for (let i = 0; i < n; i++) {
+                if (a[i] !== b[i]) { firstDiff = i; break; }
+            }
+            expect(
+                firstDiff,
+                `${rel}: editor and CLI emissions differ at line ${firstDiff + 1}\n` +
+                `  editor: ${a[firstDiff]}\n  cli:    ${b[firstDiff]}`,
+            ).toBe(-1);
+        },
+        PER_FILE_TIMEOUT,
+    );
+});

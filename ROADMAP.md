@@ -261,11 +261,13 @@
   `"INSTRUMENT"` still wraps. Original text: `getInstrumentNodes` matches only lowercase `'instrument'`
   … the wrap decision now rides on this predicate.
 
-- [ ] **B6-1-x4** (S) — **Cross-path emission equality in the corpus gate.** §4.2 forbids goldens there,
-  but asserting that the editor and CLI emit *the same text* for the same file is not a golden, and it
-  is the only thing that would catch B6-1-x1 and B6-1-x2 — both invisible today. The review built this
-  harness twice; it runs in ~2s for all 24 loose graphs. Needs B6-1-x2 decided first, or the master
-  volume line has to be an explicit documented exception.
+- [x] **B6-1-x4** (S) — ✅ **CLOSED**. `ExamplesCorpus.test.ts` gained "cross-path equality": for every
+  graph-shaped example (97, not just the 24 loose graphs) the editor path's emission and the CLI path's
+  emission are compared line by line after stripping exactly three documented lines — the two B12
+  provenance lines (the paths hand the generator different bytes) and `p.master_volume = ` (the B6-1-x2
+  exception). Nothing else is normalised. Run against the pre-fix serializer it failed on exactly the
+  four multi-instrument songs at line 9 (the asset list, permuted — B6-1-x1); after B6-1-x1 and B6-1-x2
+  all 97 match. Original text: **Cross-path emission equality in the corpus gate.**
 
 - [ ] **B6-1-x5** (S) — The false-positive class F2 fixed is still live for **non-loose** graphs:
   `projectWarnings.ts:135-142`, a track whose `targetNodeId` names a non-Instrument node in a graph that
