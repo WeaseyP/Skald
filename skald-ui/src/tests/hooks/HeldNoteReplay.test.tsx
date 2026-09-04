@@ -146,6 +146,7 @@ class FakeAudioContext {
     audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
     createGain = vi.fn(() => ({ connect: vi.fn(), gain: { value: 1 } }));
     createAnalyser = vi.fn(() => ({ connect: vi.fn(), fftSize: 0 }));
+    createChannelSplitter = vi.fn(() => ({ connect: vi.fn() }));
     resume = vi.fn().mockResolvedValue(undefined);
     close = vi.fn().mockResolvedValue(undefined);
 }

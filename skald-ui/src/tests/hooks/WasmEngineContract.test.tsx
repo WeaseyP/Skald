@@ -28,6 +28,7 @@ class FakeAudioContext {
     audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
     createGain = vi.fn(() => ({ connect: vi.fn(), gain: { value: 1 } }));
     createAnalyser = vi.fn(() => ({ connect: vi.fn(), fftSize: 0 }));
+    createChannelSplitter = vi.fn(() => ({ connect: vi.fn() }));
     resume = vi.fn().mockResolvedValue(undefined);
     close = vi.fn().mockResolvedValue(undefined);
     constructor() { createdContexts.push(this); }
@@ -590,5 +591,34 @@ describe('useWasmAudioEngine — master volume (SKB-011)', () => {
             .filter((m: { type: string }) => m.type === 'set-master-volume');
         expect(calls).toHaveLength(1);
         expect(calls[0].value).toBe(0.8);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Packet B10 — the peak meter's stereo tap.
+// ---------------------------------------------------------------------------
+describe('useWasmAudioEngine — B10 stereo meter tap', () => {
+    it('splits the worklet output into one analyser per channel and exposes both', async () => {
+        const { result } = renderEngine([makeInstrument()]);
+        await act(async () => { await result.current.handlePlay(); });
+        expect(result.current.isPlaying).toBe(true);
+
+        const ctx = createdContexts[0] as unknown as { createChannelSplitter: ReturnType<typeof vi.fn> };
+        // An AnalyserNode downmixes to mono; a single tap would hide a
+        // one-sided over. Before B10 no splitter existed at all.
+        expect(ctx.createChannelSplitter).toHaveBeenCalledWith(2);
+        const splitter = ctx.createChannelSplitter.mock.results[0].value as { connect: ReturnType<typeof vi.fn> };
+        expect(splitter.connect).toHaveBeenCalledWith(expect.anything(), 0);
+        expect(splitter.connect).toHaveBeenCalledWith(expect.anything(), 1);
+
+        const meters = result.current.meterAnalysers;
+        expect(meters).not.toBeNull();
+        expect(meters!.left).not.toBe(meters!.right);
+        // The float-domain window the meter reads: 1024 samples, ~21 ms at 48 kHz.
+        expect((meters!.left as unknown as { fftSize: number }).fftSize).toBe(1024);
+        expect((meters!.right as unknown as { fftSize: number }).fftSize).toBe(1024);
+
+        act(() => { result.current.handleStop(); });
+        expect(result.current.meterAnalysers).toBeNull();
     });
 });

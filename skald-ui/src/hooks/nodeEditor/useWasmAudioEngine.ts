@@ -28,6 +28,7 @@ import {
 } from '../../utils/projectSerializer';
 import { SequencerTrack } from '../../definitions/types';
 import { logger } from '../../utils/logger';
+import { StereoAnalysers } from '../../utils/meter';
 
 // Debounce for regenerate+recompile on topology edits. Long enough to
 // coalesce a drag, short enough to feel live (measured build is ~200ms).
@@ -64,6 +65,8 @@ export const useWasmAudioEngine = (
     const audioContext = useRef<AudioContext | null>(null);
     const workletNode = useRef<AudioWorkletNode | null>(null);
     const [analyserState, setAnalyserState] = useState<AnalyserNode | null>(null);
+    // Packet B10: the peak meter's stereo tap, one analyser per channel.
+    const [meterState, setMeterState] = useState<StereoAnalysers | null>(null);
 
     // Surfaced to the UI — these errors were console-only, which made every
     // failure mode (Odin missing, codegen error, build timeout) look exactly
@@ -231,6 +234,7 @@ export const useWasmAudioEngine = (
         workletNode.current = null;
         lastSignature.current = null;
         setAnalyserState(null);
+        setMeterState(null);
         setIsPlaying(false);
         // Stopped = no longer listening to a stale module. A play *error*
         // stays visible until the next Play attempt resolves it.
@@ -328,6 +332,21 @@ export const useWasmAudioEngine = (
             node.connect(analyser);
             analyser.connect(context.destination);
 
+            // Packet B10: the peak meter's tap. An AnalyserNode downmixes to
+            // mono, so a stereo meter needs a ChannelSplitterNode feeding one
+            // analyser per channel; these are sinks (never routed to the
+            // destination), so they add no audio path. fftSize 1024 is the
+            // window the meter reads with getFloatTimeDomainData — about 21 ms
+            // at 48 kHz, a frame's worth of samples for a 60 Hz repaint.
+            const splitter = context.createChannelSplitter(2);
+            const meterLeft = context.createAnalyser();
+            const meterRight = context.createAnalyser();
+            meterLeft.fftSize = 1024;
+            meterRight.fftSize = 1024;
+            node.connect(splitter);
+            splitter.connect(meterLeft, 0);
+            splitter.connect(meterRight, 1);
+
             if (context.state === 'suspended') {
                 await context.resume();
             }
@@ -340,6 +359,7 @@ export const useWasmAudioEngine = (
             // against on the very first live edit after Play.
             prevInstruments.current = wrappedInstrumentNodes(nodes);
             setAnalyserState(analyser);
+            setMeterState({ left: meterLeft, right: meterRight });
             setIsPlaying(true);
             logger.info('WasmAudioEngine', 'Playing generated wasm module');
         } catch (e) {
@@ -597,6 +617,8 @@ export const useWasmAudioEngine = (
         handlePlay,
         handleStop,
         analyserNode: { current: analyserState },
+        // Packet B10: per-channel analysers for the peak meter; null when stopped.
+        meterAnalysers: meterState,
         // Preview health, for visible UI surfacing (console-only errors made
         // toolchain failures indistinguishable from a silent patch).
         previewError,

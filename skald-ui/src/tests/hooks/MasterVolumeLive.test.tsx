@@ -132,6 +132,7 @@ class FakeAudioContext {
     // point at: the whole point of SKB-011 is that this must NEVER be called.
     createGain = vi.fn(() => ({ connect: vi.fn(), gain: { value: 1 } }));
     createAnalyser = vi.fn(() => ({ connect: vi.fn(), fftSize: 0 }));
+    createChannelSplitter = vi.fn(() => ({ connect: vi.fn() }));
     resume = vi.fn().mockResolvedValue(undefined);
     close = vi.fn().mockResolvedValue(undefined);
     constructor() { createdContexts.push(this); }

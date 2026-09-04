@@ -2,11 +2,11 @@
 
 > **Last updated:** 2026-08-22
 > **Wave A:** ✅ Complete (13/13 packets landed)
-> **Wave B:** 10 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
+> **Wave B:** 11 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
 > Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
 > landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was fixed in `a71c96f`, B8 landed
-> `120081a`, B9 landed as five commits, B12 and B2 as one each (2026-09-05).
-> Remaining: **B6 (residue), B10.**
+> `120081a`, B9 landed as five commits, B12, B2 and B10 as one each (2026-09-05).
+> Remaining: **B6 residue only** (B6-1/B6-2 closed; the x-items and B6-3..B6-7 open).
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -383,7 +383,17 @@ A conservative static warning cannot see a defect that another defect is hiding.
   Create-Instrument selection.
 
 ### B10 — Peak Meter + Clip LED
-- [ ] **B10** (S) — Stereo peak-hold meter with clip LED in transport dock.
+- [x] **B10** (S) — ✅ **CLOSED**. `PeakMeter` (`components/Visualization/PeakMeter.tsx`) sits under the
+  visualizer in the dock's Master section: two bars (−60..0 dBFS), a peak-hold tick falling at 20 dB/s, and
+  a clip LED that latches at ≥ 0 dBFS until clicked. The tap is a `ChannelSplitterNode` off the worklet
+  output feeding one `AnalyserNode` per channel (`useWasmAudioEngine.ts`, exposed as `meterAnalysers`),
+  read with `getFloatTimeDomainData` on 1024-sample windows — both traps below are pinned:
+  `PeakMeter.test.tsx` asserts the byte variant is never called and that a right-only 1.2 lights the LED;
+  `WasmEngineContract.test.tsx` asserts the splitter exists with outputs 0 and 1 wired to two distinct
+  analysers. `utils/meter.ts` holds the arithmetic (peak, dBFS, fill, hold, clip) with a NaN/Inf sample
+  reported as an over rather than silence. Both test files failed before the code existed. SKB-053 (the
+  worklet's per-quantum `Float32Array` views) is unchanged by this packet — still open below. Original
+  text: Stereo peak-hold meter with clip LED in transport dock.
   - "Tapped before JS master gain" is **stale wording**: there is no JS master gain any more (SKB-011
     deleted it; the fader lives inside the DSP graph). The tap point is the worklet output — where
     `useWasmAudioEngine.ts:249` already builds `worklet → analyser → destination` with `fftSize = 2048`,

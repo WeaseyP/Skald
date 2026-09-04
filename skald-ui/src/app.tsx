@@ -182,7 +182,7 @@ const EditorLayout = () => {
     // not warn, it exits.
     const projectIssues = useProjectIssues(nodes, tracks, patternSteps);
 
-    const { isPlaying, handlePlay, handleStop, analyserNode, previewError, previewStale, isBuilding } = useWasmAudioEngine(
+    const { isPlaying, handlePlay, handleStop, analyserNode, meterAnalysers, previewError, previewStale, isBuilding } = useWasmAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -601,6 +601,7 @@ const EditorLayout = () => {
                     onUpdateNote={updateNote}
                     onUpdateSteps={updateTrackSteps}
                     analyserNode={analyserNode?.current || null}
+                    meterAnalysers={meterAnalysers}
                     onStepSelect={onSelectStep}
                 />
             </div>
