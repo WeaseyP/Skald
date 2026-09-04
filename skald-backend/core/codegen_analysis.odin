@@ -566,6 +566,13 @@ compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: strin
 		)
 		os.exit(1)
 	}
+	if up, found := find_voice_source_into_bus_modulator(graph, sorted_nodes, &bus_nodes); found {
+		fmt.eprintf(
+			"Error: instrument %q: %s(%s) runs in the bus domain (it modulates a post-effect node), but it is fed by the per-voice %s(%s). The bus would read the SUM of every active voice's %s output — twice as much with two notes held, nothing once the last voice ends, mid-tail. Give the bus-domain %s a bus-domain source (an LFO, SampleHold, Noise or Mapper), or duplicate the modulation chain so the per-voice copy feeds only per-voice nodes.\n",
+			inst_name, up.modulator_type, up.modulator_id, up.source_type, up.source_id, up.source_type, up.modulator_type,
+		)
+		os.exit(1)
+	}
 	for node in sorted_nodes {
 		if bus_nodes[node.id] && is_voice_coupled_type(node.type) {
 			fmt.eprintf(
@@ -1059,3 +1066,54 @@ warn_panner_mono_consumers :: proc(graph: ^Graph, all_nodes: []Node, inst_name: 
 	}
 }
 
+
+// =====================================================================
+// B7-3-followup — what feeds a hoisted modulator.
+//
+// hoist_bus_modulators moves an LFO/SampleHold/Noise/Mapper that feeds the
+// bus INTO the bus, and iterates sinks-first so a chain of hoistable nodes
+// hoists all the way up. It never looked at what feeds the hoisted node when
+// that source is NOT hoistable: an ADSR (or MidiInput, or an audio source)
+// is voice-coupled by nature and stays per-voice, so a bus-domain Mapper fed
+// by it reads `node_env_out_vsum` — the SUM of every active voice's
+// envelope, 0 once the last voice ends. SKB-017 survives one node upstream,
+// and is harder to spot because the modulator itself now looks correctly
+// bus-domain. Same rule, same remedy as the cross-domain conflict: a hard
+// error naming both ends, because only the author knows whether the chain
+// should be duplicated per domain or the source replaced with a bus one.
+// =====================================================================
+
+Upstream_Conflict :: struct {
+	modulator_id:   string,
+	modulator_type: string,
+	source_id:      string,
+	source_type:    string,
+}
+
+/// The first bus-domain modulator fed by a voice-coupled source, in id order
+/// so the message names the same pair on every run. Audio sources
+/// (Oscillator, FmOperator, Wavetable) count too: a Mapper reading an
+/// oscillator's per-voice output in the bus would see the voice sum.
+find_voice_source_into_bus_modulator :: proc(graph: ^Graph, sorted_nodes: []Node, bus_nodes: ^map[string]bool) -> (Upstream_Conflict, bool) {
+	for node in sorted_nodes {
+		if !bus_nodes[node.id] do continue
+		if !is_hoistable_modulator_type(node.type) do continue
+		for conn in graph.connections {
+			if conn.to_node != node.id do continue
+			src, ok := graph.nodes[conn.from_node]
+			if !ok do continue
+			if bus_nodes[src.id] do continue
+			if is_voice_coupled_type(src.type) {
+				return Upstream_Conflict{
+					modulator_id   = node.id,
+					modulator_type = node.type,
+					source_id      = src.id,
+					source_type    = src.type,
+				}, true
+			}
+		}
+	}
+	return Upstream_Conflict{}, false
+}
+
+// =====================================================================

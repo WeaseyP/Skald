@@ -124,3 +124,97 @@ test_panner_stereo_consumer_detection :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, core.panner_has_stereo_consumer(&g, pan), "Panner -> Output reads left/right")
 }
+
+// --- B7-3-followup ---------------------------------------------------------
+
+@(test)
+test_adsr_into_hoisted_mapper_is_a_conflict :: proc(t: ^testing.T) {
+	// ADSR -> Mapper -> Filter.cutoff, Filter after a Delay (bus). The Mapper
+	// hoists into the bus; the ADSR cannot, so the Mapper would read the
+	// voice-summed envelope.
+	nodes := []core.Node{
+		{id = "osc", raw_id = "osc", type = "Oscillator"},
+		{id = "env", raw_id = "env", type = "ADSR"},
+		{id = "map", raw_id = "map", type = "Mapper"},
+		{id = "dly", raw_id = "dly", type = "Delay"},
+		{id = "flt", raw_id = "flt", type = "Filter"},
+		{id = "out", raw_id = "out", type = "GraphOutput"},
+	}
+	g := graph_of(nodes)
+	defer delete(g.nodes)
+	g.connections = []core.Connection{
+		{from_node = "osc", from_port = "output", to_node = "dly", to_port = "input"},
+		{from_node = "dly", from_port = "output", to_node = "flt", to_port = "input"},
+		{from_node = "flt", from_port = "output", to_node = "out", to_port = "input"},
+		{from_node = "env", from_port = "output", to_node = "map", to_port = "input"},
+		{from_node = "map", from_port = "output", to_node = "flt", to_port = "input_cutoff"},
+	}
+	sorted, is_dag := core.topological_sort(&g)
+	defer delete(sorted)
+	testing.expect(t, is_dag, "fixture must be a DAG")
+	bus := core.seed_bus_domain(&g, sorted)
+	defer delete(bus)
+	_, cross := core.hoist_bus_modulators(&g, sorted, &bus)
+	testing.expect(t, !cross, "no cross-domain conflict: the Mapper feeds only the bus")
+	testing.expect(t, bus["map"], "the Mapper is hoisted")
+
+	up, found := core.find_voice_source_into_bus_modulator(&g, sorted, &bus)
+	testing.expect(t, found, "a per-voice ADSR feeding a bus-domain Mapper must be reported")
+	testing.expect_value(t, up.modulator_id, "map")
+	testing.expect_value(t, up.source_id, "env")
+}
+
+@(test)
+test_lfo_into_hoisted_mapper_is_fine :: proc(t: ^testing.T) {
+	// LFO -> Mapper -> bus Filter: the LFO hoists too (sinks-first pass), so
+	// the whole chain is bus-domain and nothing is summed.
+	nodes := []core.Node{
+		{id = "osc", raw_id = "osc", type = "Oscillator"},
+		{id = "lfo", raw_id = "lfo", type = "LFO"},
+		{id = "map", raw_id = "map", type = "Mapper"},
+		{id = "dly", raw_id = "dly", type = "Delay"},
+		{id = "flt", raw_id = "flt", type = "Filter"},
+		{id = "out", raw_id = "out", type = "GraphOutput"},
+	}
+	g := graph_of(nodes)
+	defer delete(g.nodes)
+	g.connections = []core.Connection{
+		{from_node = "osc", from_port = "output", to_node = "dly", to_port = "input"},
+		{from_node = "dly", from_port = "output", to_node = "flt", to_port = "input"},
+		{from_node = "flt", from_port = "output", to_node = "out", to_port = "input"},
+		{from_node = "lfo", from_port = "output", to_node = "map", to_port = "input"},
+		{from_node = "map", from_port = "output", to_node = "flt", to_port = "input_cutoff"},
+	}
+	sorted, _ := core.topological_sort(&g)
+	defer delete(sorted)
+	bus := core.seed_bus_domain(&g, sorted)
+	defer delete(bus)
+	core.hoist_bus_modulators(&g, sorted, &bus)
+	testing.expect(t, bus["lfo"] && bus["map"], "the whole chain hoists")
+	_, found := core.find_voice_source_into_bus_modulator(&g, sorted, &bus)
+	testing.expect(t, !found, "a bus-domain chain has no per-voice source to report")
+}
+
+@(test)
+test_voice_audio_into_bus_delay_is_not_a_modulator_conflict :: proc(t: ^testing.T) {
+	// The ordinary audio path: per-voice Oscillator summed INTO a bus Delay.
+	// That sum is the point of the bus; only bus-domain MODULATORS are judged.
+	nodes := []core.Node{
+		{id = "osc", raw_id = "osc", type = "Oscillator"},
+		{id = "dly", raw_id = "dly", type = "Delay"},
+		{id = "out", raw_id = "out", type = "GraphOutput"},
+	}
+	g := graph_of(nodes)
+	defer delete(g.nodes)
+	g.connections = []core.Connection{
+		{from_node = "osc", from_port = "output", to_node = "dly", to_port = "input"},
+		{from_node = "dly", from_port = "output", to_node = "out", to_port = "input"},
+	}
+	sorted, _ := core.topological_sort(&g)
+	defer delete(sorted)
+	bus := core.seed_bus_domain(&g, sorted)
+	defer delete(bus)
+	core.hoist_bus_modulators(&g, sorted, &bus)
+	_, found := core.find_voice_source_into_bus_modulator(&g, sorted, &bus)
+	testing.expect(t, !found, "voice audio into a bus effect is the normal path, not a conflict")
+}

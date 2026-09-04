@@ -371,7 +371,14 @@
   was supposed to leave byte-identical. Harmless (it compiles, and `odin check` passes over the whole
   corpus) but it is dead code in the majority of exports. Gate it on "any instrument in the project has
   a tail" and regenerate.
-- [ ] **B7-3-followup** (S) — Hoisting stops at hoistable types and never checks what feeds them.
+- [x] **B7-3-followup** (S) — ✅ **CLOSED**. `find_voice_source_into_bus_modulator` runs after the hoist:
+  a bus-domain LFO/SampleHold/Noise/Mapper fed by a per-voice source (ADSR, MidiInput, or an audio
+  source) is a hard error naming both ends, with the same remedy as SKB-017's mixed case — give the
+  bus-domain modulator a bus-domain source, or duplicate the chain. Voice audio summed *into* a bus
+  effect is untouched (that sum is the point of the bus; only bus-domain modulators are judged). A
+  `-check` sweep over all 155 fixtures and examples trips nothing. Pinned by three cases in
+  `tail_and_domain_residue_test.odin` (ADSR→Mapper→bus Filter is a conflict; LFO→Mapper→bus Filter is
+  not; Oscillator→Delay is not). Original text: Hoisting stops at hoistable types and never checks what feeds them.
   `ADSR → Mapper → post-Delay Filter.cutoff` hoists the Mapper, which then reads `node_env_out_vsum` —
   the sum of per-voice envelopes. SKB-017 survives one node upstream, silently, and is now *harder* to
   spot because the modulator itself looks correctly bus-domain. The SKB-017 comment's "the fix is to
