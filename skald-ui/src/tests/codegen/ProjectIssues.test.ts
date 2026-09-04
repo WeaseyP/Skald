@@ -406,3 +406,28 @@ describe('formatProjectIssues — one line per problem, naming the fix', () => {
         expect(lines.join('\n')).toContain('will not sound');
     });
 });
+
+describe('B6-1-x5 — a track targeting a non-Instrument node in a graph that has an instrument', () => {
+    it('reports nothing: buildProjectData drops that track, so codegen never sees its P-locks', () => {
+        const looseFilter = sub('flt-x', 'filter', { label: 'LooseFilter', cutoff: 800, type: 'Lowpass' }) as unknown as Node<NodeParams>;
+        const graph = [...nodes, looseFilter];
+        // Before B6-1-x5 subgraphNodesFor found the filter, read its absent
+        // .data.subgraph.nodes as [], and every override here came back
+        // `unresolvable` with blocksBuild: true — "Code generation will fail"
+        // for a project whose codegen exits 0.
+        const issues = collectPlockIssues(graph, [track({
+            targetNodeId: 'flt-x',
+            notes: [{ step: 0, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Osc:frequency': 220 } }],
+        })]);
+        expect(issues).toEqual([]);
+    });
+
+    it('still resolves a track that targets the real instrument in the same graph', () => {
+        const looseFilter = sub('flt-x', 'filter', { label: 'LooseFilter', cutoff: 800, type: 'Lowpass' }) as unknown as Node<NodeParams>;
+        const issues = collectPlockIssues([...nodes, looseFilter], [track({
+            notes: [{ step: 0, note: 60, velocity: 1, duration: 1, patchOverrides: { 'Gone:frequency': 220 } }],
+        })]);
+        expect(issues).toHaveLength(1);
+        expect(issues[0].blocksBuild).toBe(true);
+    });
+});

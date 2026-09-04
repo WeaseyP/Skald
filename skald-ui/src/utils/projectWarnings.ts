@@ -60,7 +60,7 @@ import {
     resolvePlockTargets,
 } from './plockTargets';
 import { effectiveTrackSteps, outOfRangeNotes } from '../components/Sequencer/stepMetrics';
-import { getInstrumentNodes } from './projectSerializer';
+import { getInstrumentNodes, isInstrumentNodeType } from './projectSerializer';
 
 export type PlockIssueKind = 'unresolvable' | 'dead' | 'non-numeric';
 
@@ -116,7 +116,10 @@ const isLooseGraph = (nodes: Node<NodeParams>[]): boolean =>
     nodes.length > 0 && getInstrumentNodes(nodes).length === 0;
 
 /**
- * The nodes a track's P-locks resolve against.
+ * The nodes a track's P-locks resolve against — exactly the shape the backend
+ * will see, in both branches: the whole graph for a loose graph, an
+ * Instrument's subgraph otherwise, and `null` for a track codegen drops (no
+ * such node, or a node that is not an Instrument — B6-1-x5).
  *
  * On a loose graph (no Instrument node), buildProjectData funnels EVERY
  * sequencer track into the ONE synthetic "Asset" instrument's audio_graph
@@ -137,6 +140,13 @@ const subgraphNodesFor = (
 
     const instrument = nodes.find(n => n.id === track.targetNodeId);
     if (!instrument) return null;
+    // B6-1-x5: a track whose target IS a node but not an Instrument is one
+    // buildProjectData drops entirely — its per-instrument branch filters
+    // tracks by instrument id, and this id is no instrument's — so codegen
+    // never sees it. Reading `.data.subgraph.nodes` off a Filter gave `[]`,
+    // and every P-lock on the track then reported blocksBuild for a build
+    // that does not fail. Same outcome as "no such node": nothing to warn about.
+    if (!isInstrumentNodeType(instrument.type)) return null;
     const subgraph = (instrument.data as { subgraph?: { nodes?: unknown } } | undefined)?.subgraph;
     const subNodes = subgraph?.nodes;
     return Array.isArray(subNodes) ? (subNodes as Node<NodeParams>[]) : [];

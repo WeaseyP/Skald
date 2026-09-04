@@ -269,7 +269,11 @@
   four multi-instrument songs at line 9 (the asset list, permuted — B6-1-x1); after B6-1-x1 and B6-1-x2
   all 97 match. Original text: **Cross-path emission equality in the corpus gate.**
 
-- [ ] **B6-1-x5** (S) — The false-positive class F2 fixed is still live for **non-loose** graphs:
+- [x] **B6-1-x5** (S) — ✅ **CLOSED**. `subgraphNodesFor` returns `null` for a track whose target node
+  exists but is not an Instrument — the same answer as "no such node", because `buildProjectData` drops
+  both and codegen never sees either. `ProjectIssues.test.ts` pins it (a P-lock on such a track reported
+  `unresolvable` / `blocksBuild: true` before; a sibling track on the real instrument still reports).
+  Original text: The false-positive class F2 fixed is still live for **non-loose** graphs:
   `projectWarnings.ts:135-142`, a track whose `targetNodeId` names a non-Instrument node in a graph that
   does have an instrument. `subgraphNodesFor` finds the node, reads its absent `.data.subgraph.nodes`,
   returns `[]`, and every P-lock on it reports `blocksBuild: true` — for a track `buildProjectData`
