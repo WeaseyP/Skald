@@ -1021,3 +1021,41 @@ omit_resolutions :: proc(plan: ^Instrument_Plan, dead: []Exposed_Resolution) {
 	delete(plan.stable_resolutions)
 	plan.stable_resolutions = kept
 }
+
+// =====================================================================
+// B7-x2 — a Panner nothing stereo listens to.
+//
+// Only GraphOutput reads a Panner's left/right pair; every other consumer
+// reads `node_<id>_out`, the mono fallback, which since SKB-013 is a plain
+// pass-through (a mono sum cannot carry pan, and encoding pan as level was
+// the bug). So `Panner -> Gain -> GraphOutput` discards the pan entirely and
+// the pan knob does nothing — legal, and silent. Warn.
+// =====================================================================
+
+panner_has_stereo_consumer :: proc(graph: ^Graph, panner: Node) -> bool {
+	for conn in graph.connections {
+		if conn.from_node != panner.id do continue
+		if consumer, ok := graph.nodes[conn.to_node]; ok && consumer.type == "GraphOutput" do return true
+	}
+	return false
+}
+
+warn_panner_mono_consumers :: proc(graph: ^Graph, all_nodes: []Node, inst_name: string) {
+	for node in all_nodes {
+		if node.type != "Panner" do continue
+		has_consumer := false
+		for conn in graph.connections {
+			if conn.from_node == node.id {
+				has_consumer = true
+				break
+			}
+		}
+		if !has_consumer do continue
+		if panner_has_stereo_consumer(graph, node) do continue
+		fmt.eprintf(
+			"Warning: instrument %q: Panner(%s) feeds only mono inputs, so its pan has no effect — only the Output node reads a Panner's left/right pair; everything else reads the mono pass-through. Wire the Panner straight into Output, or move it after the node it feeds.\n",
+			inst_name, node.id,
+		)
+	}
+}
+

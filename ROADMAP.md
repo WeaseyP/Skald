@@ -386,7 +386,12 @@
   single-sourced across the analysis, the reverb emission and the live tail proc. **Still open:**
   `compute_bus_tail_seconds` iterates `all_nodes`, so an orphaned Delay with no path to `GraphOutput`
   still inflates the worst-case bound (which now only gates emission, so the impact is smaller).
-- [ ] **B7-x2** (S) — The Panner mono fallback is now a *complete* pass-through, so
+- [x] **B7-x2** (S) — ✅ **CLOSED**. `warn_panner_mono_consumers`: a Panner with consumers but no
+  GraphOutput among them warns that its pan has no effect, naming the fix (wire it into Output, or move
+  it after the node it feeds). It fires on exactly the two fixtures built for the mono fallback
+  (`panner_mono`, `panner_mono_sum`) and on no shipped example. Pinned by
+  `tail_and_domain_residue_test.odin`. The pass-through itself is unchanged and still correct. Original
+  text: The Panner mono fallback is now a *complete* pass-through, so
   `Panner → Gain → GraphOutput` discards pan entirely. Defensible, but nothing notices: `panner_mono`
   asserts only audibility and pitch.
 

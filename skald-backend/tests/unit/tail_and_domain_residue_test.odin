@@ -98,3 +98,29 @@ test_tail_with_no_graph_output_is_unchanged :: proc(t: ^testing.T) {
 	defer delete(all)
 	testing.expect(t, core.compute_bus_tail_seconds(&g, all, &plan) > 0.0, "without an output every Delay still counts, as before")
 }
+
+// --- B7-x2 ----------------------------------------------------------------
+
+@(test)
+test_panner_stereo_consumer_detection :: proc(t: ^testing.T) {
+	nodes := []core.Node{
+		{id = "pan", raw_id = "pan", type = "Panner"},
+		{id = "gain", raw_id = "gain", type = "Gain"},
+		{id = "out", raw_id = "out", type = "GraphOutput"},
+	}
+	g := graph_of(nodes)
+	defer delete(g.nodes)
+	pan := g.nodes["pan"]
+
+	g.connections = []core.Connection{
+		{from_node = "pan", from_port = "output", to_node = "gain", to_port = "input"},
+		{from_node = "gain", from_port = "output", to_node = "out", to_port = "input"},
+	}
+	testing.expect(t, !core.panner_has_stereo_consumer(&g, pan), "Panner -> Gain -> Output: only the mono pass-through is read; pan is discarded")
+
+	g.connections = []core.Connection{
+		{from_node = "pan", from_port = "output_left", to_node = "out", to_port = "input"},
+		{from_node = "pan", from_port = "output_right", to_node = "out", to_port = "input"},
+	}
+	testing.expect(t, core.panner_has_stereo_consumer(&g, pan), "Panner -> Output reads left/right")
+}
