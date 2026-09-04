@@ -34,6 +34,7 @@ import { SequencerDock } from './components/Sequencer/SequencerDock';
 import { useScale , ScaleProvider } from './contexts/ScaleContext';
 import { GraphActionsProvider } from './contexts/GraphActionsContext';
 import { instrumentSelectionBlockedReason } from './hooks/nodeEditor/useNodeComposition';
+import { shouldLoadFirstRunPatch, useFirstRunPatch } from './hooks/nodeEditor/useFirstRunPatch';
 
 // Re-exported: the Export-Step naming rule now lives with the Export-Step
 // action itself (useEditorState), which is where its undo entry is pushed.
@@ -252,6 +253,21 @@ const EditorLayout = () => {
         clearAutosave();
         setRecoverableAutosave(null);
     }, []);
+
+    // Packet B6-6 — a fresh install opens with a patch that makes a sound.
+    // Decided ONCE at mount from the same facts the recovery banner uses: an
+    // autosave to offer wins, a non-empty canvas means this is not a fresh
+    // start, and the marker means it already happened on this profile. The
+    // hook itself reads the marker (storage may be blocked) and latches it
+    // only after the example actually loaded.
+    const [firstRunEligible] = useState(() =>
+        shouldLoadFirstRunPatch({
+            hasRecoverableAutosave: recoverableAutosave !== null,
+            nodeCount: nodesRef.current.length,
+            marker: null,
+        }),
+    );
+    useFirstRunPatch({ enabled: firstRunEligible, load: handleLoadExample });
 
     const sequencerState = {
         isPlaying,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ExampleItem } from '../../forge.env';
+import { loadExampleContent } from '../utils/exampleContent';
 
 interface ExamplesModalProps {
     isOpen: boolean;
@@ -83,16 +84,9 @@ export const ExamplesModal: React.FC<ExamplesModalProps> = ({
     ) => {
         setActionInProgress(`${action}:${item.id}`);
         try {
-            let content: string | null = null;
-            if (window.electron?.loadExample) {
-                const res = await window.electron.loadExample(item.path);
-                content = res.content;
-            } else {
-                const res = await fetch(`/api/examples/${encodeURIComponent(item.path)}`);
-                if (res.ok) {
-                    content = await res.text();
-                }
-            }
+            // One loader for every example read (utils/exampleContent.ts); the
+            // first-run patch (B6-6) goes through the same two branches.
+            const content = await loadExampleContent(item.path);
             if (content) {
                 if (action === 'load') {
                     onLoadExample(content, item.name);

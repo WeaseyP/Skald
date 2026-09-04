@@ -289,7 +289,12 @@
   `docs/manual-source/` (the compiled HTML is gitignored build output, so the source tree is the link
   that always resolves).
 - [ ] **B6-5** (S) — Electron Help menu (Manual / Examples / About with codegen stamp)
-- [ ] **B6-6** (S) — Default first-run patch that makes a sound in 30 seconds
+- [x] **B6-6** (S) — ✅ **CLOSED**. `useFirstRunPatch` loads the first Start Here example (the sequenced
+  bass, one instrument + one track) on a genuinely fresh start — no autosave to recover, empty canvas, no
+  `skald:first-run-patch:v1` marker — through the same loader the Examples modal uses
+  (`utils/exampleContent.ts`, extracted so there is one reader). The marker is written only after a
+  successful load, so a failed read retries next launch instead of latching. `FirstRunPatch.test.tsx`
+  pins all four branches. Original text: Default first-run patch that makes a sound in 30 seconds.
 - [x] **B6-7** (S) — ✅ **CLOSED**. The Sidebar's primary button reads **Download Code** with a tooltip
   saying the preview already runs this exact code and the button only writes the `.odin`; the
   no-toolchain message and the two main-process comments that named "Generate Code" as a feature follow.
