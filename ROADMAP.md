@@ -136,11 +136,13 @@
     Oscillator/LFO/SampleHold/Delay starts with its pitch or time-base parameter **already dead**. Two
     existing test fixtures had assumed `Osc:frequency` was live by default and were asserting against a
     state the generator does not agree with.
-- [ ] **B5-x1** (S) — Three sites still bypass the normaliser (the SKB-002 pattern): both
-  `StepPropertiesEditor`'s override demux and `useEditorState.handleExportStep` match with
-  `(n.data.label || n.type) === targetLabel` — case-sensitive, React Flow's type, and
-  `key.split(':')` truncates a param containing a colon. So codegen applies `osc:frequency` to the
-  node labelled `Osc` while Export-Step bakes nothing.
+- [x] **B5-x1** (S) — ✅ **CLOSED**. Both sites now read `resolvePlockTargets` (the generator's mirror):
+  `handleExportStep` resolves against the instrument's subgraph, or against the *source* node for a loose
+  node (the export's own label is already suffixed), and applies by node id; the step editor demuxes the
+  same way and, when a key already addresses (node, param) in any spelling, edits *that* key instead of
+  minting a canonical twin. Pinned by `ExportStepOverrides.test.tsx` (3 cases, all failed before: a
+  lowercase `osc:amplitude` baked nothing) and two `StepPropertiesIssues` cases. Original text: Three
+  sites still bypass the normaliser (the SKB-002 pattern).
 - [ ] **B5-x2** (S) — An out-of-range note is unreachable in *both* editors (handlers gate on
   `!isDisabled`), so it can be seen but not deleted; the only remedy is raise-delete-lower and the
   notice never says so. `handleExportStep`'s out-of-range guard returns `null` with no feedback.

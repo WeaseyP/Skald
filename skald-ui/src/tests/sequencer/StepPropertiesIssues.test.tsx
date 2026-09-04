@@ -216,3 +216,32 @@ describe('SKB-045 — the editor stops offering locks it cannot export', () => {
         expect(screen.getByTestId('plock-unavailable-Osc:waveform')).toBeTruthy();
     });
 });
+
+// ---------------------------------------------------------------------------
+// B5-x1 — the step editor reads overrides through the generator's resolver.
+// ---------------------------------------------------------------------------
+describe('B5-x1 — an override spelled with a different case is the same override', () => {
+    it('shows `osc:amplitude` as the Osc node\'s amplitude override (unlocked), not as absent', () => {
+        renderEditor(trackWith({ 'osc:amplitude': 0.9 }));
+        // Before B5-x1 the demux compared `osc` === `Osc` and the control read
+        // as locked at the global value — while codegen applied the override.
+        // The lock's testid carries the key the editor will EDIT — the existing
+        // spelling, not a freshly minted canonical one.
+        expect(screen.getByTestId('plock-lock-osc:amplitude').title).toBe('Lock (Reset to Global)');
+    });
+
+    it('edits the existing `osc:amplitude` key instead of minting a second `Osc:amplitude`', () => {
+        const onUpdateNote = renderEditor(trackWith({ 'osc:amplitude': 0.9 }));
+        const group = screen.getByText('Amplitude').parentElement!.parentElement!;
+        const input = group.querySelector('input[type="number"]') as HTMLInputElement;
+        fireEvent.focus(input);
+        fireEvent.change(input, { target: { value: '0.3' } });
+        fireEvent.blur(input);
+        expect(onUpdateNote).toHaveBeenCalled();
+        const overrides = onUpdateNote.mock.calls.at(-1)![2].patchOverrides as Record<string, number>;
+        expect(overrides['osc:amplitude']).toBe(0.3);
+        expect(overrides).not.toHaveProperty('Osc:amplitude');
+    });
+});
+
+// ---------------------------------------------------------------------------

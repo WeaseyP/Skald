@@ -206,13 +206,21 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
         const { id, data } = node;
         const label = data.label || node.type;
 
+        // The override key that ALREADY addresses (this node, paramName),
+        // however it was spelled — `osc:frequency`, `Osc:frequency` — or
+        // undefined when none does. Resolved through the generator's mirror so
+        // the editor edits the key codegen will apply, not a lookalike.
+        const existingKeyFor = (paramName: string): string | undefined =>
+            Object.keys(note.patchOverrides ?? {}).find(k =>
+                resolvePlockTargets([node], k).some(t => t.param === paramName));
+
         // Wrapper for NodeParameterControls
         const wrapper = (paramName: string, paramLabel: string, control: React.ReactNode) => {
             // Construct key as "Label:ParamName" to match previous logic.
             // Wait, previous logic was `${label}:${paramName}`.
             // ParameterPanel passes simple paramName to onChange.
             // We need to map simple paramName back to unique key!
-            const paramKey = `${label}:${paramName}`;
+            const paramKey = existingKeyFor(paramName) ?? `${label}:${paramName}`;
 
             // Check if overridden
             const isOverridden = note.patchOverrides && Object.prototype.hasOwnProperty.call(note.patchOverrides, paramKey);
@@ -280,14 +288,14 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
         // `note.patchOverrides` uses keys like "Osc:frequency".
         // So we must "demux" the overrides for this SPECIFIC node.
 
+        // B5-x1: demux through resolvePlockTargets, the generator's mirror,
+        // instead of a case-sensitive split-on-every-colon compare. An
+        // override authored as `osc:frequency` IS applied by codegen to the
+        // node labelled `Osc`, so this panel must show it as applied — and
+        // edit THAT key rather than minting a second `Osc:frequency` beside it.
         const nodeOverrides: Record<string, any> = {};
-        if (note.patchOverrides) {
-            Object.entries(note.patchOverrides).forEach(([key, val]) => {
-                const [targetLabel, targetParam] = key.split(':');
-                if (targetLabel === label) {
-                    nodeOverrides[targetParam] = val;
-                }
-            });
+        for (const [key, val] of Object.entries(note.patchOverrides ?? {})) {
+            for (const t of resolvePlockTargets([node], key)) nodeOverrides[t.param] = val;
         }
 
         const effectiveValues = { ...data, ...nodeOverrides };
@@ -296,7 +304,11 @@ export const StepPropertiesEditor: React.FC<StepPropertiesEditorProps> = ({ trac
             <NodeParameterControls
                 node={node}
                 values={effectiveValues}
-                onChange={(paramName, val) => handleOverrideChange(`${label}:${paramName}`, val)}
+                // B5-x4: a value the f32 setter cannot carry (a syncRate string,
+                // the bpmSync boolean) never becomes an override. The serializer
+                // already dropped such keys at export (B5-5); this stops them
+                // being minted into the save file in the first place.
+                onChange={(paramName, val) => handleOverrideChange(existingKeyFor(paramName) ?? `${label}:${paramName}`, val)}
                 renderControlWrapper={wrapper}
             />
         );

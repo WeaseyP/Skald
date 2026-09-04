@@ -20,6 +20,7 @@ import { useSequencerState } from '../sequencer/useSequencerState';
 import { useInstrumentRegistry } from '../sequencer/useInstrumentRegistry';
 import { EditorSnapshot, HistoryIO } from './editorSnapshot';
 import { effectiveTrackSteps } from '../../components/Sequencer/stepMetrics';
+import { resolvePlockTargets } from '../../utils/plockTargets';
 
 // Export-Step's existing "(Step N)" suffix convention, applied to both the
 // node's display label and (F-A09-7) an Instrument's `name` — the field
@@ -120,21 +121,23 @@ export const useEditorState = () => {
             newNode.data.name = suffixForStepExport(newNode.data.name, step);
         }
 
-        // Apply Overrides
+        // Apply Overrides — through the SAME resolver the generator mirrors
+        // (B5-x1, the SKB-002 pattern). resolvePlockTargets splits on the
+        // FIRST ':' only, matches the label case-insensitively over ASCII and
+        // falls back to the CODEGEN type for an unlabelled node. The inline
+        // match this replaces split on every colon and compared the raw key
+        // part against `label || n.type` (React Flow's type) case-sensitively,
+        // so codegen applied `osc:frequency` to the node labelled `Osc` while
+        // Export-Step baked nothing. The simple-node case resolves against the
+        // SOURCE node: newNode's label has already been suffixed above.
         if (note.patchOverrides) {
+            const isInstrument = newNode.type === 'instrument' && !!newNode.data.subgraph;
+            const subNodes: Node<NodeParams>[] = isInstrument ? (newNode.data.subgraph.nodes as Node<NodeParams>[]) : [];
+            const resolveAgainst: Node<NodeParams>[] = isInstrument ? subNodes : [sourceNode as Node<NodeParams>];
             Object.entries(note.patchOverrides).forEach(([key, val]) => {
-                const [targetLabel, paramName] = key.split(':');
-
-                if (newNode.type === 'instrument' && newNode.data.subgraph) {
-                    const internalNode = newNode.data.subgraph.nodes.find((n: { data: { label?: string }; type?: string }) => (n.data.label || n.type) === targetLabel);
-                    if (internalNode) {
-                        internalNode.data[paramName] = val;
-                    }
-                } else {
-                    // Simple node matches label
-                    if (targetLabel === label) {
-                        newNode.data[paramName] = val;
-                    }
+                for (const t of resolvePlockTargets(resolveAgainst, key)) {
+                    const target = isInstrument ? subNodes.find(n => n.id === t.nodeId) : newNode;
+                    if (target) (target.data as Record<string, unknown>)[t.param] = val;
                 }
             });
         }
