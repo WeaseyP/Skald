@@ -238,13 +238,16 @@
   does not agree. Pre-existing, unchanged by B6-1, and invisible to the corpus gate because that gate
   only asserts each path compiles, never that they agree.
 
-- [ ] **B6-1-x2** (S) — **Absent-value defaults disagree.** `projectSerializer.ts:274,276,278` default
-  `voiceCount` 8, `glide` 0.05 and `detune` 5.0 where the backend’s absent-value defaults are 1, 0.0
-  and 0.0 (`json.odin:517-520`). `four-bar-song` authors none of them, so an editor Generate bakes in a
-  50 ms glide and 5-cent detune that `-in:file` does not. Same file also shows the session-less master
-  volume split: the editor exports its live fader (0.8), the CLI resolves absent to unity (1.0) — the
-  sole difference across all 24 loose graphs. **Decide which path is authoritative and write it down**;
-  this blocks B6-1-x4.
+- [x] **B6-1-x2** (S) — ✅ **CLOSED. Decision (Ryan, 2026-09-05): the backend's absent-value defaults
+  are authoritative; the editor's live master fader is the one documented exception.** The serializer
+  no longer invents `voice_count` 8 / `glide` 0.05 / `detune` 5.0 — an absent key stays absent
+  (`JSON.stringify` drops `undefined`), so the generator resolves it exactly as it does for `-in:file`.
+  The master-volume exception is written down at `projectSerializer.ts`'s `master_volume` and stripped by
+  the B6-1-x4 gate. Correction to the note above: by now every instrument-carrying example authors
+  `voiceCount` (0 of 152 files lack it); `four-bar-song` lacks only `glide`/`detune`, so its editor
+  preview loses a 50 ms portamento it never had on the CLI. Pinned by `ProjectSerializer.test.ts`
+  (absent stays absent; authored passes through), which failed before. Original text: **Absent-value
+  defaults disagree.**
 
 - [x] **B6-1-x3** (S) — ✅ **CLOSED**. `isInstrumentNodeType` in `projectSerializer.ts` accepts exactly
   `'instrument'` and `'Instrument'`. **Correction:** `normalize_node_type` does **not** use

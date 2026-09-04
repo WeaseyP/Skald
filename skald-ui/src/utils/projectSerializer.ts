@@ -177,6 +177,12 @@ export const buildProjectData = (
     const projectData: ProjectStructure = {
         project: {
             bpm: bpm,
+            // THE one documented editor/CLI difference (B6-1-x2 decision,
+            // 2026-09-05): the editor exports its live master fader, which
+            // for a session-less legacy file is the fader's default, while
+            // the CLI resolves an absent masterVolume to unity. The
+            // cross-path corpus gate (B6-1-x4) strips this literal before
+            // comparing the two emissions; everything else must match.
             master_volume: masterVolume,
             // pattern_steps is an int loop length; never let a fractional value
             // reach the backend. Min 1 (0 = "fall back to track length" is a
@@ -274,10 +280,19 @@ export const buildProjectData = (
             // fractional value here — e.g. 17.151 from a stale save or an old
             // slider — is exactly what broke unmarshalling. Round + clamp to
             // the UI's valid ranges (1..32 voices, 1..16 unison).
-            voice_count: toInt(data.voiceCount, 8, 1, 32),
-            glide: data.glide ?? 0.05,
+            //
+            // B6-1-x2: ABSENT stays absent. This used to invent 8 voices, a
+            // 50 ms glide and 5 cents of detune for any instrument that did
+            // not author them, while the CLI (build_project_from_raw) resolves
+            // the same absence to 1 / 0.0 / 0.0 — an editor Generate baked a
+            // portamento a `-in:` run of the same file did not. The backend is
+            // the one reader of absent values (decided 2026-09-05);
+            // JSON.stringify drops undefined keys, so the generator sees from
+            // the editor exactly what it sees from the file.
+            voice_count: data.voiceCount === undefined ? undefined : toInt(data.voiceCount, 1, 1, 32),
+            glide: data.glide,
             unison: toInt(data.unison, 1, 1, 16),
-            detune: data.detune ?? 5.0,
+            detune: data.detune,
             midi_config: midiConfig,
             audio_graph: subgraph
         };
