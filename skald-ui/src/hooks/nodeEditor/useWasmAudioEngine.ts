@@ -21,7 +21,7 @@ import { skaldWasmProcessorString } from './audioWorklets/skaldWasm.worklet';
 import {
     buildProjectData,
     canApplyParamLive,
-    getInstrumentNodes,
+    orderedInstrumentNodes,
     liveParamKey,
     topologySignature,
     wrappedInstrumentNodes,
@@ -168,7 +168,11 @@ export const useWasmAudioEngine = (
     // with a non-muted, non-empty track (mirrors the backend's Music Layer
     // detection). -1 keeps the playhead still when nothing sequences.
     //
-    // Deliberately `getInstrumentNodes`, NOT `wrappedInstrumentNodes`: on a
+    // `orderedInstrumentNodes` — the order the emitted project lists assets
+    // in (sorted by sanitized id, B6-1-x1), which is what the worklet's asset
+    // index means; canvas order here pointed the playhead at the wrong asset
+    // whenever the sequenced instrument was not also the first by id.
+    // Deliberately NOT `wrappedInstrumentNodes`: on a
     // loose graph (SKB-019 / packet B6-1) `instruments` is `[]`, `findIndex`
     // short-circuits to -1, and `Math.max(computeStepAsset(...), 0)` at the
     // call site lands on asset index 0 — which correctly IS the Asset, since
@@ -177,7 +181,7 @@ export const useWasmAudioEngine = (
     // does not apply: a loose graph's tracks all drive the same single asset
     // regardless of which node they used to name, so asset 0 is always right.
     const computeStepAsset = useCallback((currentNodes: Node[], tracks: SequencerTrack[]): number => {
-        const instruments = getInstrumentNodes(currentNodes);
+        const instruments = orderedInstrumentNodes(currentNodes);
         const idx = instruments.findIndex(inst => {
             const track = tracks.find(t => t.targetNodeId === inst.id);
             return track && track.notes.length > 0 && !track.isMuted;

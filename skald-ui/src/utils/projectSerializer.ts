@@ -161,6 +161,37 @@ export const isInstrumentNodeType = (type: string | undefined): boolean =>
 export const getInstrumentNodes = (nodes: Node<NodeParams>[]): Node<NodeParams>[] =>
     nodes.filter(n => isInstrumentNodeType(n.type));
 
+// Mirror of sanitize_identifier(s, allow_leading_digit = true)
+// (skald-backend/core/param_utils.odin), byte for byte: the Odin walks the
+// UTF-8 BYTES of the id and maps every byte outside [A-Za-z0-9_] to '_', so a
+// three-byte character becomes three underscores, and an empty id becomes
+// "n". A char-based JS loop would produce ONE underscore per character and
+// could order two ids differently from the backend.
+export const sanitizeIdentifier = (s: string): string => {
+    const bytes = new TextEncoder().encode(s);
+    let out = '';
+    for (const b of bytes) {
+        const ok = (b >= 0x61 && b <= 0x7a) || (b >= 0x41 && b <= 0x5a) || (b >= 0x30 && b <= 0x39) || b === 0x5f;
+        out += ok ? String.fromCharCode(b) : '_';
+    }
+    return out.length === 0 ? 'n' : out;
+};
+
+// The instrument order every consumer agrees on — asset indices in the
+// emitted project, the wasm shim's `switch asset` dispatch, the engine's
+// set-param and step-clock addressing: SORTED BY SANITIZED ID, byte order,
+// exactly build_project_from_graph_raw's `a.id < b.id` (SKB-003 / F-B04-1).
+// B6-1-x1: this used to be canvas order, so every multi-instrument song came
+// out of the editor in a different order from the CLI and the two paths'
+// asset 0 were different instruments. Ties cannot occur: two nodes
+// sanitizing to one id are a hard error in the generator (B9-2). The keys
+// are ASCII by construction, so JS string `<` is byte order here.
+export const orderedInstrumentNodes = (nodes: Node<NodeParams>[]): Node<NodeParams>[] =>
+    getInstrumentNodes(nodes)
+        .map(n => ({ n, key: sanitizeIdentifier(n.id) }))
+        .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+        .map(x => x.n);
+
 export const buildProjectData = (
     nodes: Node<NodeParams>[],
     edges: Edge[],
@@ -192,7 +223,7 @@ export const buildProjectData = (
         }
     };
 
-    const instrumentNodes = getInstrumentNodes(nodes);
+    const instrumentNodes = orderedInstrumentNodes(nodes);
 
     // SKB-019 / packet B6-1: a graph with no Instrument node at all is a
     // legacy "loose graph" — nearly every pre-Instrument-node example ships
@@ -322,7 +353,7 @@ export const buildProjectData = (
  * buildProjectData actually emits.
  */
 export const wrappedInstrumentNodes = (nodes: Node<NodeParams>[]): Node<NodeParams>[] => {
-    const instrumentNodes = getInstrumentNodes(nodes);
+    const instrumentNodes = orderedInstrumentNodes(nodes);
     if (instrumentNodes.length > 0 || nodes.length === 0) return instrumentNodes;
     return [{
         id: 'Asset',

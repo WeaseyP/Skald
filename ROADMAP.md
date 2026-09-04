@@ -230,13 +230,16 @@
   `git check-ignore -v`. Recorded so nobody adds a redundant `/skald-backend/tests/golden/
   examples_corpus/.gen/` entry believing the scratch dir is unignored.
 
-- [ ] **B6-1-x1** (S) — **Instrument ordering disagrees between the two paths.** `json.odin:546` sorts
-  instruments by sanitized id — deliberately, because "changing the order changes every wasm shim’s
-  integer asset index" (SKB-003 / F-B04-1) — while `projectSerializer.ts:186` emits them in canvas node
-  order. For all four multi-instrument songs the whole emission differs by permutation. The comment at
-  `projectSerializer.ts:156` calls its order "the instrument order every consumer agrees on"; the CLI
-  does not agree. Pre-existing, unchanged by B6-1, and invisible to the corpus gate because that gate
-  only asserts each path compiles, never that they agree.
+- [x] **B6-1-x1** (S) — ✅ **CLOSED**. `orderedInstrumentNodes` (`projectSerializer.ts`) sorts by
+  `sanitizeIdentifier(id)` in byte order — a UTF-8-byte mirror of `sanitize_identifier(s, true)`, so a
+  three-byte character is three underscores as it is in Odin — and every consumer now reads that order:
+  `buildProjectData`'s emission, `wrappedInstrumentNodes` (live set-param asset indices) and the engine's
+  `computeStepAsset` (the playhead's asset). Before, the four multi-instrument songs left the editor in
+  canvas order while the CLI sorted, and the engine's `stepAsset` pointed the playhead at a canvas
+  position the shim had a different instrument at. Pinned by `ProjectSerializer.test.ts` (order and the
+  byte-walk) and a `WasmEngineContract` case (`stepAsset` 0, not 1, for a sequenced instrument that is
+  second on the canvas but first by id) — both failed before. Original text: **Instrument ordering
+  disagrees between the two paths.**
 
 - [x] **B6-1-x2** (S) — ✅ **CLOSED. Decision (Ryan, 2026-09-05): the backend's absent-value defaults
   are authoritative; the editor's live master fader is the one documented exception.** The serializer

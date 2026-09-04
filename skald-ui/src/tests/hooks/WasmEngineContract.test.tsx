@@ -622,3 +622,26 @@ describe('useWasmAudioEngine — B10 stereo meter tap', () => {
         expect(result.current.meterAnalysers).toBeNull();
     });
 });
+
+// ---------------------------------------------------------------------------
+// B6-1-x1 — the asset index the worklet is handed must be the EMITTED order.
+// ---------------------------------------------------------------------------
+describe('useWasmAudioEngine — B6-1-x1 step-clock asset follows the emitted (sorted-by-id) order', () => {
+    it('hands the worklet the sorted position of the sequenced instrument, not its canvas position', async () => {
+        const zed = { ...makeInstrument(), id: 'zed' } as unknown as Node;
+        const alpha = { ...makeInstrument(), id: 'alpha' } as unknown as Node;
+        const tracks = [{
+            id: 't', targetNodeId: 'alpha', name: 'A', color: '#000', steps: 16, isMuted: false, isSolo: false,
+            notes: [{ step: 0, note: 60, velocity: 1, duration: 1 }],
+        }] as unknown as SequencerTrack[];
+
+        // Canvas order [zed, alpha]; emitted order ['alpha', 'zed'] (sorted by
+        // sanitized id, as buildProjectData now serializes and the CLI always
+        // did). Before B6-1-x1 this was 1 — the playhead followed the wrong
+        // asset whenever the sequenced instrument was not first by id.
+        const { result } = renderEngine([zed, alpha], tracks);
+        await act(async () => { await result.current.handlePlay(); });
+        expect(result.current.isPlaying).toBe(true);
+        expect(createdWorklets[0].opts.processorOptions?.stepAsset).toBe(0);
+    });
+});

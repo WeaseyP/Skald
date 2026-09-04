@@ -5,6 +5,7 @@ import {
     topologySignature,
     liveParamKey,
     canApplyParamLive,
+    sanitizeIdentifier,
 } from '../../utils/projectSerializer';
 
 const makeInstrument = (overrides: { filterData?: Record<string, unknown>, oscData?: Record<string, unknown> } = {}): Node => ({
@@ -233,5 +234,52 @@ describe('B6-1-x3 — the instrument predicate matches exactly the two spellings
         const project = buildProjectData([shouting], [], [], 120, 1.0, 16);
         expect(project.project.instruments).toHaveLength(1);
         expect(project.project.instruments[0].name).toBe('Asset');
+    });
+});
+
+describe('B6-1-x2 — absent instrument fields stay absent (the backend is the one reader of defaults)', () => {
+    const withoutDefaults = (): Node => {
+        const n = makeInstrument() as unknown as { data: Record<string, unknown> };
+        const { voiceCount: _v, glide: _g, detune: _d, ...rest } = n.data;
+        return { ...(n as object), data: rest } as unknown as Node;
+    };
+
+    it('emits no voice_count, glide or detune for an instrument that authored none', () => {
+        const inst = build(withoutDefaults()).project.instruments[0];
+        // Before B6-1-x2 these came out as 8 / 0.05 / 5.0 — values the CLI
+        // resolves to 1 / 0.0 / 0.0 for the same file.
+        const wire = JSON.parse(JSON.stringify(inst));
+        expect(wire).not.toHaveProperty('voice_count');
+        expect(wire).not.toHaveProperty('glide');
+        expect(wire).not.toHaveProperty('detune');
+    });
+
+    it('passes authored values through unchanged', () => {
+        const n = makeInstrument() as unknown as { data: Record<string, unknown> };
+        n.data.glide = 0.2;
+        n.data.detune = 7;
+        const inst = build(n as unknown as Node).project.instruments[0];
+        expect(inst.voice_count).toBe(2);
+        expect(inst.glide).toBe(0.2);
+        expect(inst.detune).toBe(7);
+    });
+});
+
+describe('B6-1-x1 — instruments are emitted sorted by sanitized id, as the CLI orders them', () => {
+    const named = (id: string): Node => ({ ...makeInstrument(), id } as unknown as Node);
+
+    it('sorts by sanitized id in byte order, whatever the canvas order', () => {
+        const p = buildProjectData([named('zed'), named('alpha'), named('10'), named('2')], [], [], 120, 1.0, 16);
+        // Byte order, like Odin's `a.id < b.id`: "10" sorts before "2".
+        expect(p.project.instruments.map((i: { id: string }) => i.id)).toEqual(['10', '2', 'alpha', 'zed']);
+    });
+
+    it('sanitizeIdentifier mirrors sanitize_identifier(s, allow_leading_digit = true) byte for byte', () => {
+        expect(sanitizeIdentifier('osc-1')).toBe('osc_1');
+        expect(sanitizeIdentifier('2abc')).toBe('2abc');
+        expect(sanitizeIdentifier('')).toBe('n');
+        // Two UTF-8 bytes, two underscores — a char-based loop would give one.
+        expect(sanitizeIdentifier('é')).toBe('__');
+        expect(sanitizeIdentifier('キ')).toBe('___');
     });
 });
