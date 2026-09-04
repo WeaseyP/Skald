@@ -6,9 +6,12 @@
 > the Wave A remediation pass; B5 and B7 landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was
 > fixed in `a71c96f`, B8 landed `120081a`; B9 (five commits), B12, B2, B10 and the whole B6 residue
 > (eleven commits) landed on the `web-app` branch on 2026-09-05.
-> **Still open inside closed sections:** B5-x1..x5, B7-x1..x3, B7-3-followup(-2), B2-x1 — residue
-> items, none a Wave B blocker. Exit criterion 1 is met: the `forge.env` typecheck/lint baseline is fixed
-> and every gate is green at baseline.
+> **Residue (2026-09-05):** B5-x1..x5 and B7-x1..x3 plus B7-3-followup are closed (ten commits). Two
+> items remain open and both are *decisions*, not defects: **B7-3-followup-2** (should a modulator that
+> feeds only `GraphOutput` be bus-domain — i.e. keep running through the tail and drone with no voices —
+> or stay per-voice as today?) and **B2-x1** (which parameters a freshly placed Oscillator exposes by
+> default). Exit criterion 1 is met: the `forge.env` typecheck/lint baseline is fixed and every gate is
+> green at baseline.
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
