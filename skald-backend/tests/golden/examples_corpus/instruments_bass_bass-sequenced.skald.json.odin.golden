@@ -103,18 +103,6 @@ skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
 	return math.tanh(l), math.tanh(r)
 }
 
-skald_feedback_tail_seconds :: proc(period: f32, gain: f32) -> f32 {
-	if math.is_nan(period) || period <= 0.0 do return 0.0
-	// 0.95 is the DSP's own feedback ceiling (see generate_delay_code /
-	// generate_reverb_code), so no live value can ring longer than this.
-	g := math.clamp(gain, 0.0, 0.95)
-	if g <= 0.0 do return period
-	passes := math.ceil(math.ln(f32(0.001)) / math.ln(g))
-	result := period * passes
-	if math.is_nan(result) || math.is_inf(result) || result < 0.0 do return period
-	return result
-}
-
 Note_Event :: struct {
 	note: u8,
 	velocity: f32,
