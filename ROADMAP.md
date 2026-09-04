@@ -1,12 +1,13 @@
 # Skald Roadmap — Issue Tracker
 
-> **Last updated:** 2026-08-22
+> **Last updated:** 2026-09-05
 > **Wave A:** ✅ Complete (13/13 packets landed)
-> **Wave B:** 11 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
-> Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
-> landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was fixed in `a71c96f`, B8 landed
-> `120081a`, B9 landed as five commits, B12, B2 and B10 as one each (2026-09-05).
-> Remaining: **B6 residue only** (B6-1/B6-2 closed; the x-items and B6-3..B6-7 open).
+> **Wave B:** ✅ **12 of 12 sections closed** (2026-09-05) — B1/B3/B4/B11 verified already landed in
+> the Wave A remediation pass; B5 and B7 landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was
+> fixed in `a71c96f`, B8 landed `120081a`; B9 (five commits), B12, B2, B10 and the whole B6 residue
+> (eleven commits) landed on the `web-app` branch on 2026-09-05.
+> **Still open inside closed sections:** B5-x1..x5, B7-x1..x3, B7-3-followup(-2), B2-x1 — residue
+> items, none a Wave B blocker. Exit criterion 1 still needs the `forge.env` typecheck/lint baseline.
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
