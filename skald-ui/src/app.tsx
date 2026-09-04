@@ -33,6 +33,7 @@ import { ProjectIssuesBanner } from './components/ProjectIssuesBanner';
 import { SequencerDock } from './components/Sequencer/SequencerDock';
 import { useScale , ScaleProvider } from './contexts/ScaleContext';
 import { GraphActionsProvider } from './contexts/GraphActionsContext';
+import { instrumentSelectionBlockedReason } from './hooks/nodeEditor/useNodeComposition';
 
 // Re-exported: the Export-Step naming rule now lives with the Export-Step
 // action itself (useEditorState), which is where its undo entry is pushed.
@@ -418,6 +419,7 @@ const EditorLayout = () => {
                             onCreateInstrument={handleCreateInstrument}
                             onCreateGroup={handleCreateGroup}
                             canCreateInstrument={selectedNodesForGrouping.length > 0}
+                            createInstrumentBlockedReason={instrumentSelectionBlockedReason(selectedNodesForGrouping)}
                             bpm={bpm}
                             onBpmChange={setBpm}
                             isLooping={isLooping}

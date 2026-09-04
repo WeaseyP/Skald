@@ -20,6 +20,24 @@ import { PushHistory } from './editorSnapshot';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 
+// Roadmap packet B9-5 — the authoring-time half of SKB-028. The generator
+// refuses an Instrument nested inside an Instrument (graph_validate.odin,
+// validate_no_nested_instruments), so a wrap that would produce one must be
+// refused HERE, where it is drawn, instead of at Generate time from another
+// process naming node ids the user never typed. One predicate, read by the
+// Sidebar button (to grey out and explain) and by both hook handlers (to
+// refuse) — a second reading in either place is how the two drift.
+//
+// Returns the reason the selection cannot be wrapped, or undefined when it
+// can. An EMPTY selection returns undefined on purpose: emptiness is the
+// existing `length === 0` guard's job and has its own button tooltip.
+export const instrumentSelectionBlockedReason = (selection: Node<NodeParams>[]): string | undefined => {
+    const inner = selection.find(n => n.type === 'instrument');
+    if (!inner) return undefined;
+    const name = (inner.data as InstrumentParams).name || (inner.data as NodeParams).label || inner.id;
+    return `The selection contains the instrument "${name}", and an instrument cannot contain another instrument. Explode it first, or leave it out of the selection.`;
+};
+
 type UseNodeCompositionArgs = {
     nodes: Node<NodeParams>[];
     edges: Edge[];
@@ -71,6 +89,15 @@ export const useNodeComposition = ({
     }, [screenToFlowPosition, setNodes, pushHistory]);
 
     const handleInstrumentNameSubmit = (instrumentName: string) => {
+        // B9-5: guarded here as well as in handleCreateInstrument. The prompt
+        // is normally only reachable through that handler, but this one is
+        // exported on its own, and the selection can change between the
+        // prompt opening and the name being confirmed.
+        if (instrumentSelectionBlockedReason(selectedNodesForGrouping)) {
+            setIsNamePromptVisible(false);
+            return;
+        }
+
         const newInstrumentId = `${generateId()}`;
         const selectedIds = new Set(selectedNodesForGrouping.map(n => n.id));
 
@@ -215,6 +242,10 @@ export const useNodeComposition = ({
         // (was `< 0` — a dead guard that let an empty selection create an
         // empty instrument)
         if (selectedNodesForGrouping.length === 0) return;
+        // B9-5 / SKB-028: the Sidebar button is already greyed out with the
+        // reason when this is set; the guard here covers the keyboard path
+        // and any future caller that does not go through the button.
+        if (instrumentSelectionBlockedReason(selectedNodesForGrouping)) return;
         setIsNamePromptVisible(true);
     }, [selectedNodesForGrouping, setIsNamePromptVisible]);
 

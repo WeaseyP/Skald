@@ -338,10 +338,12 @@ A conservative static warning cannot see a defect that another defect is hiding.
   hard error the generator now emits (B9-1, B9-2) exits before draining stdin, which is what made this
   packet urgent rather than theoretical. Original text: `invoke-codegen` gets timeout + stdin error
   handling — **SKB-039** (medium).
-- [ ] **B9-5** (S) — Reject `type === 'instrument'` from Create-Instrument selection
-  - `useNodeComposition.ts`: `handleCreateInstrument` (:214) / `handleInstrumentNameSubmit` (:73) never
-    check the selection's types. This is the authoring-time half of B9-1 — reject it where it is drawn,
-    not only where it is emitted. `handleExplodeInstrument` (:279) is the pattern to copy.
+- [x] **B9-5** (S) — ✅ **CLOSED**. One exported predicate, `instrumentSelectionBlockedReason`
+  (`useNodeComposition.ts`), read by three places: the Sidebar's Create Instrument button (greyed, with the
+  reason as its tooltip — Create Group stays enabled, a visual group around an instrument is fine), and both
+  hook handlers. Pinned by `src/tests/hooks/CreateInstrumentGuard.test.tsx`, which before the fix showed the
+  prompt opening and a nested instrument being created. Original text: Reject `type === 'instrument'` from
+  Create-Instrument selection.
 
 ### B10 — Peak Meter + Clip LED
 - [ ] **B10** (S) — Stereo peak-hold meter with clip LED in transport dock.

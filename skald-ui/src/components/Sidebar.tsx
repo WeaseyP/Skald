@@ -101,6 +101,10 @@ interface SidebarProps {
     onCreateInstrument: () => void;
     onCreateGroup: () => void;
     canCreateInstrument: boolean;
+    // B9-5: when set, Create Instrument is disabled and this is its tooltip,
+    // even though the selection is non-empty (so Create Group stays enabled —
+    // a visual group around an instrument is fine; a wrap is not).
+    createInstrumentBlockedReason?: string;
     bpm: number;
     onBpmChange: (newBpm: number) => void;
     isLooping: boolean;
@@ -140,6 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     onCreateInstrument,
     onCreateGroup,
     canCreateInstrument,
+    createInstrumentBlockedReason,
     bpm,
     onBpmChange,
     isLooping,
@@ -271,10 +276,13 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div>
                 <h2 style={sectionTitleStyles}>Grouping</h2>
                 <button
-                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles}
+                    style={canCreateInstrument && !createInstrumentBlockedReason ? secondaryButtonStyles : disabledButtonStyles}
                     onClick={onCreateInstrument}
-                    disabled={!canCreateInstrument}
-                    title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select one or more nodes to create an instrument"}
+                    disabled={!canCreateInstrument || !!createInstrumentBlockedReason}
+                    title={
+                        createInstrumentBlockedReason
+                            ?? (canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select one or more nodes to create an instrument")
+                    }
                 >
                     Create Instrument
                 </button>
