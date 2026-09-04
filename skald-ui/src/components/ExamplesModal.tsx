@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ExampleItem } from '../../forge.env';
+import { ExampleItem } from '../definitions/examples';
 import { loadExampleContent } from '../utils/exampleContent';
 
 interface ExamplesModalProps {

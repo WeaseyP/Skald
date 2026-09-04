@@ -3,7 +3,7 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import ExamplesModal from '../../components/ExamplesModal';
-import { ExampleItem } from '../../forge.env';
+import { ExampleItem } from '../../definitions/examples';
 
 afterEach(cleanup);
 

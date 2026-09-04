@@ -52,8 +52,15 @@ of them **worse**, that *is* yours. If it merely still fails, it isn't.
 
 | Gate | State | Owner |
 |---|---|---|
-| `npx tsc --noEmit` | **1 error**: `TS2307: Cannot find module '../../forge.env'` in `src/tests/components/ExamplesModal.test.tsx`. `skald-ui/forge.env.d.ts` is tracked and present, so it is a resolution/config problem, not a missing file. | unassigned |
-| `npm run lint` | **2 errors**, both `import/no-unresolved` on that same specifier. | unassigned |
+| *(none)* | Every gate is green at baseline as of 2026-09-05. | — |
+
+`npx tsc --noEmit` and `npm run lint` were on this list from the day
+`ExamplesModal.test.tsx` was written: the modal and its test imported the
+`ExampleItem` type from `forge.env.d.ts`, a declaration file ESLint's import
+resolver cannot resolve, and the test's relative path pointed one directory
+too shallow, so tsc failed the test file too. `ExampleItem` now lives in
+`src/definitions/examples.ts`, a real module both tools resolve, and
+`forge.env.d.ts` imports it for the preload API surface. Both gates are 0.
 
 `odin test tests\unit` was on this list and is now green (repaired in `fe05093`).
 
@@ -62,8 +69,8 @@ goldens had ever been recorded) + 1 `CODEGEN FAILED` (`examples/archive/PulsarBe
 wired a Delay modulation port that never existed). Roadmap B6-2 deleted
 PulsarBeam.json and recorded the corpus goldens; the gate is now green.
 
-Roadmap exit criterion 1 ("four CI gates green") cannot be met while anything
-above is outstanding.
+Roadmap exit criterion 1 ("four CI gates green") is met at baseline; if a row
+ever reappears above, it is not.
 
 ## Golden files: what a green golden gate does and does not mean
 

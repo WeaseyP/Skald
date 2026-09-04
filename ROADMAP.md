@@ -7,7 +7,8 @@
 > fixed in `a71c96f`, B8 landed `120081a`; B9 (five commits), B12, B2, B10 and the whole B6 residue
 > (eleven commits) landed on the `web-app` branch on 2026-09-05.
 > **Still open inside closed sections:** B5-x1..x5, B7-x1..x3, B7-3-followup(-2), B2-x1 — residue
-> items, none a Wave B blocker. Exit criterion 1 still needs the `forge.env` typecheck/lint baseline.
+> items, none a Wave B blocker. Exit criterion 1 is met: the `forge.env` typecheck/lint baseline is fixed
+> and every gate is green at baseline.
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -570,10 +571,10 @@ Three gates were already red at `9563a57` and nothing recorded it. Verified agai
 |---|---|
 | **`odin test tests\unit` did not compile** (✅ repaired `fe05093`) | 16 errors: `tests/unit/unison_wavetable_fm_test.odin` called `generate_wavetable_code`/`generate_fm_operator_code` without the `plan` parameter and `generate_processor_code` without `plan`, added by an earlier refactor. CI's parameter-contract step must have been red for some time. **Repaired in `fe05093`** (mechanically — `nil` for the node generators, `build_instrument_plan` for the processor), because B7's new tests could not otherwise run. Worth a look: passing `nil` for `plan` may quietly disable the parameter-resolution path those tests exist to cover. |
 | **`run_corpus_golden.bat` counted passes as failures** | ✅ **FIXED** `57df823`. `echo NON-DETERMINISTIC %NAME% (shim)` left its parens unescaped, so cmd closed the enclosing `if errorlevel 1 (` at parse time and `FAILED+=1` / `NONDET+=1` / `goto :eof` ran **unconditionally for every fixture that passed**. Hence 98 reported non-deterministic emissions, zero individual status lines, and a golden comparison never reached — all 98 pairs were in fact byte-identical. Now emits 99 honest lines: 98 `MISSING GOLDEN` + 1 `CODEGEN FAILED`, zero `NON-DETERMINISTIC`. ✅ **Green as of B6-2**, which deleted `PulsarBeam.json` and recorded the 98 corpus goldens: `.un_corpus_golden.bat` now reports "All 98 goldens match" on two consecutive runs. |
-| **`tsc --noEmit` and `npm run lint` are red** | `TS2307: Cannot find module '../../forge.env'` in `src/tests/components/ExamplesModal.test.tsx`, plus two `import/no-unresolved` for the same specifier. `skald-ui/forge.env.d.ts` is tracked and present, so it is a resolution/config problem, not a missing file. **Not fixed** — it is the standing baseline (1 typecheck error, 2 lint errors) every Wave B agent was measured against. Note `npx eslint --ext .ts,.tsx .` behaves differently from `npm run lint`; use the npm script. |
+| **`tsc --noEmit` and `npm run lint` are red** | ✅ **FIXED** 2026-09-05. `TS2307: Cannot find module '../../forge.env'` in `src/tests/components/ExamplesModal.test.tsx`, plus two `import/no-unresolved` for the same specifier. Two defects, not a config problem: `ExampleItem` was declared only in `forge.env.d.ts`, a declaration file ESLint's import resolver cannot resolve (hence both lint errors, one in the modal and one in its test), and the test's relative path pointed one directory too shallow — `src/forge.env`, which does not exist (hence the tsc error; the modal's own path was right, which is why tsc never complained about it). `ExampleItem` now lives in `src/definitions/examples.ts`, a real module, and `forge.env.d.ts` imports it for the preload API surface. Both gates report 0. This was the standing baseline (1 / 2) every Wave B agent was measured against. Note `npx eslint --ext .ts,.tsx .` behaves differently from `npm run lint`; use the npm script. |
 
-Exit criterion 1 ("four CI gates green") now needs only the
-`forge.env` resolution problem.
+Exit criterion 1 ("four CI gates green") is met: every gate is green at
+baseline as of 2026-09-05 (see `TESTING.md`'s known-red table, now empty).
 
 **`scripts/verify-baseline.ps1` exists so this table never has to be rediscovered.** It runs every gate
 against a pristine `git archive` export of any ref, so "was this already broken?" is a command rather

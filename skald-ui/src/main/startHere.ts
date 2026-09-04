@@ -16,6 +16,8 @@
 ================================================================================
 */
 
+import type { ExampleItem } from '../definitions/examples';
+
 export interface StartHereEntry {
     /** Path relative to the examples directory, forward slashes. */
     path: string;
@@ -64,23 +66,14 @@ export const START_HERE: readonly StartHereEntry[] = [
 /** The patch a brand-new install opens with (B6-6): the first Start Here entry. */
 export const FIRST_RUN_EXAMPLE: StartHereEntry = START_HERE[0];
 
-/** The shape `list-examples` returns for every item (see scanExamplesSync in main.ts). */
-export interface ExampleListItem {
-    id: string;
-    name: string;
-    category: string;
-    categoryKey: string;
-    subcategory: string;
-    path: string;
-}
-
 /**
- * The Start Here entries as example-list items, in curated order, skipping
- * any whose file is missing (a broken pointer must not be clickable). Ids are
- * prefixed so the same file can also appear under its real category without
- * a duplicate key.
+ * The Start Here entries as example-list items (the shape `list-examples`
+ * returns, src/definitions/examples.ts), in curated order, skipping any whose
+ * file is missing (a broken pointer must not be clickable). Ids are prefixed
+ * so the same file can also appear under its real category without a
+ * duplicate key.
  */
-export const startHereExampleItems = (existsRel: (rel: string) => boolean): ExampleListItem[] =>
+export const startHereExampleItems = (existsRel: (rel: string) => boolean): ExampleItem[] =>
     START_HERE.filter((e) => existsRel(e.path)).map((e) => ({
         id: `${START_HERE_CATEGORY_KEY}/${e.path}`,
         name: e.name,
