@@ -2,11 +2,11 @@
 
 > **Last updated:** 2026-08-22
 > **Wave A:** ✅ Complete (13/13 packets landed)
-> **Wave B:** 8 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
+> **Wave B:** 9 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
 > Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
 > landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was fixed in `a71c96f`, B8 landed
-> `120081a`, and B9 landed as five commits (2026-09-05).
-> Remaining: **B2, B6, B10, B12.**
+> `120081a`, B9 landed as five commits and B12 as one (2026-09-05).
+> Remaining: **B2, B6, B10.**
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -367,18 +367,27 @@ A conservative static warning cannot see a defect that another defect is hiding.
   sends `{exposedParameters}` only; `ParameterPanel.test.tsx` pins SKB-022. Original text: `toggleParameterExposure` sends delta, not stale full-object spread; delete inline bypass branches.
 
 ### B12 — Generated-API Contract Minimum
-- [ ] **B12** (S) — Thread rule in header; per-asset exposed params + setter styles listed; AUTO-GENERATED banner + generator stamp + input hash.
-  - The header is emitted by `generate_project_code` (`codegen_project.odin:180`+) and already lists SFX
-    / Music Layer assets, the per-asset API shape, the `duration<=0` one-shot contract and the
-    `_feed_input` note. Missing: the AUTO-GENERATED banner, the thread rule, per-asset exposed params +
-    setter styles, and the stamp/hash.
-  - **Architectural catch:** `source_digest()`, `fnv1a64` and `STAMP_FORMAT` live in `main.odin`
-    (package `main`), but the header is emitted from package `core` — `core` cannot import `main`. The
-    stamp and the input hash must be **passed in** to `generate_project_code`, or set on a `core`
-    package variable by `main`. Do not duplicate the hash function.
-  - If you add any file under `skald-backend/core/`, add it to `CODEGEN_SOURCES` in `main.odin` or the
-    editor's drift guard reports it uncovered (see `9563a57`, where four of five generator files were
-    outside the digest).
+- [x] **B12** (S) — ✅ **CLOSED**. Every emitted file (game-facing `.odin` **and** the preview shim) now
+  opens with an AUTO-GENERATED banner, `generator:` (the `-version` source digest) and `input:` (FNV-1a of
+  the input JSON with CR bytes skipped, so the same committed fixture digests identically in a CRLF working
+  tree and a `git archive` export). The game-facing header adds the THREADING rule (F-B05-3) and, per asset,
+  every exposed parameter as its concrete typed setter with range/default/unit and the node it belongs to,
+  plus both setter styles and the `<nodeId>::<param>` alias (F-B05-6). The listing is emitted from the same
+  `Instrument_Plan` the setters and `_PARAMS` come from — plans are now built *before* the header — so it
+  cannot advertise a setter the body lacks. Pinned by `tests/unit/provenance_test.odin` (FNV-1a reference
+  vectors, CR-insensitivity, and five header assertions watched failing against the signature-only tree).
+  - **The architectural catch was resolved by moving, not duplicating:** `fnv1a64` now lives in
+    `core/provenance.odin` and `main.odin`'s `source_digest` calls `core.fnv1a64`. `core/provenance.odin`
+    is in `CODEGEN_SOURCES`.
+  - **Stamp override:** `SKALD_CODEGEN_STAMP` replaces the generator string when set; `run_golden.bat` and
+    `run_corpus_golden.bat` set it to `golden`, because the real digest changes with every backend edit and
+    would churn all 154 snapshots per commit. The input digest has no override.
+  - **Golden regeneration shape:** 56 + 98 goldens changed, **zero deleted lines**; every added line is one
+    of the header lines above (audited with `diff | grep '^<'` over all 56 before `update`).
+  - *Consequence for B6-1-x4:* the editor and CLI paths serialize the same file to different bytes, so the
+    `input:` line will differ between them by construction; the cross-path equality gate must strip it (and
+    the `generator:` line) before comparing. Original text: Thread rule in header; per-asset exposed
+    params + setter styles listed; AUTO-GENERATED banner + generator stamp + input hash.
 
 ---
 

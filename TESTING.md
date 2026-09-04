@@ -92,6 +92,12 @@ So:
   and single-sourcing the reverb comb length).
 - Say in the commit message how many goldens changed and what the diff's shape
   was. It is the only durable record of *why* a snapshot moved.
+- Every generated header carries `generator:` (the binary's source digest) and
+  `input:` (a CR-insensitive FNV-1a of the input JSON) since packet B12. Both
+  golden harnesses set `SKALD_CODEGEN_STAMP=golden` so the generator line is a
+  constant; if you run `codegen.exe` by hand and diff against a golden, that
+  one line will differ and it is not a regression. The `input:` line has no
+  override — if it moves, the fixture's content moved.
 
 ## Adding a fixture
 

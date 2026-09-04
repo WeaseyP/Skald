@@ -1,6 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM Packet B12: every emitted header carries the generator's source digest.
+REM That digest changes with every edit to skald-backend, which would make
+REM every golden red on every generator commit. The harness pins the string
+REM instead; the input digest on the next header line has no override and
+REM stays a function of the fixture alone.
+set "SKALD_CODEGEN_STAMP=golden"
+
 REM =====================================================================
 REM Golden-file snapshot harness for the Skald codegen.
 REM
