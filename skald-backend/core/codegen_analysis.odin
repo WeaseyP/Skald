@@ -180,9 +180,49 @@ tail_seconds_for_reverb :: proc(node: Node, plan: ^Instrument_Plan) -> f64 {
 // Worst-case seconds the whole instrument's effect bus keeps sounding after
 // its last voice goes inactive. 0 means the patch has no tail and _is_playing
 // needs no countdown at all.
-compute_bus_tail_seconds :: proc(all_nodes: []Node, plan: ^Instrument_Plan) -> f64 {
+// Every node with a path to a GraphOutput. When the graph has NO GraphOutput
+// the whole graph is returned as live: nothing sounds either way, and the
+// callers' behaviour for that (already-warned) shape must not change.
+live_nodes_toward_output :: proc(graph: ^Graph, all_nodes: []Node) -> map[string]bool {
+	live := make(map[string]bool)
+	has_output := false
+	for node in all_nodes {
+		if node.type == "GraphOutput" do has_output = true
+	}
+	if !has_output {
+		for node in all_nodes do live[node.id] = true
+		return live
+	}
+	queue := make([dynamic]string)
+	defer delete(queue)
+	for node in all_nodes {
+		if node.type == "GraphOutput" {
+			live[node.id] = true
+			append(&queue, node.id)
+		}
+	}
+	for len(queue) > 0 {
+		id := pop(&queue)
+		for conn in graph.connections {
+			if conn.to_node == id && !live[conn.from_node] {
+				live[conn.from_node] = true
+				append(&queue, conn.from_node)
+			}
+		}
+	}
+	return live
+}
+
+// B7-x1: only Delay/Reverb nodes that can reach the output count. An
+// orphaned Delay (warned about by warn_unreachable_nodes, but emitted all the
+// same) used to inflate the worst-case bound — and, before B7-2-followup made
+// the countdown live, the actual tail — for a ring nobody could hear.
+compute_bus_tail_seconds :: proc(graph: ^Graph, all_nodes: []Node, plan: ^Instrument_Plan) -> f64 {
+	live := live_nodes_toward_output(graph, all_nodes)
+	defer delete(live)
 	total := 0.0
 	for node in all_nodes {
+		if !live[node.id] do continue
 		switch node.type {
 		case "Delay":
 			total += tail_seconds_for_delay(node, plan)
@@ -227,25 +267,9 @@ warn_unreachable_nodes :: proc(graph: ^Graph, all_nodes: []Node, inst_name: stri
 	}
 	if !has_output do return
 
-	live := make(map[string]bool)
+	// One reachability walk, shared with compute_bus_tail_seconds (B7-x1).
+	live := live_nodes_toward_output(graph, all_nodes)
 	defer delete(live)
-	queue := make([dynamic]string)
-	defer delete(queue)
-	for node in all_nodes {
-		if node.type == "GraphOutput" {
-			live[node.id] = true
-			append(&queue, node.id)
-		}
-	}
-	for len(queue) > 0 {
-		id := pop(&queue)
-		for conn in graph.connections {
-			if conn.to_node == id && !live[conn.from_node] {
-				live[conn.from_node] = true
-				append(&queue, conn.from_node)
-			}
-		}
-	}
 	for node in all_nodes {
 		if !live[node.id] {
 			fmt.eprintf(

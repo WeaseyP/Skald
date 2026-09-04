@@ -54,7 +54,7 @@ generate_processor_code :: proc(
 	// SKB-016: how long the Delay/Reverb tail outlives the last voice. Zero for
 	// a patch with no bus effects, in which case nothing below is emitted at
 	// all and _is_playing keeps its old two-line shape.
-	bus_tail_seconds := compute_bus_tail_seconds(all_nodes, plan)
+	bus_tail_seconds := compute_bus_tail_seconds(graph, all_nodes, plan)
 	has_bus_tail := bus_tail_seconds > 0.0
 
 	cross_vars := make(map[string]bool)

@@ -374,7 +374,11 @@
   hoist the source" over-claims: it is complete only when the hoisted node's inputs are domain-clean.
 - [ ] **B7-3-followup-2** (S) — A modulator feeding **only** a `GraphOutput` stays voice-domain and
   gets a `_vsum` (voice-summed, silent during the tail). Pre-existing, unchanged by B7.
-- [ ] **B7-x1** (S) — *Half closed in `a71c96f`*: the reverb comb length is now `REVERB_COMB_SECONDS`,
+- [x] **B7-x1** (S) — ✅ **CLOSED**. `compute_bus_tail_seconds` now takes the graph and counts only
+  Delay/Reverb nodes with a path to a GraphOutput (`live_nodes_toward_output`, the same walk
+  `warn_unreachable_nodes` uses — one reachability, two readers). A graph with no output keeps its old
+  everything-counts behaviour so that already-warned shape does not move. Pinned by two cases in
+  `tail_and_domain_residue_test.odin`. *Half closed in `a71c96f`*: the reverb comb length is now `REVERB_COMB_SECONDS`,
   single-sourced across the analysis, the reverb emission and the live tail proc. **Still open:**
   `compute_bus_tail_seconds` iterates `all_nodes`, so an orphaned Delay with no path to `GraphOutput`
   still inflates the worst-case bound (which now only gates emission, so the impact is smaller).
