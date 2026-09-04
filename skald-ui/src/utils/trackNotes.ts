@@ -29,6 +29,10 @@ export interface DedupeResult {
 export const dedupeTrackNotes = (tracks: SequencerTrack[]): DedupeResult => {
     let dropped = 0;
     const out = tracks.map((track) => {
+        // A track with no notes array (a hand-written or truncated save) is
+        // passed through untouched: the loader's own validation owns that
+        // shape, and a normaliser must not be the thing that throws on it.
+        if (!Array.isArray(track.notes)) return track;
         const seen = new Set<string>();
         const kept: NoteEvent[] = [];
         for (const n of track.notes) {

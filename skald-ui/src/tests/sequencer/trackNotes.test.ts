@@ -44,3 +44,14 @@ describe('dedupeTrackNotes', () => {
         expect(tracks[1].notes).toHaveLength(1);
     });
 });
+
+describe('dedupeTrackNotes — malformed input', () => {
+    it('passes a track with no notes array through untouched instead of throwing', () => {
+        // FileIO.test.tsx loads a save whose track has no `notes`; the
+        // normaliser threw "track.notes is not iterable" on it.
+        const bare = { id: 't', targetNodeId: 'i', name: 'T', color: '#000', steps: 16, isMuted: false, isSolo: false } as unknown as SequencerTrack;
+        const { tracks, dropped } = dedupeTrackNotes([bare]);
+        expect(dropped).toBe(0);
+        expect(tracks[0]).toBe(bare);
+    });
+});
