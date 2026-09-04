@@ -11,6 +11,8 @@ interface ExamplesModalProps {
 
 const CATEGORIES = [
     { key: 'all', label: 'All Presets' },
+    // B6-3: the curated first-hour list (src/main/startHere.ts) leads.
+    { key: 'start-here', label: '🚀 Start Here' },
     { key: 'songs', label: '🎵 Songs & Loops' },
     { key: 'instruments', label: '🎹 Instruments' },
     { key: 'snes-kit', label: '🎮 SNES Kit' },

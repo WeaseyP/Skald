@@ -23,6 +23,7 @@ import {
   createCodegenGuard,
 } from './main/codegenStamp';
 import { atomicWriteFileSync } from './main/atomicSave';
+import { startHereExampleItems } from './main/startHere';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -477,7 +478,14 @@ const scanExamplesSync = (dir: string, baseDir: string = dir): any[] => {
 ipcMain.handle('list-examples', async () => {
   const examplesDir = resolveExamplesDir(dialogPathEnv());
   if (!examplesDir) return [];
-  return scanExamplesSync(examplesDir);
+  // B6-3: the curated Start Here entries lead, in their own order, ahead of
+  // the alphabetical scan. They are pointers into the same tree (see
+  // startHere.ts for why not copies), so each also appears under its real
+  // category further down.
+  return [
+    ...startHereExampleItems((rel) => fs.existsSync(path.join(examplesDir, rel))),
+    ...scanExamplesSync(examplesDir),
+  ];
 });
 
 ipcMain.handle('load-example', async (_, relPath: string): Promise<{ content: string | null; error?: string }> => {

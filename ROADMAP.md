@@ -282,7 +282,12 @@
   drops entirely, so codegen never sees it. The doc comment at `:110-114` claims the predicate resolves
   "against exactly the shape the backend will actually see"; that is true only in the loose branch.
 
-- [ ] **B6-3** (S) — Curated `examples/start-here/` folder
+- [x] **B6-3** (S) — ✅ **CLOSED**. `examples/start-here/README.md` lists six examples in order with what
+  each teaches, and the Examples modal shows the same six first as a **Start Here** category
+  (`skald-ui/src/main/startHere.ts`, prepended by the `list-examples` handler). They are pointers into the
+  existing tree, not copies — a copy would be a second file for the corpus gate to golden and for content
+  fixes like B8's to miss. `startHere.test.ts` checks every path exists and is graph-shaped, so a rename
+  is a red gate rather than a dead link. Original text: Curated `examples/start-here/` folder.
 - [x] **B6-4** (S) — ✅ **CLOSED**. ~~Fix the two README 404s~~ done `57df823`: `BUGS.md` had been
   replaced by `ROADMAP.md` nine commits earlier and the link was never updated; every README link target
   now resolves. The manual is now linked in the README's second paragraph, above the fold, pointing at
