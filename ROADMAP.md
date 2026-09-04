@@ -330,10 +330,14 @@ A conservative static warning cannot see a defect that another defect is hiding.
   - `-version` **already exists** (`main.odin:125`, answered before stdin is touched — preserve that
     ordering, the handshake probe closes stdin). `-check` is missing. `assertCodegenTargetSafe` is TS
     (`skald-ui/src/main/codegenGuards.ts:83`).
-- [ ] **B9-4** (S) — `invoke-codegen` gets timeout + stdin error handling — **SKB-039** (medium)
-  - `main.ts:163`: `spawn(executablePath, args)` with **no timeout**, and
-    `child.stdin.write(graphJson)` with **no error handler on stdin** — if the child exits early the
-    EPIPE is an unhandled `error` event on the main process.
+- [x] **B9-4** (S) — ✅ **CLOSED**. One spawn helper, `skald-ui/src/main/runChild.ts`, now serves both
+  `invoke-codegen` and the preview build's `runProcess` (which had its own timeout but no stdin handler
+  either). Pinned by `src/tests/main/runChild.test.ts` against real child processes: the pre-fix run showed
+  the exact production crash — `Unhandled Errors: Error: write EOF { code: 'EOF', syscall: 'write' }`
+  (Windows' spelling of EPIPE) — plus a test that never settled until vitest's 10 s limit. Every preflight
+  hard error the generator now emits (B9-1, B9-2) exits before draining stdin, which is what made this
+  packet urgent rather than theoretical. Original text: `invoke-codegen` gets timeout + stdin error
+  handling — **SKB-039** (medium).
 - [ ] **B9-5** (S) — Reject `type === 'instrument'` from Create-Instrument selection
   - `useNodeComposition.ts`: `handleCreateInstrument` (:214) / `handleInstrumentNameSubmit` (:73) never
     check the selection's types. This is the authoring-time half of B9-1 — reject it where it is drawn,

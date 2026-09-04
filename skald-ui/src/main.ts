@@ -2,9 +2,9 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { spawn } from 'child_process';
 import started from 'electron-squirrel-startup';
 import { assertCodegenTargetSafe } from './main/codegenGuards';
+import { runChild, RunChildResult } from './main/runChild';
 import {
   DialogPathEnv,
   importDialogDefaultPath,
@@ -199,101 +199,57 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { package
     }
   }
 
-  return new Promise((resolve, reject) => {
+  const args: string[] = [];
+  if (options.packageName) {
+    args.push(`-package:${options.packageName}`);
+  }
+  if (options.outputPath) {
+    args.push(`-out:${options.outputPath}`);
+  }
 
-    const args: string[] = [];
-    if (options.packageName) {
-      args.push(`-package:${options.packageName}`);
+  // SKB-039 / packet B9-4: the same timeout and stdin-error handling the
+  // preview build has had since F-B08, through the one shared helper. This
+  // path used to spawn bare: a hung generator left Generate pending forever,
+  // and a generator that exited before draining stdin — every preflight hard
+  // error does — raised an unlistened 'error' on child.stdin, which is an
+  // uncaught exception in the main process. See src/main/runChild.ts.
+  let result: RunChildResult;
+  try {
+    result = await runChild(executablePath, args, {
+      stdin: graphJson,
+      // Odin's own diagnostics, live, so a hang is visible in the terminal
+      // before the timeout names it.
+      onStderr: (chunk) => console.error(`[Odin STDERR]: ${chunk}`),
+    });
+  } catch (err) {
+    console.error(`Codegen failed: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  }
+
+  console.log("Codegen successful.");
+  // BUG-CODE-PREVIEW-WRONG: stdout is just a "Package generated audio"
+  // success line. The actual generated code lives at outputPath. Read
+  // it back so the renderer's CodePreviewPanel shows the real .odin
+  // output instead of the literal status string.
+  if (options.outputPath) {
+    try {
+      return fs.readFileSync(options.outputPath, { encoding: 'utf8' });
+    } catch (err) {
+      console.error(`Failed to read generated code from ${options.outputPath}: ${err}`);
+      // fall through to stdout so the user gets *something* useful
     }
-    if (options.outputPath) {
-      args.push(`-out:${options.outputPath}`);
-    }
-
-    // Spawn with arguments
-    // Use 'spawn' but we need to write to stdin.
-    const child = spawn(executablePath, args);
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-      // --- DEBUG: This will print any debug statements from the Odin backend ---
-      console.error(`[Odin STDERR]: ${data.toString()}`);
-      // -------------------------------------------------------------------------
-      stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        console.log("Codegen successful.");
-        // BUG-CODE-PREVIEW-WRONG: stdout is just a "Package generated audio"
-        // success line. The actual generated code lives at outputPath. Read
-        // it back so the renderer's CodePreviewPanel shows the real .odin
-        // output instead of the literal status string.
-        if (options.outputPath) {
-          try {
-            const generatedCode = fs.readFileSync(options.outputPath, { encoding: 'utf8' });
-            resolve(generatedCode);
-            return;
-          } catch (err) {
-            console.error(`Failed to read generated code from ${options.outputPath}: ${err}`);
-            // fall through to stdout so the user gets *something* useful
-          }
-        }
-        resolve(stdout);
-      } else {
-        console.error(`Codegen failed with code ${code}: ${stderr}`);
-        reject(new Error(stderr || `Codegen process exited with code ${code}`));
-      }
-    });
-
-    child.on('error', (err) => {
-      console.error(`Failed to start codegen process: ${err.message}`);
-      reject(err);
-    });
-
-    child.stdin.write(graphJson);
-    child.stdin.end();
-  });
+  }
+  return result.stdout;
 });
 
 // --- Live preview: JSON -> codegen (+wasm shim) -> odin build -> wasm bytes ---
 
-// A hung child (AV scan holding a file, stuck compiler) would otherwise leave
-// the returned Promise pending forever and wedge the preview's buildInFlight
-// latch — kill and reject instead.
-const PROCESS_TIMEOUT_MS = 60_000;
-
+// Timeout + stdin-error handling live in runChild (src/main/runChild.ts), the
+// same helper invoke-codegen uses — one spawn shape for every child, so a
+// hardening fix cannot land on the preview path and miss Generate again
+// (SKB-039 / packet B9-4).
 const runProcess = (command: string, args: string[], stdin?: string): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const child = spawn(command, args);
-    let stdout = '';
-    let stderr = '';
-    let settled = false;
-    const timer = setTimeout(() => {
-      settled = true;
-      child.kill();
-      reject(new Error(`${command} timed out after ${PROCESS_TIMEOUT_MS / 1000}s`));
-    }, PROCESS_TIMEOUT_MS);
-    child.stdout.on('data', (d) => { stdout += d.toString(); });
-    child.stderr.on('data', (d) => { stderr += d.toString(); });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (settled) return;
-      if (code === 0) resolve(stdout);
-      else reject(new Error(stderr || stdout || `${command} exited with code ${code}`));
-    });
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      if (!settled) reject(err);
-    });
-    if (stdin !== undefined) child.stdin.write(stdin);
-    child.stdin.end();
-  });
+  runChild(command, args, { stdin }).then((r) => r.stdout);
 
 // All preview builds share one fixed directory, so two overlapping IPC calls
 // would race on the same generated_audio.odin/skald.wasm files (a fast
