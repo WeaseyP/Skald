@@ -212,3 +212,26 @@ describe('buildProjectData — loose graph auto-wrap (SKB-019 / packet B6-1)', (
         expect(data.project.instruments).toEqual([]);
     });
 });
+
+describe('B6-1-x3 — the instrument predicate matches exactly the two spellings the backend does', () => {
+    const capitalised = (): Node => ({ ...makeInstrument(), type: 'Instrument' } as unknown as Node);
+
+    it('serializes a node typed "Instrument" as an instrument instead of auto-wrapping it', () => {
+        const project = buildProjectData([capitalised()], [], [], 120, 1.0, 16);
+        // Before B6-1-x3 this came out as ONE instrument named "Asset" whose
+        // only node was the Instrument itself, serialized as type "Unknown".
+        expect(project.project.instruments).toHaveLength(1);
+        expect(project.project.instruments[0].name).toBe('TestBass');
+        expect(project.project.instruments[0].audio_graph.nodes.map((n: { type: string }) => n.type)).not.toContain('Unknown');
+    });
+
+    it('does not widen to spellings the backend rejects', () => {
+        // normalize_node_type is an exact-match switch: "INSTRUMENT" falls
+        // through to the unknown-type path in the CLI, so the editor must
+        // not treat it as an instrument either.
+        const shouting = { ...makeInstrument(), type: 'INSTRUMENT' } as unknown as Node;
+        const project = buildProjectData([shouting], [], [], 120, 1.0, 16);
+        expect(project.project.instruments).toHaveLength(1);
+        expect(project.project.instruments[0].name).toBe('Asset');
+    });
+});

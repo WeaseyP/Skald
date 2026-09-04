@@ -243,12 +243,14 @@
   sole difference across all 24 loose graphs. **Decide which path is authoritative and write it down**;
   this blocks B6-1-x4.
 
-- [ ] **B6-1-x3** (S) — `getInstrumentNodes` (`projectSerializer.ts:158`) matches only lowercase
-  `'instrument'`, while `normalize_node_type` (`json.odin:13`) uses `strings.equal_fold`. A node typed
-  `"Instrument"` is auto-wrapped by the editor into an `Asset` whose only node serializes as
-  `type:"Unknown"`, while the CLI sees a real instrument and does not wrap. No shipped file does it, but
-  the wrap decision now rides on this predicate. The comment at `projectSerializer.ts:150` promises this
-  entry exists — it does now.
+- [x] **B6-1-x3** (S) — ✅ **CLOSED**. `isInstrumentNodeType` in `projectSerializer.ts` accepts exactly
+  `'instrument'` and `'Instrument'`. **Correction:** `normalize_node_type` does **not** use
+  `strings.equal_fold` — it is an exact-match `switch` with those two spellings (`json.odin:13`), so the
+  old serializer comment's claim was wrong and a `toLowerCase()` mirror would have accepted
+  `"INSTRUMENT"`, which the CLI rejects. `ProjectSerializer.test.ts` pins both directions: `"Instrument"`
+  serializes as a real instrument (before: auto-wrapped into an `Asset` with an `Unknown` node) and
+  `"INSTRUMENT"` still wraps. Original text: `getInstrumentNodes` matches only lowercase `'instrument'`
+  … the wrap decision now rides on this predicate.
 
 - [ ] **B6-1-x4** (S) — **Cross-path emission equality in the corpus gate.** §4.2 forbids goldens there,
   but asserting that the editor and CLI emit *the same text* for the same file is not a golden, and it

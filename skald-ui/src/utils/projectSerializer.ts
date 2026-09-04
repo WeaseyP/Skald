@@ -142,21 +142,24 @@ const serializeTracks = (
     }))
 }));
 
-// The instrument order every consumer (codegen asset indices, the wasm shim's
-// asset dispatch, the preview engine's set_param addressing) agrees on.
+// Mirror of normalize_node_type's Instrument arm (skald-backend/core/json.odin):
 //
-// CASE-SENSITIVE, unlike the backend: normalize_node_type
-// (skald-backend/core/json.odin:13) accepts both "instrument" and
-// "Instrument" (case-insensitive via strings.equal_fold, ASCII-only), but
-// this only ever matches the lowercase spelling React Flow itself writes as
-// `node.type`. A hand-authored file spelling it "Instrument" would therefore
-// read as instrument-LESS here (auto-wrap fires in the editor) while the CLI
-// sees a real instrument and does not wrap — a live editor/backend mismatch,
-// pre-existing but now load-bearing since the wrap decision (packet B6-1)
-// rides on this exact predicate. No shipped example does this; tracked as a
-// ROADMAP follow-up rather than widened here.
+//     case "Instrument", "instrument": return "Instrument"
+//
+// EXACTLY those two spellings — an exact-match switch, not strings.equal_fold
+// (the comment this replaces claimed equal_fold; it was wrong, and a
+// toLowerCase() mirror of it would have accepted "INSTRUMENT", which the
+// generator does not). The wrap decision below (packet B6-1) rides on this
+// predicate, so a hand-authored "Instrument" used to be auto-wrapped by the
+// editor into an Asset whose only node serialized as type "Unknown" while the
+// CLI saw a real instrument and did not wrap (B6-1-x3).
+export const isInstrumentNodeType = (type: string | undefined): boolean =>
+    type === 'instrument' || type === 'Instrument';
+
+// The instrument nodes in the order they appear on the canvas. For the order
+// the emitted project uses, see orderedInstrumentNodes.
 export const getInstrumentNodes = (nodes: Node<NodeParams>[]): Node<NodeParams>[] =>
-    nodes.filter(n => n.type === 'instrument');
+    nodes.filter(n => isInstrumentNodeType(n.type));
 
 export const buildProjectData = (
     nodes: Node<NodeParams>[],
