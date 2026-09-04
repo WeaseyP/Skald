@@ -216,11 +216,13 @@
   Original text: `forgePostPackage.ts:45` guards on `fs.existsSync(archiveDir)` and cannot tell "already
   gone" from "wrong path".
 
-- [ ] **B6-2-x3** (S) — `run_corpus_golden.bat:80` compares the WASM shim (`%SHIM%`) only against its
-  own re-run; **no shim golden is ever recorded**. The 98 new goldens pin only the game-facing
-  `.odin`, leaving the `@(export) skald_*` preview shim unpinned across the whole corpus — the
-  "two shapes from one analysis" split CLAUDE.md names as this repo's most common defect class.
-  Pre-existing script design, but B6-2 is what made it the permanent CI baseline.
+- [x] **B6-2-x3** (S) — ✅ **CLOSED**. Both harnesses now record and compare a shim golden
+  (`<name>.shim.odin.golden`) beside the game-facing one: `run_golden.bat` (57) and
+  `run_corpus_golden.bat` (98), 155 shim goldens in all, `MISSING SHIM GOLDEN` / `DIFF … (shim)` as
+  distinct lines. The existing `.odin.golden` files did not move when they were recorded. The B12
+  `generator:` line inside the shim is pinned to `golden` by the same `SKALD_CODEGEN_STAMP` override.
+  Original text: `run_corpus_golden.bat:80` compares the WASM shim only against its own re-run; **no
+  shim golden is ever recorded**.
 
 - [x] **B6-2-x4** (S) — ✅ **CLOSED as already documented**: the `.gitignore` in question carries a
   nine-line comment explaining exactly this (unrooted `.gen/` matches `examples_corpus/.gen/`, verified

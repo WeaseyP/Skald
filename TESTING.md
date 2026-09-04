@@ -34,7 +34,7 @@ Run backend gates from `skald-backend`, UI gates from `skald-ui`.
 | Gate | Command | Proves |
 |---|---|---|
 | Acceptance | `.\run_acceptance.bat` | The emitted code **behaves** correctly (FFT assertions on rendered audio). |
-| Goldens + determinism | `.\run_golden.bat` | The emitted **text** is unchanged, *and* is a function of the input at all (double-run). |
+| Goldens + determinism | `.\run_golden.bat` | The emitted **text** is unchanged — both shapes, the game-facing `.odin.golden` **and** the preview shim's `.shim.odin.golden` (B6-2-x3) — *and* is a function of the input at all (double-run). |
 | Backend unit | `odin test tests\unit` | Parameter-resolution contracts, bus-domain analysis. |
 | Examples corpus (backend) | `.\run_corpus_golden.bat` | Every shipped example still generates deterministically. |
 | UI | `npx vitest run` | Editor behaviour, serializer, hooks. |

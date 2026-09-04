@@ -168,6 +168,7 @@ set RERUN=tests\golden\.gen\%NAME%.rerun.odin
 set SHIM=tests\golden\.gen\%NAME%.shim.odin
 set SHIM2=tests\golden\.gen\%NAME%.shim.rerun.odin
 set GOLD=tests\golden\%NAME%.odin.golden
+set SHIMGOLD=tests\golden\%NAME%.shim.odin.golden
 
 REM The wasm shim is emitted alongside the main file on both runs. It is not
 REM goldened (only the editor preview consumes it), but it is where the
@@ -208,6 +209,7 @@ if errorlevel 1 (
 
 if /I "%MODE%"=="update" (
     copy /Y "%GEN%" "%GOLD%" >nul
+    copy /Y "%SHIM%" "%SHIMGOLD%" >nul
     echo UPDATED %NAME%
     goto :eof
 )
@@ -217,11 +219,26 @@ if not exist "%GOLD%" (
     set /a FAILED+=1
     goto :eof
 )
+if not exist "%SHIMGOLD%" (
+    echo MISSING SHIM GOLDEN for %NAME%  ^(run: run_golden.bat update^)
+    set /a FAILED+=1
+    goto :eof
+)
 REM Text comparison deliberately normalizes CRLF/LF across contributor
 REM machines and GitHub's Windows checkout.
 fc "%GOLD%" "%GEN%" >nul
 if errorlevel 1 (
     echo DIFF %NAME%  ^(current emission differs from golden^)
+    set /a FAILED+=1
+    goto :eof
+)
+REM B6-2-x3: the wasm shim is the SECOND shape emitted from one analysis
+REM (CLAUDE.md's most common defect class). Until this it was compared only
+REM against its own re-run, so a shim-only regression - a preview that lies
+REM about the export - was invisible to every golden gate.
+fc "%SHIMGOLD%" "%SHIM%" >nul
+if errorlevel 1 (
+    echo DIFF %NAME%  ^(wasm shim differs from golden^)
     set /a FAILED+=1
     goto :eof
 )
