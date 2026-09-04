@@ -43,10 +43,8 @@ package generated_audio
 //   Asset
 //     Asset_set_Osc_A_amplitude   min 0  max 1  default 0.5  unit -   (node 1, param amplitude)
 //     Asset_set_Osc_A_phase   min 0  max 360  default 0  unit deg   (node 1, param phase)
-//     Asset_set_Osc_A_pulseWidth   min 0.01  max 0.99  default 0.5  unit -   (node 1, param pulseWidth)
 //     Asset_set_Osc_B_amplitude   min 0  max 1  default 0.5  unit -   (node 2, param amplitude)
 //     Asset_set_Osc_B_phase   min 0  max 360  default 0  unit deg   (node 2, param phase)
-//     Asset_set_Osc_B_pulseWidth   min 0.01  max 0.99  default 0.5  unit -   (node 2, param pulseWidth)
 //     Asset_set_attack   min 0  max 10  default 0.05  unit s   (node 4, param attack)
 //     Asset_set_decay   min 0  max 10  default 0.05  unit s   (node 4, param decay)
 //     Asset_set_depth   min 0  max 1  default 1  unit -   (node 4, param depth)
@@ -164,10 +162,8 @@ Asset_Processor :: struct {
 	volume: f32,
 	Osc_A_amplitude: f32,
 	Osc_A_phase: f32,
-	Osc_A_pulseWidth: f32,
 	Osc_B_amplitude: f32,
 	Osc_B_phase: f32,
-	Osc_B_pulseWidth: f32,
 	attack: f32,
 	decay: f32,
 	depth: f32,
@@ -191,10 +187,8 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.ext_in_r = 0.0
 	p.Osc_A_amplitude = 0.500000000
 	p.Osc_A_phase = 0.000000000
-	p.Osc_A_pulseWidth = 0.500000000
 	p.Osc_B_amplitude = 0.500000000
 	p.Osc_B_phase = 0.000000000
-	p.Osc_B_pulseWidth = 0.500000000
 	p.attack = 0.050000001
 	p.decay = 0.050000001
 	p.depth = 1.000000000
@@ -342,13 +336,6 @@ Asset_set_Osc_A_phase :: proc(p: ^Asset_Processor, value: f32) {
 	p.Osc_A_phase = v
 }
 
-Asset_set_Osc_A_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 0.990000010 do v = 0.990000010
-	p.Osc_A_pulseWidth = v
-}
-
 Asset_set_Osc_B_amplitude :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
 	if v < 0.000000000 do v = 0.000000000
@@ -361,13 +348,6 @@ Asset_set_Osc_B_phase :: proc(p: ^Asset_Processor, value: f32) {
 	if v < 0.000000000 do v = 0.000000000
 	if v > 360.000000000 do v = 360.000000000
 	p.Osc_B_phase = v
-}
-
-Asset_set_Osc_B_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 0.990000010 do v = 0.990000010
-	p.Osc_B_pulseWidth = v
 }
 
 Asset_set_attack :: proc(p: ^Asset_Processor, value: f32) {
@@ -408,10 +388,8 @@ Asset_set_sustain :: proc(p: ^Asset_Processor, value: f32) {
 Asset_PARAMS := []Skald_Param_Info{
 	{"Osc_A_amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"Osc_A_phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"Osc_A_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"Osc_B_amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"Osc_B_phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"Osc_B_pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"attack", 0.000000000, 10.000000000, 0.050000001, "s"},
 	{"decay", 0.000000000, 10.000000000, 0.050000001, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
@@ -427,17 +405,11 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	case "Osc_A_phase", "1::phase":
 		Asset_set_Osc_A_phase(p, value)
 		return true
-	case "Osc_A_pulseWidth", "1::pulseWidth":
-		Asset_set_Osc_A_pulseWidth(p, value)
-		return true
 	case "Osc_B_amplitude", "2::amplitude":
 		Asset_set_Osc_B_amplitude(p, value)
 		return true
 	case "Osc_B_phase", "2::phase":
 		Asset_set_Osc_B_phase(p, value)
-		return true
-	case "Osc_B_pulseWidth", "2::pulseWidth":
-		Asset_set_Osc_B_pulseWidth(p, value)
 		return true
 	case "attack", "4::attack":
 		Asset_set_attack(p, value)
@@ -464,14 +436,10 @@ Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 		return p.Osc_A_amplitude, true
 	case "Osc_A_phase", "1::phase":
 		return p.Osc_A_phase, true
-	case "Osc_A_pulseWidth", "1::pulseWidth":
-		return p.Osc_A_pulseWidth, true
 	case "Osc_B_amplitude", "2::amplitude":
 		return p.Osc_B_amplitude, true
 	case "Osc_B_phase", "2::phase":
 		return p.Osc_B_phase, true
-	case "Osc_B_pulseWidth", "2::pulseWidth":
-		return p.Osc_B_pulseWidth, true
 	case "attack", "4::attack":
 		return p.attack, true
 	case "decay", "4::decay":

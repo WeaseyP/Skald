@@ -144,8 +144,21 @@ export const paramIsReachable = (node: Node<NodeParams>, param: string): boolean
             return !boolParam(node, 'bpmSync');
         case 'Oscillator':
         case 'Wavetable':
+            // Mirror of the Odin: p.pulseWidth is read only inside
+            // generate_oscillator_code's exact-match "Square" branch, and the
+            // generator's waveform default is "Sine". Case-sensitive on
+            // purpose — the generator's switch is.
+            if (nodeCodegenType(node) === 'Oscillator' && param === 'pulseWidth') {
+                const waveform = backendParameters(node)['waveform'];
+                return (typeof waveform === 'string' ? waveform : 'Sine') === 'Square';
+            }
             if (param !== 'frequency') return true;
             return boolParam(node, 'fixedPitch');
+        case 'MidiInput':
+            // SKB-059 / packet B2: generate_midi_input_code reads nothing
+            // from the processor struct, so no MidiInput parameter is ever
+            // live. Mirrors the Odin case added in the same packet.
+            return false;
         default:
             return true;
     }
@@ -169,7 +182,12 @@ export const paramDeadReason = (node: Node<NodeParams>, param: string): string =
             return 'bpmSync is on, so its time base comes from syncRate instead';
         case 'Oscillator':
         case 'Wavetable':
+            if (param === 'pulseWidth') {
+                return 'waveform is not Square, so pulseWidth is never read — only a pulse wave has a width';
+            }
             return 'fixedPitch is off, so the played note drives pitch instead';
+        case 'MidiInput':
+            return 'MIDI Input has no runtime parameters — device and useMpe are editor-side routing settings the generated DSP never reads';
         default:
             return 'the current node configuration never reads it';
     }

@@ -189,7 +189,11 @@ const defaultInstrumentParams: InstrumentParams = {
 const defaultMidiInputParams: MidiInputParams = {
     device: 'All',
     useMpe: false,
-    exposedParameters: ['device', 'useMpe']
+    // SKB-059 / packet B2: this used to ship ['device', 'useMpe']. Neither
+    // string appears anywhere in skald-backend/core — they are editor-side
+    // routing settings — so every fresh MIDI Input node minted two setters
+    // for fields no sample ever read. Nothing on this node is exposable.
+    exposedParameters: []
 };
 
 export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {

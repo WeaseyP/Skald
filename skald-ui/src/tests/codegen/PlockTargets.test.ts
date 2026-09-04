@@ -281,3 +281,30 @@ describe('isExportablePlockValue — the f32-only setter contract (SKB-045)', ()
         expect(isExportablePlockValue(undefined)).toBe(false);
     });
 });
+
+describe('paramIsReachable — MidiInput (SKB-059 / packet B2)', () => {
+    it('reports every MidiInput parameter dead, matching the Odin case', () => {
+        // The editor's default MIDI Input shipped exposedParameters
+        // ['device', 'useMpe']; neither string appears anywhere in the
+        // generator, and with no MidiInput case the predicate said "live".
+        const midi = node('m', 'midiInput', { device: 'All', useMpe: false });
+        expect(paramIsReachable(midi, 'device')).toBe(false);
+        expect(paramIsReachable(midi, 'useMpe')).toBe(false);
+        expect(paramDeadReason(midi, 'device')).toMatch(/MIDI Input has no runtime parameters/);
+    });
+});
+
+describe('paramIsReachable — Oscillator pulseWidth (packet B2)', () => {
+    it('is live only for an exact-match "Square" waveform, defaulting to Sine', () => {
+        expect(paramIsReachable(node('o', 'oscillator', { waveform: 'Square' }), 'pulseWidth')).toBe(true);
+        expect(paramIsReachable(node('o', 'oscillator', { waveform: 'Sine' }), 'pulseWidth')).toBe(false);
+        expect(paramIsReachable(node('o', 'oscillator', {}), 'pulseWidth')).toBe(false);
+        // The generator's switch is case-sensitive; so is the mirror.
+        expect(paramIsReachable(node('o', 'oscillator', { waveform: 'square' }), 'pulseWidth')).toBe(false);
+        expect(paramDeadReason(node('o', 'oscillator', { waveform: 'Sine' }), 'pulseWidth')).toMatch(/waveform is not Square/);
+    });
+
+    it('does not govern a Wavetable', () => {
+        expect(paramIsReachable(node('w', 'wavetable', {}), 'pulseWidth')).toBe(true);
+    });
+});

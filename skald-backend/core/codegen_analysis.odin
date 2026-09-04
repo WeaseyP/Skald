@@ -747,8 +747,25 @@ param_is_reachable :: proc(node: Node, param: string) -> bool {
 		_, synced := bpm_sync_seconds_expr(node)
 		return !synced
 	case "Oscillator", "Wavetable":
+		// generate_oscillator_code bakes `waveform` at codegen time and reads
+		// p.pulseWidth only inside its "Square" branch (exact-match switch on
+		// get_string_param(node, "waveform", "Sine")). On every other wave the
+		// field is written by init and the setter and read by nothing — the
+		// B2 body scan found this in eight shipped goldens, all Sine or Saw
+		// oscillators exposing pulseWidth from the editor's default list.
+		if node.type == "Oscillator" && param == "pulseWidth" {
+			return get_string_param(node, "waveform", "Sine") == "Square"
+		}
 		if param != "frequency" do return true
 		return get_bool_param(node, "fixedPitch", false)
+	case "MidiInput":
+		// SKB-059 (packet B2). generate_midi_input_code reads nothing from the
+		// processor struct: `device` and `useMpe` are editor-side routing
+		// settings, and the editor's default MidiInput shipped both of them in
+		// exposedParameters. With no case here the predicate said "live", so
+		// every new MIDI Input node minted `_set_device` / `_set_useMpe`
+		// setters writing fields no sample ever read.
+		return false
 	}
 	return true
 }
@@ -761,7 +778,12 @@ param_dead_reason :: proc(node: Node, param: string) -> string {
 	case "LFO", "SampleHold", "Delay":
 		return "bpmSync is on, so its time base comes from syncRate instead"
 	case "Oscillator", "Wavetable":
+		if param == "pulseWidth" {
+			return "waveform is not Square, so pulseWidth is never read — only a pulse wave has a width"
+		}
 		return "fixedPitch is off, so the played note drives pitch instead"
+	case "MidiInput":
+		return "MIDI Input has no runtime parameters — device and useMpe are editor-side routing settings the generated DSP never reads"
 	}
 	return "the current node configuration never reads it"
 }
@@ -872,4 +894,106 @@ build_instrument_plan :: proc(graph: ^Graph, instrument: ^Project_Instrument, pl
 		exposed_resolutions = resolutions,
 		stable_resolutions = stable_resolutions,
 	}
+}
+
+// =====================================================================
+// EMITTED-BODY READ SCAN  (roadmap packet B2 / BUGS.md SKB-006, SKB-059)
+//
+// param_is_reachable is a hand-maintained table of which (node type, param)
+// pairs the generators actually read as a runtime `p.<field>`. Every miss in
+// that table — MidiInput before B2, and any string-typed parameter a
+// hand-edited file lists in exposedParameters (Filter `type`, Oscillator
+// `waveform`) — mints a struct field, a typed setter, a _PARAMS row and a
+// set_param case for something no sample ever reads: public API that does
+// nothing, which is exactly the finding the predicate exists to close.
+//
+// The scan below is the safety net under the table: after an instrument's
+// processor is emitted, every resolution is checked against the TEXT for a
+// read of `p.<field>`. A field that is only ever written (init, setter,
+// P-lock) is dead by definition, whatever the predicate said. The caller
+// warns, prunes the plan and regenerates, so neither the setters nor the
+// header (which lists from the same plan) can advertise it.
+// =====================================================================
+
+@(private = "file")
+is_ident_byte :: proc(c: byte) -> bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+}
+
+/// True when `code` contains at least one READ of `p.<field>`: an occurrence
+/// that is not a plain assignment (`p.f = ...`) and is not the mechanical
+/// `return p.<field>, true` line of the generated _get_param. Compound
+/// assignments (`p.f += ...`) count as reads — the field's value is consumed.
+/// Occurrences where `p.<field>` is a prefix of a longer identifier
+/// (`p.<field>_state`) or where `p` itself is a suffix (`wasm_p.<field>`) are
+/// not this field.
+exposed_field_is_read :: proc(code: string, field: string) -> bool {
+	needle := fmt.tprintf("p.%s", field)
+	rest := code
+	offset := 0
+	for {
+		idx := strings.index(rest, needle)
+		if idx < 0 do return false
+		abs := offset + idx
+		after := rest[idx + len(needle):]
+		preceded_by_ident := abs > 0 && is_ident_byte(code[abs - 1])
+		followed_by_ident := len(after) > 0 && is_ident_byte(after[0])
+		if !preceded_by_ident && !followed_by_ident {
+			j := 0
+			for j < len(after) && (after[j] == ' ' || after[j] == '\t') do j += 1
+			is_plain_write := j < len(after) && after[j] == '=' && !(j + 1 < len(after) && after[j + 1] == '=')
+			if !is_plain_write {
+				before := code[:abs]
+				if !strings.has_suffix(before, "return ") do return true
+			}
+		}
+		rest = after
+		offset = abs + len(needle)
+	}
+}
+
+/// Every resolution in the plan whose field the emitted processor never
+/// reads. Caller owns the result.
+unread_exposed_fields :: proc(code: string, plan: ^Instrument_Plan) -> [dynamic]Exposed_Resolution {
+	dead: [dynamic]Exposed_Resolution
+	for res in plan.stable_resolutions {
+		if !exposed_field_is_read(code, res.field_name) do append(&dead, res)
+	}
+	return dead
+}
+
+warn_unread_exposed_fields :: proc(graph: ^Graph, inst_name: string, dead: []Exposed_Resolution) {
+	for res in dead {
+		node_type := "?"
+		if node, ok := graph.nodes[res.node_id]; ok do node_type = node.type
+		fmt.eprintf(
+			"Warning: instrument %q: %s(%s) exposes %q, but the generated processor never reads p.%s — only writes it. The struct field, setter, _PARAMS row and set_param case are omitted so the API does not advertise a knob that does nothing (packet B2). If this parameter is meant to be live, the reachability table (param_is_reachable) is missing a case for it.\n",
+			inst_name, node_type, res.node_id, res.param_name, res.field_name,
+		)
+	}
+}
+
+/// Remove `dead` from the plan in place: the "<node>::<param>" map entries
+/// (what the sequencer's P-lock emission and get_f32_param look up, so a
+/// pruned field can never be written or read by the regenerated body) and the
+/// ordered list the setters, _PARAMS and the header are emitted from.
+omit_resolutions :: proc(plan: ^Instrument_Plan, dead: []Exposed_Resolution) {
+	kept: [dynamic]Exposed_Resolution
+	for res in plan.stable_resolutions {
+		is_dead := false
+		for d in dead {
+			if d.node_id == res.node_id && d.param_name == res.param_name {
+				is_dead = true
+				break
+			}
+		}
+		if is_dead {
+			key := fmt.tprintf("%s::%s", res.node_id, res.param_name)
+			delete_key(&plan.exposed_resolutions, key)
+			continue
+		}
+		append(&kept, res)
+	}
+	delete(plan.stable_resolutions)
+	plan.stable_resolutions = kept
 }

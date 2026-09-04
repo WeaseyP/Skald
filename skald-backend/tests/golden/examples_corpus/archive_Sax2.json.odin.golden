@@ -46,14 +46,11 @@ package generated_audio
 //     Asset_set_cutoff   min 20  max 20000  default 800  unit Hz   (node 11, param cutoff)
 //     Asset_set_decay   min 0  max 10  default 0.2  unit s   (node 15, param decay)
 //     Asset_set_depth   min 0  max 1  default 1  unit -   (node 15, param depth)
-//     Asset_set_device   min -1e+06  max 1e+06  default 0  unit -   (node 14, param device)
 //     Asset_set_gain   min 0  max 4  default 0.75  unit x   (node 12, param gain)
 //     Asset_set_phase   min 0  max 360  default 0  unit deg   (node 10, param phase)
-//     Asset_set_pulseWidth   min 0.01  max 0.99  default 0.5  unit -   (node 10, param pulseWidth)
 //     Asset_set_release   min 0  max 10  default 1  unit s   (node 15, param release)
 //     Asset_set_resonance   min 0.1  max 20  default 1  unit Q   (node 11, param resonance)
 //     Asset_set_sustain   min 0  max 1  default 0.5  unit -   (node 15, param sustain)
-//     Asset_set_useMpe   min -1e+06  max 1e+06  default 0  unit -   (node 14, param useMpe)
 //
 // project_init/process/destroy is a convenience wrapper for the test
 // harness only — game code should consume per-asset procs directly.
@@ -170,14 +167,11 @@ Asset_Processor :: struct {
 	cutoff: f32,
 	decay: f32,
 	depth: f32,
-	device: f32,
 	gain: f32,
 	phase: f32,
-	pulseWidth: f32,
 	release: f32,
 	resonance: f32,
 	sustain: f32,
-	useMpe: f32,
 }
 
 Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
@@ -199,14 +193,11 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.cutoff = 800.000000000
 	p.decay = 0.200000003
 	p.depth = 1.000000000
-	p.device = 0.000000000
 	p.gain = 0.750000000
 	p.phase = 0.000000000
-	p.pulseWidth = 0.500000000
 	p.release = 1.000000000
 	p.resonance = 1.000000000
 	p.sustain = 0.500000000
-	p.useMpe = 0.000000000
 }
 
 Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f32) {
@@ -371,13 +362,6 @@ Asset_set_depth :: proc(p: ^Asset_Processor, value: f32) {
 	p.depth = v
 }
 
-Asset_set_device :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < -1000000.000000000 do v = -1000000.000000000
-	if v > 1000000.000000000 do v = 1000000.000000000
-	p.device = v
-}
-
 Asset_set_gain :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
 	if v < 0.000000000 do v = 0.000000000
@@ -390,13 +374,6 @@ Asset_set_phase :: proc(p: ^Asset_Processor, value: f32) {
 	if v < 0.000000000 do v = 0.000000000
 	if v > 360.000000000 do v = 360.000000000
 	p.phase = v
-}
-
-Asset_set_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 0.990000010 do v = 0.990000010
-	p.pulseWidth = v
 }
 
 Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
@@ -420,27 +397,17 @@ Asset_set_sustain :: proc(p: ^Asset_Processor, value: f32) {
 	p.sustain = v
 }
 
-Asset_set_useMpe :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < -1000000.000000000 do v = -1000000.000000000
-	if v > 1000000.000000000 do v = 1000000.000000000
-	p.useMpe = v
-}
-
 Asset_PARAMS := []Skald_Param_Info{
 	{"amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"attack", 0.000000000, 10.000000000, 0.100000001, "s"},
 	{"cutoff", 20.000000000, 20000.000000000, 800.000000000, "Hz"},
 	{"decay", 0.000000000, 10.000000000, 0.200000003, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
-	{"device", -1000000.000000000, 1000000.000000000, 0.000000000, ""},
 	{"gain", 0.000000000, 4.000000000, 0.750000000, "x"},
 	{"phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"release", 0.000000000, 10.000000000, 1.000000000, "s"},
 	{"resonance", 0.100000001, 20.000000000, 1.000000000, "Q"},
 	{"sustain", 0.000000000, 1.000000000, 0.500000000, ""},
-	{"useMpe", -1000000.000000000, 1000000.000000000, 0.000000000, ""},
 }
 
 Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
@@ -460,17 +427,11 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	case "depth", "15::depth":
 		Asset_set_depth(p, value)
 		return true
-	case "device", "14::device":
-		Asset_set_device(p, value)
-		return true
 	case "gain", "12::gain":
 		Asset_set_gain(p, value)
 		return true
 	case "phase", "10::phase":
 		Asset_set_phase(p, value)
-		return true
-	case "pulseWidth", "10::pulseWidth":
-		Asset_set_pulseWidth(p, value)
 		return true
 	case "release", "15::release":
 		Asset_set_release(p, value)
@@ -480,9 +441,6 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 		return true
 	case "sustain", "15::sustain":
 		Asset_set_sustain(p, value)
-		return true
-	case "useMpe", "14::useMpe":
-		Asset_set_useMpe(p, value)
 		return true
 	}
 	return false
@@ -500,22 +458,16 @@ Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 		return p.decay, true
 	case "depth", "15::depth":
 		return p.depth, true
-	case "device", "14::device":
-		return p.device, true
 	case "gain", "12::gain":
 		return p.gain, true
 	case "phase", "10::phase":
 		return p.phase, true
-	case "pulseWidth", "10::pulseWidth":
-		return p.pulseWidth, true
 	case "release", "15::release":
 		return p.release, true
 	case "resonance", "11::resonance":
 		return p.resonance, true
 	case "sustain", "15::sustain":
 		return p.sustain, true
-	case "useMpe", "14::useMpe":
-		return p.useMpe, true
 	}
 	return 0.0, false
 }

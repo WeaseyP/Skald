@@ -48,7 +48,6 @@ package generated_audio
 //     Asset_set_depth   min 0  max 1  default 1  unit -   (node 2, param depth)
 //     Asset_set_mix   min 0  max 1  default 0.5  unit -   (node 3, param mix)
 //     Asset_set_phase   min 0  max 360  default 0  unit deg   (node 1, param phase)
-//     Asset_set_pulseWidth   min 0.01  max 0.99  default 0.5  unit -   (node 1, param pulseWidth)
 //     Asset_set_release   min 0  max 10  default 0.3  unit s   (node 2, param release)
 //     Asset_set_sustain   min 0  max 1  default 0.9  unit -   (node 2, param sustain)
 //
@@ -172,7 +171,6 @@ Asset_Processor :: struct {
 	depth: f32,
 	mix: f32,
 	phase: f32,
-	pulseWidth: f32,
 	release: f32,
 	sustain: f32,
 }
@@ -224,7 +222,6 @@ Asset_init :: proc(p: ^Asset_Processor, sr: f32) {
 	p.depth = 1.000000000
 	p.mix = 0.500000000
 	p.phase = 0.000000000
-	p.pulseWidth = 0.500000000
 	p.release = 0.300000012
 	p.sustain = 0.899999976
 }
@@ -407,13 +404,6 @@ Asset_set_phase :: proc(p: ^Asset_Processor, value: f32) {
 	p.phase = v
 }
 
-Asset_set_pulseWidth :: proc(p: ^Asset_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 0.990000010 do v = 0.990000010
-	p.pulseWidth = v
-}
-
 Asset_set_release :: proc(p: ^Asset_Processor, value: f32) {
 	v := value
 	if v < 0.000000000 do v = 0.000000000
@@ -436,7 +426,6 @@ Asset_PARAMS := []Skald_Param_Info{
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
 	{"mix", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"release", 0.000000000, 10.000000000, 0.300000012, "s"},
 	{"sustain", 0.000000000, 1.000000000, 0.899999976, ""},
 }
@@ -464,9 +453,6 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 	case "phase", "1::phase":
 		Asset_set_phase(p, value)
 		return true
-	case "pulseWidth", "1::pulseWidth":
-		Asset_set_pulseWidth(p, value)
-		return true
 	case "release", "2::release":
 		Asset_set_release(p, value)
 		return true
@@ -493,8 +479,6 @@ Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 		return p.mix, true
 	case "phase", "1::phase":
 		return p.phase, true
-	case "pulseWidth", "1::pulseWidth":
-		return p.pulseWidth, true
 	case "release", "2::release":
 		return p.release, true
 	case "sustain", "2::sustain":

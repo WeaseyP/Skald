@@ -56,7 +56,6 @@ package generated_audio
 //     Kick_set_frequency   min 20  max 20000  default 50  unit Hz   (node kick-oscillator, param frequency)
 //     Kick_set_mix   min 0  max 1  default 0.4  unit -   (node kick-distortion, param mix)
 //     Kick_set_phase   min 0  max 360  default 0  unit deg   (node kick-oscillator, param phase)
-//     Kick_set_pulseWidth   min 0.01  max 0.99  default 0.5  unit -   (node kick-oscillator, param pulseWidth)
 //     Kick_set_tone   min 100  max 20000  default 3000  unit Hz   (node kick-distortion, param tone)
 //
 // project_init/process/destroy is a convenience wrapper for the test
@@ -186,7 +185,6 @@ Kick_Processor :: struct {
 	frequency: f32,
 	mix: f32,
 	phase: f32,
-	pulseWidth: f32,
 	tone: f32,
 }
 
@@ -219,7 +217,6 @@ Kick_init :: proc(p: ^Kick_Processor, sr: f32) {
 	p.frequency = 50.000000000
 	p.mix = 0.400000006
 	p.phase = 0.000000000
-	p.pulseWidth = 0.500000000
 	p.tone = 3000.000000000
 }
 
@@ -473,13 +470,6 @@ Kick_set_phase :: proc(p: ^Kick_Processor, value: f32) {
 	p.phase = v
 }
 
-Kick_set_pulseWidth :: proc(p: ^Kick_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 0.990000010 do v = 0.990000010
-	p.pulseWidth = v
-}
-
 Kick_set_tone :: proc(p: ^Kick_Processor, value: f32) {
 	v := value
 	if v < 100.000000000 do v = 100.000000000
@@ -503,7 +493,6 @@ Kick_PARAMS := []Skald_Param_Info{
 	{"frequency", 20.000000000, 20000.000000000, 50.000000000, "Hz"},
 	{"mix", 0.000000000, 1.000000000, 0.400000006, ""},
 	{"phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"tone", 100.000000000, 20000.000000000, 3000.000000000, "Hz"},
 }
 
@@ -554,9 +543,6 @@ Kick_set_param :: proc(p: ^Kick_Processor, name: string, value: f32) -> bool {
 	case "phase", "kick-oscillator::phase":
 		Kick_set_phase(p, value)
 		return true
-	case "pulseWidth", "kick-oscillator::pulseWidth":
-		Kick_set_pulseWidth(p, value)
-		return true
 	case "tone", "kick-distortion::tone":
 		Kick_set_tone(p, value)
 		return true
@@ -596,8 +582,6 @@ Kick_get_param :: proc(p: ^Kick_Processor, name: string) -> (f32, bool) {
 		return p.mix, true
 	case "phase", "kick-oscillator::phase":
 		return p.phase, true
-	case "pulseWidth", "kick-oscillator::pulseWidth":
-		return p.pulseWidth, true
 	case "tone", "kick-distortion::tone":
 		return p.tone, true
 	}

@@ -56,7 +56,6 @@ package generated_audio
 //     Snare_set_cutoff   min 20  max 20000  default 1800  unit Hz   (node snare-highpass, param cutoff)
 //     Snare_set_frequency   min 20  max 20000  default 185  unit Hz   (node snare-oscillator, param frequency)
 //     Snare_set_phase   min 0  max 360  default 0  unit deg   (node snare-oscillator, param phase)
-//     Snare_set_pulseWidth   min 0.01  max 0.99  default 0.5  unit -   (node snare-oscillator, param pulseWidth)
 //     Snare_set_resonance   min 0.1  max 20  default 1  unit Q   (node snare-highpass, param resonance)
 //
 // project_init/process/destroy is a convenience wrapper for the test
@@ -188,7 +187,6 @@ Snare_Processor :: struct {
 	cutoff: f32,
 	frequency: f32,
 	phase: f32,
-	pulseWidth: f32,
 	resonance: f32,
 }
 
@@ -225,7 +223,6 @@ Snare_init :: proc(p: ^Snare_Processor, sr: f32) {
 	p.cutoff = 1800.000000000
 	p.frequency = 185.000000000
 	p.phase = 0.000000000
-	p.pulseWidth = 0.500000000
 	p.resonance = 1.000000000
 }
 
@@ -480,13 +477,6 @@ Snare_set_phase :: proc(p: ^Snare_Processor, value: f32) {
 	p.phase = v
 }
 
-Snare_set_pulseWidth :: proc(p: ^Snare_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 0.990000010 do v = 0.990000010
-	p.pulseWidth = v
-}
-
 Snare_set_resonance :: proc(p: ^Snare_Processor, value: f32) {
 	v := value
 	if v < 0.100000001 do v = 0.100000001
@@ -510,7 +500,6 @@ Snare_PARAMS := []Skald_Param_Info{
 	{"cutoff", 20.000000000, 20000.000000000, 1800.000000000, "Hz"},
 	{"frequency", 20.000000000, 20000.000000000, 185.000000000, "Hz"},
 	{"phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"resonance", 0.100000001, 20.000000000, 1.000000000, "Q"},
 }
 
@@ -561,9 +550,6 @@ Snare_set_param :: proc(p: ^Snare_Processor, name: string, value: f32) -> bool {
 	case "phase", "snare-oscillator::phase":
 		Snare_set_phase(p, value)
 		return true
-	case "pulseWidth", "snare-oscillator::pulseWidth":
-		Snare_set_pulseWidth(p, value)
-		return true
 	case "resonance", "snare-highpass::resonance":
 		Snare_set_resonance(p, value)
 		return true
@@ -603,8 +589,6 @@ Snare_get_param :: proc(p: ^Snare_Processor, name: string) -> (f32, bool) {
 		return p.frequency, true
 	case "phase", "snare-oscillator::phase":
 		return p.phase, true
-	case "pulseWidth", "snare-oscillator::pulseWidth":
-		return p.pulseWidth, true
 	case "resonance", "snare-highpass::resonance":
 		return p.resonance, true
 	}

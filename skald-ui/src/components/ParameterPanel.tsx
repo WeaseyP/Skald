@@ -210,29 +210,40 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
     // --- RENDER HELPERS ---
 
+    // `inertReason` (packet B2): the parameter exists but the node's current
+    // configuration means the generated DSP never reads it. Greyed, not
+    // hidden — the old `data.fixedPitch && ...` hid the whole control, so an
+    // exposure that had gone dead was invisible in the very panel that
+    // created it. The expose button stays visible and disabled with the
+    // reason as its tooltip; the control itself is dimmed and inert, because
+    // editing a value nothing reads would be a second lie.
     const renderParameterControl = (
         paramKey: string,
         label: string,
         children: React.ReactNode,
         isExposable = true,
         isExposed = false,
-        onToggle: () => void
+        onToggle: () => void,
+        inertReason?: string
     ) => {
         return (
-            <div style={inputGroupStyles} key={paramKey}>
+            <div style={inputGroupStyles} key={paramKey} data-inert={inertReason ? 'true' : undefined}>
                 <div style={labelContainerStyles}>
-                    <label style={labelStyles}>{label}</label>
+                    <label style={inertReason ? { ...labelStyles, opacity: 0.5 } : labelStyles} title={inertReason}>{label}</label>
                     {isExposable && (
                         <button
-                            style={iconButtonStyles}
+                            style={inertReason ? { ...iconButtonStyles, opacity: 0.4, cursor: 'not-allowed' } : iconButtonStyles}
                             onClick={onToggle}
-                            title={isExposed ? `Un-expose "${label}"` : `Expose "${label}" to public API`}
+                            disabled={!!inertReason}
+                            title={inertReason ?? (isExposed ? `Un-expose "${label}"` : `Expose "${label}" to public API`)}
                         >
                             <LinkIcon isExposed={isExposed} />
                         </button>
                     )}
                 </div>
-                {children}
+                {inertReason
+                    ? <div style={{ opacity: 0.45, pointerEvents: 'none' }} title={inertReason}>{children}</div>
+                    : children}
             </div>
         );
     };
@@ -283,7 +294,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             handleParameterChange('', changes, subNodeId || node.id);
         };
 
-        const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable = true) => {
+        const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable = true, inertReason?: string) => {
             const isExposed = data.exposedParameters?.includes(paramKey) || false;
             return renderParameterControl(
                 paramKey,
@@ -291,7 +302,8 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 children,
                 isExposable,
                 isExposed,
-                () => toggleParameterExposure(paramKey, subNodeId || node.id)
+                () => toggleParameterExposure(paramKey, subNodeId || node.id),
+                inertReason
             );
         };
 

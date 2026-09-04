@@ -2,11 +2,11 @@
 
 > **Last updated:** 2026-08-22
 > **Wave A:** ✅ Complete (13/13 packets landed)
-> **Wave B:** 9 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
+> **Wave B:** 10 of 12 sections closed — B1/B3/B4/B11 verified already landed in the
 > Wave A remediation pass (the checkboxes were stale, the code was not); B5 and B7
 > landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was fixed in `a71c96f`, B8 landed
-> `120081a`, B9 landed as five commits and B12 as one (2026-09-05).
-> Remaining: **B2, B6, B10.**
+> `120081a`, B9 landed as five commits, B12 and B2 as one each (2026-09-05).
+> Remaining: **B6 (residue), B10.**
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -40,7 +40,23 @@
   - Changelog: a patch saved at `master_volume: 0` will now export silent — that is the fix
 
 ### B2 — Exposure Honesty
-- [ ] **B2** (M) — Eliminate dead exposed parameters and setters.
+- [x] **B2** (M) — ✅ **CLOSED**. Against the four bullets below: (1) the predicate is
+  `param_is_reachable`, one reader on each side (`codegen_analysis.odin` / `plockTargets.ts`), and it
+  gained the `MidiInput` case — every MidiInput parameter is dead, closing **SKB-059**; the editor's
+  default MIDI Input no longer ships `exposedParameters: ['device', 'useMpe']`. (2) The P-lock hard error
+  **was already in place** (`collect_plock_targets` exits on an unreachable target; the "silent filter"
+  note below was stale — `effective_exposed_params` only ever fed the exposure list). (3) Greyed, not
+  hidden: `renderControlWrapper` takes an `inertReason`; the sidebar renders an Oscillator/Wavetable
+  `frequency`, an LFO/SampleHold `frequency`/`rate`, a Delay `delayTime` and every `syncRate` in both
+  configurations, dimmed and inert with the generator's own dead-reason as the tooltip and the expose
+  button disabled. Pinned by `ExposureGreyOut.test.tsx` (4 of 5 failed before: the control was not
+  rendered at all). (4) `exposed_field_is_read` scans the emitted processor for a *read* of `p.<field>`
+  (writes and `_get_param`'s read-back do not count); `generate_project_code` warns, prunes the plan and
+  regenerates, so neither the setters nor the B12 header can advertise an unread field. Caught by
+  construction: a hand-edited file exposing Filter `type` (a string the generator bakes at codegen time)
+  loses its `_set_type` while `cutoff` keeps its. Pinned by `exposure_scan_test.odin` and the
+  `codegen_only/exposed_string_param` golden.
+  - Original text: Eliminate dead exposed parameters and setters.
   - One `param_is_live(node, param)` predicate in the resolution pass
   - Hard error when a P-lock resolves to an inert parameter
   - Grey out (don't hide) the expose affordance in the editor
@@ -59,6 +75,22 @@
     string appears anywhere in `skald-backend/core/`. `param_is_reachable` has no `MidiInput` case, so
     it returns `true` and the existing warning never fires.
   - See also **B5-4-followup** — the UI-side mirror of this predicate is the other half of the job.
+  - **Found by the scan, moved into the table:** Oscillator `pulseWidth` is read only inside the
+    generator's exact-match `"Square"` branch. Eight shipped goldens (4 fixtures + 4 corpus files, all
+    Sine/Saw oscillators exposing pulseWidth from the editor's default list) lost a `_set_pulseWidth`,
+    its `_PARAMS` row and its `set_param` case; two more lost MidiInput `_set_device`/`_set_useMpe`. Every
+    deleted line was read before `update`; nothing live moved. Both predicates carry the case now, so those
+    files warn via `warn_dead_exposed_params` rather than the scan. The pre-existing unit test that
+    asserted "pulseWidth is reachable regardless of fixedPitch" was asserting against a Sine oscillator
+    and was corrected to a Square one — the generator never agreed with it.
+
+#### B2 residue
+- [ ] **B2-x1** (S) — `defaultOscillatorParams` (`node-definitions.ts:93`) exposes
+  `['frequency', 'amplitude', 'pulseWidth', 'phase']`, and a freshly placed oscillator is Sine with
+  `fixedPitch` off — so two of its four default exposures are dead on arrival and every Generate warns
+  twice per new oscillator. Decide whether the default list should be `['amplitude', 'phase']` (expose on
+  demand) or whether the defaults should flip with `waveform`/`fixedPitch`. Not changed in B2 because the
+  editor's default exposures are a UX decision, not an honesty defect.
 
 ### B3 — Undo Made Trustworthy
 - [x] **B3** (M) — ✅ **Verified already landed** (Wave A pass, `8e44c86`). `useEditorHistory.ts`

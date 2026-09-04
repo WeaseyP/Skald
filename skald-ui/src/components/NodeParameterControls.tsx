@@ -6,6 +6,7 @@ import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
 import { NumberInput } from './common/NumberInput';
 import { DEFAULT_SYNC_RATE, bpmSyncToggleChanges, formatSyncTime } from '../definitions/bpm';
+import { paramDeadReason, paramIsReachable } from '../utils/plockTargets';
 
 interface NodeParameterControlsProps {
     node: Node;
@@ -18,7 +19,13 @@ interface NodeParameterControlsProps {
     // configuration ever makes syncRate live), so the BPM Sync toggle must
     // stay a single-key write there. See bpmSyncToggleChanges.
     onChangeMany?: (changes: Record<string, unknown>) => void;
-    renderControlWrapper: (paramKey: string, label: string, control: React.ReactNode, isExposable?: boolean) => React.ReactNode;
+    // `inertReason` (packet B2): set when the node's CURRENT configuration
+    // means the generated DSP never reads this parameter — an Oscillator's
+    // frequency with fixedPitch off, an LFO's frequency with bpmSync on. The
+    // control is rendered greyed with this text as its tooltip instead of
+    // being hidden, so the user can see the knob exists and what would make
+    // it live. Wrappers that do not care (the step editor's) may ignore it.
+    renderControlWrapper: (paramKey: string, label: string, control: React.ReactNode, isExposable?: boolean, inertReason?: string) => React.ReactNode;
     // Project tempo, for display only: BPM-synced controls annotate their
     // sync rate with the effective time at this tempo so the user can see
     // what the node actually follows. Optional — callers without a tempo
@@ -71,6 +78,20 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
     // and no stored rate therefore read as an eighth here and generated as a
     // quarter. There is one fallback now, and when it is in play the control
     // says so instead of passing an invented value off as the node's own.
+    // Packet B2: grey out, don't hide. The mode-dependent controls used to
+    // vanish when inert (`data.fixedPitch && ...`, the bpmSync ternaries), so
+    // a user who exposed `frequency` and then turned Fixed Pitch off had no
+    // way to see that the exposure — still in the save file, still warned
+    // about by the generator — now pointed at nothing. Both readers of "is
+    // this parameter live" are the plockTargets.ts mirror of the generator's
+    // param_is_reachable, so the sidebar and the codegen agree by construction.
+    const inert = (param: string): string | undefined =>
+        paramIsReachable(node, param) ? undefined : paramDeadReason(node, param);
+    // `syncRate` is never exposable, so it has no dead-reason in the
+    // generator's table; its inertness is purely a display fact.
+    const syncRateInert = (): string | undefined =>
+        data.bpmSync ? undefined : 'BPM Sync is off, so the free-running rate is used instead';
+
     const syncRateControl = () => {
         const stored = typeof data.syncRate === 'string' ? data.syncRate : undefined;
         const rate = stored ?? DEFAULT_SYNC_RATE;
@@ -208,29 +229,23 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'lfo':
             return (<>
                 {renderControlWrapper('waveform', 'Waveform', createSelect('waveform', ['Sine', 'Sawtooth', 'Triangle', 'Square']), false)}
-                {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false)
-                    : renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 0.1, 50, 5, 'log'))
-                }
+                {renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false, syncRateInert())}
+                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 0.1, 50, 5, 'log'), true, inert('frequency'))}
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
                 {bpmSyncToggle()}
             </>);
         case 'delay':
             return (<>
-                {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false)
-                    : renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0, 2, 0.5))
-                }
+                {renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false, syncRateInert())}
+                {renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0, 2, 0.5), true, inert('delayTime'))}
                 {renderControlWrapper('feedback', 'Feedback', slider('feedback', 0, 1, 0.5))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
                 {bpmSyncToggle()}
             </>);
         case 'sampleHold':
             return (<>
-                {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false)
-                    : renderControlWrapper('rate', 'Rate (Hz)', slider('rate', 0.1, 50, 10, 'log'))
-                }
+                {renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false, syncRateInert())}
+                {renderControlWrapper('rate', 'Rate (Hz)', slider('rate', 0.1, 50, 10, 'log'), true, inert('rate'))}
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
                 {bpmSyncToggle()}
             </>);
@@ -257,7 +272,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
                     <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
                 </div>
-                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'), true, inert('frequency'))}
                 {renderControlWrapper('position', 'Table Position', slider('position', 0, 3, 0, undefined, 0.01))}
                 {/* Default 1.0 — matches what the generated code plays for an
                     absent value (codegen.odin's Wavetable amplitude fallback).
@@ -274,9 +289,9 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
                     <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
                 </div>
-                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'), true, inert('frequency'))}
                 {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 0.5))}
-                {data.waveform === 'Square' && renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5))}
+                {renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5), true, inert('pulseWidth'))}
                 {renderControlWrapper('phase', 'Phase', slider('phase', 0, 360, 0))}
             </>);
         case 'noise':

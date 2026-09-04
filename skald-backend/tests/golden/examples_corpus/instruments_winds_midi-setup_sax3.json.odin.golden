@@ -46,14 +46,11 @@ package generated_audio
 //     sax_set_cutoff   min 20  max 20000  default 857.097  unit Hz   (node 3, param cutoff)
 //     sax_set_decay   min 0  max 10  default 0.24  unit s   (node 7, param decay)
 //     sax_set_depth   min 0  max 1  default 1  unit -   (node 7, param depth)
-//     sax_set_device   min -1e+06  max 1e+06  default 0  unit -   (node 6, param device)
 //     sax_set_gain   min 0  max 4  default 0  unit x   (node 4, param gain)
 //     sax_set_phase   min 0  max 360  default 0  unit deg   (node 2, param phase)
-//     sax_set_pulseWidth   min 0.01  max 0.99  default 0.5  unit -   (node 2, param pulseWidth)
 //     sax_set_release   min 0  max 10  default 0.213333  unit s   (node 7, param release)
 //     sax_set_resonance   min 0.1  max 20  default 1.91045  unit Q   (node 3, param resonance)
 //     sax_set_sustain   min 0  max 1  default 0.81875  unit -   (node 7, param sustain)
-//     sax_set_useMpe   min -1e+06  max 1e+06  default 0  unit -   (node 6, param useMpe)
 //
 // project_init/process/destroy is a convenience wrapper for the test
 // harness only — game code should consume per-asset procs directly.
@@ -170,14 +167,11 @@ sax_Processor :: struct {
 	cutoff: f32,
 	decay: f32,
 	depth: f32,
-	device: f32,
 	gain: f32,
 	phase: f32,
-	pulseWidth: f32,
 	release: f32,
 	resonance: f32,
 	sustain: f32,
-	useMpe: f32,
 }
 
 sax_init :: proc(p: ^sax_Processor, sr: f32) {
@@ -199,14 +193,11 @@ sax_init :: proc(p: ^sax_Processor, sr: f32) {
 	p.cutoff = 857.097045898
 	p.decay = 0.239999995
 	p.depth = 1.000000000
-	p.device = 0.000000000
 	p.gain = 0.000000000
 	p.phase = 0.000000000
-	p.pulseWidth = 0.500000000
 	p.release = 0.213333338
 	p.resonance = 1.910452127
 	p.sustain = 0.818750024
-	p.useMpe = 0.000000000
 }
 
 sax_note_on :: proc(p: ^sax_Processor, note: u8, velocity: f32, duration: f32) {
@@ -371,13 +362,6 @@ sax_set_depth :: proc(p: ^sax_Processor, value: f32) {
 	p.depth = v
 }
 
-sax_set_device :: proc(p: ^sax_Processor, value: f32) {
-	v := value
-	if v < -1000000.000000000 do v = -1000000.000000000
-	if v > 1000000.000000000 do v = 1000000.000000000
-	p.device = v
-}
-
 sax_set_gain :: proc(p: ^sax_Processor, value: f32) {
 	v := value
 	if v < 0.000000000 do v = 0.000000000
@@ -390,13 +374,6 @@ sax_set_phase :: proc(p: ^sax_Processor, value: f32) {
 	if v < 0.000000000 do v = 0.000000000
 	if v > 360.000000000 do v = 360.000000000
 	p.phase = v
-}
-
-sax_set_pulseWidth :: proc(p: ^sax_Processor, value: f32) {
-	v := value
-	if v < 0.010000000 do v = 0.010000000
-	if v > 0.990000010 do v = 0.990000010
-	p.pulseWidth = v
 }
 
 sax_set_release :: proc(p: ^sax_Processor, value: f32) {
@@ -420,27 +397,17 @@ sax_set_sustain :: proc(p: ^sax_Processor, value: f32) {
 	p.sustain = v
 }
 
-sax_set_useMpe :: proc(p: ^sax_Processor, value: f32) {
-	v := value
-	if v < -1000000.000000000 do v = -1000000.000000000
-	if v > 1000000.000000000 do v = 1000000.000000000
-	p.useMpe = v
-}
-
 sax_PARAMS := []Skald_Param_Info{
 	{"amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"attack", 0.000000000, 10.000000000, 0.053333335, "s"},
 	{"cutoff", 20.000000000, 20000.000000000, 857.097045898, "Hz"},
 	{"decay", 0.000000000, 10.000000000, 0.239999995, "s"},
 	{"depth", 0.000000000, 1.000000000, 1.000000000, ""},
-	{"device", -1000000.000000000, 1000000.000000000, 0.000000000, ""},
 	{"gain", 0.000000000, 4.000000000, 0.000000000, "x"},
 	{"phase", 0.000000000, 360.000000000, 0.000000000, "deg"},
-	{"pulseWidth", 0.010000000, 0.990000010, 0.500000000, ""},
 	{"release", 0.000000000, 10.000000000, 0.213333338, "s"},
 	{"resonance", 0.100000001, 20.000000000, 1.910452127, "Q"},
 	{"sustain", 0.000000000, 1.000000000, 0.818750024, ""},
-	{"useMpe", -1000000.000000000, 1000000.000000000, 0.000000000, ""},
 }
 
 sax_set_param :: proc(p: ^sax_Processor, name: string, value: f32) -> bool {
@@ -460,17 +427,11 @@ sax_set_param :: proc(p: ^sax_Processor, name: string, value: f32) -> bool {
 	case "depth", "7::depth":
 		sax_set_depth(p, value)
 		return true
-	case "device", "6::device":
-		sax_set_device(p, value)
-		return true
 	case "gain", "4::gain":
 		sax_set_gain(p, value)
 		return true
 	case "phase", "2::phase":
 		sax_set_phase(p, value)
-		return true
-	case "pulseWidth", "2::pulseWidth":
-		sax_set_pulseWidth(p, value)
 		return true
 	case "release", "7::release":
 		sax_set_release(p, value)
@@ -480,9 +441,6 @@ sax_set_param :: proc(p: ^sax_Processor, name: string, value: f32) -> bool {
 		return true
 	case "sustain", "7::sustain":
 		sax_set_sustain(p, value)
-		return true
-	case "useMpe", "6::useMpe":
-		sax_set_useMpe(p, value)
 		return true
 	}
 	return false
@@ -500,22 +458,16 @@ sax_get_param :: proc(p: ^sax_Processor, name: string) -> (f32, bool) {
 		return p.decay, true
 	case "depth", "7::depth":
 		return p.depth, true
-	case "device", "6::device":
-		return p.device, true
 	case "gain", "4::gain":
 		return p.gain, true
 	case "phase", "2::phase":
 		return p.phase, true
-	case "pulseWidth", "2::pulseWidth":
-		return p.pulseWidth, true
 	case "release", "7::release":
 		return p.release, true
 	case "resonance", "3::resonance":
 		return p.resonance, true
 	case "sustain", "7::sustain":
 		return p.sustain, true
-	case "useMpe", "6::useMpe":
-		return p.useMpe, true
 	}
 	return 0.0, false
 }
