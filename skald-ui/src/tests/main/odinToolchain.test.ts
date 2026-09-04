@@ -174,7 +174,7 @@ describe('odinMissingMessage', () => {
         expect(msg).toContain('SKALD_ODIN');
         expect(msg).toContain('odin-lang.org');
         // "Preview is broken" must not read as "the app is broken".
-        expect(msg).toMatch(/Generate Code/);
+        expect(msg).toMatch(/Download Code/);
     });
 
     it('says so when SKALD_ODIN is set but did not run', () => {

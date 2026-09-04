@@ -169,7 +169,7 @@ ipcMain.handle('invoke-codegen', async (_, graphJson: string, options: { package
   const executablePath = codegenExePath();
 
   // Refuse to write generated code with a generator that does not match the
-  // backend sources. Generate Code is the path whose output a game developer
+  // backend sources. Download Code is the path whose output a game developer
   // then compiles against for months, so shipping them stale output is worse
   // here than in preview — it leaves the repo, and it is what put the
   // voice-steal click into every checked-in generated_audio.odin (SKB-020).
@@ -292,7 +292,7 @@ const buildWasmPreview = async (projectJson: string): Promise<ArrayBuffer> => {
   // clearing one ~2.9ms render quantum, and optimisation time is paid on every
   // debounced live-edit rebuild: measured 702ms -> 172ms on the 9-instrument
   // snes demo, and ~1.4s -> ~250ms on a 24-instrument patch (F-B08-4).
-  // Generate Code / export keeps its own optimisation level — this flag is the
+  // Download Code / export keeps its own optimisation level — this flag is the
   // preview path only.
   await runProcess(odinPath, [
     'build', previewDir,

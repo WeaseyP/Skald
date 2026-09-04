@@ -268,7 +268,13 @@
   resolves. **Remaining:** link the manual above the fold.
 - [ ] **B6-5** (S) — Electron Help menu (Manual / Examples / About with codegen stamp)
 - [ ] **B6-6** (S) — Default first-run patch that makes a sound in 30 seconds
-- [ ] **B6-7** (S) — Rename "Generate Code" to "Download Code" / "Export .odin Package" — the WASM preview already runs the real generated code; the button just downloads it now
+- [x] **B6-7** (S) — ✅ **CLOSED**. The Sidebar's primary button reads **Download Code** with a tooltip
+  saying the preview already runs this exact code and the button only writes the `.odin`; the
+  no-toolchain message and the two main-process comments that named "Generate Code" as a feature follow.
+  `DownloadCodeButton.test.tsx` failed before (no button named Download Code). Note: `origin/main`'s
+  commit `2b54c84` "Add B6-7" touched only ROADMAP.md — the rename had not been made. Original text:
+  Rename "Generate Code" to "Download Code" / "Export .odin Package" — the WASM preview already runs
+  the real generated code; the button just downloads it now.
 
 ### B7 — Composition Correctness  ✅ CLOSED `fe05093`
 - [x] **B7-1** — SKB-013. `cos/sin × 1.4142136`; `L²+R²` constant, unity in both channels at pan 0;

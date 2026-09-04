@@ -277,7 +277,7 @@ export const odinMissingMessage = (env: OdinPathEnv): string => {
             'https://odin-lang.org and either add it to PATH or set the SKALD_ODIN',
             'environment variable to the full path of odin.exe, then restart Skald.',
             '',
-            'Everything except preview — editing, Generate Code, save and load — works',
+            'Everything except preview — editing, Download Code, save and load — works',
             'without a compiler.',
         );
     } else {

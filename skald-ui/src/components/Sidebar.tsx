@@ -213,7 +213,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                         {outputPath ? (outputPath.split(/[\\/]/).pop() || 'Output File Selected') : 'Select Output File'}
                     </button>
                 </div>
-                <button style={primaryButtonStyles} onClick={onGenerate}>Generate Code</button>
+                {/* B6-7: "Generate Code" dated from when this button was the
+                    only way to run the generator. Play has compiled and run
+                    the real generated code on every edit since the WASM
+                    preview landed; this button only writes that code out. */}
+                <button
+                    style={primaryButtonStyles}
+                    onClick={onGenerate}
+                    title="Write the generated Odin package to the selected output file. The preview already runs this exact code; this only saves the .odin for your game."
+                >
+                    Download Code
+                </button>
             </div>
 
             <div>
