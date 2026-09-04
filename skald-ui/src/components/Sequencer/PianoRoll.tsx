@@ -155,6 +155,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
             // Perform action immediately
             onToggleStep(track.id, clickedStep, midiNote);
             lastPaintedStep.current = { step: clickedStep, note: midiNote };
+        } else if (clickedStep >= playableSteps) {
+            // B5-x2: past the playable range nothing can be ADDED (it could
+            // never sound), but a note already stranded there can be removed
+            // with a click — it used to be visible and untouchable, its only
+            // remedy raise-delete-lower. No paint mode: a single click, a
+            // single note.
+            const stranded = track.notes.find(n => n.step === clickedStep && n.note === midiNote);
+            if (stranded) onToggleStep(track.id, clickedStep, midiNote);
         }
     };
 

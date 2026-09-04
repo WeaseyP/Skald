@@ -143,9 +143,16 @@
   minting a canonical twin. Pinned by `ExportStepOverrides.test.tsx` (3 cases, all failed before: a
   lowercase `osc:amplitude` baked nothing) and two `StepPropertiesIssues` cases. Original text: Three
   sites still bypass the normaliser (the SKB-002 pattern).
-- [ ] **B5-x2** (S) — An out-of-range note is unreachable in *both* editors (handlers gate on
-  `!isDisabled`), so it can be seen but not deleted; the only remedy is raise-delete-lower and the
-  notice never says so. `handleExportStep`'s out-of-range guard returns `null` with no feedback.
+- [x] **B5-x2** (S) — ✅ **CLOSED** (deletion half). Step grid: right-click on a greyed cell clears the
+  stranded step and right-click on a stranded note block deletes that note; left-click still creates
+  nothing there, and erase-drag does not arm on a greyed cell so a sweep across the boundary cannot take
+  stranded notes with it. Piano roll: a click on a stranded note removes it (no paint mode; one click, one
+  note); a click on an empty greyed cell adds nothing. The notice now says "right-click a greyed note to
+  delete it". Pinned by `StepGrid.test.tsx` (3) and `PianoRoll.test.tsx` (1), all failed before.
+  **Still open:** `handleExportStep`'s out-of-range guard returns `null` with no feedback — the Export
+  Step button is only offered from the step editor, which only opens on playable steps, so the path is
+  currently unreachable from the UI; left as-is and noted. Original text: An out-of-range note is
+  unreachable in *both* editors.
 - [x] **B5-x3** (S) — ✅ **CLOSED**. `dedupeTrackNotes` (`utils/trackNotes.ts`) keeps the first note at
   each `(step, pitch)` and drops the rest; `useSequencerState.loadTracks` applies it, so every track the
   editor holds (Load, Import, autosave restore, history) enters through the one normaliser, and Load

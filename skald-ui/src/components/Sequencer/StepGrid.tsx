@@ -152,7 +152,7 @@ export const StepGrid: React.FC<StepGridProps & {
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
     }, []);
 
-    const handleMouseDown = (e: React.MouseEvent, track: SequencerTrack, step: number, hasNote: boolean) => {
+    const handleMouseDown = (e: React.MouseEvent, track: SequencerTrack, step: number, hasNote: boolean, isDisabled = false) => {
         // 1. Modifiers check (Priority: Velocity/Duration/Prob Drag)
         if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) {
             // Let the Note's onMouseDown handle this if it exists.
@@ -163,10 +163,17 @@ export const StepGrid: React.FC<StepGridProps & {
         // 2. Right Click (Erase the whole step — see onClearStep)
         if (e.button === 2) {
             e.preventDefault();
-            interactionRef.current.isErasing = true;
+            // B5-x2: erasing is allowed on a greyed (out-of-range) cell too.
+            // Creating there is not — the note could never sound — but a note
+            // stranded past the playable range used to be visible and
+            // untouchable, its only remedy raise-delete-lower. Erase-drag
+            // (isErasing) is left off for greyed cells so a sweep across the
+            // boundary does not silently take stranded notes with it.
+            if (!isDisabled) interactionRef.current.isErasing = true;
             if (hasNote && onClearStep) onClearStep(track.id, step);
             return;
         }
+        if (isDisabled) return;
 
         // 3. Left Click (Paint / Select)
         if (e.button === 0) {
@@ -360,7 +367,7 @@ export const StepGrid: React.FC<StepGridProps & {
                         const loopsBack = isDisabled && step < steps;
                         const disabledTitle = loopsBack
                             ? `Step ${step}: this track's loop is ${trackLoop} steps, so this column replays step ${step % trackLoop}. Edit it there, or raise the track length.`
-                            : `Step ${step} is past the pattern length (${playableSteps} playable steps = min(track ${trackLoop}, pattern ${steps})) and never sounds.${hasNote ? ' The note here is kept, not deleted.' : ''}`;
+                            : `Step ${step} is past the pattern length (${playableSteps} playable steps = min(track ${trackLoop}, pattern ${steps})) and never sounds.${hasNote ? ' The note here is kept, not deleted — right-click to delete it.' : ''}`;
 
                         const cellTitle = isDisabled
                             ? disabledTitle
@@ -376,7 +383,7 @@ export const StepGrid: React.FC<StepGridProps & {
                             <div
                                 key={step}
                                 style={currentCellStyle}
-                                onMouseDown={(e) => !isDisabled && handleMouseDown(e, track, step, hasNote)}
+                                onMouseDown={(e) => handleMouseDown(e, track, step, hasNote, isDisabled)}
                                 onMouseEnter={(e) => !isDisabled && handleMouseEnter(e, track, step, hasNote)}
                                 aria-disabled={isDisabled}
                                 title={cellTitle}
@@ -415,7 +422,17 @@ export const StepGrid: React.FC<StepGridProps & {
                                                 flexDirection: 'column',
                                                 justifyContent: 'flex-end'
                                             }}
-                                            onMouseDown={(e) => !isDisabled && handleNoteMouseDown(e, track.id, step, note)}
+                                            onMouseDown={(e) => {
+                                                if (!isDisabled) { handleNoteMouseDown(e, track.id, step, note); return; }
+                                                // B5-x2: a stranded note can be deleted where it
+                                                // sits (right-click), even though it cannot be
+                                                // edited or dragged there.
+                                                if (e.button === 2) {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    onToggleStep(track.id, step, note.note);
+                                                }
+                                            }}
                                         >
                                             {/* Probability Bar */}
                                             {probability < 1 && (

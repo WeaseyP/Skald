@@ -13,6 +13,9 @@
 | brings it back, and Undo of the lowering restores the boundary. What was      |
 | missing was any indication that the loss had happened at all.                 |
 |                                                                              |
+| B5-x2: it also says how to get rid of a stranded note — right-click it —      |
+| since the greyed cells do not accept a left click.                            |
+|                                                                              |
 | Shared by the step grid and the piano roll — and by whatever roadmap F1's     |
 | drum roll turns out to be — so all of them phrase the same fact identically.  |
 ================================================================================
@@ -38,7 +41,8 @@ export const OutOfRangeNotice: React.FC<{ count: number; patternSteps: number }>
         <div style={noticeStyles} data-testid="out-of-range-notice">
             {count === 1 ? '1 note is' : `${count} notes are`} past the playable range and will
             not sound: a track plays min(track length, pattern length) = at most {patternSteps} steps.
-            The notes are kept — raise the pattern or track length to hear them again.
+            The notes are kept — raise the pattern or track length to hear them again, or
+            right-click a greyed note to delete it.
         </div>
     );
 };

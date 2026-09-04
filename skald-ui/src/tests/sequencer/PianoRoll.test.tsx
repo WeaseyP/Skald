@@ -113,3 +113,48 @@ describe('PianoRoll bass register', () => {
             .toBe(scrollTopForPitch(60, 0));
     });
 });
+
+// ---------------------------------------------------------------------------
+// B5-x2 / B5-x5 — stranded notes in the piano roll.
+// ---------------------------------------------------------------------------
+describe('PianoRoll — out-of-range notes (B5-x2, B5-x5)', () => {
+    afterEach(() => { cleanup(); });
+
+    // The track's own loop (4) is shorter than the pattern (16): the note at
+    // step 6 never sounds, and the limit is the TRACK length.
+    const shortTrack: SequencerTrack = { ...track, steps: 4, notes: [{ step: 6, note: 24, velocity: 1, duration: 1 }] };
+
+    const renderShort = (onToggleStep = vi.fn()) => {
+        render(
+            <ScaleProvider>
+                <PianoRoll track={shortTrack} onUpdateNote={vi.fn()} onToggleStep={onToggleStep} currentStep={0} steps={4} patternSteps={16} onClose={vi.fn()} />
+            </ScaleProvider>
+        );
+        return onToggleStep;
+    };
+
+    // Geometry in jsdom: the container has no measured width, so the step
+    // width is whatever stepWidthFor falls back to. Rather than assume it,
+    // read the stranded block's own `left` (step * stepWidth + 4) and click
+    // one pixel inside it. KEY_WIDTH (50) is the piano-key gutter.
+    const clientXInsideStrandedNote = (): number => {
+        const row = screen.getByTestId('piano-roll-note-24');
+        // The note block is the rounded one; the 1px grid lines also carry
+        // left/width and would otherwise be matched first.
+        const block = Array.from(row.querySelectorAll('div')).find(d => /border-radius/.test(d.getAttribute('style') ?? '') && /left: \d+px/.test(d.getAttribute('style') ?? ''));
+        const left = Number(/left: (\d+)px/.exec(block!.getAttribute('style')!)![1]);
+        return 50 + left + 1;
+    };
+
+    it('a click on a stranded note removes it, a click on an empty greyed cell adds nothing', () => {
+        const onToggleStep = renderShort();
+        const x = clientXInsideStrandedNote();
+        // Before B5-x2 handleGridMouseDown returned for every step >= playable.
+        fireEvent.mouseDown(screen.getByTestId('piano-roll-note-24'), { button: 0, clientX: x, clientY: 0 });
+        expect(onToggleStep).toHaveBeenCalledWith(shortTrack.id, 6, 24);
+
+        onToggleStep.mockClear();
+        fireEvent.mouseDown(screen.getByTestId('piano-roll-note-26'), { button: 0, clientX: x, clientY: 0 });
+        expect(onToggleStep).not.toHaveBeenCalled();
+    });
+});
