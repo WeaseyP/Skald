@@ -172,7 +172,12 @@ sequencer_tracks_from_raw :: proc(graph_raw: ^Graph_Raw) -> []Sequencer_Track {
 // into generated Odin identifiers all over the codegen. UI ids like
 // "osc-1" or a raw uuid would otherwise emit `node_osc-1_out` - a syntax
 // error in every generated file.
-build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
+build_graph_from_raw :: proc(graph_raw: ^Graph_Raw, owner := "the graph") -> Graph {
+	// SKB-021 / packet B9-2: a duplicate id is a hard error before any node is
+	// keyed, so the map below can never silently overwrite. `owner` only
+	// names the graph in the message.
+	validate_unique_node_ids(graph_raw.nodes, owner)
+
 	// Resolve the camelCase Note_Event aliases before anything downstream
 	// reads an event. Done here rather than in sequencer_tracks_from_raw so
 	// all three places Note_Events arrive are covered from one site — the
@@ -210,28 +215,6 @@ build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
 			subgraph = nil,
 		}
 
-		// Duplicate ids (either genuinely duplicated in the JSON, or two
-		// distinct ids that collapse to one after sanitization) used to
-		// silently overwrite each other in the map. Rename loudly instead:
-		// the asset still compiles, and the warning names the problem.
-		if _, exists := graph.nodes[node.id]; exists {
-			base := node.id
-			suffix := 2
-			for {
-				candidate := fmt.aprintf("%s_dup%d", base, suffix)
-				if _, taken := graph.nodes[candidate]; !taken {
-					node.id = candidate
-					break
-				}
-				suffix += 1
-			}
-			fmt.eprintf(
-				"Warning: duplicate node id %q - renamed to %q. Connections still target the first node with this id.\n",
-				base,
-				node.id,
-			)
-		}
-
 		if node.type == "Instrument" {
 			subgraph_raw: Graph_Raw
 			has_subgraph := false
@@ -247,7 +230,7 @@ build_graph_from_raw :: proc(graph_raw: ^Graph_Raw) -> Graph {
 			}
 
 			if has_subgraph {
-				subgraph_obj := build_graph_from_raw(&subgraph_raw)
+				subgraph_obj := build_graph_from_raw(&subgraph_raw, fmt.tprintf("Instrument node %q's subgraph", raw_node.id))
 				node.subgraph = new(Graph)
 				node.subgraph^ = subgraph_obj
 			}
@@ -357,7 +340,7 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 			// asking (see Project_Instrument_Raw.limit).
 			limit = raw_inst.limit.? or_else true,
 			midi_config = raw_inst.midi_config,
-			graph = build_graph_from_raw(&raw_graph_copy),
+			graph = build_graph_from_raw(&raw_graph_copy, fmt.tprintf("instrument %q", raw_inst.name)),
 		}
 	}
 
@@ -449,9 +432,14 @@ build_project_from_graph_raw :: proc(graph_raw: ^Graph_Raw) -> Project {
 	// per-note patchOverrides alias and re-sanitizes (idempotently).
 	project_raw.project.sequencer_tracks = sequencer_tracks_from_raw(graph_raw)
 
+	// SKB-021 / packet B9-2: two Instrument nodes sharing a (sanitized) id is a
+	// hard error, not a rename — sequencer tracks target instruments by this id
+	// and a renamed instrument is one no track can reach. Scoped to instrument
+	// nodes: a loose helper node sharing an instrument's id is discarded by the
+	// `continue` below, never keyed, so it collides with nothing.
+	validate_unique_node_ids(graph_raw.nodes, "the top-level graph", instrument_only = true)
+
 	insts := make([dynamic]Project_Instrument_Raw)
-	used_ids := make(map[string]bool)
-	defer delete(used_ids)
 	for raw_node in graph_raw.nodes {
 		if normalize_node_type(raw_node.type) != "Instrument" do continue
 
@@ -460,30 +448,7 @@ build_project_from_graph_raw :: proc(graph_raw: ^Graph_Raw) -> Project {
 			params = raw_node.data
 		}
 
-		// Same duplicate-id policy as build_graph_from_raw: rename loudly
-		// rather than silently overwrite (SKB-021's warned-about compromise;
-		// B9 owns the hard error). Scoped to instrument nodes — an instrument
-		// colliding with a non-instrument helper node's id no longer triggers
-		// a rename, since they no longer share a map.
 		id := sanitize_identifier(raw_node.id, true)
-		if used_ids[id] {
-			base := id
-			suffix := 2
-			for {
-				candidate := fmt.aprintf("%s_dup%d", base, suffix)
-				if !used_ids[candidate] {
-					id = candidate
-					break
-				}
-				suffix += 1
-			}
-			fmt.eprintf(
-				"Warning: duplicate instrument node id %q - renamed to %q. Sequencer tracks still target the first instrument with this id.\n",
-				base,
-				id,
-			)
-		}
-		used_ids[id] = true
 
 		// The subgraph is passed through RAW; build_project_from_raw calls
 		// build_graph_from_raw on it exactly as it does for a project file's

@@ -101,3 +101,68 @@ test_nested_instrument_reports_lowest_id_first :: proc(t: ^testing.T) {
 	testing.expect(t, found, "nested instruments present")
 	testing.expect_value(t, inner.id, "a")
 }
+
+// =====================================================================
+// find_duplicate_node_id
+// =====================================================================
+
+@(test)
+test_duplicate_raw_id_is_a_collision :: proc(t: ^testing.T) {
+	nodes := []core.Node_Raw{raw_node("1", "oscillator"), raw_node("2", "adsr"), raw_node("1", "filter")}
+	dup, found := core.find_duplicate_node_id(nodes)
+	testing.expect(t, found, "two nodes sharing the literal id \"1\" must be reported")
+	testing.expect_value(t, dup.first_raw, "1")
+	testing.expect_value(t, dup.second_raw, "1")
+	testing.expect_value(t, dup.sanitized, "1")
+}
+
+@(test)
+test_sanitization_collision_is_a_collision :: proc(t: ^testing.T) {
+	// "osc-1" and "osc_1" are distinct strings in the JSON and one
+	// identifier in the generated Odin — the second kind of duplicate the
+	// old rename path also caught, and the one a user cannot see by eye.
+	nodes := []core.Node_Raw{raw_node("osc-1", "oscillator"), raw_node("osc_1", "oscillator")}
+	dup, found := core.find_duplicate_node_id(nodes)
+	testing.expect(t, found, "ids that sanitize to the same identifier must be reported")
+	testing.expect_value(t, dup.first_raw, "osc-1")
+	testing.expect_value(t, dup.second_raw, "osc_1")
+	testing.expect_value(t, dup.sanitized, "osc_1")
+}
+
+@(test)
+test_distinct_ids_are_not_a_collision :: proc(t: ^testing.T) {
+	// numeric_ids.json's shape: ids "1".."5" are distinct and must stay
+	// accepted (the roadmap predicted this fixture would move to
+	// _negative; it has no duplicate and does not).
+	nodes := []core.Node_Raw{
+		raw_node("1", "Oscillator"), raw_node("2", "Oscillator"), raw_node("3", "Mixer"),
+		raw_node("4", "ADSR"), raw_node("5", "GraphOutput"),
+	}
+	_, found := core.find_duplicate_node_id(nodes)
+	testing.expect(t, !found, "distinct ids must not be flagged")
+}
+
+@(test)
+test_group_nodes_never_collide :: proc(t: ^testing.T) {
+	// A React Flow group is dropped at parse (normalize_node_type -> "") and
+	// never enters the node map, so its id cannot shadow anything.
+	nodes := []core.Node_Raw{raw_node("g1", "group"), raw_node("g1", "oscillator")}
+	_, found := core.find_duplicate_node_id(nodes)
+	testing.expect(t, !found, "a group sharing an id with a real node is not a collision — the group is never keyed")
+}
+
+@(test)
+test_instrument_only_scope_ignores_helper_nodes :: proc(t: ^testing.T) {
+	// The graph-shape top level keys ONLY Instrument nodes; a loose helper
+	// node sharing an id with an instrument is discarded, not mis-wired.
+	nodes := []core.Node_Raw{raw_node("x", "instrument"), raw_node("x", "oscillator")}
+	_, found := core.find_duplicate_node_id(nodes, instrument_only = true)
+	testing.expect(t, !found, "instrument-only scope must ignore a helper node's id")
+
+	dup, found_inst := core.find_duplicate_node_id(
+		[]core.Node_Raw{raw_node("x", "instrument"), raw_node("x", "Instrument")},
+		instrument_only = true,
+	)
+	testing.expect(t, found_inst, "two instruments sharing an id must still be reported under instrument-only scope")
+	testing.expect_value(t, dup.sanitized, "x")
+}

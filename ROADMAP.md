@@ -315,10 +315,17 @@ A conservative static warning cannot see a defect that another defect is hiding.
   its output variable stuck at `0.0`. That branch now exits 1 too, so *any* type without a generator is a
   real refusal. Original text: Pre-emission validation pass: nested Instruments rejected with purpose-built
   message — **SKB-028** (high).
-- [ ] **B9-2** (S) — Duplicate node IDs become a hard error instead of silent mis-wire — **SKB-021** (high)
-  - Both current sites are warn-and-rename and **already name this packet as the owner**:
-    `json.odin:229` and `json.odin:481` ("SKB-021's warned-about compromise; B9 owns the hard error").
-    Note the goldens `numeric_ids` and `multi_instrument_dup_names` will move.
+- [x] **B9-2** (S) — ✅ **CLOSED**. `find_duplicate_node_id` + `validate_unique_node_ids` in
+  `graph_validate.odin` replace both warn-and-rename sites; `build_graph_from_raw` runs it over every node
+  before keying the map, `build_project_from_graph_raw` over Instrument nodes only (helpers there are
+  discarded, never keyed). Literal duplicates and sanitization collisions (`osc-1` / `osc_1`) get different
+  messages because the second kind cannot be seen by eye. Pinned by `preflight_test.odin`; reproducible from
+  `_negative/duplicate_node_id.json` and `_negative/sanitized_id_collision.json`.
+  **Correction to the note above:** the goldens `numeric_ids` and `multi_instrument_dup_names` did **not**
+  move. Neither contains a duplicate — `numeric_ids` has five distinct ids, and `multi_instrument_dup_names`
+  repeats `1..4` across six *separate* subgraphs, each its own map. Verified by running codegen over all 152
+  fixtures and examples: zero duplicate-id warnings, so the hard error has no corpus fallout. Original text:
+  Duplicate node IDs become a hard error instead of silent mis-wire — **SKB-021** (high).
 - [ ] **B9-3** (S) — `-check` and `-version` CLI flags; port `assertCodegenTargetSafe` into `main.odin`
   - `-version` **already exists** (`main.odin:125`, answered before stdin is touched — preserve that
     ordering, the handshake probe closes stdin). `-check` is missing. `assertCodegenTargetSafe` is TS
