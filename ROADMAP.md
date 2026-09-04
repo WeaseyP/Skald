@@ -146,9 +146,13 @@
 - [ ] **B5-x2** (S) — An out-of-range note is unreachable in *both* editors (handlers gate on
   `!isDisabled`), so it can be seen but not deleted; the only remedy is raise-delete-lower and the
   notice never says so. `handleExportStep`'s out-of-range guard returns `null` with no feedback.
-- [ ] **B5-x3** (S) — `(step, pitch)` uniqueness is load-bearing but only enforced for *new* edits: an
-  imported file with two notes at one `(step, pitch)` gets a React duplicate-key warning and one block
-  hidden. Needs a load-time normalisation pass (C1 territory).
+- [x] **B5-x3** (S) — ✅ **CLOSED**. `dedupeTrackNotes` (`utils/trackNotes.ts`) keeps the first note at
+  each `(step, pitch)` and drops the rest; `useSequencerState.loadTracks` applies it, so every track the
+  editor holds (Load, Import, autosave restore, history) enters through the one normaliser, and Load
+  reports the dropped count in the file-status toast. Pinned by `trackNotes.test.ts` and a
+  `SequencerState.test.tsx` case that failed before. Ahead of C1 rather than in it: this needs no schema
+  version, only an invariant made true at the door. Original text: `(step, pitch)` uniqueness is
+  load-bearing but only enforced for *new* edits.
 - [x] **B5-x4** (S) — ✅ **CLOSED**. The step editor's `onChange` refuses any value
   `isExportablePlockValue` rejects (a `syncRate` string, the `bpmSync` boolean), so such keys are never
   minted into the save file; a control that cannot be automated is rendered inert (dimmed,

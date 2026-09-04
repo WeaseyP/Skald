@@ -71,3 +71,28 @@ describe('useSequencerState', () => {
         expect(result.current.tracks[0].notes).toHaveLength(0);
     });
 });
+
+// ---------------------------------------------------------------------------
+// B5-x3 — a loaded track holds the (step, pitch) invariant, whatever the file had.
+// ---------------------------------------------------------------------------
+describe('useSequencerState.loadTracks — duplicate (step, pitch) notes (B5-x3)', () => {
+    it('keeps the first note at a (step, pitch) and drops the rest', () => {
+        const { result } = renderHook(() => useSequencerState({ pushHistory: vi.fn() }));
+        act(() => {
+            result.current.loadTracks([{
+                id: 't1', targetNodeId: 'i', name: 'T', color: '#000', steps: 16, isMuted: false, isSolo: false,
+                notes: [
+                    { step: 2, note: 60, velocity: 1, duration: 1 },
+                    { step: 2, note: 60, velocity: 0.4, duration: 3 },
+                    { step: 3, note: 60, velocity: 1, duration: 1 },
+                ],
+            }]);
+        });
+        // Before B5-x3 both notes at (2, 60) survived into state — a React
+        // duplicate-key warning and one hidden block.
+        expect(result.current.tracks[0].notes).toEqual([
+            { step: 2, note: 60, velocity: 1, duration: 1 },
+            { step: 3, note: 60, velocity: 1, duration: 1 },
+        ]);
+    });
+});

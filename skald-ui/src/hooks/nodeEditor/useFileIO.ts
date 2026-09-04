@@ -12,6 +12,7 @@ import { SequencerTrack } from '../../definitions/types';
 import { ImportedGraph, layOutImportBatch } from '../../utils/importLayout';
 import { getInstrumentNodes } from '../../utils/projectSerializer';
 import { EditorHistoryApi, SessionSettings } from './editorSnapshot';
+import { dedupeTrackNotes } from '../../utils/trackNotes';
 
 // SessionSettings (bpm / patternSteps / masterVolume / packageName) is defined
 // with the undo snapshot it belongs to, in editorSnapshot.ts — the session block
@@ -162,6 +163,16 @@ export const useFileIO = (
         setEdges(flow.edges || []);
         if (flow.sequencerTracks) {
             loadSequencerTracks(flow.sequencerTracks);
+            // B5-x3: loadTracks drops later duplicates at one (step, pitch)
+            // silently — it has no channel to speak on. Load does, and a note
+            // that was in the file and is not on the grid is worth one line.
+            const { dropped } = dedupeTrackNotes(flow.sequencerTracks);
+            if (dropped > 0) {
+                notifyFileStatus({
+                    kind: 'error',
+                    message: `${dropped} duplicate note${dropped === 1 ? '' : 's'} dropped: the file held more than one note at the same step and pitch, which the sequencer addresses as one. The first of each pair was kept.`,
+                });
+            }
         }
         // Older saves have no session block — leave the current
         // settings alone rather than inventing defaults, and only

@@ -20,6 +20,7 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
 import { EditorHistoryApi } from '../nodeEditor/editorSnapshot';
 import { logger } from '../../utils/logger';
+import { dedupeTrackNotes } from '../../utils/trackNotes';
 // Helper to generate a unique ID if uuid not available
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -100,7 +101,13 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
      * clears the whole history instead.
      */
     const loadTracks = useCallback((newTracks: SequencerTrack[]) => {
-        writeTracks(newTracks);
+        // B5-x3: (step, pitch) uniqueness is enforced for every edit (B5-2)
+        // but was never established for what a FILE brought in — two notes at
+        // one (step, pitch) rendered as a React duplicate-key warning with one
+        // block hidden. Every track the editor holds enters through here (Load,
+        // Import, autosave restore, history), so this is the one place the
+        // invariant is made true. useFileIO reports the count on Load.
+        writeTracks(dedupeTrackNotes(newTracks).tracks);
     }, [writeTracks]);
 
     // ---- User gestures: each pushes one labelled entry ---------------------
