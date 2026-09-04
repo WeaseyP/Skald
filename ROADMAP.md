@@ -170,9 +170,15 @@
   field, so exposing it would mint the exact dead setter B2 exists to prevent. Pinned by two
   `StepPropertiesIssues` cases that failed before. Original text: Step editor still mints P-locks the
   serializer then drops.
-- [ ] **B5-x5** (S) — `ProjectIssuesBanner` is non-dismissible, so opening the flagship four-bar-song
-  greets the user with a permanent six-line overlay. Defensible (the data *is* unplayable) but it is
-  the flagship. Also `OutOfRangeNotice` names `patternSteps` even when the *track* is the shorter one.
+- [x] **B5-x5** (S) — ✅ **CLOSED**. The banner half is **moot since B8-1**: four-bar-song now carries a
+  `session` block with `patternSteps: 64`, so the flagship opens with no out-of-range data and no banner
+  — the banner stays non-dismissible by design (it reports data the user must fix; see its header). The
+  notice half is fixed: `OutOfRangeNotice` takes an optional `trackSteps` (the piano roll passes the
+  track's own length) and names the *shorter* length as the limit with the matching fix — "this track's
+  own length (4 steps) is the limit, not the pattern (16). Raise the track length" — instead of always
+  quoting the pattern. The multi-track step grid, which cannot name one track, keeps the min() phrasing.
+  Pinned by a `PianoRoll.test.tsx` case that failed before. Original text: `ProjectIssuesBanner` is
+  non-dismissible … `OutOfRangeNotice` names `patternSteps` even when the *track* is the shorter one.
 
 ### B6 — First Hour
 - [x] **B6-1** (M) — ✅ **CLOSED**. `buildProjectData` now mirrors the CLI’s

@@ -158,3 +158,24 @@ describe('PianoRoll — out-of-range notes (B5-x2, B5-x5)', () => {
         expect(onToggleStep).not.toHaveBeenCalled();
     });
 });
+
+// ---------------------------------------------------------------------------
+// B5-x5 — the notice names WHICH length is the limit.
+// ---------------------------------------------------------------------------
+describe('PianoRoll — out-of-range notice wording (B5-x5)', () => {
+    afterEach(() => { cleanup(); });
+
+    it('names the track length as the limit when it, not the pattern, is the shorter one', () => {
+        const shortTrack: SequencerTrack = { ...track, steps: 4, notes: [{ step: 6, note: 24, velocity: 1, duration: 1 }] };
+        render(
+            <ScaleProvider>
+                <PianoRoll track={shortTrack} onUpdateNote={vi.fn()} onToggleStep={vi.fn()} currentStep={0} steps={4} patternSteps={16} onClose={vi.fn()} />
+            </ScaleProvider>
+        );
+        const text = screen.getByTestId('out-of-range-notice').textContent ?? '';
+        // Before B5-x5 this read "at most 16 steps ... raise the pattern or
+        // track length" — the pattern was not the limit, the track was.
+        expect(text).toMatch(/this track's own length \(4 steps\) is the limit, not the pattern \(16\)/);
+        expect(text).toMatch(/Raise the track length/);
+    });
+});

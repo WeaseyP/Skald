@@ -251,7 +251,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                 </div>
             </div>
 
-            <OutOfRangeNotice count={strandedCount} patternSteps={patternSteps ?? steps} />
+            <OutOfRangeNotice count={strandedCount} patternSteps={patternSteps ?? steps} trackSteps={steps} />
 
             {columns > playableSteps && (
                 <div
