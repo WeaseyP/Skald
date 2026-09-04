@@ -269,9 +269,11 @@
   "against exactly the shape the backend will actually see"; that is true only in the loose branch.
 
 - [ ] **B6-3** (S) — Curated `examples/start-here/` folder
-- [/] **B6-4** (S) — ~~Fix the two README 404s~~ done `57df823`: `BUGS.md` had been replaced by
-  `ROADMAP.md` nine commits earlier and the link was never updated; every README link target now
-  resolves. **Remaining:** link the manual above the fold.
+- [x] **B6-4** (S) — ✅ **CLOSED**. ~~Fix the two README 404s~~ done `57df823`: `BUGS.md` had been
+  replaced by `ROADMAP.md` nine commits earlier and the link was never updated; every README link target
+  now resolves. The manual is now linked in the README's second paragraph, above the fold, pointing at
+  `docs/manual-source/` (the compiled HTML is gitignored build output, so the source tree is the link
+  that always resolves).
 - [ ] **B6-5** (S) — Electron Help menu (Manual / Examples / About with codegen stamp)
 - [ ] **B6-6** (S) — Default first-run patch that makes a sound in 30 seconds
 - [x] **B6-7** (S) — ✅ **CLOSED**. The Sidebar's primary button reads **Download Code** with a tooltip
