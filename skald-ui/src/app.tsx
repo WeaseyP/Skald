@@ -40,6 +40,7 @@ import { useGraphKeyboardTraversal } from './hooks/useGraphKeyboardTraversal';
 import { isTypingTarget } from './utils/keyboardTarget';
 import { useSnapToGridPreference } from './hooks/nodeEditor/useSnapToGridPreference';
 import { accentFor } from './components/Nodes/NodeStyles';
+import { styleEdgesBySemanticKind } from './components/Edges/edgeKind';
 
 // Re-exported: the Export-Step naming rule now lives with the Export-Step
 // action itself (useEditorState), which is where its undo entry is pushed.
@@ -411,6 +412,13 @@ const EditorLayout = () => {
     // division resolves to at the project tempo.
     const graphActions = useMemo(() => ({ updateNodeData, bpm }), [updateNodeData, bpm]);
 
+    // E7: a rendering-only derivation (styleEdgesBySemanticKind), never fed
+    // back into setEdges — the document's `edges` (what save/undo/codegen
+    // read) never gains a `style` field. Edges are re-derived on every graph
+    // change, so this is one memoised pass over `edges`, not a per-edge
+    // lookup buried in a component render.
+    const displayEdges = useMemo(() => styleEdgesBySemanticKind(nodes, edges), [nodes, edges]);
+
     // The Export-Step action itself lives in useEditorState (so its undo entry
     // is pushed next to the edit it describes); the component keeps only the
     // viewport concern.
@@ -491,7 +499,7 @@ const EditorLayout = () => {
                         <GraphActionsProvider value={graphActions}>
                         <ReactFlow
                             nodes={nodes}
-                            edges={edges}
+                            edges={displayEdges}
                             nodeTypes={memoizedNodeTypes}
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}
