@@ -102,15 +102,29 @@ interface ParameterPanelProps {
     // the array (SKB-025).
     selectedStep?: { trackId: string, step: number, notePitch: number } | null;
     tracks?: SequencerTrack[];
-    onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
+    onUpdateNote?: (
+        trackId: string,
+        step: number,
+        changes: Partial<NoteEvent>,
+        notePitch?: number,
+        // E12 (recording half): a shared gesture so a whole Record pass lands
+        // as one undo entry. See useSequencerState.ts's updateNote doc comment.
+        historyOverride?: { label: string; gesture: string },
+    ) => void;
     onSelectStep?: (trackId: string, step: number, notePitch: number) => void;
     onExportStep?: (trackId: string, step: number, notePitch: number) => void;
+    // E12 (recording half): the transport's playhead. Only threaded into the
+    // Instrument's OWN panel render (see `macroRouting.recording` below) —
+    // every other render of this panel (internal nodes, the step editor
+    // above) has no use for it and does not receive it.
+    isPlaying?: boolean;
+    currentStep?: number;
 }
 
 
 // --- MAIN COMPONENT ---
 
-const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm, selectedStep, tracks, onUpdateNote, onSelectStep, onExportStep }) => {
+const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm, selectedStep, tracks, onUpdateNote, onSelectStep, onExportStep, isPlaying, currentStep }) => {
 
     if (selectedStep && tracks && onUpdateNote) {
         const track = tracks.find(t => t.id === selectedStep.trackId);
@@ -302,6 +316,23 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                         macroRouting={type === 'instrument' ? {
                             internalNodes: (childNodes as Node<NodeParams>[] | undefined) ?? [],
                             onUpdateNode: (targetNodeId, delta) => onUpdateNode(node.id, delta, targetNodeId),
+                            // E12, the remaining half: gestural P-lock
+                            // recording. `tracks`/`onUpdateNote` are already
+                            // threaded to this panel for the step editor
+                            // above (StepPropertiesEditor's hand-authored
+                            // P-locks) — this reuses the SAME props and the
+                            // SAME `onUpdateNote` write path for the
+                            // Instrument's own render, rather than adding a
+                            // second one. Undefined (no Record UI) only for
+                            // a bare unit-test render missing either prop —
+                            // the real app always supplies both.
+                            recording: (tracks && onUpdateNote) ? {
+                                instrumentId: node.id,
+                                track: tracks.find(t => t.targetNodeId === node.id),
+                                currentStep: currentStep ?? 0,
+                                isPlaying: isPlaying ?? false,
+                                onUpdateNote,
+                            } : undefined,
                         } : undefined}
                     />
 

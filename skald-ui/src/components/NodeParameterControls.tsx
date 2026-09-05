@@ -10,7 +10,7 @@ import { macroTargetCandidates, paramDeadReason, paramIsReachable, plockNodeLabe
 import { NODE_DEFINITIONS } from '../definitions/node-definitions';
 import { RandomizeAmount, RANDOMIZE_AMOUNTS, randomizableParamNames, randomizeParams } from '../utils/randomize';
 import { lookupRange } from '../definitions/nodeSchema.generated';
-import { NodeParams } from '../definitions/types';
+import { NodeParams, NoteEvent, SequencerTrack } from '../definitions/types';
 
 interface NodeParameterControlsProps {
     node: Node;
@@ -47,6 +47,16 @@ interface NodeParameterControlsProps {
     macroRouting?: {
         internalNodes: Node<NodeParams>[];
         onUpdateNode: (nodeId: string, data: Record<string, unknown>) => void;
+        // Roadmap E12, the remaining half — gestural P-lock recording. Present
+        // only when the caller also has a sequencer track and playback state
+        // to record the gesture into (ParameterPanel.tsx supplies it in the
+        // same `type === 'instrument'` branch that supplies the fields
+        // above, for the same reason: only the Instrument's OWN panel render
+        // has both). Undefined everywhere `macroRouting` itself is undefined,
+        // and MacroPadSection renders no Record UI without it — an
+        // Instrument panel rendered outside the app (a bare unit test) just
+        // gets the live-routing pad from 44d2f51 with no Record toggle.
+        recording?: MacroRecordingProps;
     };
 }
 
@@ -221,6 +231,34 @@ interface MacroAxisTarget {
 const macroTargetKey = (nodeId: string, param: string): string => `${nodeId}::${param}`;
 
 /**
+ * What MacroPadSection needs to record the pad's gesture into per-step
+ * P-locks (E12, the remaining half). `track` is the CURRENT instrument's own
+ * sequencer track — `useInstrumentRegistry.ts` guarantees one exists per
+ * Instrument node, but the type stays optional because a bare unit-test
+ * render, or an instrument mid-deletion, may have none.
+ *
+ * `onUpdateNote` is `useSequencerState.ts`'s `updateNote`, unchanged from the
+ * function ParameterPanel already threads to StepPropertiesEditor for
+ * hand-authored P-locks — this is deliberate reuse of that one write path,
+ * not a second one, per CLAUDE.md's "one reader" rule. The optional 5th
+ * argument (added for this feature) is what lets every step this pass writes
+ * share one undo entry; see its doc comment in useSequencerState.ts.
+ */
+interface MacroRecordingProps {
+    instrumentId: string;
+    track: SequencerTrack | undefined;
+    currentStep: number;
+    isPlaying: boolean;
+    onUpdateNote: (
+        trackId: string,
+        step: number,
+        changes: Partial<NoteEvent>,
+        notePitch?: number,
+        historyOverride?: { label: string; gesture: string },
+    ) => void;
+}
+
+/**
  * Roadmap E12 (live routing half). Each axis of a normalised 0..1 XY pad maps
  * to zero or more (node, param) targets, chosen from `macroTargetCandidates`
  * — "the same target list the P-lock UI offers", per the brief — each with
@@ -242,22 +280,46 @@ const macroTargetKey = (nodeId: string, param: string): string => `${nodeId}::${
  * assignment instead of one still naming the PREVIOUS instrument's nodes.
  *
  * Recording (capturing the pad's position into per-step P-locks while the
- * sequencer plays) is NOT implemented — see the roadmap report for why
- * (short version: it needs playback/current-step/track-selection state that
- * only app.tsx currently owns, and app.tsx is out of scope for this pass).
+ * sequencer plays) IS implemented below, gated on the optional `recording`
+ * prop — see its own doc comment on `flushStep`.
  */
 const MacroPadSection: React.FC<{
     internalNodes: Node<NodeParams>[];
     onUpdateNode: (nodeId: string, data: Record<string, unknown>) => void;
-}> = ({ internalNodes, onUpdateNode }) => {
+    recording?: MacroRecordingProps;
+}> = ({ internalNodes, onUpdateNode, recording }) => {
+    // Pure computations, safe even when `internalNodes` is empty (an
+    // instrument whose subgraph has nothing automatable yet) — kept ahead of
+    // every hook below so nothing declared after them ever has to forward-
+    // reference a value from a conditional early return (rules of hooks: the
+    // component used to `return null` before any of ITS OWN hooks existed;
+    // recording's extra hooks below need the same unconditional hook count on
+    // every render, so the "nothing to show" case is now decided only in the
+    // final JSX, not by returning early).
+    const nodesById = new Map(internalNodes.map(n => [n.id, n] as const));
+    const candidates = macroTargetCandidates(internalNodes);
+
     const [xTargets, setXTargets] = React.useState<MacroAxisTarget[]>([]);
     const [yTargets, setYTargets] = React.useState<MacroAxisTarget[]>([]);
     const [pad, setPad] = React.useState({ x: 0.5, y: 0.5 });
-
-    if (internalNodes.length === 0) return null;
-
-    const nodesById = new Map(internalNodes.map(n => [n.id, n] as const));
-    const candidates = macroTargetCandidates(internalNodes);
+    // Whether a recording PASS (Record on -> Record off) is currently open.
+    const [isRecording, setIsRecording] = React.useState(false);
+    // The step believed to be under the playhead right now, for THIS pass —
+    // null when no pass is open. See flushStep for why the step being LEFT,
+    // not the one just entered, is what gets written.
+    const prevStepRef = React.useRef<number | null>(null);
+    // Whether the pad has been touched since prevStepRef became current.
+    // Reset every flush, so a step nothing moved the pad during writes
+    // nothing — the brief's "safer than overwriting a whole pattern".
+    const touchedRef = React.useRef(false);
+    // The last touched pad position, read at flush time (not React state:
+    // flushStep runs from an effect whose own render may be a tick or two
+    // behind the pointer, and this ref is always current).
+    const padPositionRef = React.useRef({ x: 0.5, y: 0.5 });
+    // Re-rolled every time Record turns on, so two back-to-back passes never
+    // share a gesture key and coalesce with each other.
+    const sessionCounterRef = React.useRef(0);
+    const gestureRef = React.useRef<{ label: string; gesture: string } | null>(null);
 
     const addTarget = (axis: 'x' | 'y', key: string) => {
         const idx = key.indexOf('::');
@@ -289,16 +351,141 @@ const MacroPadSection: React.FC<{
         setTargets(prev => prev.map(t => (t.nodeId === nodeId && t.param === param ? { ...t, [field]: value } : t)));
     };
 
+    // Shared by the live write below and the recorded one in flushStep, so
+    // "quantise to the target's schema range" means the exact same formula
+    // in both places, not two that could drift.
+    const mapAxisValues = (targets: MacroAxisTarget[], position: number): Array<{ nodeId: string; param: string; value: number }> =>
+        targets.map(t => ({ nodeId: t.nodeId, param: t.param, value: t.min + position * (t.max - t.min) }));
+
     const writeAxis = (targets: MacroAxisTarget[], position: number) => {
-        for (const t of targets) {
-            onUpdateNode(t.nodeId, { [t.param]: t.min + position * (t.max - t.min) });
+        for (const { nodeId, param, value } of mapAxisValues(targets, position)) {
+            onUpdateNode(nodeId, { [param]: value });
         }
     };
+
+    /**
+     * E12, the remaining half. Bakes the LAST touched pad position for the
+     * step the playhead is now LEAVING into that step's notes — one merged
+     * `patchOverrides` write per note at the step, through `onUpdateNote`,
+     * the exact call StepPropertiesEditor's own padlock makes
+     * (`onUpdateNote(trackId, step, { patchOverrides: {...} }, notePitch)`),
+     * so a recorded lock previews and exports identically to a hand-authored
+     * one. No backend change: `generate_sequencer_logic`
+     * (skald-backend/core/codegen_project.odin) already emits a P-lock's
+     * `<Asset>_set_param` call before that note's `_note_on` for whatever is
+     * in `event.patch_overrides`, with no notion of where the value came
+     * from.
+     *
+     * Written on the step being LEFT, not the one just entered: the touch
+     * this flush consumes happened while `step` was `prevStepRef.current`
+     * (between the previous transition and this one), so that dwell is what
+     * it belongs to. The transport stopping (or Record turning off) flushes
+     * whatever step is still open, because nothing else ever "leaves" it.
+     *
+     * Does nothing when: the pad was never touched during this step's dwell,
+     * the track has no note at this step (nothing to attach a lock to — the
+     * brief's "safer than overwriting a whole pattern"), or neither axis has
+     * an assigned target.
+     */
+    const flushStep = (step: number | null) => {
+        if (!recording || step === null || !touchedRef.current) return;
+        const track = recording.track;
+        const recorded = [
+            ...mapAxisValues(xTargets, padPositionRef.current.x),
+            ...mapAxisValues(yTargets, padPositionRef.current.y),
+        ];
+        // Consumed either way: a step this pass passed without a note or a
+        // target still shouldn't leave a stale touch for the NEXT step to
+        // (mis)claim.
+        touchedRef.current = false;
+        if (!track || recorded.length === 0) return;
+        const notes = track.notes.filter(n => n.step === step);
+        if (notes.length === 0) return;
+
+        const historyOverride = gestureRef.current ?? undefined;
+        for (const note of notes) {
+            const overrides: Record<string, unknown> = { ...note.patchOverrides };
+            for (const rt of recorded) {
+                const targetNode = nodesById.get(rt.nodeId);
+                if (!targetNode) continue;
+                overrides[`${plockNodeLabel(targetNode)}:${rt.param}`] = rt.value;
+            }
+            recording.onUpdateNote(track.id, step, { patchOverrides: overrides }, note.note, historyOverride);
+        }
+    };
+
+    // Fires whenever the playhead moves to a new step while a pass is open —
+    // that transition is what "the step being LEFT" means for flushStep.
+    // Also fires the instant Record turns on (isRecording flips), which is
+    // harmless: prevStepRef already equals the current step from
+    // handleRecordToggle, so the flush condition below is false and this
+    // just confirms the baseline.
+    React.useEffect(() => {
+        if (!isRecording || !recording) return;
+        const step = recording.currentStep;
+        if (prevStepRef.current !== null && prevStepRef.current !== step) {
+            flushStep(prevStepRef.current);
+        }
+        prevStepRef.current = step;
+        // Deliberately narrow deps: `recording` is a fresh object every
+        // render (ParameterPanel builds it inline), so depending on it whole
+        // would refire this on every render instead of only on a real step
+        // change. (No react-hooks lint rule is configured in this project to
+        // flag the narrowing, but the reasoning still belongs here.)
+    }, [isRecording, recording?.currentStep]);
+
+    // The brief: "when the sequencer stops, recording stops." Flushes
+    // whatever step was still open first, same as toggling Record off by
+    // hand — a stop mid-gesture should not silently drop it.
+    React.useEffect(() => {
+        if (isRecording && recording && !recording.isPlaying) {
+            flushStep(prevStepRef.current);
+            prevStepRef.current = null;
+            touchedRef.current = false;
+            gestureRef.current = null;
+            setIsRecording(false);
+        }
+    }, [recording?.isPlaying]);
 
     const handlePadChange = ({ x, y }: { x: number; y: number }) => {
         setPad({ x, y });
         writeAxis(xTargets, x);
         writeAxis(yTargets, y);
+        if (isRecording && recording) {
+            padPositionRef.current = { x, y };
+            touchedRef.current = true;
+        }
+    };
+
+    /**
+     * One recording PASS — Record on to Record off — is ONE undo entry:
+     * every step this pass writes shares the same gesture key (re-rolled per
+     * pass via `sessionCounterRef` so back-to-back passes never coalesce
+     * with each other), and `useEditorHistory`'s gesture coalescing
+     * (`GESTURE_IDLE_MS`) is the mechanism that folds them — the same one
+     * every other continuous-input gesture in this file already relies on
+     * (a slider drag, the live pad above). Holds as long as consecutive
+     * recorded steps land within that idle window of each other, true at any
+     * tempo/subdivision this app currently supports.
+     */
+    const handleRecordToggle = () => {
+        if (isRecording) {
+            flushStep(prevStepRef.current);
+            prevStepRef.current = null;
+            touchedRef.current = false;
+            gestureRef.current = null;
+            setIsRecording(false);
+            return;
+        }
+        if (!recording) return;
+        sessionCounterRef.current += 1;
+        gestureRef.current = {
+            label: 'Record macro pad',
+            gesture: `macroRecord:${recording.instrumentId}:${sessionCounterRef.current}`,
+        };
+        prevStepRef.current = recording.currentStep;
+        touchedRef.current = false;
+        setIsRecording(true);
     };
 
     const renderAxis = (axis: 'x' | 'y', targets: MacroAxisTarget[]) => {
@@ -361,9 +548,32 @@ const MacroPadSection: React.FC<{
         );
     };
 
+    // Nothing to route or record without at least one internal node — moved
+    // here (past every hook above) instead of an early `return null`, so the
+    // hook count this component registers never depends on `internalNodes`.
+    if (internalNodes.length === 0) return null;
+
     return (
         <div style={randomizeSectionStyles}>
             <label style={labelStyles}>Macro Pad</label>
+            {recording && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <button
+                        type="button"
+                        data-testid="macro-record-toggle"
+                        aria-pressed={isRecording}
+                        title={isRecording
+                            ? 'Stop recording the pad into P-locks on this track'
+                            : "Record the pad's movement into this instrument's track as P-locks while the sequencer plays"}
+                        onClick={handleRecordToggle}
+                        style={isRecording
+                            ? { ...rerollButtonStyle, background: '#a04040', borderColor: '#c05050' }
+                            : rerollButtonStyle}
+                    >
+                        {isRecording ? '⏺ Recording…' : '⏺ Record'}
+                    </button>
+                </div>
+            )}
             {renderAxis('x', xTargets)}
             {renderAxis('y', yTargets)}
             <div data-testid="macro-xy-pad">
@@ -798,6 +1008,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 key={node.id}
                 internalNodes={macroRouting.internalNodes}
                 onUpdateNode={macroRouting.onUpdateNode}
+                recording={macroRouting.recording}
             />
         )}
     </>);

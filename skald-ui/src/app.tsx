@@ -720,6 +720,15 @@ const EditorLayout = () => {
                                 onUpdateNote={updateNote}
                                 onSelectStep={onSelectStep}
                                 onExportStep={onExportStep}
+                                // E12 (recording half): the macro pad's Record
+                                // toggle needs the playhead to know which step
+                                // it is baking a P-lock onto, and needs
+                                // playback state so stopping the transport
+                                // ends recording (ParameterPanel.tsx threads
+                                // both into MacroPadSection's `recording` prop
+                                // only for the Instrument's own panel render).
+                                isPlaying={isPlaying}
+                                currentStep={currentStep}
                             />
                         )}
                     </div>

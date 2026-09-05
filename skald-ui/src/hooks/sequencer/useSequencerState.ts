@@ -177,15 +177,39 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
     // chord could only ever have its first note addressed, and the cleanup
     // below deleted every sibling on the step (the "Snap to Scale destroys
     // chords" bug).
-    const updateNote = useCallback((trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => {
+    //
+    // `historyOverride` (E12 — macro-pad P-lock recording): a recording PASS
+    // (Record on -> Record off) writes many steps, one call per step, as the
+    // playhead reaches each one — but the whole pass has to land as ONE undo
+    // entry, not one per step. The default gesture below is keyed on
+    // (trackId, step, notePitch, fields), which is right for a drag or a
+    // typed edit (each field on each note coalesces on its own) but would
+    // open a fresh entry per step for a recording pass, since every step has
+    // a different `step`. Passing a gesture that stays constant for the
+    // whole pass (see MacroPadSection in NodeParameterControls.tsx) makes
+    // every step's write coalesce into the one entry the pass opened with,
+    // through the SAME idle-window mechanism (`useEditorHistory.ts`,
+    // `GESTURE_IDLE_MS`) every other continuous-input gesture in this app
+    // already relies on.
+    const updateNote = useCallback((
+        trackId: string,
+        step: number,
+        changes: Partial<NoteEvent>,
+        notePitch?: number,
+        historyOverride?: { label: string; gesture: string },
+    ) => {
         const track = tracksRef.current.find(t => t.id === trackId);
         if (!track) return;
 
-        // Shift/Ctrl/Alt-dragging a note in the grid fires this per pointermove;
-        // target+field keying makes one drag one entry, and duration-then-
-        // velocity two, however fast they follow each other.
-        const fields = Object.keys(changes).slice().sort().join(',');
-        pushHistory('Edit note', { gesture: `note:${trackId}:${step}:${notePitch ?? ''}:${fields}` });
+        if (historyOverride) {
+            pushHistory(historyOverride.label, { gesture: historyOverride.gesture });
+        } else {
+            // Shift/Ctrl/Alt-dragging a note in the grid fires this per pointermove;
+            // target+field keying makes one drag one entry, and duration-then-
+            // velocity two, however fast they follow each other.
+            const fields = Object.keys(changes).slice().sort().join(',');
+            pushHistory('Edit note', { gesture: `note:${trackId}:${step}:${notePitch ?? ''}:${fields}` });
+        }
 
         mapTracks(t => {
             if (t.id !== trackId) return t;

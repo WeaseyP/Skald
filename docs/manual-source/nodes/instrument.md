@@ -157,7 +157,7 @@ The per-step P-lock editor does not show a Randomize section (`skald-ui/src/comp
 
 ### Macro Pad
 
-Below Randomize, an XY pad lets you assign either axis to one or more parameters on nodes inside the subgraph and drive them live by dragging — see the Sequencer chapter's "Macro Pad" for the full picture, including why the assignment resets when you switch instruments and what recording into the pattern would still need (`skald-ui/src/components/NodeParameterControls.tsx::MacroPadSection`).
+Below Randomize, an XY pad lets you assign either axis to one or more parameters on nodes inside the subgraph and drive them live by dragging, and a **⏺ Record** toggle bakes that same dragging into P-locks on this instrument's track while the sequencer plays — see the Sequencer chapter's "Macro Pad" for the full picture, including why the assignment resets when you switch instruments and how recording decides which steps get written (`skald-ui/src/components/NodeParameterControls.tsx::MacroPadSection`).
 
 ## Try it (hands-on)
 
