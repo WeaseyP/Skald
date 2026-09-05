@@ -177,11 +177,22 @@ Kick_note_on :: proc(p: ^Kick_Processor, note: u8, velocity: f32, duration: f32)
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<1 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_3_stage != .Release && p.voices[i].adsr_3_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<1 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -366,7 +377,6 @@ Kick_process :: proc(p: ^Kick_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_3_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_3_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.050000000)) > 0 do envelope = voice.adsr_3_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.050000000)), 0.000001))); else do envelope = 0.0;
@@ -481,11 +491,22 @@ Lead_note_on :: proc(p: ^Lead_Processor, note: u8, velocity: f32, duration: f32)
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_3_stage != .Release && p.voices[i].adsr_3_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -675,7 +696,6 @@ Lead_process :: proc(p: ^Lead_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.600000000));
 				voice.adsr_3_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_3_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.220000000)) > 0 do envelope = voice.adsr_3_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.220000000)), 0.000001))); else do envelope = 0.0;
@@ -765,11 +785,22 @@ Kick_2_note_on :: proc(p: ^Kick_2_Processor, note: u8, velocity: f32, duration: 
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<1 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_2_stage != .Release && p.voices[i].adsr_2_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<1 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -930,7 +961,6 @@ Kick_2_process :: proc(p: ^Kick_2_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_2_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_2_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.030000000)) > 0 do envelope = voice.adsr_2_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.030000000)), 0.000001))); else do envelope = 0.0;
@@ -1020,11 +1050,22 @@ Bass_note_on :: proc(p: ^Bass_Processor, note: u8, velocity: f32, duration: f32)
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<2 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_3_stage != .Release && p.voices[i].adsr_3_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<2 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -1238,7 +1279,6 @@ Bass_process :: proc(p: ^Bass_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.400000000));
 				voice.adsr_3_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_3_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.200000000)) > 0 do envelope = voice.adsr_3_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.200000000)), 0.000001))); else do envelope = 0.0;
@@ -1324,11 +1364,22 @@ Kick_3_note_on :: proc(p: ^Kick_3_Processor, note: u8, velocity: f32, duration: 
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<1 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_3_stage != .Release && p.voices[i].adsr_3_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<1 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -1513,7 +1564,6 @@ Kick_3_process :: proc(p: ^Kick_3_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_3_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_3_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.060000000)) > 0 do envelope = voice.adsr_3_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.060000000)), 0.000001))); else do envelope = 0.0;
@@ -1624,11 +1674,22 @@ Lead_2_note_on :: proc(p: ^Lead_2_Processor, note: u8, velocity: f32, duration: 
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_3_stage != .Release && p.voices[i].adsr_3_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -1819,7 +1880,6 @@ Lead_2_process :: proc(p: ^Lead_2_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.500000000));
 				voice.adsr_3_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_3_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.180000000)) > 0 do envelope = voice.adsr_3_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.180000000)), 0.000001))); else do envelope = 0.0;

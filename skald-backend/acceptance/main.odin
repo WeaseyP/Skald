@@ -949,6 +949,132 @@ main :: proc() {
 			}
 		}
 
+	case "steal_release_first":
+		// C6-1 (F-B03-3/6): voice stealing is release-first. Two voices: B is
+		// the OLDEST and still held; A is younger but already released. The
+		// pure oldest-by-age steal took B — cutting the note the player was
+		// still holding — while a voice that was only fading out sat there.
+		// Now the releasing voice goes first; age only decides among voices
+		// in the same tier.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			t_a := int(0.1 * sample_rate)
+			t_off_a := int(0.2 * sample_rate)
+			t_c := int(0.3 * sample_rate)
+			ga.Asset_note_on(p, 57, 1.0, 0.0) // B: A3 (220 Hz), oldest, held throughout
+			for i in 0 ..< len(buf) {
+				if i == t_a do ga.Asset_note_on(p, 69, 1.0, 0.0)  // A: A4 (440 Hz)
+				if i == t_off_a do ga.Asset_note_off(p, 69)        // A releases (1.5 s tail)
+				if i == t_c do ga.Asset_note_on(p, 81, 1.0, 0.0)  // C: A5 — must steal A, not B
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				// B (220 Hz) must still be the strongest partial well after the
+				// steal. Before the fix, C stole B and the window held only
+				// C (880 Hz) plus A's fading 440.
+				all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.6, 1.0, 220.0, 5.0, .Left)
+			}
+		}
+
+	case "noadsr_fade":
+		// C6-3 (F-B03-5): a voice with no ADSR used to be switched off at the
+		// exact sample its duration expired — the default _trigger walks into
+		// this — which is a hard cut mid-waveform, an audible click. A short
+		// linear fade now follows the duration. Same discontinuity gate as
+		// steal_click, around the expiry sample.
+		{
+			dur: f32 = 0.2006 // 88.26 cycles of 440 Hz: the cut lands near a peak, not on a zero crossing
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, dur)
+			n_cut := int(dur * sample_rate)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				all_pass &= assert_audible(buf, .Left)
+				cut_max: f32 = 0.0
+				for i in n_cut - 4 ..< n_cut + int(0.006 * sample_rate) {
+					d := abs(buf[i].l - buf[i - 1].l)
+					if d > cut_max do cut_max = d
+				}
+				other_max: f32 = 0.0
+				for i in 1000 ..< n_cut - 4 {
+					d := abs(buf[i].l - buf[i - 1].l)
+					if d > other_max do other_max = d
+				}
+				if cut_max > 1.5 * other_max {
+					fmt.eprintfln(
+						"FAIL noadsr_fade: discontinuity %.4f at duration expiry (steady-state max %.4f) — the no-ADSR hard cut is back",
+						cut_max, other_max,
+					)
+					all_pass = false
+				}
+				// And the voice does end: silence shortly after the fade.
+				all_pass &= assert_silence_after(buf, sample_rate, dur + 0.05)
+			}
+		}
+
+	case "sustain_zero_hold":
+		// C6-4 (SKB-041, EDITORIAL C14): an ADSR whose sustain is 0 used to
+		// flip its stage to Idle the moment the decay ended — and an Idle
+		// envelope marks the whole VOICE inactive, so a held note whose ADSR
+		// only shapes the filter cutoff went silent after 0.1 s while the
+		// key was still down. The envelope now sits at its sustain level
+		// until note_off/duration starts the Release the UI draws.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			ga.Asset_note_on(p, 57, 1.0, 0.0) // held for the whole buffer
+			for i in 0 ..< len(buf) {
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				// Audible well after attack+decay (0.105 s). Before the fix the
+				// voice was inactive from ~0.11 s and this window was silent.
+				all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.5, 1.0, 220.0, 5.0, .Left)
+			}
+		}
+
+	case "lfo_retrigger":
+		// C6-2 (F-B03-2): the fresh-voice reset skipped LFO and Sample & Hold
+		// state, so a per-voice LFO kept its phase from the previous note and
+		// the same patch sounded different on every retrigger. The reset now
+		// covers them: two fresh notes must start with the same modulation.
+		// The LFO (0.25 Hz) drives the VCA gain; without the reset the second
+		// note starts 45 degrees further along and noticeably louder.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			t_two := int(0.5 * sample_rate)
+			ga.Asset_note_on(p, 69, 1.0, 0.3)
+			for i in 0 ..< len(buf) {
+				if i == t_two do ga.Asset_note_on(p, 69, 1.0, 0.3)
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				rms_first := compute_rms(buf[int(0.02 * sample_rate):int(0.08 * sample_rate)], .Left)
+				rms_second := compute_rms(buf[t_two + int(0.02 * sample_rate):t_two + int(0.08 * sample_rate)], .Left)
+				if rms_first <= 0.01 || abs(rms_first - rms_second) > 0.05 * rms_first {
+					fmt.eprintfln(
+						"FAIL lfo_retrigger: first-note RMS %.4f vs second-note RMS %.4f — the LFO did not restart with the fresh voice",
+						rms_first, rms_second,
+					)
+					all_pass = false
+				}
+			}
+		}
+
 	case "steal_click":
 		// Voice-steal continuity gate: voice_count=1 patch holds A4, then a
 		// second note_on steals the only voice. The retrigger must be

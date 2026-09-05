@@ -241,11 +241,22 @@ GW_Splitter_Echo_Stab_note_on :: proc(p: ^GW_Splitter_Echo_Stab_Processor, note:
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<5 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_split_amp_stage != .Release && p.voices[i].adsr_split_amp_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<5 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -549,7 +560,6 @@ GW_Splitter_Echo_Stab_process :: proc(p: ^GW_Splitter_Echo_Stab_Processor) -> (f
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_split_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_split_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_split_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;

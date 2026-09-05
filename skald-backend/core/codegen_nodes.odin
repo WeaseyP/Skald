@@ -122,7 +122,12 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan
 	fmt.sbprint(sb, "\t\t\tcase .Sustain:\n")
 	fmt.sbprintf(sb, "\t\t\t\tenvelope = (%s);\n", sustain_str)
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
-	fmt.sbprintf(sb, "\t\t\t\tif envelope <= 0.0001 do voice.adsr_%s_stage = .Idle;\n", node.id)
+	// C6-4 (SKB-041): Sustain used to jump straight to Idle when the level was
+	// <= 0.0001 — and an Idle envelope marks the whole voice inactive, so a
+	// held note whose ADSR only shaped a filter went silent at the end of the
+	// decay, and the Release the UI draws never ran. A sustain of 0 is a
+	// level, not an end: the stage now waits for note_off/duration like any
+	// other, and the one-shot _trigger already auto-releases at attack+decay.
 	fmt.sbprint(sb, "\t\t\tcase .Release:\n")
 	fmt.sbprint(sb, "\t\t\t\ttime_in_release := voice.age - voice.time_released;\n")
 	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_release_level * (1.0 - (time_in_release / math.max(f32(%s), 0.000001))); else do envelope = 0.0;\n", release_str, node.id, release_str)
@@ -580,6 +585,7 @@ generate_graph_output_adds :: proc(
 	graph: ^Graph,
 	bus_nodes: map[string]bool,
 	bus_pass: bool,
+	gain_suffix: string = "", // C6-3: " * voice_gain" on the voice pass of a no-ADSR graph
 ) {
 	sources := find_inputs_for_port(graph, node.id, "input")
 	defer delete(sources)
@@ -588,12 +594,12 @@ generate_graph_output_adds :: proc(
 		src_node, found := graph.nodes[src.id]
 		if !found do continue
 		if src_node.type == "Panner" && (src.port == "" || src.port == "output") {
-			fmt.sbprintf(sb, "\t\toutput_left += node_%s_out_left\n", src.id)
-			fmt.sbprintf(sb, "\t\toutput_right += node_%s_out_right\n", src.id)
+			fmt.sbprintf(sb, "\t\toutput_left += node_%s_out_left%s\n", src.id, gain_suffix)
+			fmt.sbprintf(sb, "\t\toutput_right += node_%s_out_right%s\n", src.id, gain_suffix)
 		} else {
 			v := get_output_var(src.id, src.port)
-			fmt.sbprintf(sb, "\t\toutput_left += %s\n", v)
-			fmt.sbprintf(sb, "\t\toutput_right += %s\n", v)
+			fmt.sbprintf(sb, "\t\toutput_left += %s%s\n", v, gain_suffix)
+			fmt.sbprintf(sb, "\t\toutput_right += %s%s\n", v, gain_suffix)
 		}
 	}
 }

@@ -195,6 +195,7 @@ Alarm_note_on :: proc(p: ^Alarm_Processor, note: u8, velocity: f32, duration: f3
 	}
 	v.duration = duration
 	if !stolen {
+		v.lfo_1_phase = 0.0
 		v.osc_2_phase = {}
 	}
 }
@@ -289,6 +290,11 @@ Alarm_process :: proc(p: ^Alarm_Processor) -> (f32, f32) {
 		}
 		if voice.age >= voice.duration && voice.duration > 0.0 {
 		}
+		voice_gain: f32 = 1.0
+		if voice.duration > 0.0 && voice.age > voice.duration {
+			voice_gain = 1.0 - (voice.age - voice.duration) / f32(0.005000000)
+			if voice_gain < 0.0 do voice_gain = 0.0
+		}
 		node_1_out: f32 = 0.0
 		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
@@ -314,9 +320,9 @@ Alarm_process :: proc(p: ^Alarm_Processor) -> (f32, f32) {
 			node_2_out = (unison_out / f32(unison_count)) * ((f32(0.500000000)) + (node_1_out));
 		}
 
-		output_left += node_2_out
-		output_right += node_2_out
-		if voice.duration > 0.0 && voice.age >= voice.duration do voice.active = false
+		output_left += node_2_out * voice_gain
+		output_right += node_2_out * voice_gain
+		if voice.duration > 0.0 && voice.age >= voice.duration + f32(0.005000000) do voice.active = false
 	}
 	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }

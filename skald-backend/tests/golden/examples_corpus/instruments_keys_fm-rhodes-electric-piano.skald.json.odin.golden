@@ -273,11 +273,23 @@ FM_Electric_Piano_note_on :: proc(p: ^FM_Electric_Piano_Processor, note: u8, vel
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<12 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_ep_amp_stage != .Release && p.voices[i].adsr_ep_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_ep_tine_env_stage != .Release && p.voices[i].adsr_ep_tine_env_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<12 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -726,7 +738,6 @@ FM_Electric_Piano_process :: proc(p: ^FM_Electric_Piano_Processor) -> (f32, f32)
 			case .Sustain:
 				envelope = (p.Tine_Env_sustain);
 				voice.adsr_ep_tine_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_ep_tine_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Tine_Env_release) > 0 do envelope = voice.adsr_ep_tine_env_release_level * (1.0 - (time_in_release / math.max(f32(p.Tine_Env_release), 0.000001))); else do envelope = 0.0;
@@ -801,7 +812,6 @@ FM_Electric_Piano_process :: proc(p: ^FM_Electric_Piano_Processor) -> (f32, f32)
 			case .Sustain:
 				envelope = (p.Amp_sustain);
 				voice.adsr_ep_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_ep_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Amp_release) > 0 do envelope = voice.adsr_ep_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.Amp_release), 0.000001))); else do envelope = 0.0;

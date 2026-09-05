@@ -528,7 +528,7 @@ A conservative static warning cannot see a defect that another defect is hiding.
 
 ## Wave C — Schema & Behaviour
 
-> **Wave C:** started 2026-09-05 after Wave B closed. C1 landed; C2–C7 open.
+> **Wave C:** started 2026-09-05 after Wave B closed. C1, C6 and C7 landed; C2–C5 open.
 
 ### C1 — Schema Version + Migration Registry
 - [x] **C1** (M) — ✅ **CLOSED**. `skald-ui/src/utils/saveMigrations.ts`: `CURRENT_SAVE_VERSION = 1`,
@@ -561,10 +561,34 @@ A conservative static warning cannot see a defect that another defect is hiding.
 - [ ] **C5** (M) — Wavetable/FM unison decision; Wavetable PWM + phase; FM Operator output level; Reverb `damping`.
 
 ### C6 — Voice Lifecycle Polish
-- [ ] **C6-1** (S) — Release-first two-tier voice stealing — **SKB-030** (medium)
-- [ ] **C6-2** (S) — Consistent fresh-voice reset for LFO/Noise/S&H — **SKB-031** (medium)
-- [ ] **C6-3** (S) — Short de-click fade for no-ADSR duration expiry — **SKB-030** (medium)
-- [ ] **C6-4** (S) — Fix sustain ≤ 0.0001 discarding the Release stage — **SKB-041** (medium)
+- [x] **C6-1** (S) — ✅ **CLOSED**. `note_on` steals in two tiers: first the oldest voice whose every
+  voice-domain ADSR is in Release/Idle, then the oldest voice outright. Strict `>` on age keeps the
+  lowest index on a tie, so the choice is deterministic (F-B03-6 folded in). A graph with no ADSR has no
+  release tier and keeps the plain oldest-voice rule, so its emitted text is unchanged by this item.
+  Acceptance `steal_release_first`: 2 voices, the oldest note held, a younger one released, a third
+  note arrives — the held note must still be the strongest partial afterwards. Failed at 878.9 Hz
+  (the held 220 Hz note was the one stolen) before the fix. — **SKB-030**
+- [x] **C6-2** (S) — ✅ **CLOSED**. The fresh-voice reset (the `if !stolen` block) now covers LFO
+  phase and Sample & Hold (counter to 0, a new held value drawn at note start). Rule adopted: a fresh
+  voice restarts every *time-based* state; Noise is deliberately left alone because its only state is
+  an RNG stream (reseeding would make every note the same burst) and the pink filter's smoothing memory.
+  Acceptance `lfo_retrigger`: two fresh notes with a 0.25 Hz LFO on the VCA must have equal onset
+  RMS; before the fix the second note started 45° further along the LFO and 27 % louder. — **SKB-031**
+- [x] **C6-3** (S) — ✅ **CLOSED**. A voice with no ADSR lingers `NOADSR_FADE_SECONDS` (5 ms) past
+  its duration under a linear `voice_gain` fade, applied to its GraphOutput adds *and* the per-voice
+  sums that carry it into bus nodes, instead of `active = false` on the expiry sample. Acceptance
+  `noadsr_fade`: the largest sample-to-sample step around expiry must not exceed 1.5× the steady-state
+  maximum, and the voice must still be silent 50 ms later. The first version of the test passed before
+  the fix — a 0.2 s cut of 440 Hz lands exactly on a zero crossing — so the duration is 0.2006 s.
+  — **SKB-030**
+- [x] **C6-4** (S) — ✅ **CLOSED**. Removed the Sustain-stage `if envelope <= 0.0001 do stage = .Idle`
+  jump. An Idle envelope marks the whole voice inactive, so a held note whose ADSR only shaped a filter
+  went silent at the end of the decay and the Release the UI draws never ran. Sustain 0 is now a level
+  like any other: the stage waits for note_off/duration; `_trigger` already auto-releases at
+  attack+decay so one-shots still end. Acceptance `sustain_zero_hold`: sustain 0 on a filter-cutoff
+  envelope, note held for 2 s, 220 Hz must be the peak in the 0.5–1.0 s window (was silence).
+  Goldens: 52 fixture + 184 corpus deletions of the Idle line, all enumerated before `update`.
+  — **SKB-041**
 
 ### C7 — BPM-Sync Value Hygiene
 - [x] **C7** (S) — ✅ **CLOSED**. `utils/syncNormalize.ts`: `normalizeSyncedFreeRun` writes the value a

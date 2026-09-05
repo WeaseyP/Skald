@@ -284,6 +284,11 @@ DistDefault_process :: proc(p: ^DistDefault_Processor) -> (f32, f32) {
 		voice.age += 1.0 / sample_rate;
 		if voice.age >= voice.duration && voice.duration > 0.0 {
 		}
+		voice_gain: f32 = 1.0
+		if voice.duration > 0.0 && voice.age > voice.duration {
+			voice_gain = 1.0 - (voice.age - voice.duration) / f32(0.005000000)
+			if voice_gain < 0.0 do voice_gain = 0.0
+		}
 		node_1_out: f32 = 0.0
 		node_2_out: f32 = 0.0
 		node_3_out: f32 = 0.0
@@ -315,9 +320,9 @@ DistDefault_process :: proc(p: ^DistDefault_Processor) -> (f32, f32) {
 			node_2_out = dist_in_2 * (1.0 - mix_2) + voice.dist_2_tone * mix_2;
 		}
 
-		output_left += node_2_out
-		output_right += node_2_out
-		if voice.duration > 0.0 && voice.age >= voice.duration do voice.active = false
+		output_left += node_2_out * voice_gain
+		output_right += node_2_out * voice_gain
+		if voice.duration > 0.0 && voice.age >= voice.duration + f32(0.005000000) do voice.active = false
 	}
 	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }

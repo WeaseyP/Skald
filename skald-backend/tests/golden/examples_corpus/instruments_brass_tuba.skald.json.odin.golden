@@ -228,11 +228,23 @@ Tuba_note_on :: proc(p: ^Tuba_Processor, note: u8, velocity: f32, duration: f32)
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<8 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_tuba_amp_stage != .Release && p.voices[i].adsr_tuba_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_tuba_blow_stage != .Release && p.voices[i].adsr_tuba_blow_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<8 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -291,6 +303,7 @@ Tuba_note_on :: proc(p: ^Tuba_Processor, note: u8, velocity: f32, duration: f32)
 		v.filter_tuba_filter_low = 0.0
 		v.filter_tuba_filter_band = 0.0
 		v.osc_tuba_osc_phase = {}
+		v.lfo_tuba_vibrato_phase = 0.0
 	}
 }
 
@@ -654,7 +667,6 @@ Tuba_process :: proc(p: ^Tuba_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Blow_sustain);
 				voice.adsr_tuba_blow_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_tuba_blow_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Blow_release) > 0 do envelope = voice.adsr_tuba_blow_release_level * (1.0 - (time_in_release / math.max(f32(p.Blow_release), 0.000001))); else do envelope = 0.0;
@@ -728,7 +740,6 @@ Tuba_process :: proc(p: ^Tuba_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Amp_sustain);
 				voice.adsr_tuba_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_tuba_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Amp_release) > 0 do envelope = voice.adsr_tuba_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.Amp_release), 0.000001))); else do envelope = 0.0;

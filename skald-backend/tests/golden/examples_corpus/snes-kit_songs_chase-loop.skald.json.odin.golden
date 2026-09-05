@@ -276,11 +276,23 @@ SNES_Brass_Stabs_note_on :: proc(p: ^SNES_Brass_Stabs_Processor, note: u8, veloc
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<6 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_brass_amp_stage != .Release && p.voices[i].adsr_brass_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_brass_fenv_stage != .Release && p.voices[i].adsr_brass_fenv_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<6 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -581,7 +593,6 @@ SNES_Brass_Stabs_process :: proc(p: ^SNES_Brass_Stabs_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.sustain);
 				voice.adsr_brass_fenv_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_brass_fenv_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.080000000)) > 0 do envelope = voice.adsr_brass_fenv_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.080000000)), 0.000001))); else do envelope = 0.0;
@@ -663,7 +674,6 @@ SNES_Brass_Stabs_process :: proc(p: ^SNES_Brass_Stabs_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.650000000));
 				voice.adsr_brass_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_brass_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_brass_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;
@@ -833,11 +843,22 @@ SNES_Crunch_Guitar_note_on :: proc(p: ^SNES_Crunch_Guitar_Processor, note: u8, v
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_gtr_amp_stage != .Release && p.voices[i].adsr_gtr_amp_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -1150,7 +1171,6 @@ SNES_Crunch_Guitar_process :: proc(p: ^SNES_Crunch_Guitar_Processor) -> (f32, f3
 			case .Sustain:
 				envelope = (p.sustain);
 				voice.adsr_gtr_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_gtr_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_gtr_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;
@@ -1402,11 +1422,22 @@ SNES_Echo_Bell_note_on :: proc(p: ^SNES_Echo_Bell_Processor, note: u8, velocity:
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_bell_amp_stage != .Release && p.voices[i].adsr_bell_amp_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -1672,7 +1703,6 @@ SNES_Echo_Bell_process :: proc(p: ^SNES_Echo_Bell_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_bell_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_bell_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.500000000)) > 0 do envelope = voice.adsr_bell_amp_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.500000000)), 0.000001))); else do envelope = 0.0;
@@ -1858,11 +1888,22 @@ SNES_Hat_note_on :: proc(p: ^SNES_Hat_Processor, note: u8, velocity: f32, durati
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_hat_env_stage != .Release && p.voices[i].adsr_hat_env_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -2083,7 +2124,6 @@ SNES_Hat_process :: proc(p: ^SNES_Hat_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_hat_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_hat_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.020000000)) > 0 do envelope = voice.adsr_hat_env_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.020000000)), 0.000001))); else do envelope = 0.0;
@@ -2274,11 +2314,23 @@ SNES_Kick_note_on :: proc(p: ^SNES_Kick_Processor, note: u8, velocity: f32, dura
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<2 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_kick_amp_stage != .Release && p.voices[i].adsr_kick_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_kick_pitch_stage != .Release && p.voices[i].adsr_kick_pitch_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<2 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -2549,7 +2601,6 @@ SNES_Kick_process :: proc(p: ^SNES_Kick_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_kick_pitch_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_kick_pitch_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.010000000)) > 0 do envelope = voice.adsr_kick_pitch_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.010000000)), 0.000001))); else do envelope = 0.0;
@@ -2607,7 +2658,6 @@ SNES_Kick_process :: proc(p: ^SNES_Kick_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_kick_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_kick_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.040000000)) > 0 do envelope = voice.adsr_kick_amp_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.040000000)), 0.000001))); else do envelope = 0.0;
@@ -2816,11 +2866,22 @@ SNES_Pulse_Lead_note_on :: proc(p: ^SNES_Pulse_Lead_Processor, note: u8, velocit
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<2 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_lead_amp_stage != .Release && p.voices[i].adsr_lead_amp_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<2 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -2860,8 +2921,10 @@ SNES_Pulse_Lead_note_on :: proc(p: ^SNES_Pulse_Lead_Processor, note: u8, velocit
 	v.adsr_lead_amp_release_level = adsr_lead_amp_prev_level
 	if !stolen {
 		v.osc_lead_osc_phase = {}
+		v.lfo_lead_pwm_lfo_phase = 0.0
 		v.filter_lead_tone_low = 0.0
 		v.filter_lead_tone_band = 0.0
+		v.lfo_lead_vib_lfo_phase = 0.0
 	}
 }
 
@@ -3186,7 +3249,6 @@ SNES_Pulse_Lead_process :: proc(p: ^SNES_Pulse_Lead_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.750000000));
 				voice.adsr_lead_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_lead_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_lead_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;
@@ -3416,11 +3478,23 @@ SNES_Slap_Bass_note_on :: proc(p: ^SNES_Slap_Bass_Processor, note: u8, velocity:
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<1 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_bass_amp_stage != .Release && p.voices[i].adsr_bass_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_bass_fenv_stage != .Release && p.voices[i].adsr_bass_fenv_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<1 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -3726,7 +3800,6 @@ SNES_Slap_Bass_process :: proc(p: ^SNES_Slap_Bass_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.100000000));
 				voice.adsr_bass_fenv_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_bass_fenv_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.050000000)) > 0 do envelope = voice.adsr_bass_fenv_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.050000000)), 0.000001))); else do envelope = 0.0;
@@ -3784,7 +3857,6 @@ SNES_Slap_Bass_process :: proc(p: ^SNES_Slap_Bass_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.sustain);
 				voice.adsr_bass_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_bass_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.080000000)) > 0 do envelope = voice.adsr_bass_amp_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.080000000)), 0.000001))); else do envelope = 0.0;
@@ -4037,11 +4109,23 @@ SNES_Snare_note_on :: proc(p: ^SNES_Snare_Processor, note: u8, velocity: f32, du
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<3 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_snare_noise_env_stage != .Release && p.voices[i].adsr_snare_noise_env_stage != .Idle do releasing = false
+			if p.voices[i].adsr_snare_tone_env_stage != .Release && p.voices[i].adsr_snare_tone_env_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<3 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -4387,7 +4471,6 @@ SNES_Snare_process :: proc(p: ^SNES_Snare_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_snare_tone_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_snare_tone_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.030000000)) > 0 do envelope = voice.adsr_snare_tone_env_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.030000000)), 0.000001))); else do envelope = 0.0;
@@ -4422,7 +4505,6 @@ SNES_Snare_process :: proc(p: ^SNES_Snare_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_snare_noise_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_snare_noise_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.050000000)) > 0 do envelope = voice.adsr_snare_noise_env_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.050000000)), 0.000001))); else do envelope = 0.0;
@@ -4627,11 +4709,23 @@ SNES_Tom_note_on :: proc(p: ^SNES_Tom_Processor, note: u8, velocity: f32, durati
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<3 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_tom_amp_stage != .Release && p.voices[i].adsr_tom_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_tom_pitch_stage != .Release && p.voices[i].adsr_tom_pitch_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<3 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -4877,7 +4971,6 @@ SNES_Tom_process :: proc(p: ^SNES_Tom_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_tom_pitch_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_tom_pitch_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.010000000)) > 0 do envelope = voice.adsr_tom_pitch_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.010000000)), 0.000001))); else do envelope = 0.0;
@@ -4935,7 +5028,6 @@ SNES_Tom_process :: proc(p: ^SNES_Tom_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_tom_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_tom_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.060000000)) > 0 do envelope = voice.adsr_tom_amp_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.060000000)), 0.000001))); else do envelope = 0.0;

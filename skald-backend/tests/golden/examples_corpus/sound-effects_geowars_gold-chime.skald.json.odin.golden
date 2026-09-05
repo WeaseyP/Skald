@@ -236,11 +236,22 @@ GW_SFX_Gold_Chime_note_on :: proc(p: ^GW_SFX_Gold_Chime_Processor, note: u8, vel
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<6 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_chime_strike_stage != .Release && p.voices[i].adsr_chime_strike_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<6 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -532,7 +543,6 @@ GW_SFX_Gold_Chime_process :: proc(p: ^GW_SFX_Gold_Chime_Processor) -> (f32, f32)
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_chime_strike_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_chime_strike_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_chime_strike_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;

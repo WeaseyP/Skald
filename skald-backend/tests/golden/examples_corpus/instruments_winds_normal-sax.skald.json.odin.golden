@@ -329,11 +329,24 @@ Normal_Sax_note_on :: proc(p: ^Normal_Sax_Processor, note: u8, velocity: f32, du
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_sax_amp_stage != .Release && p.voices[i].adsr_sax_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_sax_puff_stage != .Release && p.voices[i].adsr_sax_puff_stage != .Idle do releasing = false
+			if p.voices[i].adsr_sax_scoop_stage != .Release && p.voices[i].adsr_sax_scoop_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -414,6 +427,7 @@ Normal_Sax_note_on :: proc(p: ^Normal_Sax_Processor, note: u8, velocity: f32, du
 		v.filter_sax_formant_low = 0.0
 		v.filter_sax_formant_band = 0.0
 		v.osc_sax_reed_phase = {}
+		v.lfo_sax_vibrato_phase = 0.0
 	}
 }
 
@@ -984,7 +998,6 @@ Normal_Sax_process :: proc(p: ^Normal_Sax_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Scoop_sustain);
 				voice.adsr_sax_scoop_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_sax_scoop_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Scoop_release) > 0 do envelope = voice.adsr_sax_scoop_release_level * (1.0 - (time_in_release / math.max(f32(p.Scoop_release), 0.000001))); else do envelope = 0.0;
@@ -1042,7 +1055,6 @@ Normal_Sax_process :: proc(p: ^Normal_Sax_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Puff_sustain);
 				voice.adsr_sax_puff_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_sax_puff_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Puff_release) > 0 do envelope = voice.adsr_sax_puff_release_level * (1.0 - (time_in_release / math.max(f32(p.Puff_release), 0.000001))); else do envelope = 0.0;
@@ -1135,7 +1147,6 @@ Normal_Sax_process :: proc(p: ^Normal_Sax_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Amp_sustain);
 				voice.adsr_sax_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_sax_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Amp_release) > 0 do envelope = voice.adsr_sax_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.Amp_release), 0.000001))); else do envelope = 0.0;

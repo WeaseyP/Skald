@@ -1,0 +1,30 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "lforetrigger",
+        "name": "Asset",
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "audio_graph": {
+          "nodes": [
+            { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 440, "waveform": "Sine", "amplitude": 1.0 } },
+            { "id": "lfo", "type": "LFO", "parameters": { "waveform": "Sine", "frequency": 0.25, "amplitude": 0.4, "bpmSync": false } },
+            { "id": "vca", "type": "Gain", "parameters": { "gain": 0.5 } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "osc", "from_port": "output", "to_node": "vca", "to_port": "input" },
+            { "from_node": "lfo", "from_port": "output", "to_node": "vca", "to_port": "input_gain" },
+            { "from_node": "vca", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

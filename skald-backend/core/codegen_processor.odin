@@ -5,6 +5,13 @@ import "core:math"
 import "core:os"
 import "core:strings"
 
+// C6-3 (F-B03-5): a voice with no ADSR used to be switched off at the exact
+// sample its duration expired — a hard cut mid-waveform, an audible click that
+// the default _trigger (duration 1.0 s) walked straight into. The voice now
+// lingers this long past its duration with a linear fade to zero. Short enough
+// to read as "the note ended", long enough that the step is never a click.
+NOADSR_FADE_SECONDS :: 0.005
+
 emit_param_case :: proc(sb: ^strings.Builder, res: Exposed_Resolution, alias: string) {
 	if alias != "" {
 		fmt.sbprintf(sb, "\tcase \"%s\", \"%s\":\n", res.field_name, alias)
@@ -403,13 +410,48 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\tstolen := false\n")
 	fmt.sbprint(&sb, "\tif voice_idx == -1 {\n")
 	fmt.sbprint(&sb, "\t\tstolen = true\n")
-	fmt.sbprint(&sb, "\t\toldest_age: f32 = -1.0\n")
-	fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
-	fmt.sbprint(&sb, "\t\t\tif p.voices[i].age > oldest_age {\n")
-	fmt.sbprint(&sb, "\t\t\t\toldest_age = p.voices[i].age\n")
-	fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
-	fmt.sbprint(&sb, "\t\t\t}\n")
-	fmt.sbprint(&sb, "\t\t}\n")
+	// C6-1 (F-B03-3, F-B03-6): release-first, then oldest. A pure oldest-by-age
+	// steal cut the note the player was still holding while a voice that was
+	// only fading out kept its slot. A voice is "releasing" when every
+	// voice-domain ADSR has left Attack/Decay/Sustain; note_off releases them
+	// all at once, so one envelope lagging another cannot happen. Strict `>`
+	// on age keeps the lowest index on a tie, so the same voice is stolen on
+	// every run. A graph with no ADSR has no release tier and keeps the plain
+	// oldest-voice rule.
+	steal_adsr_ids := make([dynamic]string, context.temp_allocator)
+	for node in all_nodes {
+		if node.type == "ADSR" && !bus_nodes[node.id] do append(&steal_adsr_ids, node.id)
+	}
+	if len(steal_adsr_ids) > 0 {
+		fmt.sbprint(&sb, "\t\toldest_releasing_age: f32 = -1.0\n")
+		fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
+		fmt.sbprint(&sb, "\t\t\treleasing := true\n")
+		for id in steal_adsr_ids {
+			fmt.sbprintf(&sb, "\t\t\tif p.voices[i].adsr_%s_stage != .Release && p.voices[i].adsr_%s_stage != .Idle do releasing = false\n", id, id)
+		}
+		fmt.sbprint(&sb, "\t\t\tif releasing && p.voices[i].age > oldest_releasing_age {\n")
+		fmt.sbprint(&sb, "\t\t\t\toldest_releasing_age = p.voices[i].age\n")
+		fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
+		fmt.sbprint(&sb, "\t\t\t}\n")
+		fmt.sbprint(&sb, "\t\t}\n")
+		fmt.sbprint(&sb, "\t\tif voice_idx == -1 {\n")
+		fmt.sbprint(&sb, "\t\t\toldest_age: f32 = -1.0\n")
+		fmt.sbprintf(&sb, "\t\t\tfor i in 0..<%d {{\n", polyphony)
+		fmt.sbprint(&sb, "\t\t\t\tif p.voices[i].age > oldest_age {\n")
+		fmt.sbprint(&sb, "\t\t\t\t\toldest_age = p.voices[i].age\n")
+		fmt.sbprint(&sb, "\t\t\t\t\tvoice_idx = i\n")
+		fmt.sbprint(&sb, "\t\t\t\t}\n")
+		fmt.sbprint(&sb, "\t\t\t}\n")
+		fmt.sbprint(&sb, "\t\t}\n")
+	} else {
+		fmt.sbprint(&sb, "\t\toldest_age: f32 = -1.0\n")
+		fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
+		fmt.sbprint(&sb, "\t\t\tif p.voices[i].age > oldest_age {\n")
+		fmt.sbprint(&sb, "\t\t\t\toldest_age = p.voices[i].age\n")
+		fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
+		fmt.sbprint(&sb, "\t\t\t}\n")
+		fmt.sbprint(&sb, "\t\t}\n")
+	}
 	fmt.sbprint(&sb, "\t}\n\n")
 
 	fmt.sbprint(&sb, "\tv := &p.voices[voice_idx]\n")
@@ -471,6 +513,19 @@ generate_processor_code :: proc(
 				fmt.sbprintf(&reset_sb, "\t\tv.wavetable_%s_phase = {{}}\n", node.id)
 			case "Distortion":
 				fmt.sbprintf(&reset_sb, "\t\tv.dist_%s_tone = 0.0\n", node.id)
+			// C6-2 (F-B03-2): the reset used to stop at the audio-path nodes, so a
+			// per-voice LFO carried its phase over from the previous note and the
+			// same patch sounded different on every retrigger. The rule is now
+			// "a fresh voice starts every TIME-based state from zero": LFO phase
+			// restarts, Sample & Hold draws a new held value at note start and
+			// steps one full interval later. Noise is deliberately NOT touched:
+			// its only state is an RNG stream (reseeding it would make every note
+			// the same noise burst) and the pink filter's smoothing memory.
+			case "LFO":
+				fmt.sbprintf(&reset_sb, "\t\tv.lfo_%s_phase = 0.0\n", node.id)
+			case "SampleHold":
+				fmt.sbprintf(&reset_sb, "\t\tv.sh_%s_counter = 0\n", node.id)
+				fmt.sbprintf(&reset_sb, "\t\tv.sh_%s_current_value = next_float32(&v.sh_%s_rng) * 2.0 - 1.0\n", node.id, node.id)
 			}
 		}
 		if strings.builder_len(reset_sb) > 0 {
@@ -763,6 +818,19 @@ generate_processor_code :: proc(
     if has_adsr_in_graph {
         fmt.sbprint(&sb, "\t\tvoice_busy := false\n")
     }
+    // C6-3: without an ADSR nothing shapes the voice's end, so the processor
+    // applies the de-click fade itself, on every path a voice feeds — the
+    // direct GraphOutput adds and the per-voice sums that carry it into bus
+    // nodes. With an ADSR the envelope owns the tail and the suffix is empty,
+    // which also keeps every ADSR patch's emitted text unchanged.
+    voice_gain_suffix := has_adsr_in_graph ? "" : " * voice_gain"
+    if !has_adsr_in_graph {
+        fmt.sbprint(&sb, "\t\tvoice_gain: f32 = 1.0\n")
+        fmt.sbprint(&sb, "\t\tif voice.duration > 0.0 && voice.age > voice.duration {\n")
+        fmt.sbprintf(&sb, "\t\t\tvoice_gain = 1.0 - (voice.age - voice.duration) / %s\n", f32_literal(NOADSR_FADE_SECONDS))
+        fmt.sbprint(&sb, "\t\t\tif voice_gain < 0.0 do voice_gain = 0.0\n")
+        fmt.sbprint(&sb, "\t\t}\n")
+    }
 
 	for node in all_nodes {
 		if bus_nodes[node.id] do continue
@@ -806,7 +874,7 @@ generate_processor_code :: proc(
         case "SampleHold":
              generate_sample_hold_code(&sb, node, graph, plan, "voice.")
         case "GraphOutput":
-             generate_graph_output_adds(&sb, node, graph, bus_nodes, false)
+             generate_graph_output_adds(&sb, node, graph, bus_nodes, false, voice_gain_suffix)
         case:
             // The message has always said "refusing"; until packet B9-1 the
             // branch then fell through, the file was written and main printed
@@ -820,7 +888,7 @@ generate_processor_code :: proc(
     }
 
 	for var_name in cross_vars_ordered {
-		fmt.sbprintf(&sb, "\t\t%s_vsum += %s\n", var_name, var_name)
+		fmt.sbprintf(&sb, "\t\t%s_vsum += %s%s\n", var_name, var_name, voice_gain_suffix)
 	}
 
         has_adsr := false
@@ -834,9 +902,10 @@ generate_processor_code :: proc(
         if has_adsr {
             fmt.sbprint(&sb, "\t\tif !voice_busy do voice.active = false\n")
         } else {
-            fmt.sbprint(
+            fmt.sbprintf(
                 &sb,
-                "\t\tif voice.duration > 0.0 && voice.age >= voice.duration do voice.active = false\n",
+                "\t\tif voice.duration > 0.0 && voice.age >= voice.duration + %s do voice.active = false\n",
+                f32_literal(NOADSR_FADE_SECONDS),
             )
         }
 

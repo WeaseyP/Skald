@@ -258,11 +258,24 @@ Funk_Chop_note_on :: proc(p: ^Funk_Chop_Processor, note: u8, velocity: f32, dura
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<6 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_fk_amp_stage != .Release && p.voices[i].adsr_fk_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_fk_pick_env_stage != .Release && p.voices[i].adsr_fk_pick_env_stage != .Idle do releasing = false
+			if p.voices[i].adsr_fk_snap_env_stage != .Release && p.voices[i].adsr_fk_snap_env_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<6 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -800,7 +813,6 @@ Funk_Chop_process :: proc(p: ^Funk_Chop_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Snap_Env_sustain);
 				voice.adsr_fk_snap_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_fk_snap_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Snap_Env_release) > 0 do envelope = voice.adsr_fk_snap_env_release_level * (1.0 - (time_in_release / math.max(f32(p.Snap_Env_release), 0.000001))); else do envelope = 0.0;
@@ -869,7 +881,6 @@ Funk_Chop_process :: proc(p: ^Funk_Chop_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Scratch_Env_sustain);
 				voice.adsr_fk_pick_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_fk_pick_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Scratch_Env_release) > 0 do envelope = voice.adsr_fk_pick_env_release_level * (1.0 - (time_in_release / math.max(f32(p.Scratch_Env_release), 0.000001))); else do envelope = 0.0;
@@ -923,7 +934,6 @@ Funk_Chop_process :: proc(p: ^Funk_Chop_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Amp_sustain);
 				voice.adsr_fk_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_fk_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.Amp_release) > 0 do envelope = voice.adsr_fk_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.Amp_release), 0.000001))); else do envelope = 0.0;

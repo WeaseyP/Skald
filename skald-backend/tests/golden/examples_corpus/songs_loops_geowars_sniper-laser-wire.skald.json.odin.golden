@@ -204,11 +204,22 @@ GW_Sniper_Laser_Wire_note_on :: proc(p: ^GW_Sniper_Laser_Wire_Processor, note: u
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_wire_amp_stage != .Release && p.voices[i].adsr_wire_amp_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -249,6 +260,8 @@ GW_Sniper_Laser_Wire_note_on :: proc(p: ^GW_Sniper_Laser_Wire_Processor, note: u
 	if !stolen {
 		v.filter_wire_aim_low = 0.0
 		v.filter_wire_aim_band = 0.0
+		v.sh_wire_jitter_counter = 0
+		v.sh_wire_jitter_current_value = next_float32(&v.sh_wire_jitter_rng) * 2.0 - 1.0
 		v.osc_wire_osc_phase = {}
 	}
 }
@@ -526,7 +539,6 @@ GW_Sniper_Laser_Wire_process :: proc(p: ^GW_Sniper_Laser_Wire_Processor) -> (f32
 			case .Sustain:
 				envelope = (p.sustain);
 				voice.adsr_wire_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_wire_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.050000000)) > 0 do envelope = voice.adsr_wire_amp_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.050000000)), 0.000001))); else do envelope = 0.0;

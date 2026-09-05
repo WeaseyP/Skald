@@ -236,11 +236,22 @@ S_H_Wobble_Bass_note_on :: proc(p: ^S_H_Wobble_Bass_Processor, note: u8, velocit
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_wob_amp_stage != .Release && p.voices[i].adsr_wob_amp_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -282,7 +293,10 @@ S_H_Wobble_Bass_note_on :: proc(p: ^S_H_Wobble_Bass_Processor, note: u8, velocit
 		v.dist_wob_drive_tone = 0.0
 		v.filter_wob_filter_low = 0.0
 		v.filter_wob_filter_band = 0.0
+		v.lfo_wob_lfo_phase = 0.0
 		v.osc_wob_osc_phase = {}
+		v.sh_wob_sh_counter = 0
+		v.sh_wob_sh_current_value = next_float32(&v.sh_wob_sh_rng) * 2.0 - 1.0
 	}
 }
 
@@ -710,7 +724,6 @@ S_H_Wobble_Bass_process :: proc(p: ^S_H_Wobble_Bass_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.sustain);
 				voice.adsr_wob_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_wob_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_wob_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;

@@ -178,11 +178,22 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<1 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_3_stage != .Release && p.voices[i].adsr_3_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<1 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -221,6 +232,8 @@ Asset_note_on :: proc(p: ^Asset_Processor, note: u8, velocity: f32, duration: f3
 	v.adsr_3_attack_start = adsr_3_prev_level
 	v.adsr_3_release_level = adsr_3_prev_level
 	if !stolen {
+		v.sh_1_counter = 0
+		v.sh_1_current_value = next_float32(&v.sh_1_rng) * 2.0 - 1.0
 		v.osc_2_phase = {}
 	}
 }
@@ -369,7 +382,6 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_3_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_3_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.200000000)) > 0 do envelope = voice.adsr_3_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.200000000)), 0.000001))); else do envelope = 0.0;

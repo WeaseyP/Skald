@@ -207,11 +207,24 @@ GW_SFX_Kill_Explosion_note_on :: proc(p: ^GW_SFX_Kill_Explosion_Processor, note:
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<6 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_kill_boom_env_stage != .Release && p.voices[i].adsr_kill_boom_env_stage != .Idle do releasing = false
+			if p.voices[i].adsr_kill_crack_env_stage != .Release && p.voices[i].adsr_kill_crack_env_stage != .Idle do releasing = false
+			if p.voices[i].adsr_kill_pitch_stage != .Release && p.voices[i].adsr_kill_pitch_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<6 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -536,7 +549,6 @@ GW_SFX_Kill_Explosion_process :: proc(p: ^GW_SFX_Kill_Explosion_Processor) -> (f
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_kill_pitch_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_kill_pitch_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.010000000)) > 0 do envelope = voice.adsr_kill_pitch_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.010000000)), 0.000001))); else do envelope = 0.0;
@@ -571,7 +583,6 @@ GW_SFX_Kill_Explosion_process :: proc(p: ^GW_SFX_Kill_Explosion_Processor) -> (f
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_kill_crack_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_kill_crack_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.020000000)) > 0 do envelope = voice.adsr_kill_crack_env_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.020000000)), 0.000001))); else do envelope = 0.0;
@@ -629,7 +640,6 @@ GW_SFX_Kill_Explosion_process :: proc(p: ^GW_SFX_Kill_Explosion_Processor) -> (f
 			case .Sustain:
 				envelope = (f32(0.000000000));
 				voice.adsr_kill_boom_env_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_kill_boom_env_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.100000000)) > 0 do envelope = voice.adsr_kill_boom_env_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.100000000)), 0.000001))); else do envelope = 0.0;

@@ -299,11 +299,24 @@ GW_Boss_War_Tuba_note_on :: proc(p: ^GW_Boss_War_Tuba_Processor, note: u8, veloc
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<4 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_war_amp_stage != .Release && p.voices[i].adsr_war_amp_stage != .Idle do releasing = false
+			if p.voices[i].adsr_war_puff_stage != .Release && p.voices[i].adsr_war_puff_stage != .Idle do releasing = false
+			if p.voices[i].adsr_war_scoop_stage != .Release && p.voices[i].adsr_war_scoop_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<4 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -384,6 +397,7 @@ GW_Boss_War_Tuba_note_on :: proc(p: ^GW_Boss_War_Tuba_Processor, note: u8, veloc
 		v.filter_war_formant_low = 0.0
 		v.filter_war_formant_band = 0.0
 		v.osc_war_reed_phase = {}
+		v.lfo_war_vibrato_phase = 0.0
 	}
 }
 
@@ -824,7 +838,6 @@ GW_Boss_War_Tuba_process :: proc(p: ^GW_Boss_War_Tuba_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (f32(1.000000000));
 				voice.adsr_war_scoop_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_war_scoop_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.050000000)) > 0 do envelope = voice.adsr_war_scoop_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.050000000)), 0.000001))); else do envelope = 0.0;
@@ -882,7 +895,6 @@ GW_Boss_War_Tuba_process :: proc(p: ^GW_Boss_War_Tuba_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Puff_sustain);
 				voice.adsr_war_puff_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_war_puff_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (f32(0.100000000)) > 0 do envelope = voice.adsr_war_puff_release_level * (1.0 - (time_in_release / math.max(f32(f32(0.100000000)), 0.000001))); else do envelope = 0.0;
@@ -975,7 +987,6 @@ GW_Boss_War_Tuba_process :: proc(p: ^GW_Boss_War_Tuba_Processor) -> (f32, f32) {
 			case .Sustain:
 				envelope = (p.Amp_sustain);
 				voice.adsr_war_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_war_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_war_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;

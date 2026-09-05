@@ -247,11 +247,22 @@ GW_Boss_Chrome_Pad_note_on :: proc(p: ^GW_Boss_Chrome_Pad_Processor, note: u8, v
 	stolen := false
 	if voice_idx == -1 {
 		stolen = true
-		oldest_age: f32 = -1.0
+		oldest_releasing_age: f32 = -1.0
 		for i in 0..<6 {
-			if p.voices[i].age > oldest_age {
-				oldest_age = p.voices[i].age
+			releasing := true
+			if p.voices[i].adsr_chrome_amp_stage != .Release && p.voices[i].adsr_chrome_amp_stage != .Idle do releasing = false
+			if releasing && p.voices[i].age > oldest_releasing_age {
+				oldest_releasing_age = p.voices[i].age
 				voice_idx = i
+			}
+		}
+		if voice_idx == -1 {
+			oldest_age: f32 = -1.0
+			for i in 0..<6 {
+				if p.voices[i].age > oldest_age {
+					oldest_age = p.voices[i].age
+					voice_idx = i
+				}
 			}
 		}
 	}
@@ -292,6 +303,7 @@ GW_Boss_Chrome_Pad_note_on :: proc(p: ^GW_Boss_Chrome_Pad_Processor, note: u8, v
 	if !stolen {
 		v.filter_chrome_filter_low = 0.0
 		v.filter_chrome_filter_band = 0.0
+		v.lfo_chrome_shimmer_phase = 0.0
 		v.wavetable_chrome_wave_phase = {}
 	}
 }
@@ -586,7 +598,6 @@ GW_Boss_Chrome_Pad_process :: proc(p: ^GW_Boss_Chrome_Pad_Processor) -> (f32, f3
 			case .Sustain:
 				envelope = (f32(0.800000000));
 				voice.adsr_chrome_amp_release_level = envelope;
-				if envelope <= 0.0001 do voice.adsr_chrome_amp_stage = .Idle;
 			case .Release:
 				time_in_release := voice.age - voice.time_released;
 				if (p.release) > 0 do envelope = voice.adsr_chrome_amp_release_level * (1.0 - (time_in_release / math.max(f32(p.release), 0.000001))); else do envelope = 0.0;

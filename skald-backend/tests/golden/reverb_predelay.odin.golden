@@ -348,8 +348,13 @@ Asset_process :: proc(p: ^Asset_Processor) -> (f32, f32) {
 		voice.age += 1.0 / sample_rate;
 		if voice.age >= voice.duration && voice.duration > 0.0 {
 		}
+		voice_gain: f32 = 1.0
+		if voice.duration > 0.0 && voice.age > voice.duration {
+			voice_gain = 1.0 - (voice.age - voice.duration) / f32(0.005000000)
+			if voice_gain < 0.0 do voice_gain = 0.0
+		}
 
-		if voice.duration > 0.0 && voice.age >= voice.duration do voice.active = false
+		if voice.duration > 0.0 && voice.age >= voice.duration + f32(0.005000000) do voice.active = false
 	}
 
 	// --- Bus effects (once per sample, post voice sum) ---
