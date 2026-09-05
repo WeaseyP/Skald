@@ -768,6 +768,42 @@ Backend gates need the `.\` prefix under `cmd /c`; a bare `cmd /c "run_acceptanc
 At `9563a57` these were 33/33, 48/48, **did not compile**, 44 files / 573 tests, 1 / 2. Note the UI
 figure: 44/573 is the tracked-tree number, confirmed by running vitest in a `git archive HEAD` tree.
 
+## To-do (carried out of Wave C, 2026-09-05)
+
+Work the agent left deliberately undone. Each is small and self-contained; none blocks 0.2.
+
+- [ ] **C2-followup** (M, 0.3) — the generated-bindings remainder of C2, each a mechanical consumer of
+  `schema/nodes.json` once ports and per-node state are added to it: generated TS param types (drop the
+  `[key: string]: any` escape hatch), the validator's port tables (`graph_validate.odin`),
+  `normalize_node_type`, struct-field/reset emission, and the sidebar rendered from the node-card
+  `ParamField[]` spec (F-B07-8). None changes a shipped sound.
+- [ ] **SKB-040 / SKB-042 / SKB-055** — listed under C2 as "closes" but described nowhere in the repo
+  (no BUGS.md, no code or doc mention). Recover what they were, or strike them from the C2 row.
+- [ ] **Manual rebuild** — `docs/manual/skald-manual.html` is gitignored (`.gitignore:46`). The
+  manual-source edits from C3 (Instrument: Export ID, Type), C4 (VCA: Gain-in modes) and C5
+  (Wavetable PW/Phase, FM Amp, Reverb Damping) are committed in `docs/manual-source/` but the
+  published HTML is whatever was last built. Run `npm run build:html` in `scripts/manual/` wherever
+  the manual is published.
+
+## For Ryan — decisions only you can make
+
+Two Wave B items were left open on purpose because they are design choices, not defects. Both are
+one-line changes once decided; the agent did not choose.
+
+- [ ] **B7-3-followup-2** — A modulator that feeds **only** a `GraphOutput` today stays voice-domain:
+  it runs per voice, gets a `_vsum`, stops when the voice ends, and is silent during a Delay/Reverb
+  tail. The alternative is bus-domain: it keeps running through the tail and sounds with no voices
+  active. Which do you want? (The item under B7 names the code path.)
+- [ ] **B2-x1** — Which parameters a freshly placed Oscillator exposes by default. Today
+  `defaultOscillatorParams` exposes `frequency`, `amplitude`, `pulseWidth`, `phase`, and a new
+  oscillator is Sine with Fixed Pitch off — so two of the four are dead on arrival and every Generate
+  warns twice per new oscillator (no dead setter is minted; B2 keeps the API honest). Options: trim the
+  list to `amplitude` + `phase` (expose on demand), or make the defaults flip with `waveform` /
+  `fixedPitch`. A UX decision, which is why B2 did not make it.
+- [ ] **Manual publish** — see the rebuild item above; where the HTML goes is yours to decide.
+
+---
+
 ## Standalone Bugs (no wave assignment yet)
 
 | ID | Issue | Severity |
