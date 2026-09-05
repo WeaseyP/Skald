@@ -178,12 +178,66 @@ resolve_unique_names :: proc(project: ^Project) -> []string {
 }
 
 emit_soft_limit_proc :: proc(sb: ^strings.Builder) {
+	// E5 (roadmap 9.9): the count behind the editor's overflow warning. Every
+	// per-asset processor already flushes its OWN non-finite output before it
+	// gets here (see generate_processor_code's guard, its own p.nonfinite_count),
+	// so in practice this only fires for the master-bus sum itself
+	// (project_process / skald_process) — but it is the one call skald_soft_limit
+	// makes no matter which shape called it, so it is the backstop that is
+	// truly impossible to bypass, unlike the per-instrument `limit` flag.
+	fmt.sbprint(sb, "skald_master_flush_count: i32\n\n")
 	fmt.sbprint(sb, "// Soft limiter with a ceiling that really is 1.0 — plain tanh, not\n")
 	fmt.sbprint(sb, "// tanh(x*k)/k, which topped out above 1 and still clipped the device.\n")
 	fmt.sbprint(sb, "// Transparent for small signals (tanh(x) ~= x below ~0.3), saturating\n")
 	fmt.sbprint(sb, "// smoothly instead of clipping as the mix gets hot.\n")
+	fmt.sbprint(sb, "//\n")
+	fmt.sbprint(sb, "// E5: tanh(NaN) is NaN, and tanh(+-Inf) is +-1 — a NaN INPUT would poison\n")
+	fmt.sbprint(sb, "// the entire mix silently, and an Inf input would report a false full-scale\n")
+	fmt.sbprint(sb, "// tone. Flushed to silence and counted instead, here, so this is caught no\n")
+	fmt.sbprint(sb, "// matter which of the three call sites (a per-asset _process, project_process,\n")
+	fmt.sbprint(sb, "// or the wasm shim's skald_process) fed it a bad sample.\n")
 	fmt.sbprint(sb, "skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {\n")
-	fmt.sbprint(sb, "\treturn math.tanh(l), math.tanh(r)\n")
+	fmt.sbprint(sb, "\tlf, rf := l, r\n")
+	fmt.sbprint(sb, "\tif math.is_nan(lf) || math.is_inf(lf) || math.is_nan(rf) || math.is_inf(rf) {\n")
+	fmt.sbprint(sb, "\t\tlf, rf = 0.0, 0.0\n")
+	fmt.sbprint(sb, "\t\tskald_master_flush_count += 1\n")
+	fmt.sbprint(sb, "\t}\n")
+	fmt.sbprint(sb, "\treturn math.tanh(lf), math.tanh(rf)\n")
+	fmt.sbprint(sb, "}\n\n")
+}
+
+// E5 (roadmap 9.9): un-bypassable one-pole DC blocker, y = x - x1 + R*y1.
+// R = 0.995 puts the -3dB cutoff at fc = sample_rate*(1-R)/(2*pi*R) ~= 38 Hz
+// at 48 kHz — below any authored fundamental (nothing in schema/nodes.json
+// gives a node a way to author a deliberate DC offset; a non-zero mean is
+// always an artifact of an asymmetric pulse width, an unstable filter, or
+// feedback, never intent) so there is no expressive cost at steady state.
+//
+// Deliberately NOT called from the per-asset _process (generate_processor_code):
+// a first-order differencing filter like this one rings on a sudden onset —
+// measured up to ~6.5% over the input's own peak for a couple of milliseconds
+// after a note starts, before it settles — and per-asset _process is the
+// numerically-pinned game-facing API (panner_center_unity/panner_mono_sum
+// assert an EXACT 0.5 peak). Applied once instead, after every asset is
+// already summed, on the two master-bus composers: project_process and the
+// wasm shim's skald_process. Both are un-bypassable regardless of any
+// instrument's `limit` flag, which is what roadmap 9.9 actually asks for
+// ("the editor's monitor output pipeline") — see 80-exporting-odin.md.
+emit_dc_block_proc :: proc(sb: ^strings.Builder) {
+	fmt.sbprint(sb, "// E5: one-pole DC blocker state, one instance per master bus (project_process\n")
+	fmt.sbprint(sb, "// or the wasm shim's skald_process — see skald_dc_block below). Reset\n")
+	fmt.sbprint(sb, "// alongside every other master-bus field (project_init / skald_init).\n")
+	fmt.sbprint(sb, "Skald_Dc_Block_State :: struct {\n")
+	fmt.sbprint(sb, "\tx1_l, y1_l, x1_r, y1_r: f32,\n")
+	fmt.sbprint(sb, "}\n\n")
+	fmt.sbprint(sb, "// y = x - x1 + R*y1, R = 0.995 (~38 Hz cutoff at 48 kHz — see the note\n")
+	fmt.sbprint(sb, "// above generate_project_code's call to emit_dc_block_proc).\n")
+	fmt.sbprint(sb, "skald_dc_block :: proc(s: ^Skald_Dc_Block_State, l: f32, r: f32) -> (f32, f32) {\n")
+	fmt.sbprint(sb, "\tyl := l - s.x1_l + 0.995 * s.y1_l\n")
+	fmt.sbprint(sb, "\tyr := r - s.x1_r + 0.995 * s.y1_r\n")
+	fmt.sbprint(sb, "\ts.x1_l, s.y1_l = l, yl\n")
+	fmt.sbprint(sb, "\ts.x1_r, s.y1_r = r, yr\n")
+	fmt.sbprint(sb, "\treturn yl, yr\n")
 	fmt.sbprint(sb, "}\n\n")
 }
 
@@ -384,6 +438,7 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     fmt.sbprint(&sb, "}\n\n")
 
     emit_soft_limit_proc(&sb)
+    emit_dc_block_proc(&sb)
     // B7-x3: skald_feedback_tail_seconds is called only from an asset's
     // <Foo>_bus_tail_seconds, which exists only when that asset has a
     // Delay/Reverb tail. Emitting the helper unconditionally put 12 lines of
@@ -427,12 +482,16 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
         fmt.sbprintf(&sb, "\t%s: ^%s_Processor,\n", unique_names[i], unique_names[i])
     }
     fmt.sbprint(&sb, "\tmaster_volume: f32,\n")
+    // E5: the master bus's own DC-blocker memory — see emit_dc_block_proc's
+    // doc comment for why this lives here and not on each asset.
+    fmt.sbprint(&sb, "\tdc: Skald_Dc_Block_State,\n")
     fmt.sbprint(&sb, "}\n\n")
 
     fmt.sbprint(&sb, "project_init :: proc(p: ^Project_State, sr: f32) {\n")
     master_vol := project.master_volume
     if master_vol < 0.0 do master_vol = 1.0
     fmt.sbprintf(&sb, "\tp.master_volume = %.9f\n", master_vol)
+    fmt.sbprint(&sb, "\tp.dc = {}\n")
     for i in 0 ..< len(project.instruments) {
         n := unique_names[i]
         fmt.sbprintf(&sb, "\tp.%s = new(%s_Processor)\n", n, n)
@@ -471,6 +530,10 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     }
     fmt.sbprint(&sb, "\tmixed_left *= p.master_volume\n")
     fmt.sbprint(&sb, "\tmixed_right *= p.master_volume\n")
+    // E5: after volume, before the limiter — DC-blocking a signal already
+    // pushed toward the limiter's saturation zone would fight the shaping
+    // the volume stage just applied.
+    fmt.sbprint(&sb, "\tmixed_left, mixed_right = skald_dc_block(&p.dc, mixed_left, mixed_right)\n")
     fmt.sbprint(&sb, "\treturn skald_soft_limit(mixed_left, mixed_right)\n")
     fmt.sbprint(&sb, "}\n\n")
 
@@ -506,6 +569,9 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string, provena
         fmt.sbprintf(&sb, "@(private=\"file\") wasm_%s: %s_Processor\n", unique_names[i], unique_names[i])
     }
     fmt.sbprint(&sb, "@(private=\"file\") wasm_master_volume: f32\n")
+    // E5: the master bus's own DC-blocker memory — see emit_dc_block_proc's
+    // doc comment for why this lives here and not on each asset.
+    fmt.sbprint(&sb, "@(private=\"file\") wasm_dc: Skald_Dc_Block_State\n")
     fmt.sbprint(&sb, "\n")
 
     fmt.sbprint(&sb, "SKALD_WASM_BLOCK :: 128\n")
@@ -526,6 +592,11 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string, provena
         if master_vol < 0.0 do master_vol = 1.0
         fmt.sbprintf(&sb, "\twasm_master_volume = %.9f\n", master_vol)
     }
+    // E5: a hot-swap calls skald_init on a freshly instantiated wasm module
+    // (fresh globals already), but reset explicitly anyway — same discipline
+    // as project_init's p.dc = {}, so neither depends on the other's runtime
+    // for correctness.
+    fmt.sbprint(&sb, "\twasm_dc = {}\n")
     for i in 0 ..< len(project.instruments) {
         n := unique_names[i]
         fmt.sbprintf(&sb, "\twasm_%s = {{}}\n", n)
@@ -638,6 +709,27 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string, provena
     }
     fmt.sbprint(&sb, "\t}\n\treturn -1\n}\n\n")
 
+    // E5: per-asset counts drive the canvas warning (attributable to the
+    // node that produced them); the total additionally folds in
+    // skald_master_flush_count, the master-bus backstop that has no single
+    // asset to attribute to. Worklet polls both once per skald_process call
+    // (skaldWasm.worklet.ts) and only posts a message when either changes.
+    fmt.sbprint(&sb, "@(export)\nskald_get_asset_nonfinite_count :: proc \"c\" (asset: i32) -> i32 {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\tswitch asset {\n")
+    for i in 0 ..< len(project.instruments) {
+        fmt.sbprintf(&sb, "\tcase %d: return wasm_%s.nonfinite_count\n", i, unique_names[i])
+    }
+    fmt.sbprint(&sb, "\t}\n\treturn 0\n}\n\n")
+
+    fmt.sbprint(&sb, "@(export)\nskald_get_nonfinite_count :: proc \"c\" () -> i32 {\n")
+    fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
+    fmt.sbprint(&sb, "\ttotal := skald_master_flush_count\n")
+    for i in 0 ..< len(project.instruments) {
+        fmt.sbprintf(&sb, "\ttotal += wasm_%s.nonfinite_count\n", unique_names[i])
+    }
+    fmt.sbprint(&sb, "\treturn total\n}\n\n")
+
     fmt.sbprint(&sb, "@(export)\nskald_seek :: proc \"c\" (asset: i32, step: i32, samples_until_next: i32) {\n")
     fmt.sbprint(&sb, "\tcontext = runtime.default_context()\n")
     fmt.sbprint(&sb, "\tif step < 0 || samples_until_next < 0 do return\n")
@@ -672,7 +764,11 @@ generate_wasm_shim_code :: proc(project: ^Project, package_name: string, provena
         }
         fmt.sbprintf(&sb, "\t\t{{ l, r := %s_process(&wasm_%s); mixed_left += l; mixed_right += r }}\n", n, n)
     }
-    fmt.sbprint(&sb, "\t\tskald_left[i], skald_right[i] = skald_soft_limit(mixed_left * wasm_master_volume, mixed_right * wasm_master_volume)\n")
+    // E5: same order as project_process — volume, then DC block, then limit.
+    fmt.sbprint(&sb, "\t\tvol_left := mixed_left * wasm_master_volume\n")
+    fmt.sbprint(&sb, "\t\tvol_right := mixed_right * wasm_master_volume\n")
+    fmt.sbprint(&sb, "\t\tdcb_left, dcb_right := skald_dc_block(&wasm_dc, vol_left, vol_right)\n")
+    fmt.sbprint(&sb, "\t\tskald_left[i], skald_right[i] = skald_soft_limit(dcb_left, dcb_right)\n")
     fmt.sbprint(&sb, "\t}\n")
     fmt.sbprint(&sb, "\treturn i32(n)\n")
     fmt.sbprint(&sb, "}\n")

@@ -4,7 +4,7 @@ package generated_audio
 // AUTO-GENERATED — DO NOT EDIT. Every hand edit here is lost on the next
 // Generate; change the .skald.json in the editor and regenerate instead.
 //   generator: golden
-//   input:     fnv1a64:3d844d4e9937c150
+//   input:     fnv1a64:db955d45e0073baf
 // Not part of the game-facing API; do not ship this file.
 // Build: odin build <this dir> -target:freestanding_wasm32 -no-entry-point
 
@@ -35,7 +35,7 @@ skald_asset_count :: proc "c" () -> i32 { return 1 }
 @(export)
 skald_init :: proc "c" (sample_rate: f32) {
 	context = runtime.default_context()
-	wasm_master_volume = 1.000000000
+	wasm_master_volume = 0.800000012
 	wasm_dc = {}
 	wasm_Asset = {}
 	Asset_init(&wasm_Asset, sample_rate)

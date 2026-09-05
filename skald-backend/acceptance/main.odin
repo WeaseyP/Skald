@@ -214,6 +214,22 @@ main :: proc() {
 			}
 		}
 
+	case "dc_offset_pulse":
+		// Square wave at pulseWidth 0.02 spends 98% of each cycle at -1 and
+		// only 2% at +1 — raw duty-cycle mean ~= 0.02*1 + 0.98*(-1) = -0.96.
+		// E5's un-bypassable DC blocker lives on the master bus, not the
+		// per-asset processor (see render_project_one_shot's comment), so
+		// this renders through project_process. Must pull the mean back near
+		// zero well inside the sustain window below, which sits clear of the
+		// 0.02s attack/decay and the release at 1.7s.
+		render_project_one_shot(buf, sample_rate, 60, 1.0, 1.7)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Both)
+			all_pass &= assert_dc_offset_below(buf, sample_rate, 0.3, 1.6, 0.05, .Both)
+		}
+
 	case "kick_loop_120bpm":
 		// Music Layer: 120 BPM, kicks on steps 0,4,8,12 of a 16-step
 		// pattern. Step duration = 60/120/4 = 0.125s. Kicks land at
@@ -1535,6 +1551,28 @@ render_sfx_one_shot :: proc(
 	ga.Asset_trigger(p, note, velocity, duration)
 	for i in 0 ..< len(buf) {
 		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+}
+
+// E5: unlike every other render_* helper, goes through the PROJECT wrapper
+// (project_init/project_process), not the per-asset processor directly — the
+// DC blocker lives on the master bus (project_process / the wasm shim's
+// skald_process), not on the per-asset API, so only this path exercises it.
+// See the note above codegen_project.odin's emit_dc_block_proc for why.
+render_project_one_shot :: proc(
+	buf: []Stereo_Sample,
+	sample_rate: f32,
+	note: u8,
+	velocity: f32,
+	duration: f32,
+) {
+	p: ga.Project_State
+	ga.project_init(&p, sample_rate)
+	defer ga.project_destroy(&p)
+	ga.Asset_trigger(p.Asset, note, velocity, duration)
+	for i in 0 ..< len(buf) {
+		l, r := ga.project_process(&p)
 		buf[i] = {l, r}
 	}
 }

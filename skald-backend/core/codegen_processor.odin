@@ -151,6 +151,12 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\text_in_l: f32,\n")
 	fmt.sbprint(&sb, "\text_in_r: f32,\n")
 	fmt.sbprint(&sb, "\tvolume: f32,\n")
+	// E5: count of samples this asset's own output had to be flushed for
+	// non-finiteness (see the guard at the end of this proc). One instance
+	// per asset, so it is attributable on the canvas — unlike
+	// skald_master_flush_count, which is the shared master-bus backstop
+	// with no single asset to blame.
+	fmt.sbprint(&sb, "\tnonfinite_count: i32,\n")
 	if has_bus_tail {
 		fmt.sbprint(&sb, "\tbus_tail_remaining: u64,\n")
 		fmt.sbprint(&sb, "\tbus_tail_armed: bool,\n")
@@ -301,6 +307,11 @@ generate_processor_code :: proc(
     fmt.sbprint(&sb, "\tp.step_frac_acc = 0.0\n")
     fmt.sbprint(&sb, "\tp.ext_in_l = 0.0\n")
     fmt.sbprint(&sb, "\tp.ext_in_r = 0.0\n")
+    // SKB-018: the double_init fixture renders through this proc bit-exactly
+    // twice, so a stale flush count would make the second run diverge from
+    // the first (not in the audio itself, but nonfinite_count is part of
+    // "indistinguishable from a freshly zeroed one").
+    fmt.sbprint(&sb, "\tp.nonfinite_count = 0\n")
     if has_bus_tail {
         fmt.sbprint(&sb, "\tp.bus_tail_remaining = 0\n")
         fmt.sbprint(&sb, "\tp.bus_tail_armed = false\n")
@@ -1006,6 +1017,18 @@ generate_processor_code :: proc(
 		fmt.sbprint(&sb, "\t}\n")
 	}
 
+	// E5: flushed and counted here, at the source, before either shape's
+	// master-bus mix can be poisoned by it — a NaN summed into
+	// project_process/skald_process's mixed_left/mixed_right would silence
+	// every OTHER asset's contribution too, not just this one's. Unconditional
+	// (not gated on instrument.limit): that flag opts an asset out of soft
+	// saturation, never out of basic finiteness. The DC blocker itself is
+	// NOT applied here — see the note above generate_project_code's call to
+	// emit_dc_block_proc for why it lives on the master bus instead.
+	fmt.sbprint(&sb, "\tif math.is_nan(output_left) || math.is_inf(output_left) || math.is_nan(output_right) || math.is_inf(output_right) {\n")
+	fmt.sbprint(&sb, "\t\tp.nonfinite_count += 1\n")
+	fmt.sbprint(&sb, "\t\toutput_left, output_right = 0.0, 0.0\n")
+	fmt.sbprint(&sb, "\t}\n")
 	if instrument.limit {
 		fmt.sbprint(&sb, "\treturn skald_soft_limit(output_left * p.volume, output_right * p.volume)\n")
 	} else {
