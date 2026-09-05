@@ -60,6 +60,36 @@ export const stepWidthFor = (
     return Math.max(min, Math.min(preferred, fit));
 };
 
+/**
+ * Where the grid must scroll horizontally to keep `step` on screen, or `null`
+ * when it is already visible and the scroll position must not be touched.
+ *
+ * Roadmap E13. Once a pattern is wider than its container the grid scrolls,
+ * and the playhead used to walk off the right edge and keep going: on a phone,
+ * where four bars of a sixteen-bar pattern is a generous viewport, that is a
+ * blank grid for three quarters of every loop. Returning `null` rather than
+ * the current scrollLeft is the important half — an unconditional assignment
+ * would fight the user's own drag on every step, and it is what lets the
+ * desktop caller stay opted out without a second copy of the arithmetic.
+ *
+ * `viewportWidth` of 0 means "not measured yet" (the same convention
+ * `stepWidthFor` uses for `availableWidth`), and scrolling on a guess would
+ * jump the grid on the first frame.
+ */
+export const scrollLeftForStep = (
+    step: number,
+    stepWidth: number,
+    scrollLeft: number,
+    viewportWidth: number,
+): number | null => {
+    if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return null;
+    if (!Number.isFinite(step) || !Number.isFinite(stepWidth) || stepWidth <= 0) return null;
+    const left = step * stepWidth;
+    const right = left + stepWidth;
+    if (left >= scrollLeft && right <= scrollLeft + viewportWidth) return null;
+    return Math.max(0, left - viewportWidth / 2);
+};
+
 /** True when the pattern is wider than its container and needs scrolling. */
 export const stepsOverflow = (steps: number, availableWidth: number, options?: StepWidthOptions): boolean =>
     steps * stepWidthFor(steps, availableWidth, options) > availableWidth && availableWidth > 0;

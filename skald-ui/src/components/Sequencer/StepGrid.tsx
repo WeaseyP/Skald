@@ -1,6 +1,7 @@
 import React from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
-import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, stepWidthFor } from './stepMetrics';
+import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, scrollLeftForStep, stepWidthFor } from './stepMetrics';
+import { useViewport } from '../../hooks/useViewport';
 import { useElementWidth } from './useElementWidth';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
 
@@ -121,6 +122,20 @@ export const StepGrid: React.FC<StepGridProps & {
     const cellStyles = cellStylesFor(stepWidth);
     const beatMarkerStyle: React.CSSProperties = { ...cellStyles, borderRight: '1px solid #444' };
     const rowWidth = maxSteps * stepWidth;
+
+    // E13: on a phone the dock shows a few bars of a long pattern, and the
+    // playhead used to walk off the right edge and keep going — a blank grid
+    // for most of every loop. Only the narrow layout follows it: on the
+    // desktop the pattern usually fits, and moving a scroll position the user
+    // just set by hand would be a regression, not a feature.
+    const { isNarrow } = useViewport();
+    React.useEffect(() => {
+        if (!isNarrow) return;
+        const el = gridRef.current;
+        if (!el) return;
+        const target = scrollLeftForStep(currentStep, stepWidth, el.scrollLeft, el.clientWidth);
+        if (target !== null) el.scrollLeft = target;
+    }, [isNarrow, currentStep, stepWidth, gridRef]);
 
     const isBeat = (step: number) => (step + 1) % 4 === 0;
 
@@ -302,7 +317,7 @@ export const StepGrid: React.FC<StepGridProps & {
     }, [dragState !== null, onUpdateNote]);
 
     return (
-        <div ref={gridRef} style={gridContainerStyles} onContextMenu={(e) => e.preventDefault()}>
+        <div ref={gridRef} style={gridContainerStyles} data-testid="step-grid-scroll" onContextMenu={(e) => e.preventDefault()}>
             <OutOfRangeNotice count={strandedCount} patternSteps={steps} />
             <Playhead step={currentStep} bpm={bpm} stepWidth={stepWidth} />
 

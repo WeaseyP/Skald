@@ -39,6 +39,7 @@ import { useQwertyKeyboard } from './hooks/useQwertyKeyboard';
 import { useGraphKeyboardTraversal } from './hooks/useGraphKeyboardTraversal';
 import { isTypingTarget } from './utils/keyboardTarget';
 import { useSnapToGridPreference } from './hooks/nodeEditor/useSnapToGridPreference';
+import { useViewport } from './hooks/useViewport';
 import { accentFor } from './components/Nodes/NodeStyles';
 import { styleEdgesBySemanticKind } from './components/Edges/edgeKind';
 
@@ -85,6 +86,82 @@ const parameterPanelStyles: React.CSSProperties = {
     borderLeft: '1px solid #333',
 };
 
+/*
+--------------------------------------------------------------------------------
+E13 — the narrow layout.
+
+The three columns above are 200px of palette, 350px of parameter panel and
+whatever is left for the canvas. On a Pixel 9 Pro in portrait — 448 CSS px —
+"whatever is left" is negative, and the web build (docs/PRIVATE_WEB_APP_SETUP.md)
+serves this same renderer to that phone.
+
+Below useViewport's breakpoint both side panels come out of flow: the palette
+slides in from the left, the parameter panel rises from the bottom, and the
+canvas gets the whole screen. They are children of the WORKSPACE row, which is
+a sibling of the sequencer dock — that containment, not a z-index, is what
+guarantees neither can ever cover the transport.
+
+Both are kept mounted and translated off-screen rather than unmounted, so the
+panel's own state (a half-typed package name, a scrolled parameter list)
+survives a drawer close. Closed means `inert`: a translated-away drawer is
+still in the tab order and still takes taps otherwise.
+--------------------------------------------------------------------------------
+*/
+
+/** Height of the narrow-layout bottom nav, and the floor the panels stop at. */
+const MOBILE_NAV_HEIGHT = 44;
+
+const drawerSidebarStyles = (open: boolean): React.CSSProperties => ({
+    position: 'absolute',
+    top: 0,
+    bottom: MOBILE_NAV_HEIGHT,
+    left: 0,
+    width: 'min(260px, 82vw)',
+    backgroundColor: '#252526',
+    borderRight: '1px solid #333',
+    zIndex: 320,
+    transform: open ? 'translateX(0)' : 'translateX(-100%)',
+    boxShadow: open ? '2px 0 12px rgba(0,0,0,0.6)' : 'none',
+});
+
+const sheetParameterStyles = (open: boolean): React.CSSProperties => ({
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: MOBILE_NAV_HEIGHT,
+    maxHeight: '55%',
+    backgroundColor: '#252526',
+    borderTop: '1px solid #333',
+    overflowY: 'auto',
+    zIndex: 310,
+    transform: open ? 'translateY(0)' : 'translateY(calc(100% + 44px))',
+    boxShadow: open ? '0 -2px 12px rgba(0,0,0,0.6)' : 'none',
+});
+
+const mobileNavStyles: React.CSSProperties = {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: MOBILE_NAV_HEIGHT,
+    zIndex: 330,
+    display: 'flex',
+    alignItems: 'stretch',
+    gap: '1px',
+    backgroundColor: '#1A1A1A',
+    borderTop: '1px solid #333',
+};
+
+const mobileNavButtonStyles = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    border: 'none',
+    background: active ? '#3182CE' : '#252526',
+    color: '#E2E8F0',
+    fontFamily: 'sans-serif',
+    fontSize: '0.8em',
+    cursor: 'pointer',
+});
+
 const EditorLayout = () => {
     const reactFlowWrapper = useRef(null);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -94,6 +171,16 @@ const EditorLayout = () => {
     // E6: view preference, same rule as isLooping above — not the document,
     // not undoable, persisted only so it survives a reload.
     const [snapToGrid, setSnapToGrid] = useSnapToGridPreference();
+    // E13: the one reader of "small screen" / "finger". Everything below that
+    // branches on layout asks these two booleans, and responsive.css selects
+    // on the attributes they stamp on the root — never on a second copy of
+    // the breakpoint.
+    const { isNarrow, isCoarsePointer } = useViewport();
+    // Both panels start closed on a phone: the canvas is what the user came
+    // for, and a drawer that opens itself on load is a drawer the user has to
+    // dismiss before they can see anything.
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
     // `notePitch` is part of the selection now: a step can hold a chord, and a
     // step-only selection meant every edit landed on an arbitrary member
     // (SKB-025).
@@ -435,7 +522,15 @@ const EditorLayout = () => {
     }, [setNodes]);
 
     return (
-        <div style={appContainerStyles}>
+        <div
+            style={appContainerStyles}
+            data-testid="app-root"
+            // The two attributes responsive.css selects on. They exist so the
+            // stylesheet never has to restate a breakpoint useViewport already
+            // owns (see styles/responsive.css).
+            data-viewport={isNarrow ? 'narrow' : 'wide'}
+            data-pointer={isCoarsePointer ? 'coarse' : 'fine'}
+        >
             {isNamePromptVisible && (
                 <NamePromptModal
                     title="Create New Instrument"
@@ -460,8 +555,17 @@ const EditorLayout = () => {
                 flexDirection: 'column',
                 overflow: 'hidden'
             }}>
-                <div style={workspaceContainerStyles}>
-                    <div style={sidebarPanelStyles}>
+                <div style={workspaceContainerStyles} data-testid="workspace-row">
+                    <div
+                        style={isNarrow ? drawerSidebarStyles(isDrawerOpen) : sidebarPanelStyles}
+                        className={isNarrow ? 'skald-drawer' : undefined}
+                        data-testid="sidebar-panel"
+                        data-layout={isNarrow ? 'drawer' : 'static'}
+                        data-open={isNarrow ? String(isDrawerOpen) : undefined}
+                        // A drawer translated off-screen is still focusable and
+                        // still swallows taps aimed at the canvas underneath it.
+                        inert={isNarrow && !isDrawerOpen}
+                    >
                         <Sidebar
                             onGenerate={() => handleGenerate(nodes, edges, tracks, bpm, masterVolume, packageName, outputPath, patternSteps, nearestInScale)}
                             onPlay={handlePlay}
@@ -519,18 +623,27 @@ const EditorLayout = () => {
                             snapGrid={[20, 20]}
                         >
                             <Background />
-                            <Controls />
+                            {/* E13: bottom-left is where the narrow layout's
+                                nav bar goes, so the zoom buttons move out of
+                                its way rather than hiding under it. */}
+                            <Controls position={isNarrow ? 'top-left' : 'bottom-left'} />
                             {/* E6: bottom-right, same corner React Flow uses by
                                 default — the sequencer dock lives in a separate
                                 row below this canvas (see workspaceContainerStyles/
                                 SequencerDock below) and ShortcutLegend's "?" sits
                                 in the parameter panel's corner, not this one, so
-                                nothing else claims this space. */}
-                            <MiniMap
-                                nodeColor={(node) => accentFor(node.type)}
-                                maskColor="rgba(30, 30, 30, 0.6)"
-                                style={{ backgroundColor: '#252526', border: '1px solid #4A5568' }}
-                            />
+                                nothing else claims this space.
+                                E13: a 150x100 overview costs a third of a phone's
+                                canvas to save a pan gesture that is cheaper by
+                                finger than by mouse, so the narrow layout drops
+                                it. */}
+                            {!isNarrow && (
+                                <MiniMap
+                                    nodeColor={(node) => accentFor(node.type)}
+                                    maskColor="rgba(30, 30, 30, 0.6)"
+                                    style={{ backgroundColor: '#252526', border: '1px solid #4A5568' }}
+                                />
+                            )}
                             <Panel position="top-right">
                                 <label
                                     style={{
@@ -702,10 +815,62 @@ const EditorLayout = () => {
                                 {fileStatus.message}
                             </div>
                         )}
+                        {/* E13: the narrow layout's only chrome. Everything the
+                            three-column desktop shows at once is reachable from
+                            here — the palette and transport buttons in the
+                            drawer, the parameter panel in the sheet. It sits
+                            inside the canvas column, so the desktop render is
+                            byte-for-byte the one that shipped. */}
+                        {isNarrow && (
+                            <>
+                                {isDrawerOpen && (
+                                    <div
+                                        data-testid="drawer-scrim"
+                                        onClick={() => setIsDrawerOpen(false)}
+                                        style={{
+                                            position: 'absolute', inset: 0, zIndex: 300,
+                                            background: 'rgba(0,0,0,0.45)',
+                                        }}
+                                    />
+                                )}
+                                <div style={mobileNavStyles} data-testid="mobile-nav">
+                                    <button
+                                        data-testid="sidebar-drawer-toggle"
+                                        aria-expanded={isDrawerOpen}
+                                        onClick={() => setIsDrawerOpen(o => !o)}
+                                        style={mobileNavButtonStyles(isDrawerOpen)}
+                                    >
+                                        ☰ Nodes
+                                    </button>
+                                    <button
+                                        data-testid="mobile-transport-toggle"
+                                        onClick={isPlaying ? handleStop : handlePlay}
+                                        style={mobileNavButtonStyles(isPlaying)}
+                                    >
+                                        {isPlaying ? '■ Stop' : '▶ Play'}
+                                    </button>
+                                    <button
+                                        data-testid="parameter-sheet-toggle"
+                                        aria-expanded={isSheetOpen}
+                                        onClick={() => setIsSheetOpen(o => !o)}
+                                        style={mobileNavButtonStyles(isSheetOpen)}
+                                    >
+                                        ⚙ Settings
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
 
 
-                    <div style={parameterPanelStyles}>
+                    <div
+                        style={isNarrow ? sheetParameterStyles(isSheetOpen) : parameterPanelStyles}
+                        className={isNarrow ? 'skald-drawer' : undefined}
+                        data-testid="parameter-panel"
+                        data-layout={isNarrow ? 'sheet' : 'static'}
+                        data-open={isNarrow ? String(isSheetOpen) : undefined}
+                        inert={isNarrow && !isSheetOpen}
+                    >
                         {generatedCode ? (
                             <CodePreviewPanel code={generatedCode} onClose={() => setGeneratedCode(null)} />
                         ) : (

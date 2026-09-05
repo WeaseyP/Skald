@@ -2,6 +2,7 @@ import React from 'react';
 import { NumberInput } from '../common/NumberInput';
 import { BPM_MIN, BPM_MAX, clampBpm } from '../../definitions/bpm';
 import { MAX_PATTERN_STEPS, clampPatternSteps } from './stepMetrics';
+import { useViewport } from '../../hooks/useViewport';
 
 interface SequencerToolbarProps {
     isPlaying: boolean;
@@ -79,9 +80,19 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
     onToggleCollapse
 }) => {
     const { rootNote, setRootNote, scaleName, setScaleName } = useScale();
+    const { isNarrow } = useViewport();
+
+    // E13: one 40px row of controls with a fixed 15px gap and no wrap. At
+    // 1920px it has room to spare; at 448px the Key/Scale selects and Loop sit
+    // outside the window with no scrollbar to reach them — clipped away, not
+    // merely cramped. Narrow screens scroll the row instead; the desktop is
+    // left alone, where there would be nothing to scroll anyway.
+    const layout: React.CSSProperties = isNarrow
+        ? { ...toolbarStyles, overflowX: 'auto', overflowY: 'hidden', gap: '10px', flexShrink: 0 }
+        : toolbarStyles;
 
     return (
-        <div style={toolbarStyles}>
+        <div style={layout} data-testid="transport-toolbar">
             <button
                 style={buttonStyles}
                 onClick={onToggleCollapse}
