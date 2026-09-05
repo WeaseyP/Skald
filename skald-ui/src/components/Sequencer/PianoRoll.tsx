@@ -4,16 +4,17 @@ import { useScale } from '../../contexts/ScaleContext';
 import {
     MIDI_NOTE_MAX,
     MIDI_NOTE_MIN,
-    NOTE_ROW_HEIGHT,
     PIANO_STEP_WIDTH_DEFAULT,
-    PIANO_STEP_WIDTH_MIN,
     effectiveTrackSteps,
     noteExtent,
+    noteRowHeightFor,
     outOfRangeNoteCount,
+    pianoStepWidthMinFor,
     pitchRowsDescending,
     scrollTopForPitch,
     stepWidthFor,
 } from './stepMetrics';
+import { useViewport } from '../../hooks/useViewport';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
 import { useElementWidth } from './useElementWidth';
 
@@ -36,7 +37,6 @@ interface PianoRollProps {
     onSelectNote?: (trackId: string, step: number, notePitch: number) => void;
 }
 
-const NOTE_HEIGHT = NOTE_ROW_HEIGHT;
 const KEY_WIDTH = 50;
 const HEADER_HEIGHT = 30;
 
@@ -123,10 +123,16 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     const columns = Math.max(steps, noteExtent([track]));
     const strandedCount = outOfRangeNoteCount([track], patternSteps ?? steps);
 
+    // E13: both axes of a note's hit area come from the pointer class. The
+    // floors themselves live in stepMetrics with the mouse ones, so the roll
+    // and the step grid still measure this axis exactly once.
+    const { isCoarsePointer } = useViewport();
+    const NOTE_HEIGHT = noteRowHeightFor(isCoarsePointer);
+
     const [, containerWidth] = useElementWidth<HTMLDivElement>(scrollContainerRef);
     const stepWidth = stepWidthFor(columns, Math.max(0, containerWidth - KEY_WIDTH), {
         preferred: PIANO_STEP_WIDTH_DEFAULT,
-        min: PIANO_STEP_WIDTH_MIN,
+        min: pianoStepWidthMinFor(isCoarsePointer),
     });
 
     // Highest pitch at the top, as on a score.
@@ -319,8 +325,10 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // patches use.
     useEffect(() => {
         const el = scrollContainerRef.current;
-        if (el) el.scrollTop = scrollTopForPitch(60, el.clientHeight);
-    }, []);
+        // The row height is part of this sum: a coarse-pointer roll draws
+        // taller lanes, so middle C is a different number of pixels down.
+        if (el) el.scrollTop = scrollTopForPitch(60, el.clientHeight, MIDI_NOTE_MIN, MIDI_NOTE_MAX, NOTE_HEIGHT);
+    }, [NOTE_HEIGHT]);
 
     // Global MouseUp to catch drags ending outside
     useEffect(() => {

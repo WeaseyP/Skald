@@ -235,6 +235,20 @@ The preview engine has to be running: press **Play** first. A letter key pressed
 
 ---
 
+## On a phone or tablet
+
+Skald's web build runs in a mobile browser, and below 720 CSS pixels of window width the editor folds itself into one column (`skald-ui/src/hooks/useViewport.ts::NARROW_MAX_WIDTH`). The node palette becomes a drawer that slides in from the left, the parameter panel becomes a sheet that rises from the bottom, and both start closed so the canvas gets the whole screen (`skald-ui/src/app.tsx::drawerSidebarStyles`, `skald-ui/src/app.tsx::sheetParameterStyles`). A four-button bar along the bottom of the canvas opens them: **☰ Nodes**, **▶ Play**, **⌫ Delete** and **⚙ Settings**. The sequencer dock keeps its own row underneath, so the transport is never covered by either panel.
+
+**⌫ Delete** is there because on a desktop the only way to remove a node or a wire is the `Delete` key, and a phone has no `Delete` key. It removes whatever is selected, and lands on the undo stack exactly as the key does (`skald-ui/src/app.tsx::handleDeleteSelection`).
+
+Everything on the canvas is a touch gesture: pinch to zoom, drag the background to pan, drag from a port to draw a wire, drag a node to move it. Dragging a node never also starts a selection box. Press the **?** button in the corner and the help panel leads with those gestures rather than with keyboard shortcuts (`skald-ui/src/components/ShortcutLegend.tsx::TOUCH_GESTURES`); the shortcut table is still printed underneath it, because a tablet with a keyboard paired reports a touch pointer and every shortcut still works there.
+
+Where a control was drawn for a mouse, it grows for a fingertip — but only when the browser reports that the primary pointer *is* a fingertip, so a desktop is untouched down to the pixel (`skald-ui/src/hooks/useViewport.ts::COARSE_POINTER_QUERY`). Node ports get a 24-pixel hit area without being drawn any larger, so the wires still leave the sockets they appear to. The step grid stops shrinking its columns at 24 pixels instead of 10 and scrolls instead (`skald-ui/src/components/Sequencer/stepMetrics.ts::STEP_WIDTH_MIN_COARSE`), and because it scrolls, it now follows the playhead: a step that would fall off the edge is scrolled back into view (`skald-ui/src/components/Sequencer/stepMetrics.ts::scrollLeftForStep`). The piano roll's pitch lanes go from 20 pixels tall to 32, which is roughly the difference between hitting one semitone and hitting one of three (`skald-ui/src/components/Sequencer/stepMetrics.ts::NOTE_ROW_HEIGHT_COARSE`). Parameter sliders get a 28-pixel thumb.
+
+The minimap is not drawn on a narrow screen: it costs about a third of a phone's canvas to save a pan gesture that is easier by finger than by mouse.
+
+---
+
 ## Where sound goes: peak meter, clip LED and master volume
 
 The sequencer dock's Master section carries a stereo peak meter — two bars reading −60 to 0 dBFS with a falling peak-hold tick — and a **CLIP** LED that latches on the instant any sample reaches 0 dBFS and stays lit until you click it (`skald-ui/src/components/Visualization/PeakMeter.tsx::PeakMeter`). It is tapped from the same signal your exported game gets: the worklet's mixed, faded, soft-limited output, after the master volume fader and the `tanh` soft limiter, not some separate approximation. Next to it is the **master volume** slider, which multiplies every Instrument's summed output before that limiter — pull it down if the clip LED keeps lighting on a busy project rather than expecting individual Instruments to leave headroom for you.

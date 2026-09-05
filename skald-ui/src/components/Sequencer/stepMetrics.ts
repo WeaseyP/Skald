@@ -33,6 +33,29 @@ export const STEP_WIDTH_MIN = 10;
 export const PIANO_STEP_WIDTH_DEFAULT = 30;
 export const PIANO_STEP_WIDTH_MIN = 8;
 
+/*
+ * The same floors for a fingertip (roadmap E13).
+ *
+ * WCAG 2.2's target-size minimum is 24px. A 64-step pattern in a phone-width
+ * dock fits about 7px per column, so a mouse grid's 10px floor puts the whole
+ * pattern on screen at a width narrower than the line it is drawn with — the
+ * cells are visible and untappable. Under a coarse pointer the grid stops
+ * shrinking sooner and scrolls instead, which is why StepGrid follows the
+ * playhead there (`scrollLeftForStep`).
+ *
+ * These live here, next to the mouse floors, because the step grid and the
+ * piano roll both measure this axis and a second private copy in either of
+ * them is the SKB-002 class this module was written to close.
+ */
+export const STEP_WIDTH_MIN_COARSE = 24;
+export const PIANO_STEP_WIDTH_MIN_COARSE = 24;
+
+export const stepWidthMinFor = (coarsePointer: boolean): number =>
+    coarsePointer ? STEP_WIDTH_MIN_COARSE : STEP_WIDTH_MIN;
+
+export const pianoStepWidthMinFor = (coarsePointer: boolean): number =>
+    coarsePointer ? PIANO_STEP_WIDTH_MIN_COARSE : PIANO_STEP_WIDTH_MIN;
+
 export interface StepWidthOptions {
     preferred?: number;
     min?: number;
@@ -201,6 +224,17 @@ export const MIDI_NOTE_MAX = 127;
 
 /** Height of one pitch lane, in pixels. */
 export const NOTE_ROW_HEIGHT = 20;
+
+/**
+ * The same lane under a fingertip. 20px is a comfortable mouse row and about
+ * two thirds of a fingertip: on a phone, placing a note means hitting one of
+ * three adjacent semitones at random. The roll scrolls vertically already, so
+ * the taller lane costs visible range, not reachable range.
+ */
+export const NOTE_ROW_HEIGHT_COARSE = 32;
+
+export const noteRowHeightFor = (coarsePointer: boolean): number =>
+    coarsePointer ? NOTE_ROW_HEIGHT_COARSE : NOTE_ROW_HEIGHT;
 
 /**
  * Pitch rows in the order they are drawn: highest at the top, as on a score.

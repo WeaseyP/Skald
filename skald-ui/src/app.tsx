@@ -516,6 +516,26 @@ const EditorLayout = () => {
 
     // One definition of "select this note", shared by the grid and by the
     // chord-member buttons in the step editor.
+    // E13. Deleting a node or a wire was reachable exactly one way — the
+    // Delete/Backspace key, through React Flow's `deleteKeyCode`. Undo, redo,
+    // play, save and load all have buttons; delete had none, so on a phone a
+    // node once dropped could never be removed again. `deleteElements` is the
+    // library's own path and emits the same 'remove' changes the key does, so
+    // the deletion joins the one editor history exactly as a keyboard delete
+    // does rather than becoming a mutation that bypasses pushHistory (B3).
+    const deletableSelection = useMemo(
+        () => ({
+            nodes: nodes.filter(n => n.selected),
+            edges: edges.filter(e => e.selected),
+        }),
+        [nodes, edges],
+    );
+    const canDeleteSelection = deletableSelection.nodes.length > 0 || deletableSelection.edges.length > 0;
+    const handleDeleteSelection = useCallback(() => {
+        if (!reactFlowInstance || !canDeleteSelection) return;
+        void reactFlowInstance.deleteElements(deletableSelection);
+    }, [reactFlowInstance, canDeleteSelection, deletableSelection]);
+
     const onSelectStep = useCallback((trackId: string, step: number, notePitch: number) => {
         setNodes(nds => nds.map(n => ({ ...n, selected: false })));
         setSelectedStep({ trackId, step, notePitch });
@@ -612,6 +632,18 @@ const EditorLayout = () => {
                             onDrop={onDrop}
                             onSelectionChange={onSelectionChange}
                             onInit={setReactFlowInstance}
+                            // E13, touch: this element deliberately sets none
+                            // of zoomOnPinch / panOnDrag / preventScrolling /
+                            // selectionOnDrag. @xyflow/react 12's defaults are
+                            // already the ones a finger needs — pinch zooms,
+                            // a drag on the pane pans, the page does not
+                            // scroll under the canvas, and selectionOnDrag is
+                            // OFF so dragging a node cannot also start a lasso.
+                            // Restating them here would be four more props to
+                            // keep in step with the library for no change in
+                            // behaviour; `touch-action: none` on the pane is
+                            // React Flow's own rule, and responsive.css only
+                            // extends it to the handles and nodes it misses.
                             multiSelectionKeyCode={['Shift', 'Control']}
                             deleteKeyCode={['Backspace', 'Delete']}
                             fitView
@@ -848,6 +880,20 @@ const EditorLayout = () => {
                                         style={mobileNavButtonStyles(isPlaying)}
                                     >
                                         {isPlaying ? '■ Stop' : '▶ Play'}
+                                    </button>
+                                    <button
+                                        data-testid="mobile-delete-selection"
+                                        onClick={handleDeleteSelection}
+                                        disabled={!canDeleteSelection}
+                                        title={canDeleteSelection
+                                            ? 'Delete the selected nodes and wires'
+                                            : 'Select a node or a wire first'}
+                                        style={{
+                                            ...mobileNavButtonStyles(false),
+                                            opacity: canDeleteSelection ? 1 : 0.45,
+                                        }}
+                                    >
+                                        ⌫ Delete
                                     </button>
                                     <button
                                         data-testid="parameter-sheet-toggle"

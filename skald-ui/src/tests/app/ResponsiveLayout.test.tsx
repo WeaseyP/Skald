@@ -90,6 +90,22 @@ describe('narrow viewport', () => {
         expect(screen.getByTestId('parameter-panel').getAttribute('data-open')).toBe('true');
     });
 
+    // E13, the "nothing keyboard-only" audit. Deleting a node or a wire was
+    // reachable exactly one way — the Delete/Backspace key, via React Flow's
+    // deleteKeyCode. Undo, redo, play, save and load all have buttons in the
+    // palette; delete had none, so on a phone a node once dropped could never
+    // be removed. The button routes through the instance's own
+    // `deleteElements`, which emits the same 'remove' changes the key does, so
+    // the deletion lands in the one editor history like any other edit (B3).
+    it('offers a way to delete a selection without a Delete key', () => {
+        render(<App />);
+        const button = screen.getByTestId('mobile-delete-selection');
+        expect((button as HTMLButtonElement).disabled).toBe(true);
+        // Clicking with nothing selected is a no-op, not a crash.
+        fireEvent.click(button);
+        expect(screen.getByTestId('app-root')).toBeTruthy();
+    });
+
     it('keeps the drawer and the sheet out of the transport row', () => {
         render(<App />);
         const workspace = screen.getByTestId('workspace-row');
@@ -119,6 +135,7 @@ describe('wide viewport (the desktop layout must not move)', () => {
         render(<App />);
         expect(screen.queryByTestId('sidebar-drawer-toggle')).toBeNull();
         expect(screen.queryByTestId('parameter-sheet-toggle')).toBeNull();
+        expect(screen.queryByTestId('mobile-delete-selection')).toBeNull();
     });
 
     it('keeps the sidebar at its 200px column width and the panel at 350px', () => {

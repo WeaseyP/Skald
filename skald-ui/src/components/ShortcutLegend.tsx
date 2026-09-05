@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { isTypingTarget } from '../utils/keyboardTarget';
 import { EDGE_KIND_COLORS, EDGE_KIND_LABELS, EdgeKind } from './Edges/edgeKind';
+import { useViewport } from '../hooks/useViewport';
 
 // Self-contained keyboard-shortcut legend: a "?" button pinned bottom-right
 // plus the ? key toggle. Every shortcut in the app was previously
@@ -28,8 +29,44 @@ const SHORTCUTS: Array<[string, string]> = [
     ['?', 'Toggle this help'],
 ];
 
+/*
+ * E13. Every row above needs a keyboard, and a phone does not have one — a
+ * legend that opens on "Ctrl/Cmd + Z" on a touch device is telling the user
+ * about capabilities they cannot reach. The gestures below are what is
+ * actually available there. The key table is still printed underneath rather
+ * than hidden: `(pointer: coarse)` says what the PRIMARY pointer is, and a
+ * tablet with a keyboard paired reports coarse while every shortcut still
+ * works.
+ */
+const TOUCH_GESTURES: Array<[string, string]> = [
+    ['Pinch', 'Zoom the node graph in and out'],
+    ['Drag the canvas', 'Pan the graph'],
+    ['Drag from a port', 'Draw a wire to another node port'],
+    ['Drag a node', 'Move it (a node drag never starts a selection box)'],
+    ['☰ Nodes', 'Open the palette, transport, undo/redo and file actions'],
+    ['⚙ Settings', 'Open the parameters of the selected node or step'],
+    ['Tap a step', 'Add or remove a note; tap and hold-drag to paint a run'],
+    ['Double-tap a slider', 'Reset that parameter to its default'],
+];
+
+const KeyTable: React.FC<{ rows: Array<[string, string]>; testId: string }> = ({ rows, testId }) => (
+    <table data-testid={testId} style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <tbody>
+            {rows.map(([keys, action]) => (
+                <tr key={keys}>
+                    <td style={{ padding: '4px 16px 4px 0', whiteSpace: 'nowrap' }}>
+                        <code style={{ background: '#333', padding: '2px 6px', borderRadius: 4 }}>{keys}</code>
+                    </td>
+                    <td style={{ padding: '4px 0', color: '#bbb' }}>{action}</td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+);
+
 export const ShortcutLegend: React.FC = () => {
     const [open, setOpen] = useState(false);
+    const { isCoarsePointer } = useViewport();
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -45,8 +82,8 @@ export const ShortcutLegend: React.FC = () => {
         <>
             <button
                 onClick={() => setOpen(o => !o)}
-                title="Keyboard shortcuts (?)"
-                aria-label="Keyboard shortcuts"
+                title={isCoarsePointer ? 'Help' : 'Keyboard shortcuts (?)'}
+                aria-label={isCoarsePointer ? 'Help' : 'Keyboard shortcuts'}
                 style={{
                     position: 'fixed',
                     right: 16,
@@ -91,19 +128,16 @@ export const ShortcutLegend: React.FC = () => {
                             overflowY: 'auto',
                         }}
                     >
-                        <h3 style={{ marginTop: 0 }}>Keyboard shortcuts</h3>
-                        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                            <tbody>
-                                {SHORTCUTS.map(([keys, action]) => (
-                                    <tr key={keys}>
-                                        <td style={{ padding: '4px 16px 4px 0', whiteSpace: 'nowrap' }}>
-                                            <code style={{ background: '#333', padding: '2px 6px', borderRadius: 4 }}>{keys}</code>
-                                        </td>
-                                        <td style={{ padding: '4px 0', color: '#bbb' }}>{action}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                        {isCoarsePointer && (
+                            <>
+                                <h3 style={{ marginTop: 0 }}>Touch gestures</h3>
+                                <KeyTable rows={TOUCH_GESTURES} testId="touch-gestures" />
+                            </>
+                        )}
+                        <h3 style={{ marginTop: isCoarsePointer ? 20 : 0 }}>
+                            {isCoarsePointer ? 'With a keyboard attached' : 'Keyboard shortcuts'}
+                        </h3>
+                        <KeyTable rows={SHORTCUTS} testId="keyboard-shortcuts" />
                         {/* E7: the wire colours read from edgeKind.ts, not a
                             copy — this is the same table classifyEdgeKind
                             resolves against, so the legend can't drift from

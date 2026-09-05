@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { formatDisplayValue } from '../../utils/formatDisplayValue';
+import { useViewport } from '../../hooks/useViewport';
 
 // --- STYLES ---
 
@@ -100,7 +101,9 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
     onReset,
     exponent = 1,
     quantize = false,
+    className,
 }) => {
+    const { isCoarsePointer } = useViewport();
     // Internal state for immediate UI feedback
     const [localValue, setLocalValue] = useState(value);
     // Separate state for the text input to allow temporary invalid strings.
@@ -242,6 +245,15 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
                 onDoubleClick={handleDoubleClick}
                 style={sliderStyles}
                 step="0.1" // Finer control on the range input itself
+                // E13: a UA-drawn range thumb is about 12px across and cannot
+                // be resized from an inline style at all — only a
+                // ::-webkit-slider-thumb / ::-moz-range-thumb rule can, which
+                // is why responsive.css exists. It selects on this attribute
+                // rather than on its own `@media (pointer: coarse)` so the
+                // thumb and the layout can never disagree about what a coarse
+                // pointer is (see useViewport.ts).
+                className={className ? `skald-slider ${className}` : 'skald-slider'}
+                data-pointer={isCoarsePointer ? 'coarse' : 'fine'}
             />
             <input
                 type="text"

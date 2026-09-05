@@ -1,6 +1,6 @@
 import React from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
-import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, scrollLeftForStep, stepWidthFor } from './stepMetrics';
+import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, scrollLeftForStep, stepWidthFor, stepWidthMinFor } from './stepMetrics';
 import { useViewport } from '../../hooks/useViewport';
 import { useElementWidth } from './useElementWidth';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
@@ -117,8 +117,11 @@ export const StepGrid: React.FC<StepGridProps & {
     const strandedCount = outOfRangeNoteCount(tracks, steps);
 
     // Fit the whole pattern into the dock where possible; scroll past the floor.
+    // E13: which floor depends on what is pointing at it — 10px of column is a
+    // fine mouse target and less than half a fingertip.
+    const { isNarrow, isCoarsePointer } = useViewport();
     const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
-    const stepWidth = stepWidthFor(maxSteps, gridWidth);
+    const stepWidth = stepWidthFor(maxSteps, gridWidth, { min: stepWidthMinFor(isCoarsePointer) });
     const cellStyles = cellStylesFor(stepWidth);
     const beatMarkerStyle: React.CSSProperties = { ...cellStyles, borderRight: '1px solid #444' };
     const rowWidth = maxSteps * stepWidth;
@@ -128,7 +131,6 @@ export const StepGrid: React.FC<StepGridProps & {
     // for most of every loop. Only the narrow layout follows it: on the
     // desktop the pattern usually fits, and moving a scroll position the user
     // just set by hand would be a regression, not a feature.
-    const { isNarrow } = useViewport();
     React.useEffect(() => {
         if (!isNarrow) return;
         const el = gridRef.current;
