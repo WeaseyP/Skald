@@ -456,3 +456,45 @@ describe('useFileIO — dead exposed-parameter scrub on load', () => {
         expect(setNodes).toHaveBeenCalledWith([{ id: 'a', data: {} }, { id: 'b' }]);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Packet C1 — schema version + migration registry, through the real hook.
+// ---------------------------------------------------------------------------
+describe('useFileIO — save-file schema version (C1)', () => {
+    it('Save stamps the current schema version on every file', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/track.json' });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        // Before C1 no save carried a version at all (F-B06-1).
+        expect(written.version).toBe(1);
+    });
+
+    it('Load migrates parentNode -> parentId inside an Instrument subgraph, which the old shim skipped (F-B06-7)', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{
+                    id: 'inst', type: 'instrument',
+                    data: { name: 'I', label: 'I', subgraph: { nodes: [{ id: 'inner', type: 'lfo', parentNode: 'grp', data: { label: 'L' } }], connections: [] } },
+                }],
+                edges: [],
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const loaded = setNodes.mock.calls[0][0] as { data: { subgraph: { nodes: Record<string, unknown>[] } } }[];
+        const inner = loaded[0].data.subgraph.nodes[0];
+        expect(inner.parentId).toBe('grp');
+        expect(inner).not.toHaveProperty('parentNode');
+    });
+
+    it('Load refuses a file from a newer Skald without touching the current graph', async () => {
+        loadGraph.mockResolvedValue({ content: JSON.stringify({ version: 42, nodes: [], edges: [] }) });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(setNodes).not.toHaveBeenCalled();
+        expect(lastStatus().kind).toBe('error');
+        expect(lastStatus().message).toMatch(/newer Skald/);
+        expect(lastStatus().message).toMatch(/version 42/);
+    });
+});

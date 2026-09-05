@@ -151,7 +151,13 @@ Session_Raw :: struct {
 	masterVolume: Maybe(f32),
 }
 
+// The save-file schema version this reader understands (packet C1). Mirrors
+// CURRENT_SAVE_VERSION in skald-ui/src/utils/saveMigrations.ts — bump both.
+SAVE_FORMAT_VERSION :: 1
+
 Graph_Raw :: struct {
+	// Stamped by the editor's Save since C1; absent (pre-C1) unmarshals as 0.
+	version:          int,
 	nodes:            []Node_Raw,
 	connections:      []Connection,
 	// React Flow save files use `edges` with source/target field names.

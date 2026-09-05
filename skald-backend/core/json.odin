@@ -550,6 +550,19 @@ build_project_from_json :: proc(input_bytes: []byte) -> (Project, string) {
 		if err := json.unmarshal(input_bytes, &graph_raw); err != nil {
 			return Project{}, fmt.aprintf("graph-shaped input failed to parse: %v", err)
 		}
+		// Packet C1: the editor stamps every save with a schema version and
+		// migrates older files forward on load; this reader mirrors the
+		// current version and refuses a NEWER one rather than half-reading a
+		// shape it does not know. Absent (a pre-C1 file) is 0 and accepted —
+		// nothing the generator reads changed in migration 0 -> 1 (it renamed
+		// a React Flow key the generator never looks at and dropped dead
+		// exposures the reachability table already ignores).
+		if graph_raw.version > SAVE_FORMAT_VERSION {
+			return Project{}, fmt.aprintf(
+				"this file was saved by a newer Skald (save version %d; this generator reads up to %d). Update Skald, or re-save the file from a matching editor.",
+				graph_raw.version, SAVE_FORMAT_VERSION,
+			)
+		}
 		return build_project_from_graph_raw(&graph_raw), ""
 	}
 

@@ -528,8 +528,23 @@ A conservative static warning cannot see a defect that another defect is hiding.
 
 ## Wave C — Schema & Behaviour
 
+> **Wave C:** started 2026-09-05 after Wave B closed. C1 landed; C2–C7 open.
+
 ### C1 — Schema Version + Migration Registry
-- [ ] **C1** (M) — `version` stamped by `handleSave`; ordered pure `MIGRATIONS` run in `parseSaveFile`; **must recurse into subgraphs**.
+- [x] **C1** (M) — ✅ **CLOSED**. `skald-ui/src/utils/saveMigrations.ts`: `CURRENT_SAVE_VERSION = 1`,
+  an ordered `MIGRATIONS` registry (asserted contiguous), `walkNodes` recursing into every
+  `data.subgraph.nodes`, and `migrateSaveFile`, which `parseSaveFile` runs before any state lands and
+  `handleSave` stamps. Migration 0→1 is the two former ad hoc shims — `parentNode → parentId` and the
+  dead-`syncRate` scrub — now recursing (F-B06-7: the old `parentNode` shim stopped at the top level).
+  A file from a newer Skald is refused whole, on both sides: the backend mirrors the version as
+  `SAVE_FORMAT_VERSION` in `json.odin` and `build_project_from_json` returns an error for a newer one
+  (`save_version_test.odin`). Absent ⇒ 0 and accepted, so no shipped example or test fixture changed.
+  Pinned by `saveMigrations.test.ts` (fixture pair, idempotence, registry contiguity, version guard, and a
+  round trip over four shipped examples) and three `FileIO.test.tsx` cases through the real hook that
+  failed before (no version stamped; subgraph `parentNode` untouched; newer version half-read). Every
+  later schema change is a new `Migration` entry plus a fixture pair — and a bump on both sides.
+  Original text: `version` stamped by `handleSave`; ordered pure `MIGRATIONS` run in `parseSaveFile`;
+  **must recurse into subgraphs**.
   - **Closes:** SKB-054
 
 ### C2 — Node Schema + Generated Bindings
