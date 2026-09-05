@@ -270,6 +270,11 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 
 	ratio_str := get_f32_param(graph, plan, node, "frequency", "", 1.0)
 	mod_index_str := get_f32_param(graph, plan, node, "modIndex", "", 100.0)
+	// C5 (F-A02-7): the only source node with no output level — a bare
+	// sin() at full scale, so a modulator's depth and a carrier's loudness
+	// both had to be borrowed from other nodes. Default 1.0 leaves every
+	// shipped FM patch's text untouched (the Distortion outputGain rule).
+	amp_str := get_f32_param(graph, plan, node, "amplitude", "input_amp", 1.0)
 
 	unison_count := instrument.unison
 	if unison_count <= 0 do unison_count = 1
@@ -287,7 +292,11 @@ generate_fm_operator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Grap
 	fmt.sbprintf(sb, "\t\t\t\tvoice.fm_%s_phase[i] = math.mod(voice.fm_%s_phase[i] + (2 * f32(math.PI) * detuned_carrier_freq_%s / sample_rate), 2 * f32(math.PI));\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\t\tunison_out += math.sin(voice.fm_%s_phase[i] + (%s) * (%s));\n", node.id, mod_str, mod_index_str)
 	fmt.sbprint(sb, "\t\t\t}\n")
-	fmt.sbprintf(sb, "\t\t\tnode_%s_out = unison_out / f32(unison_count);\n", node.id)
+	if amp_str != f32_literal(1.0) {
+		fmt.sbprintf(sb, "\t\t\tnode_%s_out = (unison_out / f32(unison_count)) * (%s);\n", node.id, amp_str)
+	} else {
+		fmt.sbprintf(sb, "\t\t\tnode_%s_out = unison_out / f32(unison_count);\n", node.id)
+	}
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
@@ -313,6 +322,15 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph,
 	}
 	pos_str := get_f32_param(graph, plan, node, "position", "input_pos", 0.0)
 	amp_str := get_f32_param(graph, plan, node, "amplitude", "input_amp", 1.0)
+	// C5 (F-A01-7, F-A01-8): the square end of the morph was hard-coded at
+	// 50 % duty and the accumulator could not be offset, while the Oscillator
+	// had both controls. pulseWidth rides into the sample helper (0.5 = the
+	// old square); phase is in degrees like the Oscillator's, but this
+	// accumulator runs 0..1, so the offset is phase / 360 — and it is emitted
+	// only when authored or exposed, so an existing Wavetable's text does not
+	// move.
+	pw_str := get_f32_param(graph, plan, node, "pulseWidth", "input_pulseWidth", 0.5)
+	phase_str := get_f32_param(graph, plan, node, "phase", "", 0.0)
 
 	unison_count := instrument.unison
 	if unison_count <= 0 do unison_count = 1
@@ -328,7 +346,13 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph,
 	emit_f32_local(sb, "\t\t\t\t", "detuned_freq", fmt.tprintf("(%s) * math.pow(2.0, detune_amount / 1200.0)", freq_str))
 	fmt.sbprintf(sb, "\t\t\t\tvoice.wavetable_%s_phase[i] = math.mod(voice.wavetable_%s_phase[i] + (detuned_freq / sample_rate), 1.0);\n", node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\t\tif voice.wavetable_%s_phase[i] < 0.0 do voice.wavetable_%s_phase[i] += 1.0;\n", node.id, node.id)
-	fmt.sbprintf(sb, "\t\t\t\tunison_out += skald_wavetable_sample(voice.wavetable_%s_phase[i], f32(%s));\n", node.id, pos_str)
+	sample_phase := fmt.tprintf("voice.wavetable_%s_phase[i]", node.id)
+	if phase_str != f32_literal(0.0) {
+		fmt.sbprintf(sb, "\t\t\t\tsample_phase := math.mod(voice.wavetable_%s_phase[i] + f32(%s) / 360.0, 1.0);\n", node.id, phase_str)
+		fmt.sbprint(sb, "\t\t\t\tif sample_phase < 0.0 do sample_phase += 1.0;\n")
+		sample_phase = "sample_phase"
+	}
+	fmt.sbprintf(sb, "\t\t\t\tunison_out += skald_wavetable_sample(%s, f32(%s), math.clamp(f32(%s), 0.01, 0.99));\n", sample_phase, pos_str, pw_str)
 	fmt.sbprint(sb, "\t\t\t}\n")
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (unison_out / f32(unison_count)) * (%s);\n", node.id, amp_str)
 	fmt.sbprint(sb, "\t\t}\n\n")
@@ -357,12 +381,23 @@ generate_delay_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, pla
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
+// C5 (F-A07-7): whether this Reverb carries the damping stage. Emitted — and
+// its processor state declared — only when `damping` is authored non-zero or
+// exposed, so every undamped reverb's text (and its goldens) stay exactly as
+// they were. One predicate for the struct, the init and the DSP line, so the
+// three can never disagree about whether the field exists.
+reverb_damping_active :: proc(graph: ^Graph, plan: ^Instrument_Plan, node: Node) -> bool {
+	return get_f32_param(graph, plan, node, "damping", "", 0.0) != f32_literal(0.0)
+}
+
 generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan: ^Instrument_Plan) {
 	input_str := sum_port_inputs(graph, node.id, "input", "0.0")
 
 	decay_str     := get_f32_param(graph, plan, node, "decay", "", 0.5)
 	pre_delay_str := get_f32_param(graph, plan, node, "preDelay", "", 0.02)
 	mix_str       := get_f32_param(graph, plan, node, "mix", "", 0.5)
+	damping_str   := get_f32_param(graph, plan, node, "damping", "", 0.0)
+	damped        := reverb_damping_active(graph, plan, node)
 
 	// B7-x1: shared with the tail-length analysis and the runtime live-tail
 	// proc via REVERB_COMB_SECONDS — see its doc comment in
@@ -384,7 +419,17 @@ generate_reverb_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, pl
 	fmt.sbprintf(sb, "\t\t\tread_index_%s := (p.delay_%s_write_index - delay_samples_%s + len(p.delay_%s_buffer)) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tdelayed_sample_%s := p.delay_%s_buffer[read_index_%s];\n", node.id, node.id, node.id)
 	emit_f32_local(sb, "\t\t\t", fmt.tprintf("decay_gain_%s", node.id), fmt.tprintf("math.clamp(math.pow(f32(0.001), f32(%.9f) / math.max(f32(%s), 0.01)), 0.0, 0.95)", delay_time, decay_str))
-	fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = pre_delayed_input_%s + delayed_sample_%s * decay_gain_%s;\n", node.id, node.id, node.id, node.id, node.id)
+	if damped {
+		// Freeverb's damping: a one-pole lowpass on the fed-back sample, so each
+		// pass round the comb loses more treble than bass — the minimal
+		// Schroeder way rooms absorb highs. Clamped short of 1.0, where the
+		// pole would freeze and the tail would never decay.
+		emit_f32_local(sb, "\t\t\t", fmt.tprintf("damp_%s", node.id), fmt.tprintf("math.clamp(f32(%s), 0.0, 0.99)", damping_str))
+		fmt.sbprintf(sb, "\t\t\tp.reverb_%s_damp = delayed_sample_%s * (1.0 - damp_%s) + p.reverb_%s_damp * damp_%s;\n", node.id, node.id, node.id, node.id, node.id)
+		fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = pre_delayed_input_%s + p.reverb_%s_damp * decay_gain_%s;\n", node.id, node.id, node.id, node.id, node.id)
+	} else {
+		fmt.sbprintf(sb, "\t\t\tp.delay_%s_buffer[p.delay_%s_write_index] = pre_delayed_input_%s + delayed_sample_%s * decay_gain_%s;\n", node.id, node.id, node.id, node.id, node.id)
+	}
 	fmt.sbprintf(sb, "\t\t\tp.delay_%s_write_index = (p.delay_%s_write_index + 1) %% len(p.delay_%s_buffer);\n", node.id, node.id, node.id)
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (%s) * (1.0 - (%s)) + delayed_sample_%s * (%s);\n", node.id, input_str, mix_str, node.id, mix_str)
 	fmt.sbprint(sb, "\t\t}\n\n")

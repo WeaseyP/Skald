@@ -528,7 +528,7 @@ A conservative static warning cannot see a defect that another defect is hiding.
 
 ## Wave C — Schema & Behaviour
 
-> **Wave C:** started 2026-09-05 after Wave B closed. C1, C3, C4, C6 and C7 landed; C2 and C5 open.
+> **Wave C:** started 2026-09-05 after Wave B closed. C1 and C3–C7 landed; C2 open.
 
 ### C1 — Schema Version + Migration Registry
 - [x] **C1** (M) — ✅ **CLOSED**. `skald-ui/src/utils/saveMigrations.ts`: `CURRENT_SAVE_VERSION = 1`,
@@ -592,7 +592,23 @@ A conservative static warning cannot see a defect that another defect is hiding.
   carries the exception.
 
 ### C5 — Finish the Nodes
-- [ ] **C5** (M) — Wavetable/FM unison decision; Wavetable PWM + phase; FM Operator output level; Reverb `damping`.
+- [x] **C5** (M) — ✅ **CLOSED** (2026-09-05). **Unison decision: already made** — SKB-012 gave both the
+  Wavetable and the FM Operator the Oscillator's unison/detune loop long before this wave, and
+  `wavetable_unison_stack` / `fm_unison_stack` pin it (verified before implementing, per the
+  tracker rule). The three real gaps, each additive with a default that reproduces the old emission
+  byte for byte so no save changes sound and no version bump is needed: **Wavetable `pulseWidth`**
+  (0.01–0.99, default 0.5, `input_pulseWidth` port) rides into `skald_wavetable_sample`, whose
+  square case reads it instead of a hard-coded 0.5; **Wavetable `phase`** (0–360°, offset in turns
+  since this accumulator runs 0..1, emitted only when authored or exposed); **FM Operator
+  `amplitude`** (0–1, default 1, `input_amp` port; unity emits no multiply; override range row so an
+  exposed-but-untouched level stays at 1, the SKB-051 class); **Reverb `damping`** (0–1, default 0;
+  Freeverb's one-pole lowpass on the fed-back sample, with `reverb_damping_active` deciding struct
+  field, init and DSP line together so an undamped reverb's text does not move). Validator port tables,
+  cards, sidebar sliders (range-parity gate green) and defaults updated. Tests, each watched failing
+  first: acceptance `wavetable_pwm` (setter absent → rejected), `wavetable_phase` (0.5 + 0.25 at
+  180° must cancel to RMS ~0.14; was 0.42), `fm_level` (RMS 0.57 → 0.14), `reverb_damping` (centroid
+  must fall 0 → 0.95); 10 Odin unit tests (`nodes_finish_test`); 6 vitest cases (cards + defaults).
+  Goldens: only the two wavetable helper lines change in every file, plus the call sites.
 
 ### C6 — Voice Lifecycle Polish
 - [x] **C6-1** (S) — ✅ **CLOSED**. `note_on` steals in two tiers: first the oldest voice whose every

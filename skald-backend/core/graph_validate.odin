@@ -27,8 +27,10 @@ import json "core:encoding/json"
 @(private = "file") ADSR_INPUTS := [?]string{"input", "input_attack", "input_decay", "input_sustain", "input_release"}
 @(private = "file") NOISE_INPUTS := [?]string{"input_amp"}
 @(private = "file") FILTER_INPUTS := [?]string{"input", "input_cutoff", "input_res"}
-@(private = "file") FM_INPUTS := [?]string{"input_mod", "input_carrier", "input_freq"}
-@(private = "file") WAVETABLE_INPUTS := [?]string{"input_freq", "input_pos", "input_amp"}
+// C5: FmOperator gained input_amp (F-A02-7) and Wavetable input_pulseWidth
+// (F-A01-7), each mirroring the get_f32_param port its generator reads.
+@(private = "file") FM_INPUTS := [?]string{"input_mod", "input_carrier", "input_freq", "input_amp"}
+@(private = "file") WAVETABLE_INPUTS := [?]string{"input_freq", "input_pos", "input_amp", "input_pulseWidth"}
 @(private = "file") THROUGH_INPUTS := [?]string{"input"}
 @(private = "file") PANNER_INPUTS := [?]string{"input", "input_pan"}
 @(private = "file") GAIN_INPUTS := [?]string{"input", "input_gain"}

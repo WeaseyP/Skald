@@ -80,6 +80,13 @@ PARAM_RANGE_OVERRIDES := [?]Param_Range_Entry{
 	// generic "gain" row's 0..4 span, and the generator clamps to the same
 	// bounds at point of use.
 	{"Distortion", "outputGain", {0.0, 4.0, 1.0, "x"}},
+	// C5 (F-A02-7): the FM Operator's output level. The generic "amplitude"
+	// row defaults to 0.5; an exposed-but-untouched operator must stay at the
+	// unity it always emitted (the SKB-051 class, same as the Noise row).
+	{"FmOperator", "amplitude", {0.0, 1.0, 1.0, ""}},
+	// C5 (F-A07-7): Reverb damping. 0 = the undamped comb every existing
+	// patch has; no generic row carries the name.
+	{"Reverb", "damping", {0.0, 1.0, 0.0, ""}},
 	// NOTE (SKB-024, deliberately absent): a `{"Wavetable", "amplitude",
 	// {0.0, 1.0, 1.0, ""}}` row belongs here byte-for-byte like the Noise row
 	// above, and is NOT added. The generic 0.5 stands because correcting it

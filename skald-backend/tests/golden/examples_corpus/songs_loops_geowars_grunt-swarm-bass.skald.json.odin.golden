@@ -80,22 +80,22 @@ next_float32 :: proc(rng: ^PRNG_State) -> f32 {
 
 ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }
 
-skald_wavetable_shape :: proc(idx: int, ph: f32) -> f32 {
+skald_wavetable_shape :: proc(idx: int, ph: f32, pw: f32) -> f32 {
 	switch idx {
 	case 1: return abs(ph * 4.0 - 2.0) - 1.0
 	case 2: return ph * 2.0 - 1.0
-	case 3: return ph < 0.5 ? 1.0 : -1.0
+	case 3: return ph < pw ? 1.0 : -1.0
 	}
 	return math.sin(ph * 2.0 * f32(math.PI))
 }
 
-skald_wavetable_sample :: proc(ph: f32, pos: f32) -> f32 {
+skald_wavetable_sample :: proc(ph: f32, pos: f32, pw: f32) -> f32 {
 	p := math.clamp(pos, 0.0, 3.0)
 	i1 := int(p)
 	i2 := (i1 + 1) % 4
 	frac := p - f32(i1)
-	s1 := skald_wavetable_shape(i1, ph)
-	s2 := skald_wavetable_shape(i2, ph)
+	s1 := skald_wavetable_shape(i1, ph, pw)
+	s2 := skald_wavetable_shape(i2, ph, pw)
 	return s1 + (s2 - s1) * frac
 }
 

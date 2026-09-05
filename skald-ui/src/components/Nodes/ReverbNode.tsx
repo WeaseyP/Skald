@@ -14,5 +14,8 @@ export const ReverbNode = makeParamNode({
         // rather than the 0 an absent field used to show.
         { key: 'preDelay', label: 'Pre-Delay (s)', min: 0, max: 0.25, step: 0.005, default: 0.02 },
         { key: 'mix', label: 'Mix', min: 0, max: 1, step: 0.05 },
+        // C5 (F-A07-7): high-frequency absorption in the feedback path. 0 is
+        // the undamped comb every older patch has.
+        { key: 'damping', label: 'Damping', min: 0, max: 1, step: 0.05, default: 0 },
     ],
 });

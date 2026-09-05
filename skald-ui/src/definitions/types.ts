@@ -43,6 +43,9 @@ export interface BpmSynchronizable {
 export interface FmOperatorParams extends BaseNodeParams {
   frequency: number;
   modIndex: number;
+  // C5 (F-A02-7): output level, 0..1, with an input_amp port. Absent = 1.0,
+  // the full-scale sin() every operator emitted before the field existed.
+  amplitude?: number;
 }
 
 export interface WavetableParams extends BaseNodeParams {
@@ -51,6 +54,13 @@ export interface WavetableParams extends BaseNodeParams {
   tableName: 'Sine' | 'Triangle' | 'Sawtooth' | 'Square';
   frequency: number;
   position: number;
+  // C5 (F-A01-7): duty cycle of the square end of the morph, 0.01..0.99,
+  // with an input_pulseWidth port. Absent = 0.5, the symmetric square the
+  // engine always drew.
+  pulseWidth?: number;
+  // C5 (F-A01-8): start-point offset in degrees, as on the Oscillator.
+  // Absent = 0.
+  phase?: number;
   // Output level (0..1), multiplied into the wavetable sample. The engine has
   // always read it (with a 1.0 fallback) and the node card has always shown a
   // control for it; it was missing from this interface and from the defaults,
@@ -118,6 +128,9 @@ export interface ReverbParams extends BaseNodeParams {
   decay: number;
   preDelay: number;
   mix: number;
+  // C5 (F-A07-7): one-pole lowpass on the fed-back sample, 0..1. Absent or
+  // 0 = the undamped comb every existing patch has.
+  damping?: number;
 }
 
 export interface DistortionParams extends BaseNodeParams {

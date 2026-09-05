@@ -1110,6 +1110,89 @@ main :: proc() {
 			}
 		}
 
+	case "wavetable_pwm":
+		// C5 (F-A01-7): the Wavetable's square end was hard-coded at 50 % duty
+		// while the Oscillator's square had a full pulse-width control. With
+		// `pulseWidth` exposed, narrowing the duty from 0.5 to 0.1 must change
+		// the sound (a 10 % pulse has strong even harmonics a 50 % square
+		// lacks). Before the fix the setter did not exist and the sample
+		// helper ignored the width.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "pulseWidth", value = 0.5}}},
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "pulseWidth", value = 0.1}}},
+				"wavetable pulse width 0.5 -> 0.1",
+			)
+		}
+
+	case "wavetable_phase":
+		// C5 (F-A01-8): two sine Wavetables at 440 Hz, amplitudes 0.5 and
+		// 0.25, the second offset by 180 degrees. Summed they cancel down to a
+		// 0.25 residual: RMS 0.25 * 0.8 (master) / sqrt2 ~= 0.14. Before the
+		// fix the phase field was ignored and they added to 0.75 -> RMS 0.42.
+		{
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				rms := compute_rms(buf[int(0.01 * sample_rate):int(0.3 * sample_rate)], .Left)
+				if rms > 0.25 || rms < 0.05 {
+					fmt.eprintfln(
+						"FAIL wavetable_phase: RMS %.3f (want ~0.14: a 180-degree copy must cancel) — the Wavetable phase parameter is not applied",
+						rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "fm_level":
+		// C5 (F-A02-7): the FM Operator was the only source with no output
+		// level — a bare sin() at full scale. `amplitude` 0.25 on an unmodulated
+		// carrier: RMS 0.25 * 0.8 / sqrt2 ~= 0.14. Before the fix: 0.57.
+		{
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				rms := compute_rms(buf[int(0.05 * sample_rate):int(0.5 * sample_rate)], .Left)
+				if rms > 0.25 || rms < 0.05 {
+					fmt.eprintfln(
+						"FAIL fm_level: RMS %.3f (want ~0.14) — the FM Operator amplitude is not applied",
+						rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "reverb_damping":
+		// C5 (F-A07-7): a one-pole lowpass on the fed-back sample makes highs
+		// die faster than lows, the way rooms do. A white-noise burst into a
+		// wet-only comb: raising damping from 0 to 0.95 must lower the tail's
+		// spectral centroid. Before the fix the setter did not exist.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left, 0.02) // a 20 ms noise burst's wet tail is quiet over a 2 s buffer
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "damping", value = 0.0}}},
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "damping", value = 0.95}}},
+				"reverb damping 0 -> 0.95",
+				0.10,
+				Change_Expect{centroid = .Lower},
+			)
+		}
+
 	case "steal_click":
 		// Voice-steal continuity gate: voice_count=1 patch holds A4, then a
 		// second note_on steals the only voice. The retrigger must be

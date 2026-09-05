@@ -52,6 +52,8 @@ const defaultFmOperatorParams: FmOperatorParams = {
     // ~190kHz — pure ultrasonic aliasing in the generated code.
     frequency: 2,
     modIndex: 100,
+    // C5: unity, the full-scale output the node always had.
+    amplitude: 1,
     exposedParameters: ['frequency', 'modIndex']
 };
 
@@ -59,6 +61,9 @@ const defaultWavetableParams: WavetableParams = {
     tableName: 'Sine',
     frequency: 440,
     position: 0,
+    // C5: the symmetric square and zero offset the engine always used.
+    pulseWidth: 0.5,
+    phase: 0,
     // 1.0 = unity, matching the codegen fallback for an absent value. A new
     // node now stores it explicitly, so exposing amplitude initializes the
     // generated field from the stored 1.0 instead of the generic range-table
@@ -129,6 +134,8 @@ const defaultReverbParams: ReverbParams = {
     decay: 3.0,
     preDelay: 0.02,
     mix: 0.5,
+    // C5: undamped, the comb every existing patch has.
+    damping: 0,
     // preDelay is implemented in the engine and now editable on the node card;
     // it belongs in the default public API alongside decay and mix.
     exposedParameters: ['decay', 'preDelay', 'mix']

@@ -363,21 +363,23 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
 
     fmt.sbprint(&sb, "ADSR_Stage :: enum { Idle, Attack, Decay, Sustain, Release }\n\n")
 
-    fmt.sbprint(&sb, "skald_wavetable_shape :: proc(idx: int, ph: f32) -> f32 {\n")
+    // C5 (F-A01-7): the square shape takes its duty cycle from the node's
+    // pulseWidth instead of a hard-coded 0.5.
+    fmt.sbprint(&sb, "skald_wavetable_shape :: proc(idx: int, ph: f32, pw: f32) -> f32 {\n")
     fmt.sbprint(&sb, "\tswitch idx {\n")
     fmt.sbprint(&sb, "\tcase 1: return abs(ph * 4.0 - 2.0) - 1.0\n")
     fmt.sbprint(&sb, "\tcase 2: return ph * 2.0 - 1.0\n")
-    fmt.sbprint(&sb, "\tcase 3: return ph < 0.5 ? 1.0 : -1.0\n")
+    fmt.sbprint(&sb, "\tcase 3: return ph < pw ? 1.0 : -1.0\n")
     fmt.sbprint(&sb, "\t}\n")
     fmt.sbprint(&sb, "\treturn math.sin(ph * 2.0 * f32(math.PI))\n")
     fmt.sbprint(&sb, "}\n\n")
-    fmt.sbprint(&sb, "skald_wavetable_sample :: proc(ph: f32, pos: f32) -> f32 {\n")
+    fmt.sbprint(&sb, "skald_wavetable_sample :: proc(ph: f32, pos: f32, pw: f32) -> f32 {\n")
     fmt.sbprint(&sb, "\tp := math.clamp(pos, 0.0, 3.0)\n")
     fmt.sbprint(&sb, "\ti1 := int(p)\n")
     fmt.sbprint(&sb, "\ti2 := (i1 + 1) % 4\n")
     fmt.sbprint(&sb, "\tfrac := p - f32(i1)\n")
-    fmt.sbprint(&sb, "\ts1 := skald_wavetable_shape(i1, ph)\n")
-    fmt.sbprint(&sb, "\ts2 := skald_wavetable_shape(i2, ph)\n")
+    fmt.sbprint(&sb, "\ts1 := skald_wavetable_shape(i1, ph, pw)\n")
+    fmt.sbprint(&sb, "\ts2 := skald_wavetable_shape(i2, ph, pw)\n")
     fmt.sbprint(&sb, "\treturn s1 + (s2 - s1) * frac\n")
     fmt.sbprint(&sb, "}\n\n")
 

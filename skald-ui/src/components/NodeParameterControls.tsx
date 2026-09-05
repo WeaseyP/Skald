@@ -268,6 +268,10 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     ~21% and leaves the default (100) near centre. Stored values
                     are untouched: this is only how position maps to value. */}
                 {renderControlWrapper('modIndex', 'Modulation Index', slider('modIndex', 0, 1000, 100, undefined, undefined, false, 3))}
+                {/* C5 (F-A02-7): output level, default 1 = the full-scale
+                    output the operator always had. Range mirrors the
+                    FmOperator/amplitude override row in param_ranges.odin. */}
+                {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 1))}
             </>);
         case 'wavetable':
             return (<>
@@ -285,6 +289,10 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     The parameter existed in the engine and on the node card but
                     had no sidebar control and no entry in WavetableParams. */}
                 {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 1))}
+                {/* C5 (F-A01-7/8): the square end's duty cycle and a start
+                    offset — the Oscillator's two controls this node lacked. */}
+                {renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5))}
+                {renderControlWrapper('phase', 'Phase', slider('phase', 0, 360, 0))}
             </>);
         case 'oscillator':
             return (<>
@@ -310,6 +318,8 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 {renderControlWrapper('decay', 'Decay (s)', slider('decay', 0.1, 10, 3))}
                 {renderControlWrapper('preDelay', 'Pre-Delay (s)', slider('preDelay', 0, 0.25, 0.02))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
+                {/* C5 (F-A07-7): 0 = the undamped comb every older patch has. */}
+                {renderControlWrapper('damping', 'Damping', slider('damping', 0, 1, 0))}
             </>);
         case 'distortion':
             return (<>

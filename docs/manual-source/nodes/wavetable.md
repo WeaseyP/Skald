@@ -44,6 +44,8 @@ Note the asymmetry, because it will bite you: `input_freq` is *multiplicative an
 | Parameter | Range | Default | Unit | What it does to the sound |
 |---|---|---|---|---|
 | **Position** | 0 – 3 | 0 | — | Slides the waveshape: 0 = sine, 1 = triangle, 2 = sawtooth, 3 = square, with a linear crossfade in between. |
+| **Pulse Width** | 0.01 – 0.99 | 0.5 | `PW` | Duty cycle of the square end of the morph (position 3). 0.5 is the symmetric square every older patch had; narrower or wider pulses bring in the even harmonics, exactly as on the Oscillator. Added in packet C5. |
+| **Phase** | 0 – 360° | 0 | — | Where in its cycle the wave starts on each note, as on the Oscillator. Two sine Wavetables on the same pitch 180° apart cancel. Added in packet C5. |
 | **Amp** | 0 – 1 | *(unset; DSP uses 1.0)* | — | Output level of the oscillator before anything downstream. |
 | **Fixed Pitch** | off / on | off | — | Off: pitch follows the played note. On: pitch is locked to Frequency. |
 | **Frequency** | 20 – 20000 | 440 | Hz | Only read when Fixed Pitch is on. |

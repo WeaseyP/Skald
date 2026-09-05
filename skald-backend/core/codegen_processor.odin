@@ -163,6 +163,11 @@ generate_processor_code :: proc(
             fmt.sbprintf(&sb, "\tdelay_%s_write_index: int,\n", node.id)
 			if node.type == "Reverb" {
 				fmt.sbprintf(&sb, "\treverb_%s_pre_buffer: [%d]f32,\n", node.id, MAX_REVERB_PREDELAY_SAMPLES)
+				// C5: the damping lowpass's one sample of memory, declared only
+				// when the DSP line that reads it is emitted (reverb_damping_active).
+				if reverb_damping_active(graph, plan, node) {
+					fmt.sbprintf(&sb, "\treverb_%s_damp: f32,\n", node.id)
+				}
 			}
 		}
 	}
@@ -376,6 +381,9 @@ generate_processor_code :: proc(
 		fmt.sbprintf(&sb, "\tp.delay_%s_write_index = 0\n", node.id)
 		if node.type == "Reverb" {
 			fmt.sbprintf(&sb, "\tp.reverb_%s_pre_buffer = {{}}\n", node.id)
+			if reverb_damping_active(graph, plan, node) {
+				fmt.sbprintf(&sb, "\tp.reverb_%s_damp = 0.0\n", node.id)
+			}
 		}
 	}
 
