@@ -35,6 +35,8 @@ import { useScale , ScaleProvider } from './contexts/ScaleContext';
 import { GraphActionsProvider } from './contexts/GraphActionsContext';
 import { instrumentSelectionBlockedReason } from './hooks/nodeEditor/useNodeComposition';
 import { shouldLoadFirstRunPatch, useFirstRunPatch } from './hooks/nodeEditor/useFirstRunPatch';
+import { useQwertyKeyboard } from './hooks/useQwertyKeyboard';
+import { isTypingTarget } from './utils/keyboardTarget';
 
 // Re-exported: the Export-Step naming rule now lives with the Export-Step
 // action itself (useEditorState), which is where its undo entry is pushed.
@@ -183,7 +185,7 @@ const EditorLayout = () => {
     // not warn, it exits.
     const projectIssues = useProjectIssues(nodes, tracks, patternSteps);
 
-    const { isPlaying, handlePlay, handleStop, analyserNode, meterAnalysers, previewError, previewStale, isBuilding } = useWasmAudioEngine(
+    const { isPlaying, handlePlay, handleStop, analyserNode, meterAnalysers, previewError, previewStale, isBuilding, sendNoteOn, sendNoteOff } = useWasmAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -269,6 +271,16 @@ const EditorLayout = () => {
     );
     useFirstRunPatch({ enabled: firstRunEligible, load: handleLoadExample });
 
+    // Roadmap E1 — the computer keyboard plays the patch live, through the same
+    // note door and the same scale quantiser as a hardware MIDI keyboard, so
+    // the two cannot disagree about what a keypress means.
+    const qwerty = useQwertyKeyboard({
+        enabled: isPlaying,
+        sendNoteOn,
+        sendNoteOff,
+        nearestInScale,
+    });
+
     const sequencerState = {
         isPlaying,
         currentStep,
@@ -294,8 +306,10 @@ const EditorLayout = () => {
 
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Check for valid targets (ignore inputs)
-            if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+            // Check for valid targets (ignore inputs). One reader of "is the
+            // user typing" (utils/keyboardTarget.ts) — the inline tag list this
+            // replaced knew nothing about <select> or contenteditable.
+            if (isTypingTarget(e.target)) return;
 
             // Global Undo/Redo. ONE stack, ONE pop — this used to call the
             // graph's undo and the sequencer's undo side by side, which is
@@ -546,6 +560,36 @@ const EditorLayout = () => {
                                 >
                                     Dismiss
                                 </button>
+                            </div>
+                        )}
+                        {/* Which octave the letter keys are playing, shown while
+                            they are held. Without a readout, Z / X shift a
+                            number the user cannot see, and a note key pressed
+                            with the preview stopped is silent with no
+                            explanation — the hook reports that as
+                            `needsPreview` rather than starting playback (see
+                            useQwertyKeyboard.ts for why). */}
+                        {(qwerty.activeNotes.length > 0 || qwerty.needsPreview) && (
+                            <div
+                                data-testid="qwerty-keyboard-readout"
+                                style={{
+                                    position: 'absolute',
+                                    bottom: 10,
+                                    left: 10,
+                                    zIndex: 50,
+                                    padding: '6px 10px',
+                                    borderRadius: 6,
+                                    fontSize: '0.8em',
+                                    fontFamily: 'sans-serif',
+                                    color: '#E0E0E0',
+                                    backgroundColor: 'rgba(37,37,38,0.95)',
+                                    border: '1px solid #444',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                {`Keyboard octave C${qwerty.octave} (Z / X to shift)`}
+                                {qwerty.needsPreview && ' — press Play to hear it'}
                             </div>
                         )}
                         {fileStatus && (

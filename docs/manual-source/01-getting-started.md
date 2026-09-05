@@ -207,6 +207,8 @@ Every shortcut in the app, taken from the in-app legend (press **?** at any time
 | `Delete` / `Backspace` | Delete selected nodes & wires |
 | `Shift` or `Ctrl` + click | Multi-select nodes |
 | `[` and `]` | Cycle through nodes |
+| `A W S E D F T G Y H U J K` | Play the patch live (one octave, C upward) — the preview must be running |
+| `Z` / `X` | Shift the QWERTY keyboard down / up an octave |
 | Double-click slider | Reset parameter to default |
 | `Shift` + drag note (grid) | Edit note duration |
 | `Ctrl` + drag note (grid) | Edit note velocity |
@@ -215,6 +217,10 @@ Every shortcut in the app, taken from the in-app legend (press **?** at any time
 | `?` | Toggle this help |
 
 (`skald-ui/src/components/ShortcutLegend.tsx::SHORTCUTS`.) The four "drag note (grid)" rows apply in the sequencer's step grid and piano roll, which the Sequencer chapter covers in full.
+
+**The letter keys are a keyboard.** `A` is middle C (MIDI 60) and the thirteen keys run up a chromatic octave to `K`, with the black keys on `W E T Y U` above the gaps — the layout Ableton Live and most trackers use. `Z` and `X` move that octave down and up, clamped so no key can leave the MIDI range (`skald-ui/src/hooks/useQwertyKeyboard.ts::QWERTY_SEMITONES`, `skald-ui/src/hooks/useQwertyKeyboard.ts::MIN_BASE_OCTAVE`). Notes sustain for as long as you hold the key, go to every Instrument in the project, and pass through the same scale quantiser a hardware MIDI keyboard's notes do, so the two always agree (`skald-ui/src/hooks/useQwertyKeyboard.ts::useQwertyKeyboard`). A small readout in the bottom-left corner of the canvas names the octave while you play.
+
+The preview engine has to be running: press **Play** first. A letter key pressed with playback stopped does not start it — Play starts the transport as well as the engine, so it would launch the whole sequenced pattern underneath the note you wanted to hear — the readout says *press Play to hear it* instead (`skald-ui/src/hooks/useQwertyKeyboard.ts::useQwertyKeyboard`). Typing in any text field, and any `Ctrl`/`Cmd` chord, stays typing and stays a chord (`skald-ui/src/utils/keyboardTarget.ts::isTypingTarget`).
 
 ---
 

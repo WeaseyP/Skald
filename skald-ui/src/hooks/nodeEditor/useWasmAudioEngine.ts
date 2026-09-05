@@ -631,5 +631,12 @@ export const useWasmAudioEngine = (
         // actually running — drives the small status pip in SequencerToolbar
         // (roadmap A7 item 3, second half).
         isBuilding,
+        // The same door the MIDI listener above goes through, exposed so the
+        // QWERTY keyboard (roadmap E1) uses it too. A second poster to the
+        // port would bypass the held-note set and reintroduce SKB-023 for
+        // computer-keyboard notes only — silent after any hot-swap, and
+        // indistinguishable from a patch that stopped making sound.
+        sendNoteOn,
+        sendNoteOff,
     };
 };

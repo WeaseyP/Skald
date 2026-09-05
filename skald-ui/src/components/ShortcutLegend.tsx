@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { isTypingTarget } from '../utils/keyboardTarget';
 
 // Self-contained keyboard-shortcut legend: a "?" button pinned bottom-right
 // plus the ? key toggle. Every shortcut in the app was previously
@@ -11,6 +12,8 @@ const SHORTCUTS: Array<[string, string]> = [
     ['Delete / Backspace', 'Delete selected nodes & wires'],
     ['Shift or Ctrl + click', 'Multi-select nodes'],
     ['[ and ]', 'Cycle through nodes'],
+    ['A W S E D F T G Y H U J K', 'Play the patch live (one octave, C upward) — the preview must be running'],
+    ['Z / X', 'Shift the QWERTY keyboard down / up an octave'],
     ['Double-click slider', 'Reset parameter to default'],
     ['Shift + drag note (grid)', 'Edit note duration'],
     ['Ctrl + drag note (grid)', 'Edit note velocity'],
@@ -24,7 +27,7 @@ export const ShortcutLegend: React.FC = () => {
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+            if (isTypingTarget(e.target)) return;
             if (e.key === '?') setOpen(o => !o);
             if (e.key === 'Escape') setOpen(false);
         };
