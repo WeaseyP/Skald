@@ -7,6 +7,8 @@ import { XYPad } from './controls/XYPad';
 import { NumberInput } from './common/NumberInput';
 import { DEFAULT_SYNC_RATE, bpmSyncToggleChanges, formatSyncTime } from '../definitions/bpm';
 import { paramDeadReason, paramIsReachable } from '../utils/plockTargets';
+import { NODE_DEFINITIONS } from '../definitions/node-definitions';
+import { RandomizeAmount, RANDOMIZE_AMOUNTS, randomizableParamNames, randomizeParams } from '../utils/randomize';
 
 interface NodeParameterControlsProps {
     node: Node;
@@ -50,6 +52,148 @@ const labelStyles: React.CSSProperties = {
     display: 'block',
     marginBottom: '5px'
 }
+
+// The Odin type name `lookupRange`'s node-type overrides are keyed on
+// ("LFO", "FmOperator", ...), NOT React Flow's own type string ("lfo",
+// "fmOperator"). Mirrors plockTargets.ts's private `nodeCodegenType` — same
+// source (NODE_DEFINITIONS), same fallback to the raw type when a node type
+// is missing from the manifest (a subgraph node whose type never made it in).
+const codegenTypeOf = (node: Node): string => NODE_DEFINITIONS[node.type ?? '']?.codegenType ?? node.type ?? '';
+
+const randomizeSectionStyles: React.CSSProperties = {
+    marginTop: '20px',
+    paddingTop: '15px',
+    borderTop: '1px dashed #444',
+};
+
+const presetButtonStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: '6px 8px',
+    borderRadius: '4px',
+    border: active ? '1px solid #3182CE' : '1px solid #555',
+    background: active ? '#2c5282' : '#333',
+    color: '#E0E0E0',
+    cursor: 'pointer',
+    fontSize: '0.85em',
+});
+
+const rerollButtonStyle: React.CSSProperties = {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    border: '1px solid #555',
+    background: '#333',
+    color: '#E0E0E0',
+    cursor: 'pointer',
+};
+
+const applyButtonStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '8px',
+    borderRadius: '4px',
+    border: 'none',
+    background: '#3182CE',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+};
+
+/** A seed the user can note down and retype to reproduce a result exactly. */
+const rollSeed = (): number => Math.floor(Math.random() * 0xffffffff);
+
+/**
+ * Roadmap E11: "Evolve / Randomize". Mutates every eligible numeric parameter
+ * of the node currently rendered by `NodeParameterControls` — instrument-level
+ * fields (Volume, Glide, Unison, Detune) when the Instrument itself is
+ * selected, or an internal node's own controls when one of those is selected
+ * instead ("the instrument (or selected node) panel", per the brief).
+ *
+ * Only offered when the caller passed `onChangeMany` (the sidebar's
+ * multi-field delta path — see the prop doc above): the per-step P-lock
+ * editor's wrapper does not, because there every `onChange` becomes its own
+ * P-lock write with its own `pushHistory` call (useSequencerState.ts
+ * `updateNote`), so a multi-param randomize there would be N undo entries,
+ * not one — breaking the "one undo step per click" exit criterion instead of
+ * meeting it.
+ */
+const RandomizeSection: React.FC<{
+    data: Record<string, unknown>;
+    nodeType: string;
+    onChangeMany: (changes: Record<string, unknown>) => void;
+}> = ({ data, nodeType, onChangeMany }) => {
+    const [amount, setAmount] = React.useState<RandomizeAmount>('nudge');
+    const [seed, setSeed] = React.useState<number>(rollSeed);
+
+    // Computed WITHOUT drawing from the RNG (randomizableParamNames does not
+    // seed one), so merely rendering the control never consumes the sequence
+    // a later click would produce — same seed still means same result.
+    if (randomizableParamNames(data, nodeType).length === 0) return null;
+
+    const handleApply = () => {
+        const changes = randomizeParams(data, nodeType, RANDOMIZE_AMOUNTS[amount], seed);
+        if (Object.keys(changes).length > 0) onChangeMany(changes);
+    };
+
+    return (
+        <div style={randomizeSectionStyles}>
+            <label style={labelStyles}>Randomize</label>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button
+                    type="button"
+                    data-testid="randomize-amount-nudge"
+                    aria-pressed={amount === 'nudge'}
+                    title="Nudge every eligible parameter by up to 5% of its authored range"
+                    onClick={() => setAmount('nudge')}
+                    style={presetButtonStyle(amount === 'nudge')}
+                >
+                    Nudge (±5%)
+                </button>
+                <button
+                    type="button"
+                    data-testid="randomize-amount-evolve"
+                    aria-pressed={amount === 'evolve'}
+                    title="Evolve every eligible parameter by up to 25% of its authored range"
+                    onClick={() => setAmount('evolve')}
+                    style={presetButtonStyle(amount === 'evolve')}
+                >
+                    Evolve (±25%)
+                </button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.8em', color: '#a0aec0' }}>Seed</label>
+                <input
+                    type="number"
+                    data-testid="randomize-seed"
+                    value={seed}
+                    onChange={e => setSeed(Math.trunc(Number(e.target.value)) || 0)}
+                    style={{ ...numberBoxStylesShared, width: '120px' }}
+                />
+                <button
+                    type="button"
+                    data-testid="randomize-reroll"
+                    title="Roll a new random seed"
+                    onClick={() => setSeed(rollSeed())}
+                    style={rerollButtonStyle}
+                >
+                    🎲
+                </button>
+            </div>
+            <button type="button" data-testid="randomize-apply" onClick={handleApply} style={applyButtonStyle}>
+                Randomize
+            </button>
+        </div>
+    );
+};
+
+// Hoisted out of the component body (which also declares a `numberBoxStyles`
+// local) so RandomizeSection, defined at module scope, can share the look.
+const numberBoxStylesShared: React.CSSProperties = {
+    padding: '4px 6px',
+    borderRadius: '4px',
+    border: '1px solid #555',
+    background: '#1A202C',
+    color: '#E0E0E0',
+    fontSize: '0.85em',
+};
 
 export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, onChangeMany, renderControlWrapper, bpm }) => {
     const { type, data: nodeData } = node;
@@ -192,7 +336,10 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         />
     );
 
-    switch (type) {
+    // The switch used to BE the component's return value. It is now wrapped
+    // so a Randomize section (E11) can be appended after whatever controls
+    // the node type renders, without every `case` growing a duplicate tail.
+    const controls = (() => { switch (type) {
         case 'adsr':
             return (<>
                 <AdsrEnvelopeEditor
@@ -450,5 +597,13 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             </>);
         default:
             return <div><small style={{ color: '#666' }}>No standard controls for {type}</small></div>;
-    }
+    } })();
+
+    return (<>
+        {controls}
+        {/* See RandomizeSection's doc comment for why `onChangeMany` gates this. */}
+        {onChangeMany && (
+            <RandomizeSection data={data} nodeType={codegenTypeOf(node)} onChangeMany={onChangeMany} />
+        )}
+    </>);
 };
