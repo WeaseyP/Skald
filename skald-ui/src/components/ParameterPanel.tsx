@@ -291,6 +291,18 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                         onChangeMany={handleControlChangeMany}
                         renderControlWrapper={wrapper}
                         bpm={bpm}
+                        // E12: only the Instrument's OWN panel render gets this — a
+                        // macro axis targets a node INSIDE the subgraph, which needs
+                        // `onUpdateNode(instrumentId, delta, internalNodeId)`, not the
+                        // `handleControlChange`/`handleControlChangeMany` closures
+                        // above (both bound to `node.id` itself, or `subNodeId` when
+                        // THIS render is already inside a subgraph node — which it
+                        // isn't here). A Group has no subgraph and no P-lock/plockTargets
+                        // support, so it gets no macro pad either.
+                        macroRouting={type === 'instrument' ? {
+                            internalNodes: (childNodes as Node<NodeParams>[] | undefined) ?? [],
+                            onUpdateNode: (targetNodeId, delta) => onUpdateNode(node.id, delta, targetNodeId),
+                        } : undefined}
                     />
 
                     {/* Sub-Node Rendering (Specific to Panel) */}

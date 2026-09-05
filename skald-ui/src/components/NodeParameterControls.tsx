@@ -6,9 +6,11 @@ import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
 import { NumberInput } from './common/NumberInput';
 import { DEFAULT_SYNC_RATE, bpmSyncToggleChanges, formatSyncTime } from '../definitions/bpm';
-import { paramDeadReason, paramIsReachable } from '../utils/plockTargets';
+import { macroTargetCandidates, paramDeadReason, paramIsReachable, plockNodeLabel } from '../utils/plockTargets';
 import { NODE_DEFINITIONS } from '../definitions/node-definitions';
 import { RandomizeAmount, RANDOMIZE_AMOUNTS, randomizableParamNames, randomizeParams } from '../utils/randomize';
+import { lookupRange } from '../definitions/nodeSchema.generated';
+import { NodeParams } from '../definitions/types';
 
 interface NodeParameterControlsProps {
     node: Node;
@@ -33,6 +35,19 @@ interface NodeParameterControlsProps {
     // what the node actually follows. Optional — callers without a tempo
     // (e.g. isolated step editors) simply get no annotation.
     bpm?: number;
+    // Roadmap E12 — live XY-pad macro routing. Writing a macro axis's target
+    // means writing a parameter on ANOTHER node inside the instrument's own
+    // subgraph, which `onChange`/`onChangeMany` cannot do: both are bound to
+    // THIS render's node (or its subNodeId, via the closures ParameterPanel
+    // built for it). Only the instrument's own panel render supplies this
+    // (ParameterPanel.tsx's `renderNodeParameters`, `type === 'instrument'`
+    // branch) — it is undefined everywhere else, including the step editor
+    // and every internal-node render, and the section renders nothing
+    // without it.
+    macroRouting?: {
+        internalNodes: Node<NodeParams>[];
+        onUpdateNode: (nodeId: string, data: Record<string, unknown>) => void;
+    };
 }
 
 const inputStyles: React.CSSProperties = {
@@ -195,7 +210,174 @@ const numberBoxStylesShared: React.CSSProperties = {
     fontSize: '0.85em',
 };
 
-export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, onChangeMany, renderControlWrapper, bpm }) => {
+/** One axis's assignment: a (node, param) target and the range the pad's 0..1 position maps into. */
+interface MacroAxisTarget {
+    nodeId: string;
+    param: string;
+    min: number;
+    max: number;
+}
+
+const macroTargetKey = (nodeId: string, param: string): string => `${nodeId}::${param}`;
+
+/**
+ * Roadmap E12 (live routing half). Each axis of a normalised 0..1 XY pad maps
+ * to zero or more (node, param) targets, chosen from `macroTargetCandidates`
+ * — "the same target list the P-lock UI offers", per the brief — each with
+ * its OWN authored-range-seeded min/max so one axis can drive a 20 Hz-20 kHz
+ * cutoff and a 0-1 mix at once. Moving the pad writes every assigned target
+ * through `onUpdateNode` (ultimately `updateNodeData`), exactly the path a
+ * direct slider drag already uses, so undo already coalesces per (node,
+ * field) gesture with no new history logic here — the existing Filter XY
+ * pad already produces one `pushHistory` per axis per drag tick this same
+ * way (`onChange('cutoff', x); onChange('resonance', y)` above).
+ *
+ * Assignment is SESSION-ONLY React state, not stored in node.data or the
+ * save file. Persisting it would mean a new InstrumentParams field, a
+ * saveMigrations.ts entry and serializer/schema test coverage for something
+ * that is a live-performance rig setting, not a fact about how the patch
+ * sounds — the smaller honest scope this roadmap item asks for when the
+ * persistent version would be disproportionate. Keyed by the instrument's
+ * own id at the call site so switching instruments starts with a clean
+ * assignment instead of one still naming the PREVIOUS instrument's nodes.
+ *
+ * Recording (capturing the pad's position into per-step P-locks while the
+ * sequencer plays) is NOT implemented — see the roadmap report for why
+ * (short version: it needs playback/current-step/track-selection state that
+ * only app.tsx currently owns, and app.tsx is out of scope for this pass).
+ */
+const MacroPadSection: React.FC<{
+    internalNodes: Node<NodeParams>[];
+    onUpdateNode: (nodeId: string, data: Record<string, unknown>) => void;
+}> = ({ internalNodes, onUpdateNode }) => {
+    const [xTargets, setXTargets] = React.useState<MacroAxisTarget[]>([]);
+    const [yTargets, setYTargets] = React.useState<MacroAxisTarget[]>([]);
+    const [pad, setPad] = React.useState({ x: 0.5, y: 0.5 });
+
+    if (internalNodes.length === 0) return null;
+
+    const nodesById = new Map(internalNodes.map(n => [n.id, n] as const));
+    const candidates = macroTargetCandidates(internalNodes);
+
+    const addTarget = (axis: 'x' | 'y', key: string) => {
+        const idx = key.indexOf('::');
+        if (idx < 0) return;
+        const nodeId = key.slice(0, idx);
+        const param = key.slice(idx + 2);
+        const targetNode = nodesById.get(nodeId);
+        if (!targetNode) return;
+        const setTargets = axis === 'x' ? setXTargets : setYTargets;
+        setTargets(prev => {
+            if (prev.some(t => t.nodeId === nodeId && t.param === param)) return prev;
+            // Same source every other clamp in this file reads: schema/nodes.json,
+            // via the generated lookupRange — a starting range, not a guess.
+            // Case by case with codegenTypeOf below: the override table is keyed
+            // on the BACKEND type name ("Filter" not "filter").
+            const range = lookupRange(param, codegenTypeOf(targetNode));
+            return [...prev, { nodeId, param, min: range.min, max: range.max }];
+        });
+    };
+
+    const removeTarget = (axis: 'x' | 'y', nodeId: string, param: string) => {
+        const setTargets = axis === 'x' ? setXTargets : setYTargets;
+        setTargets(prev => prev.filter(t => !(t.nodeId === nodeId && t.param === param)));
+    };
+
+    const updateRange = (axis: 'x' | 'y', nodeId: string, param: string, field: 'min' | 'max', value: number) => {
+        if (!Number.isFinite(value)) return;
+        const setTargets = axis === 'x' ? setXTargets : setYTargets;
+        setTargets(prev => prev.map(t => (t.nodeId === nodeId && t.param === param ? { ...t, [field]: value } : t)));
+    };
+
+    const writeAxis = (targets: MacroAxisTarget[], position: number) => {
+        for (const t of targets) {
+            onUpdateNode(t.nodeId, { [t.param]: t.min + position * (t.max - t.min) });
+        }
+    };
+
+    const handlePadChange = ({ x, y }: { x: number; y: number }) => {
+        setPad({ x, y });
+        writeAxis(xTargets, x);
+        writeAxis(yTargets, y);
+    };
+
+    const renderAxis = (axis: 'x' | 'y', targets: MacroAxisTarget[]) => {
+        const assigned = new Set(targets.map(t => macroTargetKey(t.nodeId, t.param)));
+        const available = candidates.filter(c => !assigned.has(macroTargetKey(c.nodeId, c.param)));
+        return (
+            <div style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '0.8em', color: '#a0aec0', display: 'block', marginBottom: '4px' }}>
+                    {axis.toUpperCase()} axis
+                </label>
+                {targets.map(t => (
+                    <div
+                        key={macroTargetKey(t.nodeId, t.param)}
+                        data-testid={`macro-target-${axis}-${t.nodeId}-${t.param}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}
+                    >
+                        <span style={{ fontSize: '0.8em', color: '#ccc', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {plockNodeLabel(nodesById.get(t.nodeId) as Node<NodeParams>)}:{t.param}
+                        </span>
+                        <input
+                            type="number"
+                            data-testid={`macro-min-${axis}-${t.nodeId}-${t.param}`}
+                            value={t.min}
+                            onChange={e => updateRange(axis, t.nodeId, t.param, 'min', parseFloat(e.target.value))}
+                            style={{ ...numberBoxStylesShared, width: '70px' }}
+                        />
+                        <span style={{ color: '#666' }}>..</span>
+                        <input
+                            type="number"
+                            data-testid={`macro-max-${axis}-${t.nodeId}-${t.param}`}
+                            value={t.max}
+                            onChange={e => updateRange(axis, t.nodeId, t.param, 'max', parseFloat(e.target.value))}
+                            style={{ ...numberBoxStylesShared, width: '70px' }}
+                        />
+                        <button
+                            type="button"
+                            data-testid={`macro-remove-${axis}-${t.nodeId}-${t.param}`}
+                            title={`Remove ${t.param} from the ${axis.toUpperCase()} axis`}
+                            onClick={() => removeTarget(axis, t.nodeId, t.param)}
+                            style={{ ...rerollButtonStyle, padding: '2px 6px' }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                ))}
+                <select
+                    data-testid={`macro-add-${axis}`}
+                    value=""
+                    onChange={e => { if (e.target.value) addTarget(axis, e.target.value); }}
+                    style={{ ...inputStyles, padding: '4px', fontSize: '0.85em' }}
+                >
+                    <option value="">+ Add target…</option>
+                    {available.map(c => (
+                        <option key={macroTargetKey(c.nodeId, c.param)} value={macroTargetKey(c.nodeId, c.param)}>
+                            {c.label}:{c.param}
+                        </option>
+                    ))}
+                </select>
+            </div>
+        );
+    };
+
+    return (
+        <div style={randomizeSectionStyles}>
+            <label style={labelStyles}>Macro Pad</label>
+            {renderAxis('x', xTargets)}
+            {renderAxis('y', yTargets)}
+            <div data-testid="macro-xy-pad">
+                <XYPad
+                    xValue={pad.x} yValue={pad.y}
+                    minX={0} maxX={1} minY={0} maxY={1}
+                    onChange={handlePadChange}
+                />
+            </div>
+        </div>
+    );
+};
+
+export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, onChangeMany, renderControlWrapper, bpm, macroRouting }) => {
     const { type, data: nodeData } = node;
     const data = values || nodeData;
 
@@ -604,6 +786,19 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         {/* See RandomizeSection's doc comment for why `onChangeMany` gates this. */}
         {onChangeMany && (
             <RandomizeSection data={data} nodeType={codegenTypeOf(node)} onChangeMany={onChangeMany} />
+        )}
+        {/* See MacroPadSection's doc comment for why `macroRouting` gates this,
+            and for the session-only assignment state. `key={node.id}` forces a
+            fresh MacroPadSection (and so a fresh, empty assignment) when the
+            selected instrument changes — ParameterPanel does not unmount this
+            tree on that change, so without the key a macro pad would keep
+            offering targets on nodes that belong to the PREVIOUS instrument. */}
+        {macroRouting && (
+            <MacroPadSection
+                key={node.id}
+                internalNodes={macroRouting.internalNodes}
+                onUpdateNode={macroRouting.onUpdateNode}
+            />
         )}
     </>);
 };

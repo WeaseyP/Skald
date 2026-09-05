@@ -77,8 +77,12 @@ const nodeCodegenType = (node: Node<NodeParams>): string => {
  * minus what projectSerializer strips. Keeping this in step with the serializer
  * is the whole point: a key naming `subgraph` resolves against node.data but
  * never against the JSON the backend reads.
+ *
+ * Exported for `macroTargetCandidates` (E12): the macro pad's target picker
+ * needs the same "what does the backend actually see" filter a P-lock key
+ * resolves against, not a second guess at which fields are UI-only.
  */
-const backendParameters = (node: Node<NodeParams>): Record<string, unknown> => {
+export const backendParameters = (node: Node<NodeParams>): Record<string, unknown> => {
     if (node.type === 'output' || node.type === 'GraphOutput') return {};
     const params = { ...(node.data as Record<string, unknown> | undefined ?? {}) };
     delete params.analyser;
@@ -284,6 +288,43 @@ export const isPlockKeyResolvable = (nodes: Node<NodeParams>[], key: string): bo
  */
 export const plockTargetLabels = (nodes: Node<NodeParams>[]): string[] =>
     nodes.map(plockNodeLabel);
+
+/** A single (node, param) target — the unit a P-lock key or a macro axis addresses. */
+export interface MacroTargetCandidate {
+    nodeId: string;
+    label: string;
+    param: string;
+}
+
+/**
+ * Roadmap E12 — every (node, param) pair a macro axis (or, equivalently, a
+ * P-lock) could legally address on these nodes RIGHT NOW: present, numeric,
+ * and not something `paramIsReachable` currently says is dead. This is the
+ * same rule the per-step editor already applies one control at a time
+ * (`StepPropertiesEditor.tsx`'s `canPlock`/wrapper): enumerated here instead,
+ * so a picker can be built without rendering every node's controls first.
+ *
+ * "Currently" matters: like a P-lock, an assignment that was live when made
+ * can go dead later (bpmSync flips on, fixedPitch flips off) with no warning
+ * anywhere else — the live macro write silently stops reaching the DSP the
+ * same way an exposed control does (packet B2), which is a pre-existing
+ * class of surprise this file exists to make visible, not a new one this
+ * function introduces.
+ */
+export const macroTargetCandidates = (nodes: Node<NodeParams>[]): MacroTargetCandidate[] => {
+    const out: MacroTargetCandidate[] = [];
+    for (const node of nodes) {
+        const label = plockNodeLabel(node);
+        const params = backendParameters(node);
+        for (const param of Object.keys(params).sort()) {
+            const value = params[param];
+            if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+            if (!paramIsReachable(node, param)) continue;
+            out.push({ nodeId: node.id, label, param });
+        }
+    }
+    return out;
+};
 
 /**
  * Whether a P-lock value survives export.

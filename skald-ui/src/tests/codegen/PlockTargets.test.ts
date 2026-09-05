@@ -32,6 +32,7 @@ import { NodeParams } from '../../definitions/types';
 import {
     firstDeadTarget,
     isExportablePlockValue,
+    macroTargetCandidates,
     paramDeadReason,
     paramIsReachable,
     plockNodeLabel,
@@ -291,6 +292,51 @@ describe('paramIsReachable — MidiInput (SKB-059 / packet B2)', () => {
         expect(paramIsReachable(midi, 'device')).toBe(false);
         expect(paramIsReachable(midi, 'useMpe')).toBe(false);
         expect(paramDeadReason(midi, 'device')).toMatch(/MIDI Input has no runtime parameters/);
+    });
+});
+
+describe('macroTargetCandidates — the (node, param) picker E12\'s macro pad offers', () => {
+    // Roadmap E12: the XY pad's axes are assignable to (node, param) targets
+    // "chosen from the same target list the P-lock UI offers" — this is that
+    // list, built the same way the per-step editor decides one field at a
+    // time (numeric, and not something the node's CURRENT configuration has
+    // gone dead on), just enumerated up front instead of only at render.
+    it('lists every numeric, currently-reachable parameter, labelled by node', () => {
+        const filt = node('flt-1', 'filter', { label: 'Filter', cutoff: 800, resonance: 2, type: 'Lowpass' });
+        const out = macroTargetCandidates([filt]);
+        expect(out).toEqual(expect.arrayContaining([
+            { nodeId: 'flt-1', label: 'Filter', param: 'cutoff' },
+            { nodeId: 'flt-1', label: 'Filter', param: 'resonance' },
+        ]));
+        // `type` ("Lowpass") is a string select, not a numeric target.
+        expect(out.find(c => c.param === 'type')).toBeUndefined();
+    });
+
+    it('excludes a parameter paramIsReachable says is dead right now', () => {
+        const lfo = node('lfo-1', 'lfo', { bpmSync: true, frequency: 5, amplitude: 1 });
+        const out = macroTargetCandidates([lfo]);
+        expect(out.find(c => c.param === 'frequency')).toBeUndefined(); // dead: bpmSync on
+        expect(out.find(c => c.param === 'amplitude')).toBeDefined();  // unaffected
+    });
+
+    it('excludes syncRate — never reachable, even though it is present on the node', () => {
+        const lfo = node('lfo-1', 'lfo', { syncRate: '1/4', amplitude: 1 });
+        // syncRate is a string anyway (excluded as non-numeric too), but this
+        // pins BOTH reasons rather than relying on only the numeric filter.
+        expect(macroTargetCandidates([lfo]).find(c => c.param === 'syncRate')).toBeUndefined();
+    });
+
+    it('ignores the params the serializer strips before the backend ever sees them', () => {
+        const inst = node('i-1', 'instrument', { label: 'Inst', analyser: {}, subgraph: { nodes: [] }, volume: 1 });
+        const out = macroTargetCandidates([inst]);
+        expect(out.find(c => c.param === 'analyser')).toBeUndefined();
+        expect(out.find(c => c.param === 'subgraph')).toBeUndefined();
+        expect(out.find(c => c.param === 'volume')).toBeDefined();
+    });
+
+    it('sees no candidates on an output node, whose parameters are emptied', () => {
+        const out = node('o-1', 'output', { label: 'Out', lastTrigger: 1 });
+        expect(macroTargetCandidates([out])).toEqual([]);
     });
 });
 

@@ -155,6 +155,10 @@ Every mutated value is drawn from the CURRENT value, not a fresh point in the pa
 
 The per-step P-lock editor does not show a Randomize section (`skald-ui/src/components/Sequencer/StepPropertiesEditor.tsx::StepPropertiesEditor`): there, every `onChange` mints its own P-lock write with its own undo entry, so a multi-parameter randomize would land as several undo steps instead of one.
 
+### Macro Pad
+
+Below Randomize, an XY pad lets you assign either axis to one or more parameters on nodes inside the subgraph and drive them live by dragging — see the Sequencer chapter's "Macro Pad" for the full picture, including why the assignment resets when you switch instruments and what recording into the pattern would still need (`skald-ui/src/components/NodeParameterControls.tsx::MacroPadSection`).
+
 ## Try it (hands-on)
 
 We will use `examples/instruments/bass/sub-808-glide-bass.skald.json` — one Instrument, one voice, one sine, and a glide that is doing all the musical work. About eight minutes.
