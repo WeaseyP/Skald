@@ -12,3 +12,10 @@
 *.jpg binary
 *.ico binary
 *.icns binary
+
+# Goldens are compared byte-for-byte against what the generator emits (LF). On an
+# autocrlf checkout or a `git archive` export they came out CRLF, and cmd's `fc` text
+# mode wraps lines longer than its buffer differently with CR present, so a golden
+# whose only long line was the E8 warp call read as a diff in a pristine tree while
+# 68 others passed. Pin them to LF so the checkout is the emission.
+*.golden text eol=lf

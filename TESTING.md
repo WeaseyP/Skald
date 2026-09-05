@@ -149,3 +149,5 @@ golden or UI test at all — "unpinned — add a fixture rather than trusting a 
 still has no acceptance or golden fixture** — it has UI-side coverage only (`SyncRateDefault.test.tsx`,
 `PlockTargets.test.ts`, `NodeSchema.test.ts`). A change to its codegen is still unpinned on the
 backend side; add a `codegen_only` fixture before trusting a green run there.
+
+**Goldens are LF on disk by attribute** (`*.golden text eol=lf` in `.gitattributes`, 2026-09-06). Before that, an autocrlf checkout or a `git archive` export gave CRLF goldens against LF emissions, and cmd's `fc` text mode tolerated it only for lines shorter than its wrap buffer: `adsr_curve` (one 226-character line) read as a diff in a pristine tree while the working tree said 69/69. If a golden ever differs only in a pristine export, check line endings before anything else.
