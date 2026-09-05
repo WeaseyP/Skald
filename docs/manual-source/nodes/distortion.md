@@ -18,18 +18,18 @@ Finally: because a distorted signal is full of brand-new top end, essentially ev
 
 ## What it looks like in Skald
 
-Distortion lives in the flat **Nodes** list in the left sidebar, eleventh in the list, between Reverb and Mixer (`skald-ui/src/components/Sidebar.tsx:274`). It draws in a salmon red (`skald-ui/src/components/Nodes/NodeStyles.ts:97`) — the "drive" colour family. Drag it onto the canvas like any other node.
+Distortion lives in the flat **Nodes** list in the left sidebar, eleventh in the list, between Reverb and Mixer (`skald-ui/src/components/Sidebar.tsx::paletteNodes`). It draws in a salmon red (`skald-ui/src/components/Nodes/NodeStyles.ts::NODE_ACCENTS`) — the "drive" colour family. Drag it onto the canvas like any other node.
 
 It has exactly **two handles**:
 
-- `input` — labelled **In**, on the left (`skald-ui/src/components/Nodes/DistortionNode.tsx:6`)
-- `output` — labelled **Out**, on the right (`skald-ui/src/components/Nodes/DistortionNode.tsx:7`)
+- `input` — labelled **In**, on the left (`skald-ui/src/components/Nodes/DistortionNode.tsx::DistortionNode`)
+- `output` — labelled **Out**, on the right (same component)
 
-That is the whole port list, and the backend enforces it. Distortion is classified as a "through" node: the only input port name the validator accepts is `input` (`skald-backend/core/graph_validate.odin:32,51-52`), and the only output port name is the default `output` (`skald-backend/core/graph_validate.odin:65-74`). **There are no modulation inputs.** You cannot wire an LFO into Drive the way you can wire one into a Filter's `input_cutoff`. If you want Drive to move, you either expose it and drive it from game code, or you modulate the *level going in* with a VCA (Gain) node placed before the Distortion — which is what a real overdrive pedal responds to anyway.
+That is the whole port list, and the backend enforces it. Distortion is classified as a "through" node: the only input port name the validator accepts is `input` (`skald-backend/core/graph_validate.odin::valid_input_ports`), and the only output port name is the default `output` (`skald-backend/core/graph_validate.odin::valid_output_port`). **There are no modulation inputs.** You cannot wire an LFO into Drive the way you can wire one into a Filter's `input_cutoff`. If you want Drive to move, you either expose it and drive it from game code, or you modulate the *level going in* with a VCA (Gain) node placed before the Distortion — which is what a real overdrive pedal responds to anyway.
 
-Multiple wires *into* `input` are summed, not dropped: the generator uses `sum_port_inputs` (`skald-backend/core/codegen.odin:569`), so three oscillators landing on one Distortion get mixed and then shaped together. That matters, and we come back to it under "Why you patch it this way."
+Multiple wires *into* `input` are summed, not dropped: the generator uses `sum_port_inputs` (`skald-backend/core/param_utils.odin::sum_port_inputs`), so three oscillators landing on one Distortion get mixed and then shaped together. That matters, and we come back to it under "Why you patch it this way."
 
-**Rate and domain.** Distortion is an audio-rate, per-sample process — the shaping maths runs on every single sample. Which *loop* it runs in depends on where you put it. By default it is emitted inside the per-voice loop, once per active voice (`skald-backend/core/codegen.odin:1812-1813`), with its tone-filter memory stored on the voice (`skald-backend/core/codegen.odin:1095-1097`) and cleared at each new note-on unless the voice was stolen mid-tail (`skald-backend/core/codegen.odin:1432-1433,1437`). But if the Distortion sits downstream of a Delay, a Reverb, or an instrument's external audio input, it is promoted to the **bus domain** and runs once per sample on the summed output of all voices instead (`skald-backend/core/codegen.odin:70-90`, dispatch at `:1915-1916`, state at `:1155-1157`). This single fact changes the sound more than any knob on the node, and it is the subject of "Why you patch it this way."
+**Rate and domain.** Distortion is an audio-rate, per-sample process — the shaping maths runs on every single sample. Which *loop* it runs in depends on where you put it. By default it is emitted inside the per-voice loop, once per active voice (`skald-backend/core/codegen_processor.odin::generate_processor_code`), with its tone-filter memory stored on the voice and cleared at each new note-on unless the voice was stolen mid-tail (same proc). But if the Distortion sits downstream of a Delay, a Reverb, or an instrument's external audio input, it is promoted to the **bus domain** and runs once per sample on the summed output of all voices instead (`skald-backend/core/codegen_analysis.odin::seed_bus_domain`, dispatch and state in `skald-backend/core/codegen_processor.odin::generate_processor_code`). This single fact changes the sound more than any knob on the node, and it is the subject of "Why you patch it this way."
 
 ## The controls
 
@@ -42,11 +42,15 @@ Four controls. Three are numbers you can automate; one is a mode switch baked in
 | **Tone** | 100 – 20000 | 4000 | Hz | A one-pole lowpass on the distorted signal only. Tames the fizz that drive creates. |
 | **Mix** | 0 – 1 | 0.5 | — | Crossfade between the untouched input (0) and the shaped, tone-filtered signal (1). |
 
-Sources for those numbers: the UI defaults are `defaultDistortionParams` in `skald-ui/src/definitions/node-definitions.ts:130-135`; the ranges the code generator actually clamps to are `drive {1, 100, 20, "x"}` at `skald-backend/core/param_ranges.odin:80-81`, `mix {0, 1, 0.5}` at `:78-79`, and a Distortion-specific override `tone {100, 20000, 4000, "Hz"}` at `:36-37`. That tone override exists because the generic name-keyed table has no `tone` entry at all, so without it an exposed Tone would have fallen through to the wide-open `{-1e6, 1e6, 0}` fallback at `:118` — a runtime setter that could hand the filter a negative cutoff.
+Sources for those numbers: the UI defaults are `defaultDistortionParams` in `skald-ui/src/definitions/node-definitions.ts`; the ranges the code generator actually clamps to are the generic `drive {1, 100, 20, "x"}` and `mix {0, 1, 0.5}` rows (`schema/nodes.json::drive`, `schema/nodes.json::mix`), and a Distortion-specific override `tone {100, 20000, 4000, "Hz"}` (`schema/nodes.json::tone`), rendered into `skald-backend/core/param_ranges.generated.odin`. That tone override exists because the generic name-keyed table has no `tone` entry at all, so without it an exposed Tone would have fallen through to the wide-open unknown-parameter fallback — a runtime setter that could hand the filter a negative cutoff.
+
+The backend also carries an `outputGain` parameter (0–4, default 1.0, `x`) that this table omits deliberately: packet B1 added it to `skald-backend/core/codegen_nodes.odin::generate_distortion_code` and `schema/nodes.json::outputGain`, but no editor control reads or writes it yet (KI-042). A hand-authored or externally generated project can set and expose it; from the editor the only way to trim a Distortion's output level is the VCA workaround in "Going further".
 
 ### Drive — what you hear as you sweep it
 
-Drive is input gain into the curve, nothing more. It does not have a matching output-level knob, and that asymmetry is the single most important practical fact about this node. In the generated code, drive becomes `dist_k` (`skald-backend/core/codegen.odin:583`) and multiplies the input before the curve is applied. Because all three symmetric curves are bounded near ±1, pushing drive up makes the output *louder* until it hits the ceiling and then makes it *squarer* — it is a loudness knob and a timbre knob welded together.
+Drive is input gain into the curve, nothing more. It does not have a matching output-level knob, and that asymmetry is the single most important practical fact about this node. In the generated code, drive becomes `dist_k` (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`) and multiplies the input before the curve is applied. Because all three symmetric curves are bounded near ±1, pushing drive up makes the output *louder* until it hits the ceiling and then makes it *squarer* — it is a loudness knob and a timbre knob welded together.
+
+Drive is clamped on the low side only: `generate_distortion_code` emits `math.max(f32(drive), 1.0)`, with no matching ceiling, while Tone and Mix are clamped on both sides in the same function. An exposed Drive is still safe — the generic 1–100 setter clamp applies — but a node whose drive is authored directly in the JSON and never exposed bypasses that clamp entirely and compiles at whatever value the file says (KI-040).
 
 - **Drive 1–3 (the bottom).** Barely anything. On `soft`, drive 1 is `tanh(x)`, which for a signal peaking at 0.3 is within about 1% of a straight line — you will hear a whisper of thickening and nothing else. On `hard`, drive 1 is literally `clamp(x, -1, 1)`, which is a perfect bypass for any signal that never exceeds full scale. On `classic`, drive 1 is *not* neutral: its small-signal gain is `(π+1)/π ≈ 1.32`, so you get about +2.4 dB and a touch of curve. This surprises people.
 - **Drive 5–20 (the musical zone).** This is where saturation lives. A signal peaking around 0.3–0.7 starts flattening its loudest moments and passing its quiet moments almost untouched. Because the loud parts distort more than the quiet parts, the effect breathes with your playing — that is *dynamic* saturation, and it is the reason placing Distortion after an ADSR sounds like an amplifier rather than a fuzz box. Skald's default of 20 already sits at the aggressive end of this zone: on `classic`, drive 20 has a small-signal gain of `1 + 20/π ≈ 7.4×`, or +17 dB.
@@ -54,11 +58,11 @@ Drive is input gain into the curve, nothing more. It does not have a matching ou
 
 The **useful musical zone is roughly drive 3 to 25**, with anything above 40 treated as a sound-design choice rather than a mixing choice.
 
-**There is no output level or makeup gain on this node.** Real overdrive pedals have Level for exactly this reason: you turn drive up, the output gets louder, and you pull Level down so you can A/B the effect honestly. In Skald you have two substitutes: pull **Mix** down (which reduces the wet contribution but also reduces the distortion you hear), or put a **VCA (Gain)** node immediately after the Distortion and set its gain below 1. The second is the correct answer, and you should build the habit — otherwise every drive tweak is also a volume tweak and you will always prefer the louder one.
+**There is no editor-facing output level or makeup gain on this node.** Real overdrive pedals have Level for exactly this reason: you turn drive up, the output gets louder, and you pull Level down so you can A/B the effect honestly. The backend does now carry an `outputGain` field (packet B1, default 1.0, so no existing patch's sound changed), but no card or panel control reaches it (KI-042). From the editor you have two substitutes: pull **Mix** down (which reduces the wet contribution but also reduces the distortion you hear), or put a **VCA (Gain)** node immediately after the Distortion and set its gain below 1. The VCA is the correct answer, and you should build the habit — otherwise every drive tweak is also a volume tweak and you will always prefer the louder one.
 
 ### Shape — what you hear as you switch it
 
-Shape is a `select`, not a slider, and it is compiled into the Odin source (`skald-backend/core/codegen.odin:573,584-593`). Switching it in the editor triggers a full regenerate-and-rebuild rather than a live parameter write, so expect a short pause and a hot-swap rather than an instant change (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts:8-14,31`). You cannot change Shape from game code at runtime; if you need two characters, build two Distortion nodes and crossfade them.
+Shape is a `select`, not a slider, and it is compiled into the Odin source (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`). Switching it in the editor triggers a full regenerate-and-rebuild rather than a live parameter write, so expect a short pause and a hot-swap rather than an instant change (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine`). You cannot change Shape from game code at runtime; if you need two characters, build two Distortion nodes and crossfade them.
 
 - **`classic`** — `y = (π + k)·x / (π + k·|x|)`. A rational soft-clip curve descended from the widely copied Web Audio "makeDistortionCurve" snippet. Its defining property is that `f(±1) = ±1` for *every* drive value, so full-scale input always maps to full-scale output and only the shape in between changes. It thickens the midrange without ever going brittle. Good general-purpose "warm and loud" setting, and the sensible default.
 - **`soft`** — `y = tanh(x·k)`. The textbook soft clipper: rounds the peaks off with a smooth, gradually tightening curve, so harmonics come in gently rather than all at once [Source: https://www.kvraudio.com/forum/viewtopic.php?t=122309]. Symmetric, so odd harmonics only. Compared to `classic` it compresses harder for the same drive number and never exceeds ±1 no matter what you feed it. This is the one to reach for on bass and on anything you want to sound "pushed" rather than "broken."
@@ -67,17 +71,17 @@ Shape is a `select`, not a slider, and it is compiled into the Odin source (`ska
 
 ### Tone — what you hear as you sweep it
 
-Tone is a one-pole lowpass applied to the **wet path only**, after shaping and before the mix (`skald-backend/core/codegen.odin:595-596`). The dry side of the crossfade never touches it. One pole means a gentle 6 dB/octave slope — a tilt, not a wall.
+Tone is a one-pole lowpass applied to the **wet path only**, after shaping and before the mix (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`). The dry side of the crossfade never touches it. One pole means a gentle 6 dB/octave slope — a tilt, not a wall.
 
 - **Tone 100–500 Hz (the bottom).** The distorted path becomes a dull thud with all its new harmonics stripped away. At mix 1 the sound is muffled and lifeless. At mix 0.3–0.5 this is genuinely useful: you get the *weight* of the saturation with none of the grit, which is a classic way to thicken a kick or a sub without adding brightness.
 - **Tone 1–4 kHz (the middle).** The working range. This is where you shave the fizz off a hard-clipped signal while keeping the bite that makes it audible in a mix. Skald's default of 4000 Hz leaves plenty of edge. The example patch uses 3200 Hz.
-- **Tone 7 kHz and above (the top).** Effectively wide open — and here is a real quirk. The filter coefficient is `k = clamp(2π·f / sample_rate, 0.001, 1.0)` (`skald-backend/core/codegen.odin:595`). At 44,100 Hz that expression reaches 1.0 when `f = 44100 / 2π ≈ 7020 Hz`, and a one-pole with `k = 1` computes `y += 1·(x − y)`, i.e. `y = x`: perfect bypass. **So every Tone setting from about 7 kHz to 20 kHz sounds identical**, because the filter has been switched off. At 48 kHz the threshold moves to about 7640 Hz.
+- **Tone 7 kHz and above (the top).** Effectively wide open — and here is a real quirk. The filter coefficient is `k = clamp(2π·f / sample_rate, 0.001, 1.0)` (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`). At 44,100 Hz that expression reaches 1.0 when `f = 44100 / 2π ≈ 7020 Hz`, and a one-pole with `k = 1` computes `y += 1·(x − y)`, i.e. `y = x`: perfect bypass. **So every Tone setting from about 7 kHz to 20 kHz sounds identical**, because the filter has been switched off. At 48 kHz the threshold moves to about 7640 Hz.
 
-Two more things about Tone worth knowing. First, the Hz label is approximate at the top end. The code uses the linear approximation `2π·f/fs` for the one-pole coefficient rather than the exact `1 − e^(−2π·f/fs)`; the two agree closely at low settings and diverge badly at high ones. At 44.1 kHz, a Tone of 1000 Hz gives a real −3 dB point near 1080 Hz (about 8% high), but a Tone of 4000 Hz gives a real −3 dB point near **6300 Hz** — over half an octave above the label. Trust your ears over the number above about 2 kHz. Second, the Tone value written in the patch is clamped inline to 100–20000 Hz (`skald-backend/core/codegen.odin:595`), so a hand-edited file with `"tone": -100` cannot break the filter.
+Two more things about Tone worth knowing. First, the Hz label is approximate at the top end. The code uses the linear approximation `2π·f/fs` for the one-pole coefficient rather than the exact `1 − e^(−2π·f/fs)`; the two agree closely at low settings and diverge badly at high ones. At 44.1 kHz, a Tone of 1000 Hz gives a real −3 dB point near 1080 Hz (about 8% high), but a Tone of 4000 Hz gives a real −3 dB point near **6300 Hz** — over half an octave above the label. Trust your ears over the number above about 2 kHz. Second, the Tone value written in the patch is clamped inline to 100–20000 Hz (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`), so a hand-edited file with `"tone": -100` cannot break the filter.
 
 ### Mix — what you hear as you sweep it
 
-Mix is a linear crossfade: `out = dry·(1 − mix) + wet·mix`, where `dry` is the raw input captured *before* any shaping (`skald-backend/core/codegen.odin:598`). At mix 0 the node is a bit-exact bypass. At mix 1 you hear only the shaped, tone-filtered signal.
+Mix is a linear crossfade: `out = dry·(1 − mix) + wet·mix`, where `dry` is the raw input captured *before* any shaping (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`). At mix 0 the node is a bit-exact bypass. At mix 1 you hear only the shaped, tone-filtered signal.
 
 Because the dry side is the pre-shaping input and both sides are computed from the same sample, the two paths are perfectly time-aligned — there is no latency to compensate, and therefore no phase cancellation between them. That makes this control a proper **parallel saturation** blend, the technique where you keep the clean signal's transients and detail intact and layer harmonic grit on top rather than replacing the sound with it [Source: https://babyaud.io/blog/parallel-processing].
 
@@ -89,17 +93,17 @@ Practitioner tip that transfers directly here: judge the distorted path by how t
 
 ### What "expose" does, and why you would use it
 
-Every numeric control in the parameter panel has a small link button beside it (`skald-ui/src/components/ParameterPanel.tsx:281-291`). Clicking it adds that parameter's name to the node's `exposedParameters` list. Distortion ships with **Drive, Tone and Mix all exposed by default** (`skald-ui/src/definitions/node-definitions.ts:134`). Shape is deliberately marked non-exposable (`skald-ui/src/components/NodeParameterControls.tsx:243`) — it is a string, and the exposure machinery only produces `f32` setters.
+Every numeric control in the parameter panel has a small link button beside it (`skald-ui/src/components/ParameterPanel.tsx::LinkIcon`). Clicking it adds that parameter's name to the node's `exposedParameters` list (`skald-ui/src/components/ParameterPanel.tsx::toggleParameterExposure`). Distortion ships with **Drive, Tone and Mix all exposed by default** (`skald-ui/src/definitions/node-definitions.ts::defaultDistortionParams`). Shape is deliberately marked non-exposable (`skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`) — it is a string, and the exposure machinery only produces `f32` setters.
 
 Exposing a parameter changes two things.
 
-**In the generated Odin**, an exposed parameter stops being a baked-in literal and becomes a field on the processor struct. The code generator emits `p.drive` in the DSP expression instead of `7.0` (`skald-backend/core/param_utils.odin:73-85`), plus:
+**In the generated Odin**, an exposed parameter stops being a baked-in literal and becomes a field on the processor struct. The code generator emits `p.drive` in the DSP expression instead of `7.0` (`skald-backend/core/param_utils.odin::get_f32_param`), plus:
 
-- a typed setter with codegen-time clamping — `Foo_set_drive(p, value)` refuses anything outside 1–100 (`skald-backend/core/codegen.odin:1610-1625`);
-- an entry in the introspectable `Foo_PARAMS` table carrying name, min, max, default and unit, so a debug overlay or a level editor can build a slider for it without knowing anything about your patch (`skald-backend/core/codegen.odin:1631-1643`). The *default* in that table is the value you authored in the editor, not the table default (`skald-backend/core/codegen.odin:1192-1198`);
+- a typed setter with codegen-time clamping — `Foo_set_drive(p, value)` refuses anything outside 1–100 (`skald-backend/core/codegen_processor.odin::generate_processor_code`);
+- an entry in the introspectable `Foo_PARAMS` table carrying name, min, max, default and unit, so a debug overlay or a level editor can build a slider for it without knowing anything about your patch (same proc). The *default* in that table is the value you authored in the editor, not the table default (same proc);
 - string-keyed `set_param` / `get_param` dispatch for tooling.
 
-**In the editor**, exposed parameters apply to the running preview *instantly* via `skald_set_param`, while any non-exposed edit forces a 250 ms debounced regenerate-and-recompile of the whole wasm module (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts:8-14,31`). This is not a small difference when you are auditioning: dragging an exposed Drive is smooth and continuous; dragging a non-exposed one stutters through rebuilds.
+**In the editor**, exposed parameters apply to the running preview *instantly* via `skald_set_param`, while any non-exposed edit forces a 250 ms debounced regenerate-and-recompile of the whole wasm module (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine`). This is not a small difference when you are auditioning: dragging an exposed Drive is smooth and continuous; dragging a non-exposed one stutters through rebuilds.
 
 Why you would expose Distortion's parameters for a game specifically:
 
@@ -117,7 +121,7 @@ with a BPM-synced LFO at 1/8 running through a Mapper (−1..1 → 0.3..1.0) int
 
 The Distortion node is labelled **Grit** and ships at `shape: soft`, `drive: 7`, `tone: 3200`, `mix: 0.4`, with drive, tone and mix all exposed. Because there is no Delay or Reverb upstream of it, Grit runs **per voice**.
 
-Watch the little oscilloscope on the Output node (`skald-ui/src/components/Nodes/GraphOutputNode.tsx:21-27`) as you work — you will see the waveshaping as clearly as you hear it.
+Watch the little oscilloscope on the Output node (`skald-ui/src/components/Nodes/GraphOutputNode.tsx::GraphOutputNode`) as you work — you will see the waveshaping as clearly as you hear it.
 
 1. **Press play and loop the pattern.** Let it run for a few bars. This is your reference sound: a low, snarling bass with a rhythmic wobble.
 
@@ -125,9 +129,9 @@ Watch the little oscilloscope on the Output node (`skald-ui/src/components/Nodes
 
 3. **Push Mix to 1.0 and leave it there for the next three steps.** Now you are hearing the wet path alone, which makes every change obvious.
 
-4. **Sweep Drive from 1 up to 100, slowly.** At 1 you have `tanh(x)` — a barely-there thickening. Between about 4 and 15 the note develops a hard, reedy midrange and the attack starts to *bite* while the decay stays smoother; that difference is dynamic saturation, and it is happening because Grit sits after the Amp envelope, so the loud part of each note drives the curve harder than the tail. Past 30 the notes stop getting dirtier and simply get *flatter* — the scope shows a squared-off block — and past 60 nothing much changes at all. Note also that the whole patch got a lot louder on the way up: that is the missing output-level control.
+4. **Sweep Drive from 1 up to 100, slowly.** At 1 you have `tanh(x)` — a barely-there thickening. Between about 4 and 15 the note develops a hard, reedy midrange and the attack starts to *bite* while the decay stays smoother; that difference is dynamic saturation, and it is happening because Grit sits after the Amp envelope, so the loud part of each note drives the curve harder than the tail. Past 30 the notes stop getting dirtier and simply get *flatter* — the scope shows a squared-off block — and past 60 nothing much changes at all. Note also that the whole patch got a lot louder on the way up: that is the missing editor-facing output-level control (KI-042).
 
-5. **Set Drive back to 7 and sweep Tone from 100 Hz to 20000 Hz.** At 100 the distorted path is a dull muffled thump. Around 800–1500 it sounds like a bass amp with the tone rolled back. At 3200 (the shipped value) the harmonics are present but controlled. Now go from 8000 to 20000 and listen: **nothing changes.** That is the coefficient clamp at `codegen.odin:595` — above about 7 kHz at 44.1 kHz the one-pole is fully open and the setting is inert. Knowing this saves you from hunting for a difference that does not exist.
+5. **Set Drive back to 7 and sweep Tone from 100 Hz to 20000 Hz.** At 100 the distorted path is a dull muffled thump. Around 800–1500 it sounds like a bass amp with the tone rolled back. At 3200 (the shipped value) the harmonics are present but controlled. Now go from 8000 to 20000 and listen: **nothing changes.** That is the coefficient clamp in `skald-backend/core/codegen_nodes.odin::generate_distortion_code` — above about 7 kHz at 44.1 kHz the one-pole is fully open and the setting is inert. Knowing this saves you from hunting for a difference that does not exist.
 
 6. **Set Tone to 10000 and Drive to 100, then switch Shape from `soft` to `hard`.** There will be a short pause while the module rebuilds — Shape is compiled in, not live. Now listen to the character of the harshness. `soft` at drive 100 is a loud, fat square; `hard` at drive 100 adds a distinct metallic *sizzle* on top of it. **Break it further: keep hard/100/10000 and change the Lowpass node's cutoff from 480 Hz to 12000 Hz.** The sizzle explodes. That layer is not harmonics — it is aliasing. Listen while the sequencer walks E1 → A1 → G1 → B1: the musical part of the sound moves up and down with the notes, but a shimmering component sits at fixed, unrelated pitches and moves the *wrong way*. Skald does not oversample, so every harmonic that clipping pushes past 22.05 kHz folds back into the audible band [Source: https://theproaudiofiles.com/oversampling/]. This is not a bug you can dial out; it is the cost of hard clipping at 1× rate, and the two ways to manage it are lowering Drive and using `soft` or `classic` instead of `hard`.
 
@@ -143,20 +147,20 @@ Watch the little oscilloscope on the Output node (`skald-ui/src/components/Nodes
 
 **Distortion goes before reverb and delay, never after — unless you mean it.** Distorting a reverb tail smears every echo into a wall of noise, and worse, the distortion's harmonics get fed into the reverb's own feedback. The practitioner default is saturate first, then add space [Source: https://www.soundonsound.com/techniques/saturation-strategies]. But in Skald this ordering also has a structural consequence, which is the next point and the most important one on this page.
 
-**Per-voice versus bus is the biggest decision you make with this node.** Skald splits every instrument graph into a voice domain and a bus domain (`skald-backend/core/codegen.odin:64-111`). Anything downstream of a Delay, a Reverb, or an instrument's external audio input runs in the bus domain, once per sample on the summed output of all voices. Everything else runs in the voice domain, once per sample *per active voice*.
+**Per-voice versus bus is the biggest decision you make with this node.** Skald splits every instrument graph into a voice domain and a bus domain (`skald-backend/core/codegen_analysis.odin::seed_bus_domain`, dispatched in `skald-backend/core/codegen_processor.odin::generate_processor_code`). Anything downstream of a Delay, a Reverb, or an instrument's external audio input runs in the bus domain, once per sample on the summed output of all voices. Everything else runs in the voice domain, once per sample *per active voice*.
 
 - **Voice-domain Distortion** (the default, and what the example patch does) shapes each note in complete isolation. Play a three-note chord and you get three independently saturated notes added together afterwards. It stays clean and articulate; nothing intermodulates. This is correct for basslines, leads, and drums — anything monophonic or near-monophonic — and it is what you want when polyphony must not change the character of a single note. It is also more expensive: with 6 voices (`voiceCount: 6` in the example) the shaping maths runs six times per sample.
 - **Bus-domain Distortion** shapes the *sum*. This is what a guitar amplifier does, and it produces something voice-domain distortion physically cannot: **intermodulation**. Two notes at 100 Hz and 150 Hz pushed through one nonlinearity together produce not just their own harmonics but sum and difference tones at 50 Hz, 250 Hz, 350 Hz and so on. That is the growl and the "wall" of a distorted power chord — and it is also why distorted chords sound muddy and dissonant if the interval is wrong. To get it in Skald you put the Distortion after a Reverb or Delay in the instrument graph, or build a dedicated effect instrument fed by an instrument input.
 
 Get this backwards and the patch still works, it just does not sound like the reference you had in your head. If you are chasing "amp," you need the bus domain. If you are chasing "clean and thick," you want the voice domain.
 
-**A Mixer feeding a Distortion is a legitimate way to force intermodulation *within* a voice.** Since multiple wires into `input` are summed anyway (`skald-backend/core/codegen.odin:569`), two oscillators landing on one Distortion node get shaped together and will intermodulate with each other — just not with the other voices.
+**A Mixer feeding a Distortion is a legitimate way to force intermodulation *within* a voice.** Since multiple wires into `input` are summed anyway (`skald-backend/core/param_utils.odin::sum_port_inputs`), two oscillators landing on one Distortion node get shaped together and will intermodulate with each other — just not with the other voices.
 
 ## Going further
 
-**Put a VCA after it and treat that as your output level.** Add a Gain node between the Distortion and whatever comes next, and expose its `gain` (range 0–4, default 1, `skald-backend/core/param_ranges.odin:84-85`). Now you can A/B drive settings at matched loudness, which is the only honest way to judge distortion. Do this before you do anything else on this list.
+**Put a VCA after it and treat that as your output level.** Add a Gain node between the Distortion and whatever comes next, and expose its `gain` (range 0–4, default 0.75 on a fresh node, `schema/nodes.json::gain`). Now you can A/B drive settings at matched loudness, which is the only honest way to judge distortion. Do this before you do anything else on this list.
 
-**Drive the input, not the drive knob.** Because there are no modulation inputs on Distortion, the way to make the saturation move is to move the level going in. Put a Gain node *before* the Distortion and wire an LFO or a second ADSR into its `input_gain` port (`skald-backend/core/graph_validate.odin:34`). Now you have a tremolo that also modulates grit — quiet moments come out clean, loud moments come out crushed. This is a far more musical animation than modulating drive would be, and it is exactly how a real pedal behaves.
+**Drive the input, not the drive knob.** Because there are no modulation inputs on Distortion, the way to make the saturation move is to move the level going in. Put a Gain node *before* the Distortion and wire an LFO or a second ADSR into its `input_gain` port (`skald-backend/core/graph_validate.odin::valid_input_ports`). Now you have a tremolo that also modulates grit — quiet moments come out clean, loud moments come out crushed. This is a far more musical animation than modulating drive would be, and it is exactly how a real pedal behaves.
 
 **Add a second, faster envelope for a "bite" transient.** Feed the Distortion's input through a Gain whose gain is driven by a short ADSR (attack 0.001, decay 0.04, sustain 0.2). The first 40 ms of each note slams the curve; the rest of the note passes nearly clean. On a bass this reads as a pick attack; on a kick it reads as a beater click.
 
@@ -166,11 +170,11 @@ Get this backwards and the patch still works, it just does not sound like the re
 
 **Layer shapes rather than pushing one harder.** Two Distortions in parallel — one `asymmetric` at drive 6 for the even harmonics, one `soft` at drive 15 for the odd — blended in a Mixer, gives you a harmonic spectrum you cannot reach with any single curve. Keep the asymmetric one's level modest so its DC offset stays small.
 
-**Expose Drive and automate it from the sequencer.** Distortion's parameters can be P-locked per step like any exposed parameter (`skald-backend/core/codegen.odin:1168-1174` — P-lock targets count as exposure). A bassline where two steps out of sixteen have drive 40 and the rest have drive 6 has an accent structure that no envelope can give you.
+**Expose Drive and automate it from the sequencer.** Distortion's parameters can be P-locked per step like any exposed parameter (`skald-backend/core/codegen_analysis.odin::effective_exposed_params` — P-lock targets count as exposure). A bassline where two steps out of sixteen have drive 40 and the rest have drive 6 has an accent structure that no envelope can give you.
 
 ## Under the hood
 
-Every Distortion node emits one self-contained block inside the sample loop, written by `generate_distortion_code` at `skald-backend/core/codegen.odin:568-600`. The whole thing is four lines of maths.
+Every Distortion node emits one self-contained block inside the sample loop, written by `skald-backend/core/codegen_nodes.odin::generate_distortion_code`. The whole thing is four lines of maths, plus an optional fifth.
 
 First it sums the input and forms the drive coefficient, with a floor of 1 so a corrupt or hand-edited patch cannot invert or zero the curve:
 
@@ -179,7 +183,7 @@ dist_in := (summed input)
 dist_k  := math.max(f32(drive), 1.0)          // codegen.odin:583
 ```
 
-Then one of four curves runs (`codegen.odin:584-593`). `classic`, the default, is the interesting one:
+Then one of four curves runs (same proc). `classic`, the default, is the interesting one:
 
 ```
 wet = (π + k)·x / (π + k·|x|)
@@ -187,7 +191,7 @@ wet = (π + k)·x / (π + k·|x|)
 
 The `π` is inherited from a well-known Web Audio waveshaper curve; the `(π + k)` numerator normalises it so that `f(±1) = ±1` at any drive. Small-signal gain is therefore `1 + k/π`, and full-scale input always comes out at full scale. `soft` is `tanh(x·k)`, `hard` is `clamp(x·k, -1, 1)`, and `asymmetric` is `x` for positive samples and `x / (1 + |x·k|)` for negative ones.
 
-Next, a one-pole lowpass runs on the wet signal only. The state variable lives on the voice or on the processor depending on domain (`codegen.odin:1096` / `:1156`):
+Next, a one-pole lowpass runs on the wet signal only. The state variable lives on the voice or on the processor depending on domain (`skald-backend/core/codegen_processor.odin::generate_processor_code`):
 
 ```odin
 tone_k := clamp(2π · clamp(tone, 100, 20000) / sample_rate, 0.001, 1.0)   // :595
@@ -196,14 +200,14 @@ tone_state += tone_k * (wet - tone_state)                                 // :59
 
 That second line is the entire filter: each sample, move the stored value a fraction `tone_k` of the way toward the new input. Small `tone_k` means slow movement means only low frequencies get through. `tone_k = 1` means "jump all the way there," which is no filtering at all — and that is why every Tone setting above `sample_rate / 2π` behaves identically.
 
-Finally the crossfade, using the *pre-shaping* input as the dry side (`codegen.odin:597-598`):
+Finally the crossfade, using the *pre-shaping* input as the dry side (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`):
 
 ```odin
 mix := clamp(f32(mix), 0.0, 1.0)
 out = dist_in * (1.0 - mix) + tone_state * mix
 ```
 
-Two things worth noticing about the generated code as a whole. Every parameter-derived local is declared with an explicit `: f32` via `emit_f32_local` rather than `:=`, because with literal parameters Odin constant-folds the initialiser into an untyped constant that would default to `f64` and break every downstream use — the comment at `codegen.odin:577-581` documents the bug this fixed. And whatever this node produces still passes through the project's master stage, which is itself a `tanh` soft limiter: `mixed_left = math.tanh(mixed_left * master_volume)` (`codegen.odin:2417-2418`, and the same in the wasm preview path at `:2623-2624`). So you can never actually clip the output file — but you can absolutely squash it flat against that limiter, which is a different and less pleasant kind of ugly.
+Two things worth noticing about the generated code as a whole. Every parameter-derived local is declared with an explicit `: f32` via `emit_f32_local` rather than `:=`, because with literal parameters Odin constant-folds the initialiser into an untyped constant that would default to `f64` and break every downstream use — the doc comment on `skald-backend/core/param_utils.odin::emit_f32_local` records the bug this fixed. Since packet B1, `generate_distortion_code` also multiplies the crossfaded output by an `outputGain` term, but only when it differs from its 1.0 default (`out_gain_str != f32_literal(1.0)`), so every pre-B1 patch's emitted text is unchanged. And whatever this node produces still passes through the project's master stage, which is itself a `tanh` soft limiter: `mixed_left = math.tanh(mixed_left * master_volume)` (`skald-backend/core/codegen_project.odin::skald_soft_limit`, and the same shape again in the wasm preview path, `skald-backend/core/codegen_project.odin::generate_wasm_shim_code`). So you can never actually clip the output file — but you can absolutely squash it flat against that limiter, which is a different and less pleasant kind of ugly.
 
 ## Terms introduced
 

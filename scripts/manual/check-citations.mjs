@@ -148,7 +148,10 @@ function identifierFoundIn(content, identifier) {
   return true
 }
 
-const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/
+// Hyphens are allowed inside a segment so a node id in an example file
+// (`space-funk.skald.json::pad-drift-lfo`) can be cited; no Odin or TS
+// identifier contains one, so nothing is loosened for source files.
+const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/
 
 // -------------------------------------------------------------- classify
 
@@ -165,9 +168,22 @@ function classify(raw) {
     if (!IDENTIFIER_RE.test(right)) return null
     return { kind: 'new', path: left, identifier: right }
   }
-  const m = raw.match(/^([a-zA-Z0-9_/.\-]+):(\d+)(?:-(\d+))?$/)
+  // `path:NNN`, `path:NNN-MMM` (hyphen or en dash), and the comma-list form
+  // the old chapters used to cite several lines of one file at once
+  // (`Foo.tsx:144, :153, 160-162`). The list form and the bare `:153` that
+  // followed a full citation in the same sentence both slipped past the first
+  // version of this regex, which is how R5 found a chapter "clean" with
+  // line citations still in it. Anything after the first range is ignored for
+  // the drift heuristic; in strict mode the whole thing is a mismatch anyway.
+  const m = raw.match(/^([a-zA-Z0-9_/.\-]+):(\d+)(?:[-–](\d+))?(?:,\s*:?\d+(?:[-–]\d+)?)*$/)
   if (m) {
     return { kind: 'legacy', path: m[1], startLine: Number(m[2]), endLine: m[3] ? Number(m[3]) : Number(m[2]) }
+  }
+  // A bare `:153` or `:1193-1198` — a line citation whose file was named by an
+  // earlier citation in the same sentence. There is no file to check it
+  // against, so it can only be a mismatch.
+  if (/^:\d+(?:[-–]\d+)?(?:,\s*:?\d+(?:[-–]\d+)?)*$/.test(raw)) {
+    return { kind: 'bare-line', path: '', startLine: 0, endLine: 0 }
   }
   return null
 }
@@ -190,8 +206,20 @@ function extractCandidates(text) {
     if (inFence) continue
     const spans = [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1])
     if (!spans.length) continue
+    // A bare `::identifier` is shorthand for "same file as the last full
+    // citation on this line". It was silently skipped by the first version of
+    // this checker, so two of R2's re-pins pointed at the wrong file without
+    // anyone being told. Carry the last full path along so the shorthand is
+    // checked against it, and so a shorthand with no path to inherit is a
+    // mismatch rather than a pass.
+    let lastPath = null
     for (const span of spans) {
-      results.push({ line: i + 1, text: span, spansOnLine: spans })
+      results.push({ line: i + 1, text: span, spansOnLine: spans, inheritedPath: lastPath })
+      const dbl = span.indexOf('::')
+      if (dbl > 0) {
+        const left = span.slice(0, dbl)
+        if (left.includes('/') || SOURCE_EXTS.has(extname(left))) lastPath = left
+      }
     }
   }
   return results
@@ -206,8 +234,16 @@ function checkFile(mdPath) {
   const candidates = extractCandidates(text)
   const findings = []
 
-  for (const { line, text: raw, spansOnLine } of candidates) {
-    const c = classify(raw)
+  for (const { line, text: raw, spansOnLine, inheritedPath } of candidates) {
+    let c = classify(raw)
+    if (!c && /^::[A-Za-z_]/.test(raw) && IDENTIFIER_RE.test(raw.slice(2))) {
+      if (inheritedPath) {
+        c = { kind: 'new', path: inheritedPath, identifier: raw.slice(2) }
+      } else {
+        findings.push({ file: mdPath, line, citation: raw, kind: 'new', status: 'mismatch', reason: 'bare `::identifier` with no full path::identifier citation earlier on the same line to inherit from' })
+        continue
+      }
+    }
     if (!c) continue
 
     if (c.kind === 'new') {
@@ -243,6 +279,18 @@ function checkFile(mdPath) {
         continue
       }
       findings.push({ file: mdPath, line, citation: raw, kind: 'new', status: 'pass', reason: 'ok' })
+      continue
+    }
+
+    if (c.kind === 'bare-line') {
+      findings.push({
+        file: mdPath,
+        line,
+        citation: raw,
+        kind: 'legacy',
+        status: 'mismatch',
+        reason: `bare line-number citation (a \`:NNN\` continuing an earlier citation) — convert to path::identifier (retired convention, see D3)`,
+      })
       continue
     }
 

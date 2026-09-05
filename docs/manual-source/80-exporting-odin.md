@@ -295,7 +295,7 @@ A setter you can call that does nothing is worse than no setter. Skald therefore
 
 First, a table of which (node type, parameter) pairs the generated DSP actually reads as a runtime field (`skald-backend/core/codegen_analysis.odin::param_is_reachable`). An Oscillator's `frequency` is dead unless `fixedPitch` is on, because otherwise the pitch comes from the note; every MIDI Input parameter is dead; a `syncRate` is never live. Exposing one of those produces a warning naming the reason and no setter (`::warn_dead_exposed_params`, with the message text in `::param_dead_reason`).
 
-Second, a safety net under the table: after an asset's processor is emitted, the generator scans the emitted **text** for a read of `p.<field>` for every exposed parameter. A field that is only ever written — by `_init`, by its own setter, by a P-lock — is dead by definition, whatever the table said. The asset is regenerated without it, so neither the setters nor the header can advertise it (`::exposed_field_is_read`, `::unread_exposed_fields`, `::omit_resolutions`; pinned by `skald-backend/tests/unit/exposure_scan_test.odin::test_unread_string_exposure_is_pruned_from_body_and_header`).
+Second, a safety net under the table: after an asset's processor is emitted, the generator scans the emitted **text** for a read of `p.<field>` for every exposed parameter. A field that is only ever written — by `_init`, by its own setter, by a P-lock — is dead by definition, whatever the table said. The asset is regenerated without it, so neither the setters nor the header can advertise it (`skald-backend/core/codegen_analysis.odin::exposed_field_is_read`, `skald-backend/core/codegen_analysis.odin::unread_exposed_fields`, `skald-backend/core/codegen_analysis.odin::omit_resolutions`; pinned by `skald-backend/tests/unit/exposure_scan_test.odin::test_unread_string_exposure_is_pruned_from_body_and_header`).
 
 The practical consequence for you as an integrator: **if `<Asset>_PARAMS` lists it, the DSP reads it.** There is no third category of "present but inert".
 
@@ -469,13 +469,13 @@ Skald would rather stop the build than hand you an asset that compiles and sound
 | Refused | Message shape |
 |---|---|
 | An Instrument inside an Instrument | *instrument "Outer" contains another Instrument ("Inner", node id 2) … use Explode Instrument …* (`skald-backend/core/graph_validate.odin::validate_no_nested_instruments`) |
-| Two nodes with the same id | *instrument "Asset" has two nodes with the same id "1" …* (`::validate_unique_node_ids`) |
-| Two ids that sanitise to one identifier | *node ids "osc-1" and "osc_1" … become the same identifier "osc_1" …* (`::find_duplicate_node_id`) |
+| Two nodes with the same id | *instrument "Asset" has two nodes with the same id "1" …* (`skald-backend/core/graph_validate.odin::validate_unique_node_ids`) |
+| Two ids that sanitise to one identifier | *node ids "osc-1" and "osc_1" … become the same identifier "osc_1" …* (`skald-backend/core/graph_validate.odin::find_duplicate_node_id`) |
 | A project with no Instrument | *input contains no instruments. Wrap nodes in an Instrument …* (`skald-backend/main.odin`) |
 | Two assets exporting under one prefix | *instruments "Bass" and "Lead" would both export as "Keys" …* (`skald-backend/core/codegen_analysis.odin::find_export_prefix_conflict`) |
 | A wire to a port that does not exist | named, rather than dropped (`skald-backend/core/graph_validate.odin::validate_connections`) |
 | One modulator feeding both a per-voice and a post-effect node | *A modulator runs once per voice or once per sample, never both … Duplicate the LFO …* (`skald-backend/core/codegen_analysis.odin::find_voice_source_into_bus_modulator`) |
-| A P-lock on a missing or inert parameter | the message lists every valid target (`::collect_plock_targets`) |
+| A P-lock on a missing or inert parameter | the message lists every valid target (`skald-backend/core/codegen_analysis.odin::collect_plock_targets`) |
 | A node type with no generator | refuses and exits, rather than writing a file with a hole in it |
 | A save from a newer Skald | the version message above |
 | An output path owned by another Odin package | see below |

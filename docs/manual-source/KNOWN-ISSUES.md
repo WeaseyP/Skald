@@ -415,7 +415,7 @@ That the Mixer has no per-channel pan is deliberate — see **What Skald deliber
 - **Chapters:** nodes/mixer.md (What it looks like in Skald, Where those numbers come from)
 - **Also see:** docs/0.2-ROADMAP.md §7, "Mixer dynamic / connection-keyed model" — after per-edge `amount`
 
-Three fallbacks differ, all of them reachable only through hand-written or hand-edited JSON, because the app always serialises the real values. A channel with no authored level shows 0.75 in the editor (`skald-ui/src/definitions/node-definitions.ts`, `skald-ui/src/components/Nodes/MixerNode.tsx::MixerNode`) and exports at unity, 2.5 dB hotter (`skald-backend/core/codegen_nodes.odin::generate_mixer_code` passes 1.0 to `::mixer_channel_level`). A node with no `inputCount` gets four channels in the editor and eight in both the generator and the validator (`skald-backend/core/graph_validate.odin::mixer_input_count`). And channels are matched by array position in the generator (`::mixer_channel_level` indexes `levels[channel-1]`) but by `id` in both editor surfaces, so a reordered `levels` array displays one mix and exports another.
+Three fallbacks differ, all of them reachable only through hand-written or hand-edited JSON, because the app always serialises the real values. A channel with no authored level shows 0.75 in the editor (`skald-ui/src/definitions/node-definitions.ts`, `skald-ui/src/components/Nodes/MixerNode.tsx::MixerNode`) and exports at unity, 2.5 dB hotter (`skald-backend/core/codegen_nodes.odin::generate_mixer_code` passes 1.0 to `skald-backend/core/codegen_nodes.odin::mixer_channel_level`). A node with no `inputCount` gets four channels in the editor and eight in both the generator and the validator (`skald-backend/core/graph_validate.odin::mixer_input_count`). And channels are matched by array position in the generator (`skald-backend/core/codegen_nodes.odin::mixer_channel_level` indexes `levels[channel-1]`) but by `id` in both editor surfaces, so a reordered `levels` array displays one mix and exports another.
 
 If you write Mixer JSON by hand, author `inputCount` and a complete `levels` array in id order.
 
@@ -480,6 +480,26 @@ So the scope reflects master-volume moves the node has nothing to do with, every
 The button stamps `lastTrigger` (`skald-ui/src/components/ParameterPanel.tsx`), and `skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine` posts a fixed `{ type: 'trigger', asset: -1, note: 60, velocity: 1.0, duration: 0.2 }` in response. The `asset: -1` means all assets, which `skald-ui/src/hooks/nodeEditor/audioWorklets/skaldWasm.worklet.ts` expands to every instrument in the project.
 
 For a bass patch with a low cutoff and a release longer than 200 ms, the audition is both the wrong octave and shorter than the patch's own decay, and in a multi-instrument project it fires everything at once. It verifies that something comes out; it does not tell you what the patch sounds like. Use the sequencer, or a MIDI keyboard, to audition properly.
+
+### Found during the D3 rewrite
+
+#### KI-054 · Changing Key or Scale while playing does not rebuild the preview
+- **Status:** open · **Severity:** confusing · **Since:** 0.1
+- **Chapters:** 05-sequencer.md (Key and Scale)
+
+The preview is rebuilt when the graph, the tracks, the tempo or the pattern length change, but the scale quantiser is not among the inputs the rebuild watcher compares (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine`), so a running module keeps the old Key and Scale until Stop → Play or an unrelated edit forces a rebuild. Notes played from a MIDI keyboard are quantised live through `skald-ui/src/contexts/ScaleContext.tsx::nearestInScale`, so during that window the keyboard and the sequencer can be in different scales. The export always uses the current Key and Scale; this is preview lag, not a preview/export divergence. Workaround: Stop and Play after changing the scale.
+
+#### KI-055 · A feedback loop is reported but generation carries on without the looped nodes
+- **Status:** open · **Severity:** blocker · **Since:** 0.1
+- **Chapters:** 00-foundations.md (Under the hood) · 70-space-funk-build.md (Where it goes wrong)
+
+`skald-backend/core/codegen_processor.odin::generate_processor_code` runs `topological_sort` and, when the graph is not a DAG, prints "Error: instrument … contains a feedback loop" naming the nodes in or behind the cycle — but the `os.exit(1)` that should follow is commented out. Generation continues with the sorted subset only: every node in the cycle, and everything downstream of it, is silently missing from the emitted asset, and the generator still exits 0, so the editor preview and a CLI build both report success. Every other validation failure in the generator exits 1 (`skald-backend/core/graph_validate.odin::validate_connections`). Workaround: read stderr after every Generate; a "feedback loop" line means the file is incomplete. Fix: restore the exit, with an acceptance fixture that fails first.
+
+#### KI-056 · `hat-static.skald.json` plays sixteen long hats after step 2
+- **Status:** open · **Severity:** confusing · **Since:** 0.1
+- **Chapters:** 05-sequencer.md (P-locks)
+
+The example locks the hat's ADSR `decay` to 0.12 on steps 2, 6, 10 and 14 over an authored 0.045. A P-lock is `<Asset>_set_param` emitted before that step's `note_on` with no restore (`skald-backend/core/codegen_project.odin::generate_sequencer_logic`), so from step 2 onward — and on every later loop — every step plays the long decay; the short/long alternation the file was written for never happens. The chapter uses the file to teach exactly this stickiness. Fix for the example: lock 0.045 on the other steps as well (the "lock the resting value too" discipline).
 
 ## Resolved before 0.2
 

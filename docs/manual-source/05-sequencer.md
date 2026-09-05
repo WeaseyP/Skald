@@ -137,7 +137,7 @@ One track, with a pitch axis. Open it from **Edit** on the track row; **Close** 
 
 **The pitch range is the whole MIDI space, 0 to 127** — `skald-ui/src/components/Sequencer/stepMetrics.ts::MIDI_NOTE_MIN` and `::MIDI_NOTE_MAX`, laid out highest-at-top by `::pitchRowsDescending`, 20 px per lane (`::NOTE_ROW_HEIGHT`), 128 rows in all. Row labels run `C-1` at the bottom to `G9` at the top. Earlier versions hardcoded a narrower window — MIDI 36–84, then 21–84 — and a note above the ceiling still played and still shipped, it just had nowhere to be seen, edited or deleted. If an older passage of this manual tells you the roll stops at C6, it is out of date.
 
-Because the range is now five octaves taller than anything most patches use, the roll opens scrolled to put **middle C in the middle of the viewport** (`::scrollTopForPitch`).
+Because the range is now five octaves taller than anything most patches use, the roll opens scrolled to put **middle C in the middle of the viewport** (`skald-ui/src/components/Sequencer/stepMetrics.ts::scrollTopForPitch`).
 
 - **Click a cell** to add a note at that pitch, or remove one that is there; drag to continue in the mode the first click chose (all adds, or all removes).
 - Rows whose pitch is **in the current scale** are drawn brighter, and their key label is white rather than grey. This is the only place Key and Scale show you anything before you press Play.
@@ -248,7 +248,7 @@ A P-lock **exposes** the parameter, whether or not you ever clicked the expose b
 An override that cannot work is now caught, everywhere, rather than silently doing nothing:
 
 - **A key that matches no node** — you renamed or deleted the node after authoring the lock — is a **hard build failure**. Code generation prints the offending key, lists the valid target labels, and exits (`skald-backend/core/codegen_analysis.odin::collect_plock_targets`).
-- **A key that resolves but targets a parameter the DSP never reads under the node's current configuration** is also a hard build failure. `frequency` on a BPM-synced LFO, `frequency` on an oscillator with Fixed Pitch off, `pulseWidth` on anything but a square wave, anything on a MIDI Input, and `syncRate` on any node ever (`::param_is_reachable`, with the human-readable reason in `::param_dead_reason`).
+- **A key that resolves but targets a parameter the DSP never reads under the node's current configuration** is also a hard build failure. `frequency` on a BPM-synced LFO, `frequency` on an oscillator with Fixed Pitch off, `pulseWidth` on anything but a square wave, anything on a MIDI Input, and `syncRate` on any node ever (`skald-backend/core/codegen_analysis.odin::param_is_reachable`, with the human-readable reason in `skald-backend/core/codegen_analysis.odin::param_dead_reason`).
 - **A non-numeric value** is filtered out on the way to both the preview and the export.
 
 Crucially, the editor reproduces the generator's judgement rather than guessing at it: `skald-ui/src/utils/plockTargets.ts::resolvePlockTargets` is a case-by-case mirror of the Odin, right down to folding ASCII case only. The moment the node a key names goes away, or the node's configuration kills the parameter, an amber panel appears at the top of Step Properties naming the key, explaining why the build will fail, and offering **Remove**. It also distinguishes the two cases, because the fixes differ: a stale reference can only be deleted, while a dead parameter can also be revived by flipping BPM Sync or Fixed Pitch back — except `syncRate`, where deletion is the only fix. The project issues banner reports the same thing at project level, and it knows not to claim a build failure for an override on a muted track.
@@ -293,20 +293,20 @@ For an LFO or a Sample & Hold the number you want is the *rate*, so the node fol
 
 ### The hint on the card, and the one truth in the file
 
-Next to every sync-rate dropdown — on the node card and in the parameter panel — sits the resolved time at the project tempo: **"1/8 at 90 BPM = 0.333 s"** (`::formatSyncTime`, rendered through the `hint` slot of `skald-ui/src/components/Nodes/ParamNode.tsx::ParamField`, which reads the tempo from `skald-ui/src/contexts/GraphActionsContext.tsx::useProjectBpm`). You never have to hunt for the BPM box to know what a division means.
+Next to every sync-rate dropdown — on the node card and in the parameter panel — sits the resolved time at the project tempo: **"1/8 at 90 BPM = 0.333 s"** (`skald-ui/src/definitions/bpm.ts::formatSyncTime`, rendered through the `hint` slot of `skald-ui/src/components/Nodes/ParamNode.tsx::ParamField`, which reads the tempo from `skald-ui/src/contexts/GraphActionsContext.tsx::useProjectBpm`). You never have to hunt for the BPM box to know what a division means.
 
 A synced node stores two numbers: the division the generator follows, and a free-run field the generator ignores while sync is on (`frequency` for the LFO, `rate` for Sample & Hold, `delayTime` for the Delay). Nothing used to keep them in step, so a file could carry a free-run value 14 % off its own division and unticking BPM Sync landed the node on a stale number. Now **every save and every load rewrites the free-run field to the value the division resolves to** — at the session tempo on save, at the file's own tempo on load (`skald-ui/src/utils/syncNormalize.ts::normalizeSyncedFreeRun`, using `::resolvedFreeRunValue`). Two consequences you can rely on:
 
 - The Hz or seconds you see when you untick BPM Sync is the speed you were just hearing. Toggling sync off is a no-op for the sound.
-- Ticking BPM Sync on a node that stores no division writes `1/4` explicitly rather than leaving three readers to guess (`::bpmSyncToggleChanges`).
+- Ticking BPM Sync on a node that stores no division writes `1/4` explicitly rather than leaving three readers to guess (`skald-ui/src/definitions/bpm.ts::bpmSyncToggleChanges`).
 
-Two honest limits. **Skald syncs the rate, not the phase** — nothing resets an LFO's phase on a bar line or a note-on, so a `1/4` LFO reliably completes one cycle per beat but where in that cycle the downbeat lands depends on how long the voice has been running. And **`syncRate` can never be P-locked or exposed**: it is read at code-generation time as a string, never through a struct field, so no node configuration ever makes it live. For what these nodes are musically *for*, see the LFO, Sample & Hold and Delay chapters.
+Two honest limits. **Skald syncs the rate, not the phase** — nothing resets an LFO's phase on a bar line. A fresh voice does restart a voice-domain LFO from phase 0 (`skald-backend/core/codegen_processor.odin::generate_processor_code` emits the reset inside the `if !stolen` block; see C6-2 in the LFO chapter), but a stolen voice keeps its phase and a bus-domain LFO free-runs from Play, so a `1/4` LFO reliably completes one cycle per beat while where in that cycle the downbeat lands depends on when the voice or the transport started. And **`syncRate` can never be P-locked or exposed**: it is read at code-generation time as a string, never through a struct field, so no node configuration ever makes it live. For what these nodes are musically *for*, see the LFO, Sample & Hold and Delay chapters.
 
 ## Try it (hands-on)
 
 We will use `examples/instruments/bass/bass-sequenced.skald.json` — one Instrument called **Bass**, one 16-step track, six notes, 110 BPM. About fifteen minutes.
 
-1. **Load it and press Play.** Sidebar → **Load**, open `examples/instruments/bass/bass-sequenced.skald.json`. Click **Loop**, then **Play**. You get a short square-plus-sine bassline. The BPM box reads **110** and Steps reads **16**, both restored from the file's `session` block. One track row, named **Bass**, appears because there is one Instrument node on the canvas.
+1. **Load it and press Play.** Sidebar → **Open File...**, open `examples/instruments/bass/bass-sequenced.skald.json`. Click **Loop**, then **Play**. You get a short square-plus-sine bassline. The BPM box reads **110** and Steps reads **16**, both restored from the file's `session` block. One track row, named **Bass**, appears because there is one Instrument node on the canvas.
 
 2. **Watch the playhead and count the grid.** Six blocks at steps 0, 3, 5, 8, 11, 13. Notice the blocks are different widths and different brightnesses: width is duration in steps, brightness is velocity. Every fourth column has a brighter border — that is the beat.
 

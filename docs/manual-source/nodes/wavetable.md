@@ -20,24 +20,25 @@ One honest caveat before you start. Skald's Wavetable node is a **four-shape mor
 
 ## What it looks like in Skald
 
-**Where it lives.** Drag it out of the left-hand sidebar. It is in the source group with Oscillator, Noise, LFO, S & H and FM Operator, and its palette tooltip reads "Morphing wavetable: position sweeps sine → triangle → saw → square" (`skald-ui/src/components/Sidebar.tsx:269`). On the canvas it is the deep-orange card — that colour is reserved for this node type (`skald-ui/src/components/Nodes/NodeStyles.ts:88`).
+**Where it lives.** Drag it out of the left-hand sidebar. It is in the source group with Oscillator, Noise, LFO, S & H and FM Operator, and its palette tooltip reads "Morphing wavetable: position sweeps sine → triangle → saw → square" (`skald-ui/src/components/Sidebar.tsx::Sidebar`). On the canvas it is the deep-orange card — that colour is reserved for this node type (`skald-ui/src/components/Nodes/NodeStyles.ts::NODE_ACCENTS`).
 
-**Handles.** Three inputs down the left, one output on the right (`skald-ui/src/components/Nodes/WavetableNode.tsx:9-14`):
+**Handles.** Four inputs down the left, one output on the right (`skald-ui/src/components/Nodes/WavetableNode.tsx::WavetableNode`):
 
 | Handle | Direction | Label | What it accepts |
 |---|---|---|---|
-| `input_freq` | in | **Freq** | A pitch offset in volts-per-octave. Exponential: the incoming value is used as `2^x`, so +1 is one octave up, −1 one octave down, clamped to ±10 octaves (`skald-backend/core/codegen.odin:491`). |
-| `input_pos` | in | **Pos** | A modulation signal **added** to the Position parameter (`skald-backend/core/codegen.odin:498`). |
-| `input_amp` | in | **Amp** | A modulation signal **added** to the Amp parameter (`skald-backend/core/codegen.odin:499`). |
+| `input_freq` | in | **Freq** | A pitch offset in volts-per-octave. Exponential: the incoming value is used as `2^x`, so +1 is one octave up, −1 one octave down, clamped to ±10 octaves (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). |
+| `input_pos` | in | **Pos** | A modulation signal **added** to the Position parameter (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). |
+| `input_amp` | in | **Amp** | A modulation signal **added** to the Amp parameter (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). |
+| `input_pulseWidth` | in | **PW** | A modulation signal **added** to the Pulse Width parameter. Added alongside the Pulse Width control itself in packet C5; only audible while Position sits near the square end (2–3). |
 | `output` | out | **Out** | The generated audio signal, roughly ±1. |
 
-Note the asymmetry, because it will bite you: `input_freq` is *multiplicative and exponential*, while `input_pos` and `input_amp` are *additive and linear*. All three go through the same summing rule — if you wire two cables into one input port, both are summed, not just the first (`skald-backend/core/param_utils.odin:138-155`).
+Note the asymmetry, because it will bite you: `input_freq` is *multiplicative and exponential*, while `input_pos`, `input_amp` and `input_pulseWidth` are *additive and linear*. All go through the same summing rule — if you wire two cables into one input port, both are summed, not just the first (`skald-backend/core/param_utils.odin::get_f32_param`).
 
-**Rate.** Audio rate. Its phase advances once per sample inside the per-voice loop (`skald-backend/core/codegen.odin:502`), and it gets one phase accumulator *per voice* on the processor struct (`skald-backend/core/codegen.odin:1082-1083`), reset to zero when a voice is stolen or retriggered (`skald-backend/core/codegen.odin:1430-1431`). That per-voice state is why chords do not smear into each other.
+**Rate.** Audio rate, and — since packet C5 — unison-aware like the Oscillator: the same `unison`/`detune` instrument settings spread the Wavetable into several detuned copies, each with its own phase accumulator, summed and averaged (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). One phase accumulator array lives *per voice* on the processor struct, reset to zero when a voice is stolen or retriggered (`skald-backend/core/codegen_processor.odin::generate_processor_code`). That per-voice state is why chords do not smear into each other.
 
-**What it cannot connect to.** Wavetable is a *voice-coupled* node: its generated code reads `voice.current_freq`, the pitch of the note being played (`skald-backend/core/codegen.odin:56-61`). After a Delay or a Reverb, Skald has already summed all the voices together and there is no single "current note" any more. Wiring a Wavetable downstream of a Delay or Reverb is not a warning — the exporter refuses and exits with an error telling you to move it upstream (`skald-backend/core/codegen.odin:1935-1943`). Put it at the head of the chain, where it belongs.
+**What it cannot connect to.** Wavetable is a *voice-coupled* node: its generated code reads `voice.current_freq`, the pitch of the note being played (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). After a Delay or a Reverb, Skald has already summed all the voices together and there is no single "current note" any more. Wiring a Wavetable downstream of a Delay or Reverb is not a warning — the exporter refuses and exits with an error telling you to move it upstream (`skald-backend/core/codegen_analysis.odin::compute_bus_domain`). Put it at the head of the chain, where it belongs.
 
-**Pitch.** By default the node ignores its own Frequency box and plays the note the sequencer or your MIDI keyboard sent (`skald-backend/core/codegen.odin:474-478`). Tick **Fixed Pitch** and it plays the Frequency value instead, for every note. Same contract as the Oscillator.
+**Pitch.** By default the node ignores its own Frequency box and plays the note the sequencer or your MIDI keyboard sent (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). Tick **Fixed Pitch** and it plays the Frequency value instead, for every note. Same contract as the Oscillator.
 
 ## The controls
 
@@ -46,11 +47,11 @@ Note the asymmetry, because it will bite you: `input_freq` is *multiplicative an
 | **Position** | 0 – 3 | 0 | — | Slides the waveshape: 0 = sine, 1 = triangle, 2 = sawtooth, 3 = square, with a linear crossfade in between. |
 | **Pulse Width** | 0.01 – 0.99 | 0.5 | `PW` | Duty cycle of the square end of the morph (position 3). 0.5 is the symmetric square every older patch had; narrower or wider pulses bring in the even harmonics, exactly as on the Oscillator. Added in packet C5. |
 | **Phase** | 0 – 360° | 0 | — | Where in its cycle the wave starts on each note, as on the Oscillator. Two sine Wavetables on the same pitch 180° apart cancel. Added in packet C5. |
-| **Amp** | 0 – 1 | *(unset; DSP uses 1.0)* | — | Output level of the oscillator before anything downstream. |
+| **Amp** | 0 – 1 | 1 | — | Output level of the oscillator before anything downstream. |
 | **Fixed Pitch** | off / on | off | — | Off: pitch follows the played note. On: pitch is locked to Frequency. |
 | **Frequency** | 20 – 20000 | 440 | Hz | Only read when Fixed Pitch is on. |
 
-Sources: Position's authoritative range is the node-type override at `skald-backend/core/param_ranges.odin:34-35` (`{0.0, 3.0, 0.0, ""}`), which matches the on-canvas slider `{ key: 'position', min: 0, max: 3, step: 0.01 }` (`skald-ui/src/components/Nodes/WavetableNode.tsx:16`) and the properties-panel slider `slider('position', 0, 3, 0, undefined, 0.01)` (`skald-ui/src/components/NodeParameterControls.tsx:213`). Amp's range comes from the generic `amplitude` entry `{0.0, 1.0, 0.5, ""}` (`skald-backend/core/param_ranges.odin:86-87`) and the canvas field `{ key: 'amplitude', min: 0, max: 1, step: 0.05 }` (`skald-ui/src/components/Nodes/WavetableNode.tsx:17`); the *codegen* default when the parameter is absent is 1.0, not 0.5 (`skald-backend/core/codegen.odin:499`). Frequency comes from `{20.0, 20000.0, 440.0, "Hz"}` (`skald-backend/core/param_ranges.odin:48-49`) and the node's own default of 440 (`skald-ui/src/definitions/node-definitions.ts:58-63`). The DSP additionally hard-clamps position to 0–3 inside the morph function itself, so no amount of modulation can push it out of range (`skald-backend/core/codegen.odin:2316`).
+Sources: Position's authoritative range is the node-type override in the schema (`schema/nodes.json::position`, rendered into the generator's lookup table as `{0.0, 3.0, 0.0, ""}`), which matches the on-canvas slider `{ key: 'position', min: 0, max: 3, step: 0.01 }` (`skald-ui/src/components/Nodes/WavetableNode.tsx::WavetableNode`) and the properties-panel slider `slider('position', 0, 3, 0, undefined, 0.01)` (`skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`). Amp's range and default of 1 come from the Wavetable-specific schema override (`schema/nodes.json::amplitude`, packet C5/SKB-024) rather than the generic `amplitude` row's 0.5 default, and the card carries the same 1 as a read-time default for saves made before `amplitude` was part of `WavetableParams` (`skald-ui/src/components/Nodes/ParamNode.tsx::ParamField`; canvas field at `skald-ui/src/components/Nodes/WavetableNode.tsx::WavetableNode`). Frequency comes from the generic `{20.0, 20000.0, 440.0, "Hz"}` row (`schema/nodes.json::frequency`) and the node's own default of 440 (`skald-ui/src/definitions/node-definitions.ts::defaultWavetableParams`). The DSP additionally hard-clamps position to 0–3 inside the morph function itself, so no amount of modulation can push it out of range (`skald-backend/core/codegen_project.odin::skald_wavetable_sample`).
 
 ### What you hear as you sweep Position
 
@@ -60,7 +61,7 @@ Play and hold a note, then drag Position from left to right. Do it slowly — th
 
 **1.0 to 2.0 (triangle → sawtooth).** This is the big move. Even harmonics fade in alongside the odd ones and the tone opens up from woody to brassy to full buzzy saw. Somewhere around 1.6–1.9 you get the classic "string machine" tone: bright enough to cut, not yet abrasive. If you only ever use one region of this node, use this one, and put a lowpass filter after it.
 
-**2.0 to 3.0 (sawtooth → square).** The even harmonics drain back out and the sound goes hollow and reedy — saw is nasal and full, square is hollow and clarinet-ish. This region has a strange middle: at position 2.5 the crossfade of an up-ramp and a hard step partially cancels, and the peak level falls to 0.5 while the RMS falls to about 0.29. Compare that with 1.00 RMS at position 3.0 exactly. **Sweeping position changes loudness, not just timbre — by roughly 11 dB across the full range.** Nothing in the code normalises the tables (`skald-backend/core/codegen.odin:2315-2323`), which is a real departure from commercial wavetable synths, where tables are level-matched so that morphing does not pump. Plan for it: put a compressor-free, sane amount of headroom downstream, or keep your morph modulation inside a narrower window.
+**2.0 to 3.0 (sawtooth → square).** The even harmonics drain back out and the sound goes hollow and reedy — saw is nasal and full, square is hollow and clarinet-ish. This region has a strange middle: at position 2.5 the crossfade of an up-ramp and a hard step partially cancels, and the peak level falls to 0.5 while the RMS falls to about 0.29. Compare that with 1.00 RMS at position 3.0 exactly. **Sweeping position changes loudness, not just timbre — by roughly 11 dB across the full range.** Nothing in the code normalises the tables (`skald-backend/core/codegen_project.odin::skald_wavetable_sample`), which is a real departure from commercial wavetable synths, where tables are level-matched so that morphing does not pump. Plan for it: put a compressor-free, sane amount of headroom downstream, or keep your morph modulation inside a narrower window.
 
 **Position 3.0 exactly** is the loudest setting on the node by a wide margin — a square wave spends all its time at full amplitude, so its RMS equals its peak. Parking a modulated position against that ceiling produces audible volume jumps.
 
@@ -74,22 +75,22 @@ Leave Fixed Pitch **off** for anything played from the sequencer or a keyboard �
 
 ### What "expose" does, and why you would do it
 
-Click the small link icon beside a parameter in the properties panel to expose it (`skald-ui/src/components/ParameterPanel.tsx:226-235`). By default this node ships with `frequency` and `position` exposed (`skald-ui/src/definitions/node-definitions.ts:62`).
+Click the small link icon beside a parameter in the properties panel to expose it (`skald-ui/src/components/ParameterPanel.tsx::ParameterPanel`). By default this node ships with `frequency`, `position` and — since packet C5 backfilled the "-6 dB from a checkbox" defect — `amplitude` exposed too (`skald-ui/src/definitions/node-definitions.ts::defaultWavetableParams`). `pulseWidth` and `phase` are not exposed by default; tick them yourself if a game needs to reach them.
 
 Exposing changes the generated Odin in four concrete ways. Take the `position` parameter from the project's own regression fixture, which exposes exactly that one parameter:
 
-1. **It becomes a real field on the processor struct**, initialised to your editor value (`skald-backend/tests/golden/wavetable_morph.odin.golden:106,114`), instead of being baked into the DSP line as a constant.
-2. **The DSP line reads the field every sample**: `node_1_out = skald_wavetable_sample(voice.wavetable_1_phase, f32(p.position)) * (f32(1.000000000));` (`skald-backend/tests/golden/wavetable_morph.odin.golden:290`). Note that the *unexposed* amplitude next to it is a frozen literal.
-3. **You get a clamped typed setter**, whose bounds come straight from `param_ranges.odin`: `Asset_set_position` clips to [0, 3] before writing (`skald-backend/tests/golden/wavetable_morph.odin.golden:231-236`). Your game cannot corrupt the DSP by passing 500.
-4. **It appears in a machine-readable table** — `Asset_PARAMS := []Skald_Param_Info{ {"position", 0.0, 3.0, 0.0, ""} }` (`:238-239`) — plus name-and-node-id dispatch through `Asset_set_param("position", …)` or `Asset_set_param("1::position", …)` (`:244-245`). A tools programmer can iterate that table and build a debug UI without knowing anything about your patch.
+1. **It becomes a real field on the processor struct**, initialised to your editor value, instead of being baked into the DSP line as a constant.
+2. **The DSP line reads the field every sample.** With unison at 1 (the fixture's setting) the emitted line is `unison_out += skald_wavetable_sample(voice.wavetable_1_phase[i], f32(p.position), math.clamp(f32(f32(0.500000000)), 0.01, 0.99));` followed by `node_1_out = (unison_out / f32(unison_count)) * (f32(1.000000000));` (`skald-backend/tests/golden/wavetable_morph.odin.golden::Asset_process`) — the unison loop and the third, pulse-width argument to `skald_wavetable_sample` are both packet C5 additions. Note that the *unexposed* pulse width and amplitude in that line are frozen literals.
+3. **You get a clamped typed setter:** `Asset_set_position` clips to [0, 3] before writing (`skald-backend/tests/golden/wavetable_morph.odin.golden::Asset_set_position`). Your game cannot corrupt the DSP by passing 500.
+4. **It appears in a machine-readable table** — `Asset_PARAMS := []Skald_Param_Info{ {"position", 0.0, 3.0, 0.0, ""} }` — plus name-and-node-id dispatch through `Asset_set_param("position", …)` or `Asset_set_param("1::position", …)` (`skald-backend/tests/golden/wavetable_morph.odin.golden::Asset_PARAMS`). A tools programmer can iterate that table and build a debug UI without knowing anything about your patch.
 
 For a game, this is the whole point: expose `position` and you can drive the pad's brightness from player health, from combat intensity, from depth underwater — one float, set from gameplay code, no re-export.
 
-There is an immediate benefit in the editor too. Skald's live preview compiles your actual generated Odin to wasm and plays it (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts:1-15`). Changing an **exposed** parameter calls `skald_set_param` and takes effect instantly; changing anything else triggers a debounced regenerate-and-recompile of ~250 ms (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts:32`, `skald-ui/src/utils/projectSerializer.ts:236-247`). So an exposed Position slider *sweeps*, and an unexposed one *steps*. If a control feels laggy while you are sound-designing, check whether it is exposed.
+There is an immediate benefit in the editor too. Skald's live preview compiles your actual generated Odin to wasm and plays it (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine`). Changing an **exposed** parameter calls `skald_set_param` and takes effect instantly; changing anything else triggers a debounced regenerate-and-recompile of ~250 ms (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine`, `skald-ui/src/utils/projectSerializer.ts::canApplyParamLive`). So an exposed Position slider *sweeps*, and an unexposed one *steps*. If a control feels laggy while you are sound-designing, check whether it is exposed.
 
 ## Try it (hands-on)
 
-Open **`examples/instruments/pads/pad-sequenced.skald.json`**. It is an eight-voice pad instrument at 90 BPM with three-note chords on steps 0 and 8, containing six nodes: a **Wavetable** (position 0.8, amplitude 1, fixedPitch off, `frequency`/`position` exposed) → **Filter** (lowpass, cutoff 900 Hz, resonance 0.8) → **Amp** ADSR (attack 0.9 s, decay 0.5, sustain 0.8, release 2.0) → **Reverb** (decay 4 s, mix 0.35) → **Output**, plus a **Slow Morph** LFO (sine, 0.15 Hz, amplitude 0.6) wired into the Wavetable's `input_pos` handle.
+Open **`examples/instruments/pads/pad-sequenced.skald.json`**. It is an eight-voice pad instrument at 90 BPM with three-note chords on steps 0 and 8, containing six nodes: a **Wavetable** (position 0.8, amplitude 1, fixedPitch off, `frequency`/`position` exposed) → **Filter** (lowpass, cutoff 900 Hz, resonance 0.8) → **Amp** ADSR (attack 0.9 s, decay 0.5, sustain 0.8, release 2.0) → **Reverb** (decay 4 s, mix 0.35) → **Output**, plus a **Slow Morph** LFO (sine, 0.15 Hz, amplitude 0.6) wired into the Wavetable's `input_pos` handle. `fixedPitch` is off, so exposing `frequency` here buys nothing — packet B2 silently prunes that setter and its `_PARAMS` row from the export rather than shipping a dead knob.
 
 Budget about eight minutes.
 
@@ -103,9 +104,9 @@ Budget about eight minutes.
 
 5. **Reopen the filter's ears.** Set Position back to 1.8 and leave the LFO at 0. Click the **Filter** node and raise Cutoff from 900 Hz to about 6000 Hz. Suddenly the morph you could barely hear at 900 Hz is obvious and buzzy. Lesson: a lowpass filter set low *hides* your wavetable movement, because everything the position control does happens in the harmonics above the fundamental. Drop the cutoff back to about 2000 Hz and turn the LFO amplitude back up to 0.6 — that is a much better-sounding compromise than the shipped 900 Hz.
 
-6. **Widen the morph until it slams.** With the LFO back at 0.6, set the Wavetable's Position to **1.5** and the LFO Amplitude to **2.0**. Position now swings from −0.5 to 3.5, and the DSP clamps it to [0, 3] (`skald-backend/core/codegen.odin:2316`). Listen: the morph now *sits* at pure sine for a stretch, then *sits* at pure square, with a fast transit between. The clamp has turned your smooth sine LFO into something closer to a trapezoid, and the level pumps hard against the square end. That flat-topping is the sound of a modulation destination hitting its rails — you will meet it on filter cutoff and on pan too.
+6. **Widen the morph until it slams.** With the LFO back at 0.6, set the Wavetable's Position to **1.5** and the LFO Amplitude to **2.0**. Position now swings from −0.5 to 3.5, and the DSP clamps it to [0, 3] (`skald-backend/core/codegen_project.odin::skald_wavetable_sample`). Listen: the morph now *sits* at pure sine for a stretch, then *sits* at pure square, with a fast transit between. The clamp has turned your smooth sine LFO into something closer to a trapezoid, and the level pumps hard against the square end. That flat-topping is the sound of a modulation destination hitting its rails — you will meet it on filter cutoff and on pan too.
 
-7. **Break it: make it alias.** Set the LFO Amplitude to 0 and Position to **3.0** (square). On the Wavetable, tick **Fixed Pitch** and set **Frequency** to **5000** Hz. You will hear a hard, thin, electronic tone — and underneath it, a cluster of whistles that are *not* harmonics of 5000 Hz. Now slide Frequency slowly up towards 8000. Some of those whistles move *downward* as you raise the pitch. That is **aliasing**. A square wave has odd harmonics at 15 k, 25 k, 35 k, 45 k and so on forever; anything above the Nyquist frequency (half your output sample rate, so about 22 or 24 kHz) cannot be represented and folds back down into the audible band as an inharmonic partial that moves the wrong way [Source: https://www.metafunction.co.uk/post/all-about-digital-oscillators-part-2-blits-bleps]. Now drag Position back to **0.0** (sine) at the same 5000 Hz — the whistles vanish completely, because a sine has no harmonics to fold. Skald's shapes are generated naively, with no band-limiting (`skald-backend/core/codegen.odin:2307-2313`), so this is a permanent property of the node, not a bug you can dial out. **The practical rule: the higher you push Position, the lower you should keep the pitch.** High positions on notes above roughly C6 will get grainy.
+7. **Break it: make it alias.** Set the LFO Amplitude to 0 and Position to **3.0** (square). On the Wavetable, tick **Fixed Pitch** and set **Frequency** to **5000** Hz. You will hear a hard, thin, electronic tone — and underneath it, a cluster of whistles that are *not* harmonics of 5000 Hz. Now slide Frequency slowly up towards 8000. Some of those whistles move *downward* as you raise the pitch. That is **aliasing**. A square wave has odd harmonics at 15 k, 25 k, 35 k, 45 k and so on forever; anything above the Nyquist frequency (half your output sample rate, so about 22 or 24 kHz) cannot be represented and folds back down into the audible band as an inharmonic partial that moves the wrong way [Source: https://www.metafunction.co.uk/post/all-about-digital-oscillators-part-2-blits-bleps]. Now drag Position back to **0.0** (sine) at the same 5000 Hz — the whistles vanish completely, because a sine has no harmonics to fold. Skald's shapes are generated naively, with no band-limiting (`skald-backend/core/codegen_project.odin::skald_wavetable_shape`) — see **What Skald deliberately does not do** for why — so this is a permanent property of the node, not a bug you can dial out. **The practical rule: the higher you push Position, the lower you should keep the pitch.** High positions on notes above roughly C6 will get grainy.
 
 8. **Untick Fixed Pitch**, set Frequency back to 440, Position back to 0.8, Filter cutoff back to 900, LFO Amplitude back to 0.6. You are back at the shipped patch — and you now know what every one of those numbers is buying you.
 
@@ -113,11 +114,11 @@ Budget about eight minutes.
 
 **Wavetable → Filter → ADSR → effects → Output** is the standard chain, and every link is load-bearing.
 
-*Wavetable first, always.* It is voice-coupled, so it must live in the voice domain, upstream of any Delay or Reverb; the exporter enforces this with a hard error rather than silently dropping the node (`skald-backend/core/codegen.odin:1935-1943`). It is also a *source* — it has no audio input port at all (`skald-ui/src/components/Nodes/WavetableNode.tsx:9-14`), so nothing can feed into it except modulation.
+*Wavetable first, always.* It is voice-coupled, so it must live in the voice domain, upstream of any Delay or Reverb; the exporter enforces this with a hard error rather than silently dropping the node (`skald-backend/core/codegen_analysis.odin::compute_bus_domain`). It is also a *source* — it has no audio input port at all (`skald-ui/src/components/Nodes/WavetableNode.tsx::WavetableNode`), so nothing can feed into it except modulation.
 
 *Filter second.* A wavetable's whole vocabulary is harmonics. A lowpass filter after it decides how much of that vocabulary reaches your ears. Historically this is exactly what made the PPG musical: digital oscillators smoothed out by analogue filters [Source: https://www.soundonsound.com/sound-advice/q-can-you-explain-origins-wavetable-ss-and-vector-synthesis]. Practically, it also tames the aliasing from step 7 above — the folded partials at the top of the spectrum get attenuated along with everything else. If you put the filter *before* something with no filter at all, you have wasted it; there is nothing upstream of the Wavetable to filter.
 
-*ADSR third, as your level envelope.* This is where beginners most often go wrong with this node. Wavetable's `input_amp` port **adds** to the Amp parameter rather than multiplying it (`skald-backend/core/codegen.odin:499`, `skald-backend/core/param_utils.odin:149-153`). Wire an ADSR into `input_amp` with Amp left at its default and you get an oscillator that runs from 1.0 up to 2.0 and *never goes silent between notes*. Do not do that. Route the audio *through* an ADSR node (or a VCA), the way `pad-sequenced` does, so the envelope multiplies the signal.
+*ADSR third, as your level envelope.* This is where beginners most often go wrong with this node. Wavetable's `input_amp` port **adds** to the Amp parameter rather than multiplying it (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`, `skald-backend/core/param_utils.odin::get_f32_param`). Wire an ADSR into `input_amp` with Amp left at its default and you get an oscillator that runs from 1.0 up to 2.0 and *never goes silent between notes*. Do not do that. Route the audio *through* an ADSR node (or a VCA), the way `pad-sequenced` does, so the envelope multiplies the signal.
 
 *The LFO goes to `input_pos`, not to the output.* Modulating position is a timbre change; modulating a gain is a volume change (tremolo). They sound completely different and only the first one is wavetable synthesis.
 
@@ -127,7 +128,7 @@ Budget about eight minutes.
 
 **Envelope the position, not just an LFO.** An LFO on position is periodic — the pad breathes at a fixed rate regardless of what you play. Add a second ADSR and route its output to `input_pos` for a per-note morph: fast attack, medium decay, low sustain means every note starts bright and settles dark, which is how almost every acoustic instrument behaves. This is the single biggest expressiveness upgrade available to this node.
 
-**Stack an LFO and an envelope on the same port.** Both edges into `input_pos` are summed (`skald-backend/core/param_utils.odin:149-153`), so you get per-note movement riding on a slow global drift, which is what expensive pads actually sound like. Keep the total swing modest so you do not spend your time pinned against the 0/3 clamp.
+**Stack an LFO and an envelope on the same port.** Both edges into `input_pos` are summed (`skald-backend/core/param_utils.odin::get_f32_param`), so you get per-note movement riding on a slow global drift, which is what expensive pads actually sound like. Keep the total swing modest so you do not spend your time pinned against the 0/3 clamp.
 
 **Use a Mapper to shape the modulation window.** Rather than fighting the clamp, put a Mapper between your LFO and `input_pos` to rescale ±1 into, say, +1.2 to +1.9 — the musically rich triangle-to-saw region — and set the node's own Position to 0. Now the full range of your modulator maps onto the part of the table you actually want.
 
@@ -137,35 +138,44 @@ Budget about eight minutes.
 
 **Use it as an audio-rate modulator.** Turn on Fixed Pitch, set a frequency in the audio range, and feed the output into another node's modulation input. A morphing modulator gives you sidebands that change character as you sweep position — closer to a wavetable-FM hybrid than to classic subtractive synthesis.
 
-**Sequence position with P-locks.** Skald's step editor can override a parameter per step, and a P-locked parameter is automatically promoted to an exposed processor field even if you never clicked the link icon (`skald-backend/core/codegen.odin:916-950`). Set a different position on each step of a 16-step pattern and you have a timbre sequence, not just a note sequence.
+**Sequence position with P-locks.** Skald's step editor can override a parameter per step, and a P-locked parameter is automatically promoted to an exposed processor field even if you never clicked the link icon (`skald-backend/core/codegen_analysis.odin::effective_exposed_params`). Set a different position on each step of a 16-step pattern and you have a timbre sequence, not just a note sequence.
 
 ## Under the hood
 
-Every sample, for every active voice, the generated Odin does three things (`skald-backend/core/codegen.odin:502-504`):
+Every sample, for every unison copy of every active voice, the generated Odin runs the same unison/detune loop as the Oscillator (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). With unison at 1 — the common case, and what the project's regression fixture uses — it collapses to this (`skald-backend/tests/golden/wavetable_morph.odin.golden::Asset_process`):
 
 ```odin
-voice.wavetable_1_phase = math.mod(voice.wavetable_1_phase + ((voice.current_freq) / sample_rate), 1.0);
-if voice.wavetable_1_phase < 0.0 do voice.wavetable_1_phase += 1.0;
-node_1_out = skald_wavetable_sample(voice.wavetable_1_phase, f32(p.position)) * (f32(1.000000000));
+unison_out: f32 = 0.0;
+unison_count := 1;
+for i in 0..<unison_count {
+	detune_amount: f32 = 0.0;
+	detuned_freq: f32 = (voice.current_freq) * math.pow(2.0, detune_amount / 1200.0);
+	voice.wavetable_1_phase[i] = math.mod(voice.wavetable_1_phase[i] + (detuned_freq / sample_rate), 1.0);
+	if voice.wavetable_1_phase[i] < 0.0 do voice.wavetable_1_phase[i] += 1.0;
+	unison_out += skald_wavetable_sample(voice.wavetable_1_phase[i], f32(p.position), math.clamp(f32(f32(0.500000000)), 0.01, 0.99));
+}
+node_1_out = (unison_out / f32(unison_count)) * (f32(1.000000000));
 ```
 
-The first line is a **phase accumulator**: a counter from 0 to 1 that advances by `frequency / sample_rate` each sample and wraps at 1. At 440 Hz and 48 kHz it advances by about 0.00917 per sample, so it completes a lap every ~109 samples — 440 laps per second. Phase *is* pitch here; the shape is looked up from the phase.
+The phase line is a **phase accumulator**: a counter from 0 to 1 that advances by `frequency / sample_rate` each sample and wraps at 1. At 440 Hz and 48 kHz it advances by about 0.00917 per sample, so it completes a lap every ~109 samples — 440 laps per second. Phase *is* pitch here; the shape is looked up from the phase. When the `phase` parameter is non-zero, an extra line offsets the lookup by `phase / 360.0` before the sample call, the same convention as the Oscillator's degrees-based phase (`skald-backend/core/codegen_nodes.odin::generate_wavetable_code`). The third argument to `skald_wavetable_sample` is the clamped pulse width, which only changes anything once Position is near the square end.
 
-The lookup is where the morph happens (`skald-backend/core/codegen.odin:2315-2323`):
+The lookup is where the morph happens (`skald-backend/core/codegen_project.odin::skald_wavetable_sample`):
 
 ```odin
 p    := math.clamp(pos, 0.0, 3.0)
 i1   := int(p)          // lower shape index
 i2   := (i1 + 1) % 4    // upper shape index, wrapping
 frac := p - f32(i1)     // how far between them
+s1   := skald_wavetable_shape(i1, ph, pw)
+s2   := skald_wavetable_shape(i2, ph, pw)
 return s1 + (s2 - s1) * frac
 ```
 
 That last line is plain **linear interpolation** — a per-sample crossfade between the two neighbouring shapes. This is the textbook approach and it is what makes the sweep sound continuous instead of stepped [Source: https://en.wikipedia.org/wiki/Wavetable_synthesis]. Note what it is *not*: it is not spectral morphing. It crossfades the two time-domain waveforms directly, which is why the mid-morph level dips you heard in step 4 exist — the two shapes are not phase-aligned in the way a level-matched commercial wavetable would be.
 
-The four shapes themselves are computed analytically rather than read from stored samples (`skald-backend/core/codegen.odin:2307-2313`): triangle is `abs(ph*4 - 2) - 1`, sawtooth is `ph*2 - 1`, square is `ph < 0.5 ? 1 : -1`, and index 0 falls through to `sin(ph * 2π)`. Strictly speaking this makes Skald's node a *morphing waveshape oscillator* rather than a table-lookup wavetable in Julius Smith's sense [Source: https://ccrma.stanford.edu/~jos/sasp/Wavetable_Synthesis.html] — there is no table in memory and no table-index interpolation, only the position crossfade. Audibly and musically it behaves the same way; the one place the difference shows is aliasing, since a stored band-limited table can be pre-filtered per octave and a formula cannot.
+The four shapes themselves are computed analytically rather than read from stored samples (`skald-backend/core/codegen_project.odin::skald_wavetable_shape`): triangle is `abs(ph*4 - 2) - 1`, sawtooth is `ph*2 - 1`, square is `ph < pw ? 1 : -1` (packet C5 parametrised this on the Pulse Width argument; it was a hard-coded 0.5 before), and index 0 falls through to `sin(ph * 2π)`. Strictly speaking this makes Skald's node a *morphing waveshape oscillator* rather than a table-lookup wavetable in Julius Smith's sense [Source: https://ccrma.stanford.edu/~jos/sasp/Wavetable_Synthesis.html] — there is no table in memory and no table-index interpolation, only the position crossfade. Audibly and musically it behaves the same way; the one place the difference shows is aliasing, since a stored band-limited table can be pre-filtered per octave and a formula cannot.
 
-The project's regression suite pins this behaviour down: `skald-backend/tests/fixtures/wavetable_morph.json` renders MIDI note 69 and asserts both that the peak frequency is 440 Hz ± 8 Hz — proving pitch tracks the note rather than the Frequency box — and that moving position from 0.0 to 2.0 raises the spectral centroid, i.e. genuinely brightens the tone (`skald-backend/acceptance/main.odin:459-484`).
+The project's regression suite pins this behaviour down: the `wavetable_morph` acceptance fixture renders MIDI note 69 and asserts both that the peak frequency is 440 Hz ± 8 Hz — proving pitch tracks the note rather than the Frequency box — and that moving position from 0.0 to 2.0 raises the spectral centroid, i.e. genuinely brightens the tone (`skald-backend/acceptance/main.odin::main`).
 
 ## Terms introduced
 

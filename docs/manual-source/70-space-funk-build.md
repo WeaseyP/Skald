@@ -113,10 +113,10 @@ Four things to notice before you build anything.
 
 **The ADSR is doing two different jobs in the same patch.** In the audio chain
 it is a volume control — the generated code multiplies whatever arrives at its
-`input` by the envelope (`skald-backend/core/codegen.odin:292`). In the
+`input` by the envelope (`skald-backend/core/codegen_nodes.odin::generate_adsr_code`). In the
 modulation chain (`kick-pitch`, `bass-fenv`) nothing is wired into its `input`,
 so the code substitutes the literal `1.0`
-(`skald-backend/core/codegen.odin:224`) and the output is the bare envelope
+(same proc) and the output is the bare envelope
 shape, 0 to 1. Same node, two jobs, decided entirely by whether you plugged
 anything into it.
 
@@ -127,9 +127,9 @@ one. This is not decoration — see *The Mapper is not optional*, below.
 a *voice domain* (runs once per held note) and a *bus domain* (runs once per
 sample, after all the notes are summed), and Oscillator, ADSR, FM Operator,
 Wavetable and MIDI Input can only exist in the voice domain
-(`skald-backend/core/codegen.odin:63-69`). Put an ADSR after a Reverb and code
+(`skald-backend/core/codegen_analysis.odin::is_voice_coupled_type`). Put an ADSR after a Reverb and code
 generation stops with an error telling you to move it
-(`skald-backend/core/codegen.odin:96-104`). The reason is physical: a delay line
+(`skald-backend/core/codegen_analysis.odin::compute_bus_domain`). The reason is physical: a delay line
 holds one shared buffer of the recent past, and there is no per-note "recent
 past".
 
@@ -137,7 +137,7 @@ past".
 
 Everything below is easier to reason about once you know how long a step is.
 The generated engine computes `samples_per_step = sample_rate × 60 / (bpm × 4)`
-(`skald-backend/core/codegen.odin:2113-2115`) — one step is a sixteenth note.
+(`skald-backend/core/codegen_project.odin::generate_sequencer_logic`) — one step is a sixteenth note.
 
 | At 104 BPM | Duration |
 |---|---|
@@ -161,50 +161,50 @@ Cited to the standalone patch files, which are the files you will open.
 
 | Node | Setting | Why |
 |---|---|---|
-| `kick-osc` | Waveform — Sine (`:28`) | A kick is one low tone. A saw here would put harmonics all through the bass guitar's range. |
-| ↳ | Frequency — 52 Hz (`:27`) | The pitch you are left with after the drop. Roughly G#1. |
-| ↳ | **Fixed Pitch** — true (`:32`) | Ignore the played note. Every sequencer note produces the same drum. Without this, a kick on MIDI 36 and one on MIDI 48 would be different drums. |
-| `kick-amp` | A / D / S / R — 0.001 / 0.22 / 0 / 0.04 (`:42-45`) | Sustain **0** is what makes it a hit rather than a note: it decays to silence whether or not you hold the step. 0.22 s is 1.5 steps. |
-| `kick-pitch` | A / D / S / R — 0.001 / 0.05 / 0 / 0.01 (`:76-79`) | The click. 50 ms is a third of a step — you hear it as attack, not as pitch. |
-| `kick-pitch-map` | in 0→1, out 0→2.2 (`:91-94`) | **Octaves**, not hertz. 52 × 2^2.2 = 239 Hz, so the drum starts at ~240 Hz and falls to 52 Hz in 50 ms. |
-| `kick-punch` | Drive 14, Shape soft, Tone 2400, Mix 0.4 (`:57-60`) | `soft` is `tanh` (`codegen.odin:602`). Mix 0.4 means 60% of the signal is untouched, so the weight survives and only the attack gains bite. |
+| `kick-osc` | Waveform — Sine | A kick is one low tone. A saw here would put harmonics all through the bass guitar's range. |
+| ↳ | Frequency — 52 Hz | The pitch you are left with after the drop. Roughly G#1. |
+| ↳ | **Fixed Pitch** — true | Ignore the played note. Every sequencer note produces the same drum. Without this, a kick on MIDI 36 and one on MIDI 48 would be different drums. |
+| `kick-amp` | A / D / S / R — 0.001 / 0.22 / 0 / 0.04 | Sustain **0** is what makes it a hit rather than a note: it decays to silence whether or not you hold the step. 0.22 s is 1.5 steps. |
+| `kick-pitch` | A / D / S / R — 0.001 / 0.05 / 0 / 0.01 | The click. 50 ms is a third of a step — you hear it as attack, not as pitch. |
+| `kick-pitch-map` | in 0→1, out 0→2.2 | **Octaves**, not hertz. 52 × 2^2.2 = 239 Hz, so the drum starts at ~240 Hz and falls to 52 Hz in 50 ms. |
+| `kick-punch` | Drive 14, Shape soft, Tone 2400, Mix 0.4 | `soft` is `tanh` (`skald-backend/core/codegen_nodes.odin::generate_distortion_code`). Mix 0.4 means 60% of the signal is untouched, so the weight survives and only the attack gains bite. |
 
 #### Snare — `drums/snare.skald.json`
 
 | Node | Setting | Why |
 |---|---|---|
-| `snare-noise` | White, amp 0.8 (`:27-28`) | The rattle. Noise is every frequency at once, which is why every snare on earth has noise in it. |
-| `snare-band` | **Bandpass** 2200 Hz, Q 1.8 (`:38-40`) | Bandpass keeps a band and discards both ends. Full-range noise sounds like static; 2.2 kHz-ish noise sounds like a snare. |
-| `snare-noise-env` | 0.001 / 0.16 / 0 / 0.05 (`:50-53`) | 160 ms — just over one step. |
-| `snare-tone-osc` | Triangle 190 Hz, fixed, amp 0.35 (`:65-70`) | The shell. A drum has a pitch even though you do not think of it as pitched. |
-| `snare-tone-env` | 0.001 / **0.09** / 0 / 0.03 (`:80-83`) | Deliberately *shorter* than the rattle: the body thumps and the rattle keeps going. Real snares behave that way. |
-| `snare-mix` | 2 inputs, levels 0.85 / 0.6 (`:95-98`) | Rattle louder than shell. Swap them and you get a tom. |
-| `snare-room` | Decay 1.1 s, Pre-delay 0.008 s, Mix 0.22 (`:109-111`) | 8 ms pre-delay puts the room *behind* the hit instead of on top of it. Mix 0.22 keeps the transient in front. |
+| `snare-noise` | White, amp 0.8 | The rattle. Noise is every frequency at once, which is why every snare on earth has noise in it. |
+| `snare-band` | **Bandpass** 2200 Hz, Q 1.8 | Bandpass keeps a band and discards both ends. Full-range noise sounds like static; 2.2 kHz-ish noise sounds like a snare. |
+| `snare-noise-env` | 0.001 / 0.16 / 0 / 0.05 | 160 ms — just over one step. |
+| `snare-tone-osc` | Triangle 190 Hz, fixed, amp 0.35 | The shell. A drum has a pitch even though you do not think of it as pitched. |
+| `snare-tone-env` | 0.001 / **0.09** / 0 / 0.03 | Deliberately *shorter* than the rattle: the body thumps and the rattle keeps going. Real snares behave that way. |
+| `snare-mix` | 2 inputs, levels 0.85 / 0.6 | Rattle louder than shell. Swap them and you get a tom. |
+| `snare-room` | Decay 1.1 s, Pre-delay 0.008 s, Mix 0.22 | 8 ms pre-delay puts the room *behind* the hit instead of on top of it. Mix 0.22 keeps the transient in front. |
 
 #### Hat — `drums/hat.skald.json`
 
 | Node | Setting | Why |
 |---|---|---|
-| `hat-hp` | **Highpass** 7000 Hz (`:38-39`) | Highpass keeps what is above the cutoff. All sizzle, no body — so it never collides with the snare. Note the ceiling: the generated filter clamps cutoff to `sample_rate × 0.16` (`codegen.odin:346`), about 7680 Hz at 48 kHz, so 7000 is near the top of what this filter can actually do. |
-| `hat-env` | 0.001 / **0.045** / 0 / 0.02 (`:50-53`) | 45 ms. A third of a step. Short is the entire sound. |
-| ↳ | Velocity Sens. **0.8** (`:55`) | High, because the hat plays every step and the only thing separating the beat from the off-beat is velocity. |
+| `hat-hp` | **Highpass** 7000 Hz | Highpass keeps what is above the cutoff. All sizzle, no body — so it never collides with the snare. 7000 Hz is deliberately near the real ceiling this filter can reach at all (KI-037 in **Known issues**), not a quarter of the way up an advertised 20 kHz slider. |
+| `hat-env` | 0.001 / **0.045** / 0 / 0.02 | 45 ms. A third of a step. Short is the entire sound. |
+| ↳ | Velocity Sens. **0.8** | High, because the hat plays every step and the only thing separating the beat from the off-beat is velocity. |
 
 #### Slap Bass — `instruments/slap-bass.skald.json`
 
 | Node | Setting | Why |
 |---|---|---|
-| Instrument | voiceCount **1**, glide 0.02 (`:11-13`) | Monophonic on purpose. One voice means every new note *steals* the only voice, and glide only fires on a steal (`codegen.odin:1451-1454`), so every note gets a 20 ms slide into pitch. That smear is what makes a bass line sound fingered rather than typed. |
-| `bass-osc` | Sawtooth, amp 0.6 (`:28-29`) | Bright and harmonically full, because the filter is about to remove most of it. You cannot filter harmonics that are not there. |
-| `bass-amp` | 0.002 / 0.18 / **0.35** / 0.08 (`:42-45`) | Sustain 0.35: the note drops to a third of its peak and stays there for as long as the step lasts. Percussive but not gated. |
-| `bass-filter` | Lowpass **420 Hz**, Q **3.5** (`:57-59`) | 420 Hz on its own is a dull thud. That is the point — the envelope supplies the brightness. Q 3.5 emphasises whatever the cutoff is passing over, which is what makes the sweep *audible* rather than merely present. |
-| `bass-fenv` | 0.001 / **0.09** / 0.1 / 0.05 (`:88-91`) | 90 ms: shorter than the amp envelope, so the brightness is gone long before the note is. That gap is the slap. |
-| `bass-fmap` | in **0→1**, out **200→3600 Hz** (`:103-106`) | Unipolar in, because an envelope never goes negative. |
-| `bass-grit` | Drive 8, soft, Tone 2600, Mix 0.3 (`:69-72`) | Presence without losing the fundamental — 70% of the signal is still clean. |
+| Instrument | voiceCount **1**, glide 0.02 | Monophonic on purpose. One voice means every new note *steals* the only voice, and glide only fires on a steal (`skald-backend/core/codegen_processor.odin::generate_processor_code`), so every note gets a 20 ms slide into pitch. That smear is what makes a bass line sound fingered rather than typed. |
+| `bass-osc` | Sawtooth, amp 0.6 | Bright and harmonically full, because the filter is about to remove most of it. You cannot filter harmonics that are not there. |
+| `bass-amp` | 0.002 / 0.18 / **0.35** / 0.08 | Sustain 0.35: the note drops to a third of its peak and stays there for as long as the step lasts. Percussive but not gated. |
+| `bass-filter` | Lowpass **420 Hz**, Q **3.5** | 420 Hz on its own is a dull thud. That is the point — the envelope supplies the brightness. Q 3.5 emphasises whatever the cutoff is passing over, which is what makes the sweep *audible* rather than merely present. |
+| `bass-fenv` | 0.001 / **0.09** / 0.1 / 0.05 | 90 ms: shorter than the amp envelope, so the brightness is gone long before the note is. That gap is the slap. |
+| `bass-fmap` | in **0→1**, out **200→3600 Hz** | Unipolar in, because an envelope never goes negative. |
+| `bass-grit` | Drive 8, soft, Tone 2600, Mix 0.3 | Presence without losing the fundamental — 70% of the signal is still clean. |
 
 The bass filter is worth doing the arithmetic on, because it shows how
 modulation actually combines. Modulation is **added** to the knob
-(`skald-backend/core/param_utils.odin:138-155`), and the Mapper interpolates
-between its output bounds (`codegen.odin:755`):
+(`skald-backend/core/param_utils.odin::get_f32_param`), and the Mapper interpolates
+between its output bounds (`skald-backend/core/codegen_nodes.odin::generate_mapper_code`):
 
 | Envelope value | Mapper output | Actual cutoff |
 |---|---|---|
@@ -221,34 +221,34 @@ up everyone once.
 
 | Node | Setting | Why |
 |---|---|---|
-| Instrument | voiceCount **8** (`:11`) | The chords are five notes and the release is 1.8 s, so held notes plus dying notes can easily need seven or eight voices at once. A voice is not free again until its release finishes. |
-| Instrument | **unison 6, detune 22** (`:14-15`) | Six copies of the oscillator per voice, spread over 22 cents. This is the width. It costs nothing in level: the generator averages the copies rather than summing them (`codegen.odin:219`). |
-| `pad-amp` | **0.9** / 1.2 / 0.7 / **1.8** (`:42-45`) | A 0.9 s attack is 6 steps — the chord arrives late, on purpose. The 1.8 s release (12 steps) means each chord is still fading while the next one starts. That overlap is most of the "space". |
-| `pad-filter` | Lowpass 900 Hz, Q 1.2 (`:57-59`) | Dark. A pad that is as bright as the arp competes with it. |
-| `pad-drift-lfo` | Sine **0.12 Hz**, amp 1 (`:87-89`) | One cycle every 8.3 seconds — 3.6 bars, so it never lines up with the music and never sounds like a rhythm. |
-| `pad-drift-map` | in **−1→1**, out **−450→450** (`:101-104`) | Bipolar in, because an LFO swings both sides of zero. Cutoff travels 450 → 1350 Hz. |
-| `pad-space` | Decay **6 s**, Pre-delay 0.06, Mix 0.55 (`:69-71`) | A 6-second tail is 2.6 bars: the reverb never fully clears, which is exactly why the track sounds like it is happening somewhere enormous. 60 ms of pre-delay keeps the chord's own attack readable in front of it. |
+| Instrument | voiceCount **8** | The chords are five notes and the release is 1.8 s, so held notes plus dying notes can easily need seven or eight voices at once. A voice is not free again until its release finishes. |
+| Instrument | **unison 6, detune 22** | Six copies of the oscillator per voice, spread over 22 cents. This is the width. It costs nothing in level: the generator averages the copies rather than summing them (`skald-backend/core/codegen_nodes.odin::generate_oscillator_code`). |
+| `pad-amp` | **0.9** / 1.2 / 0.7 / **1.8** | A 0.9 s attack is 6 steps — the chord arrives late, on purpose. The 1.8 s release (12 steps) means each chord is still fading while the next one starts. That overlap is most of the "space". |
+| `pad-filter` | Lowpass 900 Hz, Q 1.2 | Dark. A pad that is as bright as the arp competes with it. |
+| `pad-drift-lfo` | Sine **0.12 Hz**, amp 1 | One cycle every 8.3 seconds — 3.6 bars, so it never lines up with the music and never sounds like a rhythm. |
+| `pad-drift-map` | in **−1→1**, out **−450→450** | Bipolar in, because an LFO swings both sides of zero. Cutoff travels 450 → 1350 Hz. |
+| `pad-space` | Decay **6 s**, Pre-delay 0.06, Mix 0.55 | A 6-second tail is 2.6 bars: the reverb never fully clears, which is exactly why the track sounds like it is happening somewhere enormous. 60 ms of pre-delay keeps the chord's own attack readable in front of it. |
 
 #### Starfield Arp — `instruments/starfield-arp.skald.json`
 
 | Node | Setting | Why |
 |---|---|---|
-| `arp-osc` | **Triangle**, amp 0.45 (`:28-29`) | Triangle has a few quiet harmonics — glassy rather than buzzy. A saw here would be harsh at this pitch. |
-| `arp-amp` | 0.001 / **0.14** / 0 / 0.1 (`:42-45`) | 140 ms against a 144 ms step. Each ping finishes about 4 ms before the next one starts, which is why sixteen notes a bar sound like sparkle instead of mush. |
-| `arp-filter` | Lowpass 1200, Q **6** (`:57-59`) | High resonance so the random cutoff is *audible as pitch colour*, not just as brightness. |
-| `arp-sh` | Sample & Hold, **bpmSync 1/16** (`:91-92`) | Latches a new random value every sixteenth. At 104 BPM a 1/16 sync is 144 ms — exactly one step, so the colour changes on the note, not across it. |
-| `arp-sh-map` | in −1→1, out **−700→1800** (`:102-105`) | Cutoff wanders 500–3000 Hz, randomly, forever. |
-| `arp-echo` | Delay, **bpmSync 1/8**, Feedback 0.5, Mix 0.4 (`:71-73`) | 1/8 at 104 BPM = 288 ms, so echoes land on the following off-beat. Feedback 0.5 halves each repeat — four or five audible tails. |
+| `arp-osc` | **Triangle**, amp 0.45 | Triangle has a few quiet harmonics — glassy rather than buzzy. A saw here would be harsh at this pitch. |
+| `arp-amp` | 0.001 / **0.14** / 0 / 0.1 | 140 ms against a 144 ms step. Each ping finishes about 4 ms before the next one starts, which is why sixteen notes a bar sound like sparkle instead of mush. |
+| `arp-filter` | Lowpass 1200, Q **6** | High resonance so the random cutoff is *audible as pitch colour*, not just as brightness. |
+| `arp-sh` | Sample & Hold, **bpmSync 1/16** | Latches a new random value every sixteenth. At 104 BPM a 1/16 sync is 144 ms — exactly one step, so the colour changes on the note, not across it. |
+| `arp-sh-map` | in −1→1, out **−700→1800** | Cutoff wanders 500–3000 Hz, randomly, forever. |
+| `arp-echo` | Delay, **bpmSync 1/8**, Feedback 0.5, Mix 0.4 | 1/8 at 104 BPM = 288 ms, so echoes land on the following off-beat. Feedback 0.5 halves each repeat — four or five audible tails. |
 
 ### Two numbers in these files do nothing, and you should know why
 
-`arp-sh` stores `"rate": 8` (`:89`) and `arp-echo` stores `"delayTime": 0.28`
-(`:70`). Both are ignored, because both nodes have `bpmSync: true`. When sync is
-on, the time base is computed from the musical division instead
-(`skald-backend/core/codegen.odin:35-57`), and the free-running value is never
-read. The UI hides those boxes while sync is on for the same reason. They stay
-in the file so that turning sync off gives you something sensible rather than
-zero.
+`arp-sh` stores `"rate": 8` (`examples/snes-kit/instruments/starfield-arp.skald.json::rate`) and `arp-echo` stores `"delayTime": 0.28`
+(`examples/snes-kit/instruments/starfield-arp.skald.json::delayTime`). Both are ignored, because both nodes have `bpmSync: true`, and while
+sync is on the time base comes from the musical division instead
+(`skald-backend/core/codegen_analysis.odin::bpm_sync_seconds_expr`). That an
+unsynced free-run field sits inert behind a synced one is deliberate — see
+*What Skald deliberately does not do* for why. They stay in the file so that
+turning sync off gives you something sensible rather than zero.
 
 ---
 
@@ -257,12 +257,12 @@ zero.
 Nine exercises. Do them in order. **Press Play in the sidebar first** and leave
 it playing — Skald recompiles and hot-swaps as you edit, so you hear changes
 without stopping. To fire a note on a patch with no sequencer line yet, select
-the Output node and press **Test Audio** (`ParameterPanel.tsx:331`), which plays
-middle C at full velocity for 200 ms (`useWasmAudioEngine.ts:350`).
+the Output node and press **Test Audio** (`skald-ui/src/components/ParameterPanel.tsx::ParameterPanel`), which plays
+middle C at full velocity for 200 ms (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine`).
 
 ### Exercise 0 — Hear the finished thing, then take it apart (10 minutes)
 
-1. **Load** `examples/snes-kit/songs/space-funk.skald.json` (Sidebar → Load).
+1. **Open File...** `examples/snes-kit/songs/space-funk.skald.json` (Sidebar → Load).
    Six instrument cards, six tracks in the dock at the bottom.
 2. **Play.** Let it loop twice.
 3. **Solo each track in turn** with the **S** button in the track list. Listen
@@ -303,7 +303,7 @@ on something that is not volume.
    **That** is a kick drum.
 8. **Understand what just happened.** `input_freq` is measured in **octaves**,
    exponentially: the code computes `base × 2^mod`
-   (`skald-backend/core/codegen.odin:163`). Out Max 2.2 means "up to 2.2 octaves
+   (`skald-backend/core/codegen_nodes.odin::generate_oscillator_code`). Out Max 2.2 means "up to 2.2 octaves
    above 52 Hz", i.e. 239 Hz. **Try this:** set Out Max to 0.3 — a soft
    floor-tom thump. Set it to 6 — a laser. Set it back to 2.2.
 9. **Break it on purpose.** Delete the Mapper and wire ADSR-2 straight into
@@ -317,7 +317,7 @@ on something that is not volume.
     disappear — a waveshaper converts fundamental energy into harmonics. Back
     to 0.4.
 11. Select all six nodes (drag a box), press **Create Instrument**
-    (`Sidebar.tsx:218`), name it `SNES Kick`. It collapses to one card and a
+    (`skald-ui/src/components/Sidebar.tsx::Sidebar`), name it `SNES Kick`. It collapses to one card and a
     sequencer track appears. Click the Instrument and set **Voice Count 2**.
 12. In the dock, click steps **0, 7, 10 and 14** on the kick track. Set the
     project **BPM to 104** and **Steps to 16** in the sequencer toolbar. Press
@@ -346,11 +346,11 @@ back-to-back teaches what a filter *type* actually decides.
    Highpass.
 6. **Hear the ceiling.** Drag Cutoff up to 20000. Nothing gets thinner past
    about 7.7 kHz, because the generated filter clamps to `sample_rate × 0.16`
-   (`codegen.odin:346`). The slider lies; the code wins.
+   (`skald-backend/core/codegen_nodes.odin::generate_filter_code`, KI-037). The slider lies; the code wins.
 7. Wrap it in an Instrument named `SNES Hat`, Voice Count 4. Paint all 16 steps.
    Then **Ctrl+drag vertically** on the steps that fall on beats (0, 4, 8, 12)
    to push their velocity up to about 0.7, and leave the rest near 0.3
-   (`StepGrid.tsx:179-194`). Play. That velocity difference *is* the groove —
+   (`skald-ui/src/components/Sequencer/StepGrid.tsx::StepGrid`). Play. That velocity difference *is* the groove —
    the notes are identical.
 
 **Now the snare, which is the same idea twice, mixed.**
@@ -367,7 +367,7 @@ back-to-back teaches what a filter *type* actually decides.
    room and becomes a snare in a swimming pool, and the transient vanishes. Back
    to 0.22.
 6. **Try this:** set Pre-delay to 0 and then to 0.25 (its maximum,
-   `param_ranges.odin:78-79`). At 0 the room smears the hit; at 0.25 you hear
+   `schema/nodes.json::generic`). At 0 the room smears the hit; at 0.25 you hear
    the hit and *then*, a quarter-second later, a separate room. 8 ms is the
    "same room as the drum" setting.
 7. **Break it usefully:** swap the two mixer levels — shell 0.85, rattle 0.6.
@@ -391,7 +391,7 @@ two-envelope pattern from the kick, applied to a filter instead of a pitch.
    `Env` **straight** into the Filter's **`Cut`** handle. Rebuild, play.
    *Nothing changes.* Not subtly — audibly nothing.
 5. **Why:** modulation is added to the parameter, not scaled to it
-   (`skald-backend/core/param_utils.odin:138-155`). Your envelope swings from 0
+   (`skald-backend/core/param_utils.odin::get_f32_param`). Your envelope swings from 0
    to 1, so the cutoff is travelling from 420 Hz to 421 Hz. One hertz.
 6. **Fix it.** Drag in a **Mapper**. Rewire: ADSR-2 `Env` → Mapper `In`, Mapper
    `Out` → Filter `Cut`. Set **In Min 0, In Max 1, Out Min 200, Out Max 3600**.
@@ -435,7 +435,7 @@ two-envelope pattern from the kick, applied to a filter instead of a pitch.
    **Try this:** Detune 0 — it collapses to one flat saw. Detune 60 — it sounds
    out of tune rather than wide. The musical zone is roughly 10–35 cents.
    Note that it does not get louder as you add copies: the generator divides by
-   the unison count (`codegen.odin:219`).
+   the unison count (`skald-backend/core/codegen_nodes.odin::generate_oscillator_code`).
 4. **Slowness.** Drag in an **LFO** and a **Mapper**. LFO: Waveform Sine,
    Frequency **0.12**, Amplitude 1, BPM Sync **off**. Mapper: **In −1, In Max 1,
    Out −450, Out 450**. Wire LFO → Mapper → Filter `Cut`. Play and wait.
@@ -455,9 +455,9 @@ two-envelope pattern from the kick, applied to a filter instead of a pitch.
    longer than the bar, so it never clears; that is intentional and it is why
    the loop point does not sound like a seam.
 6. **Prove the domain rule.** Try to drag the Reverb *before* the ADSR (delete
-   two wires, make two). Press **Generate Code**. Code generation refuses, with
+   two wires, make two). Press **Download Code**. Code generation refuses, with
    a message naming the ADSR and telling you to move it before the effect
-   (`codegen.odin:96-104`). Undo. This is the rule from *Foundations* biting in
+   (`skald-backend/core/codegen_analysis.odin::compute_bus_domain`). Undo. This is the rule from *Foundations* biting in
    practice: effects with memory go last.
 7. **Voice arithmetic.** Set Voice Count to 4 and play the five-note chord. One
    note is missing — and which one changes, because voices get stolen. With a
@@ -479,7 +479,7 @@ two-envelope pattern from the kick, applied to a filter instead of a pitch.
    That is the cerebral part, and it is one node.
 4. **Understand the difference from an LFO.** An LFO glides continuously; S&H
    latches a random value and holds it flat until the next tick
-   (`codegen.odin:408`). Stepped versus smooth. **Try this:** switch the S&H
+   (`skald-backend/core/codegen_nodes.odin::generate_sample_hold_code`). Stepped versus smooth. **Try this:** switch the S&H
    sync to 1/4 — the colour now changes once per beat, which sounds
    deliberate, almost like chord changes. Switch to 1/32: it starts to sound
    like distortion, because the changes are approaching audio rate.
@@ -489,7 +489,7 @@ two-envelope pattern from the kick, applied to a filter instead of a pitch.
    **1/8**, Feedback **0.5**, Mix **0.4**. Play. The arp now leaves trails that
    land on the off-beats.
    **Try this:** Feedback 0.9 — the echoes pile up into a wash and never clear
-   (0.99 is the clamp, `param_ranges.odin:76-77`). Feedback 0.2 — one slap-back
+   (0.95 is the clamp, on every surface — `schema/nodes.json::generic`, `skald-backend/core/codegen_nodes.odin::generate_delay_code`). Feedback 0.2 — one slap-back
    repeat. **Try this:** turn BPM Sync **off** and watch the Delay Time box
    reappear at 0.28 s — close to the synced value at this tempo, but it stops
    tracking the moment you change BPM.
@@ -551,7 +551,7 @@ these are all short stabs with air between them, and the air is the groove.
 **Try this, and then undo it:** set every velocity to 1.0. The line goes
 completely flat and mechanical — same notes, no music. Velocity is not
 loudness here, it is *articulation*, and the generated scale is
-`(1 − sens) + sens × velocity` (`codegen.odin:291`), so the bass's 0.5
+`(1 − sens) + sens × velocity` (`skald-backend/core/codegen_nodes.odin::generate_adsr_code`), so the bass's 0.5
 sensitivity turns a 0.5 velocity into 75% amplitude, not 50%.
 
 **Try this:** delete the ghost notes at steps 4, 7 and 11. The line still
@@ -581,8 +581,8 @@ The step order in the finished file is `0 1 2 3 2 1 0 1 2 3 2 1 0 1 2 3` — up,
 down, up, and deliberately *not* symmetrical, so it does not sound like a
 machine counting.
 
-If a note lands outside MIDI 21–84 you can still play it but you will not see it
-in the piano roll, which draws A0 to C6 (`Sequencer/PianoRoll.tsx:21-22`).
+The Piano Roll now draws the full MIDI 0–127, so every tone in this song has a
+row to land on (`skald-ui/src/components/Sequencer/stepMetrics.ts::MIDI_NOTE_MIN`, `::MIDI_NOTE_MAX`; see KI-005 for the one related surprise, in the Step Grid rather than here).
 
 ### Exercise 7 — Mix it so the limiter does not eat it (10 minutes)
 
@@ -590,22 +590,27 @@ Play the whole thing. If you built the patches with the values above, it will
 sound loud, slightly dull, and squashed — as though everything is behind a
 blanket.
 
-That is the master limiter. Every instrument's output is summed and then run
-through `math.tanh(mixed × master_volume)`
-(`skald-backend/core/codegen.odin:2477-2478`). `tanh` cannot exceed ±1, so
-nothing ever clips — but as the sum gets hot it progressively squashes, and
-transients are the first thing to go.
+That is the soft limiter — really two of them, stacked. Each instrument's own
+`_process` already runs its stereo pair through `skald_soft_limit` before
+returning it (`skald-backend/core/codegen_processor.odin::generate_processor_code`),
+and the project mix runs the summed result through the same function again
+after the master fader (`skald-backend/core/codegen_project.odin::generate_project_code`,
+`skald-backend/core/codegen_project.odin::emit_soft_limit_proc`). `tanh` cannot exceed ±1 at either stage, so nothing
+ever clips — but as a sum gets hot it progressively squashes, and transients
+are the first thing to go. See *Foundations*, "Under the hood", for the full
+two-stage picture.
 
-The fix is per-instrument volume. Select each Instrument card and set:
+The fix is per-instrument volume. Select each Instrument card and set (values
+verified against `examples/snes-kit/songs/space-funk.skald.json`):
 
 | Instrument | Volume in the song | Volume in the solo patch file |
 |---|---|---|
-| SNES Kick | **0.8** (`space-funk.skald.json:13`) | 0.9 |
-| SNES Snare | **0.55** (`:178`) | 0.7 |
-| SNES Hat | **0.35** (`:397`) | 0.45 |
-| SNES Slap Bass | **0.7** (`:507`) | 0.8 |
-| SNES Space Pad | **0.4** (`:696`) | 0.4 |
-| SNES Starfield Arp | **0.45** (`:884`) | 0.45 |
+| SNES Kick | **0.8** | 0.9 |
+| SNES Snare | **0.55** | 0.7 |
+| SNES Hat | **0.35** | 0.45 |
+| SNES Slap Bass | **0.7** | 0.8 |
+| SNES Space Pad | **0.4** | 0.4 |
+| SNES Starfield Arp | **0.45** | 0.45 |
 
 Then set the dock's **Master Volume to 0.7**. Play again: same balance, quieter,
 but the kick has its attack back and the hats are crisp.
@@ -634,10 +639,13 @@ Each of these teaches something and all are one control.
 5. **Overrun the voices.** Set the pad's Voice Count to 2 and play. The chords
    come out as random two-note fragments, because a five-note chord over two
    voices means constant stealing.
-6. **Self-oscillate a filter.** Set the arp filter's Res to 20 while it is
-   playing. It rings loudly enough to become its own tone. The generated code
-   bounds the damping so it screams rather than producing NaN
-   (`codegen.odin:348`, comment at `:343`). Turn your monitors down first.
+6. **Push the filter to its most resonant setting.** Set the arp filter's Res
+   to 20 while it is playing. It rings hard enough at its cutoff to sound like
+   an almost self-contained whistling tone under the arp. It will not truly
+   self-oscillate — resonance 20 already pins the internal damping term at its
+   floor of 0.05, one clamp step short of the zero damping that would let the
+   filter ring with no input at all (`skald-backend/core/codegen_nodes.odin::generate_filter_code`;
+   see *What Skald deliberately does not do*). Turn your monitors down first.
 7. **Lose the groove.** Set every bass note's duration from 1 to 4. The gaps
    fill in and the funk is gone. Silence was doing the work.
 
@@ -657,19 +665,19 @@ Ordered from safest to boldest.
 - **Make it eight bars.** Set Steps to 128 and write a second four-bar half
   where the pad drops out and comes back. The grid shrinks its columns to fit
   and scrolls once it hits the minimum width, and the pattern ceiling is 1024
-  steps — 64 bars (`Sequencer/stepMetrics.ts:26`).
+  steps — 64 bars (`skald-ui/src/components/Sequencer/stepMetrics.ts::MAX_PATTERN_STEPS`).
 - **Make the hat human.** Alt+drag on hat steps to set probability below 1.0
-  (`StepGrid.tsx:179-194`). At 0.7 the pattern varies every bar, decided by the
+  (`skald-ui/src/components/Sequencer/StepGrid.tsx::StepGrid`). At 0.7 the pattern varies every bar, decided by the
   processor's PRNG at runtime rather than by you.
 - **Use per-track lengths.** Set the hat track's **Len** to 12 while the others
   stay at 64. Each track's notes are dispatched by `current_step % its own
-  length` (`codegen.odin:2123-2131`), so the hat now repeats every 12 steps
+  length` (`skald-backend/core/codegen_project.odin::generate_sequencer_logic`), so the hat now repeats every 12 steps
   against a 16-step bar: its accents land somewhere different in every bar and
   only line up with the bar again after 48 steps. Then the global 64-step loop
   resets the step counter, so bar 1 always starts clean. That is free
   polyrhythm, and it is one number.
 - **Ship it.** Expose the pad's reverb `mix` and the arp filter's `cutoff`, then
-  press **Generate Code**. You get typed setters your game can call to open the
+  press **Download Code**. You get typed setters your game can call to open the
   space up as the player enters a room and to brighten the arp as tension rises.
 
 ---
@@ -687,7 +695,7 @@ quiet. A second gives you a note that *changes character* as it decays, which is
 what every acoustic instrument does and what your ear uses to identify one.
 
 **The Mapper is not optional.** Modulation is added to the parameter with no
-scaling (`param_utils.odin:138-155`), so a source that swings ±1 moves a
+scaling (`skald-backend/core/param_utils.odin::get_f32_param`), so a source that swings ±1 moves a
 hertz-valued parameter by one hertz. Every modulation wire into a cutoff, a
 delay time or an FM ratio needs a Mapper. The exceptions are destinations that
 already live in ±1 or 0…1: `input_amp`, `input_gain`, `input_pan`. And
@@ -697,7 +705,7 @@ two-octave siren.
 **Match `inMin` to the source's polarity.** Envelopes are unipolar: `inMin 0`.
 LFOs and Sample & Hold are bipolar: `inMin −1`. Get it wrong and you silently
 lose half your modulation range, because the Mapper clamps its normalised input
-to 0…1 (`codegen.odin:755`).
+to 0…1 (`skald-backend/core/codegen_nodes.odin::generate_mapper_code`).
 
 **Voice count is a musical decision, not a performance one.** 1 for the bass
 because monophony *is* the sound. 8 for the pad because five held notes plus
@@ -706,7 +714,7 @@ freed until release finishes.
 
 **Effects with memory go last.** Reverb and Delay hold one shared buffer, so
 Skald runs them after the voices are summed and refuses to put voice-coupled
-nodes downstream (`codegen.odin:96-104`). In practice: source → envelope →
+nodes downstream (`skald-backend/core/codegen_analysis.odin::compute_bus_domain`). In practice: source → envelope →
 filter → drive → space → output, every time.
 
 **Sync anything rhythmic.** The arp's delay and S&H are BPM-synced, so the
@@ -774,7 +782,7 @@ Space_Pad_process :: proc(p: ^Space_Pad_Processor) -> (f32, f32) {
     // --- Bus effects, once per sample, after the voice sum ---
     // pad-space: reverb pre-delay buffer + tail
 
-    return output_left * 0.4, output_right * 0.4    // <- Instrument volume
+    return skald_soft_limit(output_left * 0.4, output_right * 0.4)   // <- Instrument volume, then this asset's own limiter
 }
 ```
 
@@ -782,18 +790,18 @@ Three details specific to this song.
 
 **The step clock is shared, the wrap is per-track.** One counter drives
 everything (`samples_per_step = sample_rate × 60 / (bpm × 4)`,
-`codegen.odin:2113-2115`), and each track's notes are dispatched by a `switch`
-on `current_step % track_length` (`codegen.odin:2123-2131`). That is why
+`skald-backend/core/codegen_project.odin::generate_sequencer_logic`), and each track's notes are dispatched by a `switch`
+on `current_step % track_length` (same proc). That is why
 different tracks can have different lengths and produce polyrhythm for free.
 
 **The pad's reverb has a fixed pre-delay ceiling.** The pre-delay buffer is
-`MAX_REVERB_PREDELAY_SAMPLES` = 48000 samples (`codegen.odin:26`), and the tap
-is clamped to it (`codegen.odin:560`) — one second at 48 kHz. The parameter
-itself stops at 0.25 s (`param_ranges.odin:78-79`), so you cannot reach the
+`MAX_REVERB_PREDELAY_SAMPLES` = 48000 samples (`skald-backend/core/codegen_analysis.odin::MAX_REVERB_PREDELAY_SAMPLES`), and the tap
+is clamped to it (`skald-backend/core/codegen_nodes.odin::generate_reverb_code`) — one second at 48 kHz. The parameter
+itself stops at 0.25 s (`schema/nodes.json::generic`), so you cannot reach the
 ceiling from the UI.
 
 **Sixteen of the arp's random values per bar come from a per-voice PRNG.** Each
-voice holds its own Sample & Hold state (`codegen.odin:408`), so if two arp
+voice holds its own Sample & Hold state (`skald-backend/core/codegen_nodes.odin::generate_sample_hold_code`), so if two arp
 notes overlap they get *different* random cutoffs. With `voiceCount 4` and a
 140 ms decay against a 144 ms step they barely overlap, which keeps the
 sparkle coherent. Raise the decay and you will hear the randomness smear across

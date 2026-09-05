@@ -96,3 +96,61 @@ test('basename fallback resolves a moved file and reports a warning, not a pass'
     },
   )
 })
+
+test('a bare `:NNN` continuing an earlier citation is a strict mismatch', () => {
+  withMarkdown(
+    ['# T', 'The pad clamps at 20 (`skald-ui/src/components/NodeParameterControls.tsx:144`, `:153`).'],
+    (path) => {
+      const findings = checkFile(path)
+      const bare = findings.find((f) => f.citation === ':153')
+      assert.ok(bare, 'expected the bare :153 to be classified')
+      assert.equal(bare.status, 'mismatch')
+      assert.match(bare.reason, /bare line-number/)
+    },
+  )
+})
+
+test('a comma list of lines after one path is a legacy citation, not prose', () => {
+  withMarkdown(
+    ['# T', 'Both ranges live in `skald-backend/core/codegen_nodes.odin:339, :341, 344-346`.'],
+    (path) => {
+      const findings = checkFile(path)
+      const hit = findings.find((f) => f.kind === 'legacy')
+      assert.ok(hit, 'expected a legacy finding for the comma list')
+      assert.equal(hit.status, 'mismatch')
+    },
+  )
+})
+
+test('a hyphenated node id in an example JSON is a valid identifier', () => {
+  withMarkdown(
+    ['# T', 'The pad drifts under `examples/snes-kit/instruments/space-pad.skald.json::pad-drift-lfo`.'],
+    (path) => {
+      const findings = checkFile(path)
+      const hit = findings.find((f) => f.kind === 'new')
+      assert.ok(hit, 'expected a new-form finding')
+      assert.equal(hit.status, 'pass')
+    },
+  )
+})
+
+test('a bare `::identifier` inherits the path of the last full citation on the line', () => {
+  withMarkdown(
+    ['# T', 'See `skald-backend/core/codegen_nodes.odin::generate_filter_code` and `::generate_reverb_code`, but not `::this_does_not_exist_zz`.'],
+    (path) => {
+      const findings = checkFile(path)
+      const ok = findings.find((f) => f.citation === '::generate_reverb_code')
+      const bad = findings.find((f) => f.citation === '::this_does_not_exist_zz')
+      assert.equal(ok?.status, 'pass')
+      assert.equal(bad?.status, 'mismatch')
+    },
+  )
+})
+
+test('a bare `::identifier` with nothing to inherit from is a mismatch', () => {
+  withMarkdown(['# T', 'The clamp lives in `::generate_filter_code`.'], (path) => {
+    const findings = checkFile(path)
+    const hit = findings.find((f) => f.citation === '::generate_filter_code')
+    assert.equal(hit?.status, 'mismatch')
+  })
+})
