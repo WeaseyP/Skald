@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Compiles docs/manual-source/*.md into a single searchable HTML manual and a print PDF.
 //
-//   node build-manual.mjs [--src <dir>] [--out <dir>] [--no-pdf] [--check]
+//   node build-manual.mjs [--src <dir>] [--out <dir>] [--no-pdf] [--check] [--skip-citations]
 //
 // --check validates the chapter registry and exits without rendering anything;
 // it is what CI runs.
+// --skip-citations skips the D3 citation gate (check-citations.mjs) for
+// emergencies — a build that must ship while citations are mid-conversion.
+// Document any use of it; it exists to unblock, not to become the default.
 //
 // Requires: marked, puppeteer-core, and a local Chrome install (for the PDF).
 
@@ -13,6 +16,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Marked } from 'marked'
 import puppeteer from 'puppeteer-core'
+import { run as runCitationCheck } from './check-citations.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -27,6 +31,7 @@ const SRC = resolve(flag('--src', join(HERE, '..', '..', 'docs', 'manual-source'
 const OUT = resolve(flag('--out', join(HERE, '..', '..', 'docs', 'manual')))
 const MAKE_PDF = !argv.includes('--no-pdf')
 const CHECK_ONLY = argv.includes('--check')
+const SKIP_CITATIONS = argv.includes('--skip-citations')
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -101,6 +106,24 @@ const reconcileRegistry = () => {
 }
 
 reconcileRegistry()
+
+// D3: the manual convention is `path::identifier` citations, not `path:NNN`
+// line numbers — those drifted by the hundreds within one release cycle (see
+// docs/manual-source/FIXED.md). Gate the build on it the same way the
+// registry is gated, right after the registry check and before CHECK_ONLY
+// exits, so `--check` in CI catches both kinds of drift in one pass.
+if (SKIP_CITATIONS) {
+  console.log('  ! --skip-citations: citation gate skipped (emergency use only)')
+} else {
+  const citationExit = runCitationCheck([])
+  if (citationExit !== 0) {
+    console.error('')
+    console.error('Citation check failed (see above). Fix the citations, or pass --skip-citations')
+    console.error('for an emergency build (document why in the commit message).')
+    process.exit(1)
+  }
+}
+
 if (CHECK_ONLY) process.exit(0)
 
 // -------------------------------------------------------------------- utils

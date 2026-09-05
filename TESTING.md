@@ -41,6 +41,7 @@ Run backend gates from `skald-backend`, UI gates from `skald-ui`.
 | Examples corpus (UI) | `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | Every shipped example ingests through **both** the editor and CLI paths. |
 | Schema staleness (UI) | `npx vitest run src/tests/contracts/NodeSchema.test.ts` (or `node scripts/gen-node-schema.mjs --check` from the repo root) | `schema/nodes.json` is the one authored range contract (C2); fails when `param_ranges.generated.odin` or `nodeSchema.generated.ts` is not what the schema renders to. Fix by regenerating, never by editing a generated file. |
 | Typecheck / lint | `npx tsc --noEmit` / `npm run lint` | — |
+| Manual citations | `npm run check:citations` (from `scripts/manual`; also runs inside `npm run check`/`npm run build`) | Every `path::identifier` citation in a registered manual chapter resolves to a real file and a real name in it; every legacy `path:NNN` line-citation is flagged, because the convention retired after 828 of them drifted within one release cycle (D3). `--skip-citations` on the build is an emergency-only bypass. |
 
 `.bat` gates need the `.\` prefix under `cmd /c`. A bare
 `cmd /c "run_acceptance.bat"` fails to find the file. Use `npm run lint`, not a
