@@ -209,6 +209,9 @@ Every shortcut in the app, taken from the in-app legend (press **?** at any time
 | `[` and `]` | Cycle through nodes |
 | `A W S E D F T G Y H U J K` | Play the patch live (one octave, C upward) — the preview must be running |
 | `Z` / `X` | Shift the QWERTY keyboard down / up an octave |
+| `,` and `.` | Step through the selected node's ports (input and output sockets) |
+| `Enter` (on a port) | Start a wire at an output, then land it on an input |
+| `Escape` | Cancel the wire, then drop the port focus |
 | Double-click slider | Reset parameter to default |
 | `Shift` + drag note (grid) | Edit note duration |
 | `Ctrl` + drag note (grid) | Edit note velocity |
@@ -217,6 +220,10 @@ Every shortcut in the app, taken from the in-app legend (press **?** at any time
 | `?` | Toggle this help |
 
 (`skald-ui/src/components/ShortcutLegend.tsx::SHORTCUTS`.) The four "drag note (grid)" rows apply in the sequencer's step grid and piano roll, which the Sequencer chapter covers in full.
+
+**Patching without a mouse.** `[` and `]` select a node; `,` and `.` then step through that node's ports, one at a time, with a ring drawn on the socket itself (`skald-ui/src/hooks/useGraphKeyboardTraversal.ts::portsOfNode`). A readout in the top-left corner names the port you are on. Press **Enter** on an output to anchor a wire — the socket goes amber — then `[` or `]` to the destination node, `,` / `.` to its input, and **Enter** again to connect. **Escape** drops the wire; a second **Escape** drops the port focus (`skald-ui/src/hooks/useGraphKeyboardTraversal.ts::useGraphKeyboardTraversal`).
+
+Wires start at outputs and land on inputs, never the other way round, which is the same rule the mouse follows. The edge that appears is an ordinary edge: it goes through the same connect handler a drag ends in, so it is one `Connect wire` step on the undo stack and obeys the same refusal to wire a node to itself (`skald-ui/src/hooks/nodeEditor/useGraphState.ts::useGraphState`). `,` and `.` were chosen because React Flow already owns `Tab` (it moves focus between nodes) and the arrow keys (they nudge the selected node's position), so binding the port walker to either would be two features fighting over one keystroke.
 
 **The letter keys are a keyboard.** `A` is middle C (MIDI 60) and the thirteen keys run up a chromatic octave to `K`, with the black keys on `W E T Y U` above the gaps — the layout Ableton Live and most trackers use. `Z` and `X` move that octave down and up, clamped so no key can leave the MIDI range (`skald-ui/src/hooks/useQwertyKeyboard.ts::QWERTY_SEMITONES`, `skald-ui/src/hooks/useQwertyKeyboard.ts::MIN_BASE_OCTAVE`). Notes sustain for as long as you hold the key, go to every Instrument in the project, and pass through the same scale quantiser a hardware MIDI keyboard's notes do, so the two always agree (`skald-ui/src/hooks/useQwertyKeyboard.ts::useQwertyKeyboard`). A small readout in the bottom-left corner of the canvas names the octave while you play.
 

@@ -36,6 +36,7 @@ import { GraphActionsProvider } from './contexts/GraphActionsContext';
 import { instrumentSelectionBlockedReason } from './hooks/nodeEditor/useNodeComposition';
 import { shouldLoadFirstRunPatch, useFirstRunPatch } from './hooks/nodeEditor/useFirstRunPatch';
 import { useQwertyKeyboard } from './hooks/useQwertyKeyboard';
+import { useGraphKeyboardTraversal } from './hooks/useGraphKeyboardTraversal';
 import { isTypingTarget } from './utils/keyboardTarget';
 
 // Re-exported: the Export-Step naming rule now lives with the Export-Step
@@ -279,6 +280,15 @@ const EditorLayout = () => {
         sendNoteOn,
         sendNoteOff,
         nearestInScale,
+    });
+
+    // Roadmap E10 — `[` / `]` already walked the nodes; this walks the selected
+    // node's ports with `,` / `.` and draws a wire with Enter, through the same
+    // onConnect a mouse drag ends in, so a keyboard-drawn edge is one ordinary
+    // undo step and not a second way of mutating the graph.
+    const traversal = useGraphKeyboardTraversal({
+        selectedNodeId: selectedNode?.id ?? null,
+        onConnect,
     });
 
     const sequencerState = {
@@ -560,6 +570,35 @@ const EditorLayout = () => {
                                 >
                                     Dismiss
                                 </button>
+                            </div>
+                        )}
+                        {/* Where the keyboard is on the graph. A focus ring on the
+                            port alone cannot say what the port is called or that a
+                            wire is waiting for a destination; role="status" also
+                            makes it the announcement a screen reader hears. */}
+                        {(traversal.focusedPort || traversal.pendingSource) && (
+                            <div
+                                data-testid="port-focus-readout"
+                                role="status"
+                                style={{
+                                    position: 'absolute',
+                                    top: 10,
+                                    left: 10,
+                                    zIndex: 50,
+                                    padding: '6px 10px',
+                                    borderRadius: 6,
+                                    fontSize: '0.8em',
+                                    fontFamily: 'sans-serif',
+                                    color: '#E0E0E0',
+                                    backgroundColor: 'rgba(37,37,38,0.95)',
+                                    border: `1px solid ${traversal.pendingSource ? '#d69e2e' : '#444'}`,
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                {traversal.pendingSource
+                                    ? `Wiring from ${traversal.pendingSource.nodeId} → ${traversal.pendingSource.handleId ?? 'out'} — Enter on an input to connect, Esc to cancel`
+                                    : `Port ${traversal.focusedPort?.nodeId} → ${traversal.focusedPort?.handleId ?? '(unnamed)'} (${traversal.focusedPort?.type === 'source' ? 'output' : 'input'}) — , / . to move, Enter to wire`}
                             </div>
                         )}
                         {/* Which octave the letter keys are playing, shown while
