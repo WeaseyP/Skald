@@ -489,12 +489,6 @@ For a bass patch with a low cutoff and a release longer than 200 ms, the auditio
 
 The preview is rebuilt when the graph, the tracks, the tempo or the pattern length change, but the scale quantiser is not among the inputs the rebuild watcher compares (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::useWasmAudioEngine`), so a running module keeps the old Key and Scale until Stop → Play or an unrelated edit forces a rebuild. Notes played from a MIDI keyboard are quantised live through `skald-ui/src/contexts/ScaleContext.tsx::nearestInScale`, so during that window the keyboard and the sequencer can be in different scales. The export always uses the current Key and Scale; this is preview lag, not a preview/export divergence. Workaround: Stop and Play after changing the scale.
 
-#### KI-055 · A feedback loop is reported but generation carries on without the looped nodes
-- **Status:** open · **Severity:** blocker · **Since:** 0.1
-- **Chapters:** 00-foundations.md (Under the hood) · 70-space-funk-build.md (Where it goes wrong)
-
-`skald-backend/core/codegen_processor.odin::generate_processor_code` runs `topological_sort` and, when the graph is not a DAG, prints "Error: instrument … contains a feedback loop" naming the nodes in or behind the cycle — but the `os.exit(1)` that should follow is commented out. Generation continues with the sorted subset only: every node in the cycle, and everything downstream of it, is silently missing from the emitted asset, and the generator still exits 0, so the editor preview and a CLI build both report success. Every other validation failure in the generator exits 1 (`skald-backend/core/graph_validate.odin::validate_connections`). Workaround: read stderr after every Generate; a "feedback loop" line means the file is incomplete. Fix: restore the exit, with an acceptance fixture that fails first.
-
 #### KI-056 · `hat-static.skald.json` plays sixteen long hats after step 2
 - **Status:** open · **Severity:** confusing · **Since:** 0.1
 - **Chapters:** 05-sequencer.md (P-locks)
@@ -523,6 +517,7 @@ The example locks the hat's ADSR `decay` to 0.12 on steps 2, 6, 10 and 14 over a
 | The three ADSR defaults the editor created a node with disagreed with the range table the export published. | C2 | nodes/adsr.md (The controls) |
 | A sustain of 0 marked the envelope, and the whole voice, Idle at the end of Decay, discarding the Release stage. | C6-4 (SKB-041) | nodes/adsr.md (The controls, Sustain; Try it step 7) |
 | Voice stealing took the oldest voice by age even when a releasing voice was available. | C6-1 (SKB-030) | nodes/instrument.md |
+| A feedback loop printed "contains a feedback loop" naming the cyclic nodes, then generated anyway (past a commented-out `os.exit(1)`), silently missing the looped nodes and everything downstream, and exited 0. | KI-055 fix | 00-foundations.md (Legal connections, and what happens when you get it wrong) |
 | A fresh voice did not reset LFO phase or Sample & Hold state. | C6-2 | nodes/lfo.md (One LFO per voice) · nodes/sampleHold.md |
 | A per-voice LFO feeding a bus-domain node was either left per-voice or rejected, so auto-pan and filter-sweep depth scaled with polyphony. | B7-3 (SKB-017) | nodes/lfo.md (One LFO per voice) · nodes/panner.md (Try it step 8) |
 | The ADSR's input handle was labelled "Gate", inviting a trigger wire into what is an audio multiply port. | A7 | nodes/adsr.md (What it looks like in Skald, Terms introduced) |

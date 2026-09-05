@@ -155,6 +155,66 @@ validate_connections :: proc(graph: ^Graph, inst_name: string) {
 }
 
 // =================================================================================
+// Cycle detection (KI-055).
+//
+// generate_processor_code used to run topological_sort itself, print "Error:
+// instrument %q contains a feedback loop" naming the nodes topological_sort
+// could not place — then fall through past a commented-out os.exit(1).
+// Generation continued with only the nodes the sort DID reach: every node in
+// or behind the cycle was silently missing from the emitted asset, and the
+// generator still exited 0, so both the editor preview and a CLI build
+// reported success on an incomplete patch. Every other validation failure
+// here exits 1 (validate_connections above).
+//
+// find_cycle is the same finder/caller split as find_nested_instrument below,
+// for the same reason: `odin test tests\unit` (tests/unit/cycle_test.odin)
+// can exercise the detection without exiting the test binary.
+// =================================================================================
+
+/// Returns, sorted by id, every node topological_sort could not place — the
+/// nodes in the cycle itself plus everything downstream of it (a downstream
+/// node has an unsatisfiable in-edge the moment its upstream never gets
+/// emitted into the sort, so it is exactly as unreachable as the cycle).
+/// `found` is false for a DAG, in which case `nodes` is nil.
+find_cycle :: proc(graph: ^Graph) -> (nodes: []Node, found: bool) {
+	sorted, is_dag := topological_sort(graph)
+	defer delete(sorted)
+	if is_dag do return nil, false
+
+	in_sorted := make(map[string]bool)
+	defer delete(in_sorted)
+	for n in sorted do in_sorted[n.id] = true
+
+	all := nodes_sorted_by_id(graph)
+	defer delete(all)
+	out := make([dynamic]Node)
+	for node in all {
+		if !in_sorted[node.id] do append(&out, node)
+	}
+	// topological_sort's own contract (is_dag == (len(sorted) == len(nodes)))
+	// guarantees at least one node is excluded here whenever is_dag is false.
+	return out[:], true
+}
+
+/// The message is unchanged from the pre-fix version (the manual quotes it —
+/// 00-foundations.md, "Legal connections, and what happens when you get it
+/// wrong"); only the missing os.exit(1) is new.
+validate_no_cycle :: proc(graph: ^Graph, inst_name: string) {
+	// find_cycle returns nil for a DAG, so the early return below frees
+	// nothing; the found branch ends in os.exit(1), where the process
+	// tearing down makes an explicit delete pointless (same convention as
+	// validate_no_nested_instruments / validate_unique_node_ids below).
+	cycle_nodes, found := find_cycle(graph)
+	if !found do return
+	fmt.eprintf("Error: instrument %q contains a feedback loop. Nodes in or behind the cycle:", inst_name)
+	for node in cycle_nodes {
+		fmt.eprintf(" %s(%s)", node.type, node.id)
+	}
+	fmt.eprintf("\nBreak the cycle (remove the feedback wire) and regenerate.\n")
+	os.exit(1)
+}
+
+// =================================================================================
 // Preflight structural rules (roadmap packet B9-1 / B9-2).
 //
 // Each rule is a FINDER that returns what it found plus a caller that turns the

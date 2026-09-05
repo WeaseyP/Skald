@@ -33,21 +33,20 @@ generate_processor_code :: proc(
 	polyphony := instrument.voice_count
 	if polyphony <= 0 do polyphony = 1
 
-	sorted_nodes, is_dag := topological_sort(graph)
+	sorted_nodes, _ := topological_sort(graph)
 
 	all_nodes := nodes_sorted_by_id(graph)
 	defer delete(all_nodes)
 
-	if !is_dag {
-		in_sorted := make(map[string]bool)
-		for n in sorted_nodes do in_sorted[n.id] = true
-		fmt.eprintf("Error: instrument %q contains a feedback loop. Nodes in or behind the cycle:", instrument.name)
-		for node in all_nodes {
-			if !in_sorted[node.id] do fmt.eprintf(" %s(%s)", node.type, node.id)
-		}
-		fmt.eprintf("\nBreak the cycle (remove the feedback wire) and regenerate.\n")
-		// os.exit(1)
-	}
+	// KI-055: this used to inline the same is_dag check, print the feedback-loop
+	// error, and fall through past a commented-out os.exit(1) — generation
+	// continued on sorted_nodes alone, so the cyclic nodes (and everything
+	// downstream) were silently absent from the emitted asset and the process
+	// still exited 0. validate_no_cycle (graph_validate.odin) is the actual
+	// exit; the finder it wraps re-derives the same sorted_nodes/is_dag pair,
+	// which is fine here — a rejected patch never reaches the emission below,
+	// so recomputing it once on that path costs nothing on the path that ships.
+	validate_no_cycle(graph, instrument.name)
 	validate_connections(graph, instrument.name)
 	validate_no_nested_instruments(graph, instrument.name)
 

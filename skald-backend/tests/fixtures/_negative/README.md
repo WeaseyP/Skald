@@ -30,3 +30,4 @@ output-target guard for exactly this use.)
 | `duplicate_node_id.json` | SKB-021 (B9-2): two nodes with the same literal id in one graph. Was a warn-and-rename to `1_dup2`, which left every connection on the first node | `tests\unit\preflight_test.odin` |
 | `duplicate_export_id.json` | C3 (F-A09-7): two instruments pinned to one Export ID. Was a silent `Keys` / `Keys_2` the editor never showed | `tests\unit\asset_identity_test.odin` |
 | `sanitized_id_collision.json` | SKB-021 (B9-2): `osc-1` and `osc_1` are distinct in the JSON and one identifier in the generated Odin | `tests\unit\preflight_test.odin` |
+| `feedback_loop_filter_mapper.json` | KI-055: a Filter feeding a Mapper that feeds back into the same Filter's `input_cutoff` is a cycle. Was reported on stderr and then generated anyway, past a commented-out `os.exit(1)`, with the cyclic nodes and everything downstream silently absent from the output | `tests\unit\cycle_test.odin` |

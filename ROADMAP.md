@@ -815,10 +815,17 @@ figure: 44/573 is the tracked-tree number, confirmed by running vitest in a `git
 
 Work the agent left deliberately undone. Each is small and self-contained; none blocks 0.2.
 
-- [ ] **KI-055 · feedback loop does not stop generation** (S, **high**) — `codegen_processor.odin::generate_processor_code`
-  prints "contains a feedback loop" and then continues past a commented-out `os.exit(1)`, emitting the asset
-  without the cyclic nodes and exiting 0. Restore the exit behind an acceptance fixture that fails first
-  (a two-node cycle inside an Instrument), and make the editor surface the refusal. Found by the D3 pass.
+- [x] **KI-055 · feedback loop does not stop generation** (S, **high**) — fixed. The exit is restored as
+  `graph_validate.odin::validate_no_cycle` (a finder/caller split, `find_cycle` + `validate_no_cycle`, mirroring
+  the B9 preflight rules so `odin test tests\unit` can exercise the detection in-process), called from
+  `codegen_processor.odin::generate_processor_code` in place of the old inline check with its commented-out
+  `os.exit(1)`. Negative fixture `tests/fixtures/_negative/feedback_loop_filter_mapper.json` (a Filter feeding a
+  Mapper feeding back into that Filter's own `input_cutoff`) watched fail — exit 0, "Codegen OK", Filter and
+  Mapper silently absent from the emitted file — before the fix, and now exits 1 with the same stderr message and
+  writes nothing. The editor already surfaces any nonzero codegen exit generically
+  (`skald-ui/src/main/runChild.ts` rejects with the child's stderr on a bad exit code, the same path every other
+  hard-error validator in `graph_validate.odin` already uses), so no separate UI change was needed. Found by the
+  D3 pass.
 - [ ] **FM Operator Ratio reset** (S) — `NodeParameterControls.tsx` still hardcodes 1 as the slider's
   double-click reset target while `schema/nodes.json` says 2 (C2 flipped the polarity of the old split;
   KI-024). Read the reset value from the schema row so there is one reader.
