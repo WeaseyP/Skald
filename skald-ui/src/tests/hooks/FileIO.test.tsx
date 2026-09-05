@@ -29,8 +29,12 @@ let fileHistory: FileIOHistoryHooks;
 let setViewport: ReturnType<typeof vi.fn>;
 let fitView: ReturnType<typeof vi.fn>;
 
+// What toObject() hands Save; a test overrides it to save a specific graph.
+let rfObject: { nodes: unknown[]; edges: unknown[]; viewport: { x: number; y: number; zoom: number } } =
+    { nodes: [{ id: 'n1' }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+
 const rfInstance = () => ({
-    toObject: () => ({ nodes: [{ id: 'n1' }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }),
+    toObject: () => rfObject,
     getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
     setViewport,
     fitView,
@@ -58,6 +62,7 @@ const renderFileIO = () =>
     );
 
 beforeEach(() => {
+    rfObject = { nodes: [{ id: 'n1' }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
     saveGraph = vi.fn();
     loadGraph = vi.fn();
     importPatches = vi.fn();
@@ -496,5 +501,40 @@ describe('useFileIO — save-file schema version (C1)', () => {
         expect(lastStatus().kind).toBe('error');
         expect(lastStatus().message).toMatch(/newer Skald/);
         expect(lastStatus().message).toMatch(/version 42/);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Packet C7 — BPM-sync value hygiene through the real hook.
+// ---------------------------------------------------------------------------
+describe('useFileIO — synced free-run values are normalized (C7)', () => {
+    const syncedLfo = (frequency: number) => ({
+        id: 'lfo', type: 'lfo', position: { x: 0, y: 0 },
+        data: { label: 'Wob', bpmSync: true, syncRate: '1/8', frequency, amplitude: 1 },
+    });
+
+    it('Save writes the resolved Hz into a synced LFO\'s frequency, not the stale stored value', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/x.json' });
+        rfObject = { nodes: [syncedLfo(3.4)], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        // 1/8 at this harness's session tempo (140 BPM) = 0.2143 s = 4.667 Hz.
+        // Before C7 the file carried the stale 3.4.
+        expect(written.nodes[0].data.frequency).toBeCloseTo(140 / 60 * 2, 9);
+    });
+
+    it('Load rewrites a stale synced free-run value at the file\'s own tempo', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'i', type: 'instrument', data: { name: 'I', subgraph: { nodes: [syncedLfo(3.4)], connections: [] } } }],
+                edges: [], session: { bpm: 90, patternSteps: 16, masterVolume: 0.8 },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const loaded = setNodes.mock.calls[0][0] as { data: { subgraph: { nodes: { data: { frequency: number } }[] } } }[];
+        // 1/8 at 90 BPM = 0.333 s -> 3 Hz.
+        expect(loaded[0].data.subgraph.nodes[0].data.frequency).toBeCloseTo(3, 9);
     });
 });

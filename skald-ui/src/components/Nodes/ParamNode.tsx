@@ -18,7 +18,7 @@ import {
     nodeShellStyles, nodeHeaderStylesFor, handleContainerStyles, labelStyles,
     inputGroupStyles, numberInputStyles, selectStyles, NodeTheme, accentFor,
 } from './NodeStyles';
-import { useGraphActions } from '../../contexts/GraphActionsContext';
+import { useGraphActions, useProjectBpm } from '../../contexts/GraphActionsContext';
 
 export interface PortRow {
     id: string;      // handle id — MUST match the codegen port contract
@@ -55,6 +55,11 @@ export interface ParamField {
     // a different rate for the absent key. Returning the whole delta (rather
     // than post-hoc patching) keeps it one undoable edit.
     deriveChanges?: (value: unknown, data: Record<string, any>) => Record<string, unknown>;
+    // A one-line reading of the value in the units the user thinks in,
+    // rendered under the control (C7: a sync division's resolved time at the
+    // project tempo — "1/8 at 120 BPM = 0.250 s"). `bpm` is the project tempo
+    // from GraphActionsContext. Return undefined to show nothing.
+    hint?: (value: unknown, data: Record<string, any>, bpm: number) => string | undefined;
 }
 
 export interface ParamNodeConfig {
@@ -89,18 +94,28 @@ const FieldControl: React.FC<{
     update: (changes: Record<string, unknown>) => void;
 }> = ({ field, data, update }) => {
     const value = data[field.key];
+    const bpm = useProjectBpm();
     if (field.kind === 'select') {
+        const shown = String(value ?? field.default ?? field.options?.[0] ?? '');
+        const hint = field.hint?.(shown, data, bpm);
         return (
-            <select
-                className="nodrag"
-                style={selectStyles}
-                value={String(value ?? field.default ?? field.options?.[0] ?? '')}
-                onChange={(e) => update({ [field.key]: e.target.value })}
-            >
-                {(field.options ?? []).map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                ))}
-            </select>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                <select
+                    className="nodrag"
+                    style={selectStyles}
+                    value={shown}
+                    onChange={(e) => update({ [field.key]: e.target.value })}
+                >
+                    {(field.options ?? []).map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                </select>
+                {hint && (
+                    <span data-testid={`param-hint-${field.key}`} style={{ color: NodeTheme.colors.textMuted, fontSize: '0.75em', marginTop: '2px' }}>
+                        {hint}
+                    </span>
+                )}
+            </div>
         );
     }
     if (field.kind === 'toggle') {

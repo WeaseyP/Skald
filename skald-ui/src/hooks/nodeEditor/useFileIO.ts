@@ -14,6 +14,7 @@ import { getInstrumentNodes } from '../../utils/projectSerializer';
 import { EditorHistoryApi, SessionSettings } from './editorSnapshot';
 import { dedupeTrackNotes } from '../../utils/trackNotes';
 import { CURRENT_SAVE_VERSION, migrateSaveFile } from '../../utils/saveMigrations';
+import { normalizeSyncedFreeRun } from '../../utils/syncNormalize';
 
 // SessionSettings (bpm / patternSteps / masterVolume / packageName) is defined
 // with the undo snapshot it belongs to, in editorSnapshot.ts — the session block
@@ -96,6 +97,13 @@ export const useFileIO = (
     const handleSave = useCallback(async () => {
         if (!reactFlowInstance) return;
         const flow = reactFlowInstance.toObject();
+        // C7: a synced node's free-run field is written as the value its
+        // division resolves to at the saved tempo, so the file holds one truth
+        // and turning sync off later lands on the sound that was playing. On a
+        // copy — the live graph is not edited by Save.
+        const savedNodes = JSON.parse(JSON.stringify(flow.nodes));
+        normalizeSyncedFreeRun(savedNodes, sessionSettings.bpm);
+        flow.nodes = savedNodes;
         const saveData = {
             // Packet C1: Save always stamps the current schema version, so the
             // migration registry knows exactly what shape it is reading back.
@@ -129,6 +137,12 @@ export const useFileIO = (
             return false;
         }
 
+        // C7: normalize on the way in as well, at the tempo the file was
+        // authored at (its session bpm; the current tempo when it has none),
+        // so a pre-C7 file's stale free-run values are corrected on first
+        // open rather than only on next save.
+        const fileBpm = Number.isFinite(flow.session?.bpm) && flow.session.bpm > 0 ? flow.session.bpm : sessionSettings.bpm;
+        normalizeSyncedFreeRun(flow.nodes, fileBpm);
         setNodes(flow.nodes);
         setEdges(flow.edges || []);
         if (flow.sequencerTracks) {

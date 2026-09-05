@@ -378,7 +378,9 @@ const EditorLayout = () => {
     // updater so their edits land in useGraphState — the store the audio
     // engine, save and codegen actually read. (Writing to React Flow's
     // internal store made those edits silently inert.)
-    const graphActions = useMemo(() => ({ updateNodeData }), [updateNodeData]);
+    // `bpm` rides along (C7) so synced node cards can print the time their
+    // division resolves to at the project tempo.
+    const graphActions = useMemo(() => ({ updateNodeData, bpm }), [updateNodeData, bpm]);
 
     // The Export-Step action itself lives in useEditorState (so its undo entry
     // is pushed next to the edit it describes); the component keeps only the

@@ -567,7 +567,17 @@ A conservative static warning cannot see a defect that another defect is hiding.
 - [ ] **C6-4** (S) — Fix sustain ≤ 0.0001 discarding the Release stage — **SKB-041** (medium)
 
 ### C7 — BPM-Sync Value Hygiene
-- [ ] **C7** (S) — Save/load normalization; node cards show resolved sync time.
+- [x] **C7** (S) — ✅ **CLOSED**. `utils/syncNormalize.ts`: `normalizeSyncedFreeRun` writes the value a
+  synced node's division resolves to into its free-run field (LFO `frequency` and SampleHold `rate` in
+  Hz, Delay `delayTime` in seconds), recursing into subgraphs. `handleSave` runs it on a copy at the
+  session tempo and `applySaveData` at the file's own tempo, so a pre-C7 file's stale value (F-A03-5's
+  14 % drift) is corrected on first open and the file holds one truth from then on. Not a migration: it
+  depends on tempo, so it runs every save/load. Node cards: `ParamField.hint` renders under a select, and
+  the three synced cards show `formatSyncTime` at the project tempo carried through `GraphActionsContext`
+  (`useProjectBpm`, `BPM_DEFAULT` outside the app). Pinned by `SyncNormalize.test.ts`,
+  `SyncTimeHint.test.tsx` and two `FileIO.test.tsx` cases that failed before (Save wrote 3.4 Hz for a
+  1/8 node at 120 BPM; Load left it). Original text: Save/load normalization; node cards show resolved
+  sync time.
 
 ---
 
