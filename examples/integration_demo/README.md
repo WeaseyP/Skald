@@ -7,6 +7,21 @@ driving two assets — one **SFX** (one-shot, runtime-tunable) and one
 generates. The convenience `project_*` wrapper is *not* used; that's a
 test-harness affordance only.
 
+## Building the generator, first
+
+`build_and_run.bat` calls `..\..\skald-backend\codegen.exe` directly — it does
+not build that binary for you. On a fresh checkout neither `.exe` exists (both
+are gitignored), so build the generator once before your first run:
+
+```
+cd ..\..\skald-backend
+odin build main.odin -file -out:codegen.exe
+cd ..\examples\integration_demo
+```
+
+That is the same command the golden and acceptance harnesses use to produce
+`codegen.exe`.
+
 ## Running it
 
 From this directory:
@@ -43,7 +58,7 @@ t=8.0s  shutdown                        — main thread exits, audio device clos
 
 ## What's in `_demo_project.json`
 
-Two instruments, fed through `codegen.exe` to produce
+Two instruments, fed through `codegen.exe` (built above) to produce
 `generated_audio/generated_audio.odin`:
 
 - **Sfx** (SFX): Oscillator (saw, 220Hz) → Filter (lowpass, cutoff exposed)
@@ -78,7 +93,16 @@ ga.Sfx_set_cutoff(&app.sfx, cutoff_hz)
 ga.Sfx_set_param(&app.sfx, "cutoff", cutoff_hz)
 val, ok := ga.Sfx_get_param(&app.sfx, "cutoff")
 
+// Every asset also has a volume setter, clamped 0-1:
+ga.Sfx_set_volume(&app.sfx, 0.8)
+
 // Per-frame in your audio callback (this demo uses a producer thread + ring buffer):
+// Each _process already applies that asset's own volume and its own
+// soft limiter (skald_soft_limit, a tanh with a ceiling of 1.0) before
+// returning, so sfx_l/sfx_r and layer_l/layer_r are each individually
+// bounded to +/-1. Summing several assets is not itself bounded, so the
+// demo still applies its own final-mix gain — this is that stage, not a
+// substitute for either asset's own limiter:
 sfx_l, sfx_r     := ga.Sfx_process(&app.sfx)
 layer_l, layer_r := ga.Layer_process(&app.layer)
 final_l := (sfx_l + layer_l) * mix_gain
@@ -92,7 +116,8 @@ if !ga.Sfx_is_playing(&app.sfx) {
 
 ## Regenerating after editing `_demo_project.json`
 
-`build_and_run.bat` regenerates on every run. To hand-regenerate:
+`build_and_run.bat` regenerates on every run. To hand-regenerate (`codegen.exe`
+must already be built — see "Building the generator, first" above):
 
 ```
 cd ..\..\skald-backend

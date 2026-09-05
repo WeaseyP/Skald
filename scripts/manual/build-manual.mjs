@@ -51,14 +51,15 @@ const CHROME_CANDIDATES = [
 // are editorial working notes, not chapters, so they are deliberately absent.
 
 const PARTS = [
-  { part: 'Foundations', files: ['00-foundations.md'] },
-  { part: 'Sources', files: ['nodes/oscillator.md', 'nodes/noise.md', 'nodes/wavetable.md', 'nodes/fmOperator.md'] },
-  { part: 'Modulation', files: ['nodes/lfo.md', 'nodes/sampleHold.md', 'nodes/adsr.md', 'nodes/mapper.md', 'nodes/midiInput.md'] },
-  { part: 'Shaping', files: ['nodes/filter.md', 'nodes/distortion.md'] },
-  { part: 'Space', files: ['nodes/delay.md', 'nodes/reverb.md'] },
-  { part: 'Routing', files: ['nodes/mixer.md', 'nodes/gain.md', 'nodes/panner.md', 'nodes/output.md'] },
-  { part: 'Packaging', files: ['nodes/instrument.md'] },
+  { part: 'Getting started', files: ['01-getting-started.md'] },
+  { part: 'Foundations', files: ['00-foundations.md', 'nodes/instrument.md', '05-sequencer.md'] },
+  { part: 'A first patch', files: ['nodes/oscillator.md', 'nodes/adsr.md', 'nodes/output.md', 'nodes/filter.md'] },
+  { part: 'Modulation', files: ['nodes/mapper.md', 'nodes/lfo.md', 'nodes/sampleHold.md', 'nodes/gain.md'] },
+  { part: 'More sources', files: ['nodes/noise.md', 'nodes/mixer.md', 'nodes/wavetable.md', 'nodes/fmOperator.md'] },
+  { part: 'Shaping and space', files: ['nodes/distortion.md', 'nodes/delay.md', 'nodes/reverb.md', 'nodes/panner.md'] },
+  { part: 'Playing from hardware', files: ['nodes/midiInput.md'] },
   { part: 'Worked examples', files: ['50-bass-teardown.md', '60-complexity-ladder.md', '70-space-funk-build.md'] },
+  { part: 'Reference', files: ['85-deliberate-exclusions.md', '80-exporting-odin.md', 'KNOWN-ISSUES.md'] },
 ]
 
 // Markdown under SRC that is deliberately not a chapter. Anything else found
