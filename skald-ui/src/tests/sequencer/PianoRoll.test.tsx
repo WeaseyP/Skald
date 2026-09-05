@@ -179,3 +179,181 @@ describe('PianoRoll — out-of-range notice wording (B5-x5)', () => {
         expect(text).toMatch(/Raise the track length/);
     });
 });
+
+// ---------------------------------------------------------------------------
+// E2 — note duration dragging. Notes render `pointerEvents: 'none'` so a
+// click passes through to the row underneath (paint/remove); the resize
+// handle is a narrow strip at the note's right edge that opts back into
+// pointer events, so dragging IT (not the note body) changes duration.
+// ---------------------------------------------------------------------------
+describe('PianoRoll — note duration drag (E2)', () => {
+    afterEach(() => { cleanup(); });
+
+    const dragTrack: SequencerTrack = {
+        id: 'drag-track',
+        targetNodeId: 'drag-instrument',
+        name: 'Drag',
+        color: '#007acc',
+        steps: 16,
+        notes: [{ step: 2, note: 60, velocity: 1, duration: 2 }],
+        isMuted: false,
+        isSolo: false,
+    };
+
+    const renderDrag = (onUpdateNote = vi.fn()) => {
+        render(
+            <ScaleProvider>
+                <PianoRoll
+                    track={dragTrack}
+                    onUpdateNote={onUpdateNote}
+                    onToggleStep={vi.fn()}
+                    currentStep={0}
+                    steps={16}
+                    onClose={vi.fn()}
+                />
+            </ScaleProvider>
+        );
+        return onUpdateNote;
+    };
+
+    it('drags the right-edge handle N steps and commits the new duration exactly once', () => {
+        const onUpdateNote = renderDrag();
+        const handle = screen.getByTestId('piano-roll-resize-2-60');
+
+        fireEvent.mouseDown(handle, { button: 0, clientX: 0 });
+        // jsdom reports 0 container width, so stepWidth falls back to
+        // PIANO_STEP_WIDTH_DEFAULT (30). 90px = 3 steps.
+        fireEvent.mouseMove(window, { clientX: 90 });
+        fireEvent.mouseUp(window);
+
+        expect(onUpdateNote).toHaveBeenCalledTimes(1);
+        expect(onUpdateNote).toHaveBeenCalledWith('drag-track', 2, { duration: 5 }, 60);
+    });
+
+    it('clamps a drag below the minimum to one step', () => {
+        const onUpdateNote = renderDrag();
+        const handle = screen.getByTestId('piano-roll-resize-2-60');
+
+        fireEvent.mouseDown(handle, { button: 0, clientX: 0 });
+        fireEvent.mouseMove(window, { clientX: -900 });
+        fireEvent.mouseUp(window);
+
+        expect(onUpdateNote).toHaveBeenCalledTimes(1);
+        expect(onUpdateNote).toHaveBeenCalledWith('drag-track', 2, { duration: 1 }, 60);
+    });
+
+    it('Escape cancels the drag without committing anything', () => {
+        const onUpdateNote = renderDrag();
+        const handle = screen.getByTestId('piano-roll-resize-2-60');
+
+        fireEvent.mouseDown(handle, { button: 0, clientX: 0 });
+        fireEvent.mouseMove(window, { clientX: 90 });
+        fireEvent.keyDown(window, { key: 'Escape' });
+        fireEvent.mouseUp(window);
+
+        expect(onUpdateNote).not.toHaveBeenCalled();
+    });
+
+    it('leaves a plain click on the note body doing what it does today (paint/remove)', () => {
+        const onToggleStep = vi.fn();
+        render(
+            <ScaleProvider>
+                <PianoRoll
+                    track={dragTrack}
+                    onUpdateNote={vi.fn()}
+                    onToggleStep={onToggleStep}
+                    currentStep={0}
+                    steps={16}
+                    onClose={vi.fn()}
+                />
+            </ScaleProvider>
+        );
+        const row = screen.getByTestId('piano-roll-note-60');
+        // KEY_WIDTH (50) + step 2 at the 30px fallback width.
+        fireEvent.mouseDown(row, { button: 0, clientX: 50 + 2 * 30 + 1 });
+        expect(onToggleStep).toHaveBeenCalledWith('drag-track', 2, 60);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// E3 — per-note P-lock editing. A chord's members occupy different pitch
+// ROWS in the roll (unlike the step grid, where they stack in one cell), so
+// right-clicking a row at a given step names an unambiguous (step, pitch)
+// exactly like StepGrid's left-click-selects-the-block gesture does via
+// onStepContext -> onStepSelect (SequencerDock.tsx). Right-click, not left,
+// because left is already spoken for here (paint an empty cell / remove a
+// filled one).
+// ---------------------------------------------------------------------------
+describe('PianoRoll — per-note selection for Step Properties (E3)', () => {
+    afterEach(() => { cleanup(); });
+
+    const chordTrack: SequencerTrack = {
+        id: 'chord-track',
+        targetNodeId: 'chord-instrument',
+        name: 'Chord',
+        color: '#007acc',
+        steps: 16,
+        notes: [
+            { step: 4, note: 60, velocity: 1, duration: 1 },
+            { step: 4, note: 64, velocity: 1, duration: 1 },
+        ],
+        isMuted: false,
+        isSolo: false,
+    };
+
+    const renderChord = (onSelectNote = vi.fn()) => {
+        render(
+            <ScaleProvider>
+                <PianoRoll
+                    track={chordTrack}
+                    onUpdateNote={vi.fn()}
+                    onToggleStep={vi.fn()}
+                    onSelectNote={onSelectNote}
+                    currentStep={0}
+                    steps={16}
+                    onClose={vi.fn()}
+                />
+            </ScaleProvider>
+        );
+        return onSelectNote;
+    };
+
+    it('right-clicking chord member A selects (trackId, step, pitchA)', () => {
+        const onSelectNote = renderChord();
+        const rowC = screen.getByTestId('piano-roll-note-60');
+        fireEvent.contextMenu(rowC, { clientX: 50 + 4 * 30 + 1 });
+        expect(onSelectNote).toHaveBeenCalledWith('chord-track', 4, 60);
+    });
+
+    it('right-clicking chord member B selects (trackId, step, pitchB)', () => {
+        const onSelectNote = renderChord();
+        const rowE = screen.getByTestId('piano-roll-note-64');
+        fireEvent.contextMenu(rowE, { clientX: 50 + 4 * 30 + 1 });
+        expect(onSelectNote).toHaveBeenCalledWith('chord-track', 4, 64);
+    });
+
+    it('does nothing on an empty cell', () => {
+        const onSelectNote = renderChord();
+        const rowD = screen.getByTestId('piano-roll-note-62');
+        fireEvent.contextMenu(rowD, { clientX: 50 + 4 * 30 + 1 });
+        expect(onSelectNote).not.toHaveBeenCalled();
+    });
+
+    it('the selection highlight follows the click from one member to the other', () => {
+        renderChord();
+        const rowC = screen.getByTestId('piano-roll-note-60');
+        const rowE = screen.getByTestId('piano-roll-note-64');
+
+        fireEvent.contextMenu(rowC, { clientX: 50 + 4 * 30 + 1 });
+        const blockC = rowC.querySelector('[data-testid="piano-roll-placed-note-4-60"]')!;
+        const blockE1 = rowE.querySelector('[data-testid="piano-roll-placed-note-4-64"]')!;
+        expect(blockC.getAttribute('style')).toContain('outline: 2px solid');
+        expect(blockE1.getAttribute('style')).not.toContain('outline: 2px solid');
+
+        fireEvent.contextMenu(rowE, { clientX: 50 + 4 * 30 + 1 });
+        const blockCAfter = rowC.querySelector('[data-testid="piano-roll-placed-note-4-60"]')!;
+        const blockEAfter = rowE.querySelector('[data-testid="piano-roll-placed-note-4-64"]')!;
+        expect(blockEAfter.getAttribute('style')).toContain('outline: 2px solid');
+        expect(blockCAfter.getAttribute('style')).not.toContain('outline: 2px solid');
+    });
+});

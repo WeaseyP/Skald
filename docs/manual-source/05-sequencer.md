@@ -146,6 +146,16 @@ Because the range is now five octaves taller than anything most patches use, the
 
 The roll draws narrower columns than the grid — 30 px down to an 8 px floor (`skald-ui/src/components/Sequencer/stepMetrics.ts::PIANO_STEP_WIDTH_DEFAULT`) — because it needs the width for the keys column.
 
+### Dragging a note's duration
+
+Every note block carries a narrow handle along its right edge, `ew-resize` cursor. Drag it and the note's **Duration** changes, snapped to whole steps at the roll's own column width, one step at a time no matter how many pixels the pointer covers between them (`skald-ui/src/components/Sequencer/PianoRoll.tsx::handleResizeMouseDown`). A note cannot be dragged shorter than **1 step**. The rest of the note block is unchanged by this — it still passes clicks through to the cell underneath, so painting and removing work exactly as before.
+
+The drag commits once, on release, as a single undo entry, however far the pointer travelled. **Escape** cancels mid-drag and leaves the note exactly as it was — nothing was written until release, so there is nothing to undo.
+
+### Selecting a chord member to edit
+
+**Right-click** a note block to select *that* member for Step Properties — its P-locks, velocity, probability and duration — rather than whichever member a plain click on the cell would have addressed (`skald-ui/src/components/Sequencer/PianoRoll.tsx::handleGridContextMenu`). This is a deliberate gesture choice: left-click in the roll already means *paint or remove*, so the roll cannot reuse it for selection the way the Step Grid does — see `onStepContext` in the Step Grid section above, which the roll's right-click now mirrors. Because a chord's members sit in different pitch rows here (unlike the Step Grid, where they stack in one cell), right-clicking a row at a step is already unambiguous: it names one member, never a chord. The selected note draws a white outline so the member Step Properties is showing is visibly the one you clicked, not a guess from the chord-member buttons alone.
+
 ### Chords and note identity
 
 A note's address is the pair **(step, pitch)**, everywhere: both editors, Step Properties, and Export Step. That pair is unique. Retune a chord member onto a sibling's pitch and the retuned note wins — the one it landed on is absorbed, the same way a long note absorbs the notes it ties over in its own pitch lane (`skald-ui/src/hooks/sequencer/useSequencerState.ts::updateNote`). A file that arrives with two notes at one (step, pitch) is de-duplicated on load, first one kept, and Load reports the count (`skald-ui/src/utils/trackNotes.ts::dedupeTrackNotes`).
@@ -166,6 +176,8 @@ There is **no micro-timing, swing or per-step offset field.** Every note lands e
 Two details that only show up in the generated code. Probability becomes `if next_float32(&p.prng) <= 0.55 { … }` around the note-on, seeded deterministically, so a probabilistic pattern is reproducible run to run but not step to step. And a probability of exactly 0 is floored to 0.001 on the way out, because the generator reads a zero as "field absent — play always"; if you want a step never to fire, delete it.
 
 If a chord occupies the step, a row of pitch buttons appears above the fields — *This step holds 3 notes — editing* — so you can switch which member you are editing. Every edit is addressed to the named pitch, and retuning a note carries the selection with it rather than dropping you on "No note at pitch 60 on Step 4".
+
+You do not have to reach this panel through the chord-member buttons. In the Piano Roll, **right-click a note block** to select that exact member directly — its own row is its own pitch, so there is nothing to disambiguate. See "Selecting a chord member to edit" above.
 
 ## Key and Scale
 
@@ -346,6 +358,8 @@ The full list is in the app: press **?** or click the **?** button at the bottom
 | `Ctrl` + drag a note (grid) | Edit note velocity |
 | `Alt` + drag a note (grid) | Edit note probability |
 | Right-click, or right-click-drag (grid) | Erase — clears every note on the step |
+| Drag a note's right edge (piano roll) | Edit note duration, snapped to steps |
+| Right-click a note (piano roll) | Select that chord member for Step Properties |
 | `Ctrl/Cmd + Z` | Undo. The graph, the sequencer and the transport share **one** history |
 | `Ctrl/Cmd + Shift + Z`, or `Ctrl + Y` | Redo |
 | Double-click a slider | Reset that parameter to its default |

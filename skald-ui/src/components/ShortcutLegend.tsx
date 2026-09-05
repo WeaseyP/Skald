@@ -19,6 +19,8 @@ const SHORTCUTS: Array<[string, string]> = [
     ['Ctrl + drag note (grid)', 'Edit note velocity'],
     ['Alt + drag note (grid)', 'Edit note probability'],
     ['Right-click drag (grid)', 'Erase notes'],
+    ['Drag note right edge (piano roll)', 'Edit note duration'],
+    ['Right-click note (piano roll)', 'Select chord member to edit'],
     ['?', 'Toggle this help'],
 ];
 

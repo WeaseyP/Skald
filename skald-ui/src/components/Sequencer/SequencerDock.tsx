@@ -250,6 +250,10 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                                 steps={editingTrack.steps || 16}
                                 patternSteps={patternSteps}
                                 onClose={() => setEditingTrackId(null)}
+                                // E3: the same selection callback StepGrid feeds through
+                                // onStepContext, so a note picked in the roll opens the
+                                // same Step Properties panel a grid click would.
+                                onSelectNote={onStepSelect}
                             />
                         )}
                     </div>

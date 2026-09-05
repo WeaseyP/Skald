@@ -28,6 +28,12 @@ interface PianoRollProps {
     // pattern - half of them silently inaudible (SKB-010).
     patternSteps?: number;
     onClose: () => void;
+    // E3: names which chord member a right-click landed on, so Step
+    // Properties can address it directly (StepPropertiesEditor already
+    // supports notePitch; only the roll's own click never fed it one).
+    // Mirrors StepGrid's onStepContext -> onStepSelect wiring in
+    // SequencerDock.tsx.
+    onSelectNote?: (trackId: string, step: number, notePitch: number) => void;
 }
 
 const NOTE_HEIGHT = NOTE_ROW_HEIGHT;
@@ -100,7 +106,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     currentStep,
     steps = 16,
     patternSteps,
-    onClose
+    onClose,
+    onSelectNote
 }) => {
     const { isInScale, rootNote, scaleName, nearestInScale } = useScale();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -135,6 +142,26 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     const [isPainting, setIsPainting] = useState(false);
     const [paintMode, setPaintMode] = useState<'add' | 'remove' | null>(null); // Whether we are adding or removing
     const lastPaintedStep = useRef<{ step: number, note: number } | null>(null);
+
+    // E3: which chord member a right-click last named. Local rather than
+    // lifted to the document (unlike selectedStep in app.tsx) — the roll
+    // only needs to draw the highlight; the actual Step Properties selection
+    // already reaches app.tsx through onSelectNote, which is the same prop
+    // StepGrid's onStepContext feeds.
+    const [selectedNote, setSelectedNote] = useState<{ step: number; note: number } | null>(null);
+
+    // E2: an in-progress duration drag. Only ever one note at a time, so a
+    // single slot (not a per-note map) is enough; identified by (step, pitch)
+    // rather than array index because a chord's other members must not move
+    // when one is dragged.
+    const [resizeDrag, setResizeDrag] = useState<{
+        trackId: string;
+        step: number;
+        notePitch: number;
+        startX: number;
+        initialDuration: number;
+        currentDuration: number;
+    } | null>(null);
 
     const handleGridMouseDown = (e: React.MouseEvent, midiNote: number) => {
         if (!scrollContainerRef.current) return;
@@ -205,6 +232,87 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         setPaintMode(null);
         lastPaintedStep.current = null;
     };
+
+    // E3: a chord's members occupy different pitch ROWS in the roll (unlike
+    // the step grid, where they stack inside one cell), so naming (step,
+    // pitch) needs no search through the row's notes — the row IS the pitch.
+    // Right-click, not left: left is already the roll's paint/remove toggle,
+    // so reusing it for selection would mean every selection also mutated
+    // the note. preventDefault always, so the browser's own context menu
+    // never appears over the roll now that right-click means something here.
+    const handleGridContextMenu = (e: React.MouseEvent, midiNote: number) => {
+        e.preventDefault();
+        if (!scrollContainerRef.current) return;
+
+        const rect = scrollContainerRef.current.getBoundingClientRect();
+        const scrollLeft = scrollContainerRef.current.scrollLeft;
+        const relativeX = e.clientX - rect.left - KEY_WIDTH + scrollLeft;
+        const clickedStep = Math.floor(relativeX / stepWidth);
+
+        const existing = track.notes.find(n => n.step === clickedStep && n.note === midiNote);
+        if (!existing) return;
+
+        setSelectedNote({ step: clickedStep, note: midiNote });
+        if (onSelectNote) onSelectNote(track.id, clickedStep, midiNote);
+    };
+
+    // E2: grab the right-edge handle to start a duration drag. Stops the
+    // event reaching the row underneath — otherwise the row's own
+    // onMouseDown would ALSO fire and paint/remove a note out from under the
+    // drag, since the handle sits inside the (pointerEvents: none) note but
+    // is itself interactive.
+    const handleResizeMouseDown = (e: React.MouseEvent, n: NoteEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setResizeDrag({
+            trackId: track.id,
+            step: n.step,
+            notePitch: n.note,
+            startX: e.clientX,
+            initialDuration: n.duration || 1,
+            currentDuration: n.duration || 1,
+        });
+    };
+
+    // E2: local drag state carries the pointer; onUpdateNote (which already
+    // pushes history) is called exactly once, on release, so a drag of any
+    // length is one undo entry — the same "commit on mouseup, not on every
+    // mousemove" shape as StepGrid's own duration/velocity/probability drag.
+    // Escape drops the local state without ever calling onUpdateNote, so
+    // there is nothing to undo: the next render reads the note's real
+    // duration back off the track, which is the "restore" the cancelled drag
+    // promised.
+    useEffect(() => {
+        if (!resizeDrag) return;
+
+        const handleMove = (e: MouseEvent) => {
+            setResizeDrag(prev => {
+                if (!prev) return prev;
+                const deltaSteps = Math.round((e.clientX - prev.startX) / stepWidth);
+                return { ...prev, currentDuration: Math.max(1, prev.initialDuration + deltaSteps) };
+            });
+        };
+
+        const handleUp = () => {
+            setResizeDrag(prev => {
+                if (prev) onUpdateNote(prev.trackId, prev.step, { duration: prev.currentDuration }, prev.notePitch);
+                return null;
+            });
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setResizeDrag(null);
+        };
+
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleUp);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [resizeDrag !== null, onUpdateNote, stepWidth]);
 
     // Open on middle C. With the full MIDI range the default scroll position is
     // no longer incidental: row 0 is now G9, five octaves above anything most
@@ -344,6 +452,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                 }}
                                 onMouseDown={(e) => handleGridMouseDown(e, note)}
                                 onMouseEnter={(e) => handleGridMouseEnter(e, note)}
+                                onContextMenu={(e) => handleGridContextMenu(e, note)}
                             >
                                 {/* Vertical Grid Lines */}
                                 {Array.from({ length: columns }).map((_, i) => (
@@ -361,21 +470,58 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                 ))}
 
                                 {/* Placed Notes */}
-                                {track.notes.filter(n => n.note === note).map((n, idx) => (
-                                    <div
-                                        key={idx}
-                                        style={{
-                                            position: 'absolute',
-                                            left: n.step * stepWidth + 1,
-                                            width: (n.duration || 1) * stepWidth - 2,
-                                            top: 1,
-                                            bottom: 1,
-                                            backgroundColor: track.color || '#007acc',
-                                            borderRadius: '2px',
-                                            pointerEvents: 'none' // Let click pass to grid for now (unless adding drag resize later)
-                                        }}
-                                    />
-                                ))}
+                                {track.notes.filter(n => n.note === note).map((n, idx) => {
+                                    const isResizingThis = resizeDrag !== null
+                                        && resizeDrag.trackId === track.id
+                                        && resizeDrag.step === n.step
+                                        && resizeDrag.notePitch === n.note;
+                                    const duration = isResizingThis ? resizeDrag!.currentDuration : (n.duration || 1);
+                                    const isSelected = selectedNote !== null
+                                        && selectedNote.step === n.step
+                                        && selectedNote.note === n.note;
+
+                                    return (
+                                        <div
+                                            key={idx}
+                                            data-testid={`piano-roll-placed-note-${n.step}-${n.note}`}
+                                            style={{
+                                                position: 'absolute',
+                                                left: n.step * stepWidth + 1,
+                                                width: duration * stepWidth - 2,
+                                                top: 1,
+                                                bottom: 1,
+                                                backgroundColor: track.color || '#007acc',
+                                                borderRadius: '2px',
+                                                // E3: a selected note is outlined so the member Step
+                                                // Properties is editing is visibly the one lit up, not
+                                                // a guess from the chord-member button row alone.
+                                                outline: isSelected ? '2px solid #fff' : (isResizingThis ? '1px dashed #fff' : 'none'),
+                                                // Body stays click-through (paint/remove, E1's toggle);
+                                                // only the resize handle below opts back into pointer
+                                                // events, and E3's selection reads from the ROW, not
+                                                // from this element.
+                                                pointerEvents: 'none'
+                                            }}
+                                        >
+                                            {/* E2: right-edge duration handle. Narrow enough that most
+                                                of the note keeps passing clicks through to the row. */}
+                                            <div
+                                                data-testid={`piano-roll-resize-${n.step}-${n.note}`}
+                                                title="Drag to change duration"
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    right: 0,
+                                                    width: 6,
+                                                    cursor: 'ew-resize',
+                                                    pointerEvents: 'auto'
+                                                }}
+                                                onMouseDown={(e) => handleResizeMouseDown(e, n)}
+                                            />
+                                        </div>
+                                    );
+                                })}
 
                                 {/* Unreachable columns: greyed, never hidden -
                                     the user has to see why the right-hand end
