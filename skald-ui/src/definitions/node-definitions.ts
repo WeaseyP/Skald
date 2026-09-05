@@ -125,6 +125,12 @@ const defaultAdsrParams: AdsrParams = {
     release: sd('ADSR', 'release'),
     depth: sd('ADSR', 'depth'),
     velocitySensitivity: sd('ADSR', 'velocitySensitivity'),
+    // E8: not in the default exposedParameters list below — a curve is an
+    // editor-side shaping control, not something roadmap 9.4 asked to be
+    // live-settable by default the way attack/decay/release already are.
+    attackCurve: sd('ADSR', 'attackCurve'),
+    decayCurve: sd('ADSR', 'decayCurve'),
+    releaseCurve: sd('ADSR', 'releaseCurve'),
     exposedParameters: ['attack', 'decay', 'sustain', 'release', 'depth']
 };
 

@@ -735,12 +735,22 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'adsr':
             return (<>
                 <AdsrEnvelopeEditor
-                    value={{ attack: data.attack, decay: data.decay, sustain: data.sustain, release: data.release }}
+                    value={{
+                        attack: data.attack, decay: data.decay, sustain: data.sustain, release: data.release,
+                        // E8 (roadmap 9.4 item 2): `?? 0` — an ADSR node saved
+                        // before this packet has no curve keys at all, and 0
+                        // (linear) is both the schema default and the shape
+                        // that patch has always played.
+                        attackCurve: data.attackCurve ?? 0, decayCurve: data.decayCurve ?? 0, releaseCurve: data.releaseCurve ?? 0,
+                    }}
                     onChange={(newAdsr) => {
                         onChange('attack', newAdsr.attack);
                         onChange('decay', newAdsr.decay);
                         onChange('sustain', newAdsr.sustain);
                         onChange('release', newAdsr.release);
+                        onChange('attackCurve', newAdsr.attackCurve);
+                        onChange('decayCurve', newAdsr.decayCurve);
+                        onChange('releaseCurve', newAdsr.releaseCurve);
                     }}
                 />
                 {/* Keep the envelope graph for quick shaping, then provide
@@ -753,6 +763,11 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 {renderControlWrapper('release', 'Release (s)', numberField('release', 1, { min: 0, max: 10, step: 0.001 }))}
                 {renderControlWrapper('depth', 'Depth', slider('depth', 0, 1, 1))}
                 {renderControlWrapper('velocitySensitivity', 'Velocity Sens.', slider('velocitySensitivity', 0, 1, 0.5))}
+                {/* E8: -1..1, 0 = linear (schema/nodes.json). Exact-value entry
+                    to complement the envelope graph's draggable tension handles. */}
+                {renderControlWrapper('attackCurve', 'Attack Curve', numberField('attackCurve', 0, { min: -1, max: 1, step: 0.01 }))}
+                {renderControlWrapper('decayCurve', 'Decay Curve', numberField('decayCurve', 0, { min: -1, max: 1, step: 0.01 }))}
+                {renderControlWrapper('releaseCurve', 'Release Curve', numberField('releaseCurve', 0, { min: -1, max: 1, step: 0.01 }))}
             </>);
         case 'filter':
             return (<>

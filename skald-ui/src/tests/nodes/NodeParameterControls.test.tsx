@@ -63,6 +63,10 @@ describe('NodeParameterControls ADSR manual controls', () => {
             'release',
             'depth',
             'velocitySensitivity',
+            // Roadmap E8 (9.4 item 2): per-stage curve tension.
+            'attackCurve',
+            'decayCurve',
+            'releaseCurve',
         ]);
 
         fireEvent.change(screen.getByLabelText('Attack (s)'), { target: { value: '0.008' } });

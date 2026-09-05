@@ -76,6 +76,24 @@ generate_oscillator_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph
 	fmt.sbprint(sb, "\t\t}\n\n")
 }
 
+// E8 (roadmap 9.4 item 2): true when `param` (one of attackCurve/decayCurve/
+// releaseCurve) can only ever be the static 0.0 at THIS call — unexposed,
+// with no authored value or an authored 0. Every patch that predates this
+// packet has none of these keys at all, so get_f32_param_val's default (0.0)
+// is what they read and this returns true: generate_adsr_code below then
+// emits the ORIGINAL (pre-E8) line, unchanged, keeping every existing golden
+// byte-identical. An EXPOSED curve returns false even at its default 0 —
+// exposure means a game can move it away from 0 at runtime, so the
+// warp-capable line must be emitted regardless of what is baked in here.
+adsr_curve_is_flat :: proc(plan: ^Instrument_Plan, node: Node, param: string) -> bool {
+	if plan != nil {
+		if _, found := plan.exposed_resolutions[fmt.tprintf("%s::%s", node.id, param)]; found {
+			return false
+		}
+	}
+	return get_f32_param_val(node, param, 0.0) == 0.0
+}
+
 generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan: ^Instrument_Plan) {
 	input_str := "1.0"
     if graph != nil {
@@ -100,6 +118,22 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan
     release_str := get_f32_param(graph, plan, node, "release", "input_release", 0.1)
     vs_str      := get_f32_param(graph, plan, node, "velocitySensitivity", "", 0.5)
 
+    // E8 (roadmap 9.4 item 2): a flat stage emits EXACTLY the pre-E8 line
+    // below (see adsr_curve_is_flat) — no skald_adsr_warp call appears in
+    // the text at all, which is what keeps every existing patch's golden
+    // byte-identical. The _str is only computed when it will actually be
+    // used, since get_f32_param on an exposed field mutates nothing but
+    // there is no reason to resolve a value this proc then never prints.
+    attack_curve_flat  := adsr_curve_is_flat(plan, node, "attackCurve")
+    decay_curve_flat   := adsr_curve_is_flat(plan, node, "decayCurve")
+    release_curve_flat := adsr_curve_is_flat(plan, node, "releaseCurve")
+    attack_curve_str: string
+    decay_curve_str: string
+    release_curve_str: string
+    if !attack_curve_flat do attack_curve_str = get_f32_param(graph, plan, node, "attackCurve", "", 0.0)
+    if !decay_curve_flat do decay_curve_str = get_f32_param(graph, plan, node, "decayCurve", "", 0.0)
+    if !release_curve_flat do release_curve_str = get_f32_param(graph, plan, node, "releaseCurve", "", 0.0)
+
 	fmt.sbprintf(sb, "\t\t// --- ADSR Node %s ---\n", node.id)
 	fmt.sbprint(sb, "\t\t{\n")
 	fmt.sbprint(sb, "\t\t\tenvelope: f32 = 0.0;\n")
@@ -107,14 +141,22 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan
 	fmt.sbprint(sb, "\t\t\tcase .Idle:\n")
 	fmt.sbprint(sb, "\t\t\t\tenvelope = 0.0;\n")
 	fmt.sbprint(sb, "\t\t\tcase .Attack:\n")
-	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_attack_start + (1.0 - voice.adsr_%s_attack_start) * (voice.age / math.max(f32(%s), 0.000001)); else do envelope = 1.0;\n", attack_str, node.id, node.id, attack_str)
+	if attack_curve_flat {
+		fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_attack_start + (1.0 - voice.adsr_%s_attack_start) * (voice.age / math.max(f32(%s), 0.000001)); else do envelope = 1.0;\n", attack_str, node.id, node.id, attack_str)
+	} else {
+		fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_attack_start + (1.0 - voice.adsr_%s_attack_start) * skald_adsr_warp(voice.age / math.max(f32(%s), 0.000001), f32(%s)); else do envelope = 1.0;\n", attack_str, node.id, node.id, attack_str, attack_curve_str)
+	}
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
 	fmt.sbprintf(sb, "\t\t\t\tif voice.age >= (%s) {{\n", attack_str)
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Decay;\n", node.id)
 	fmt.sbprint(sb, "\t\t\t\t}\n")
 	fmt.sbprint(sb, "\t\t\tcase .Decay:\n")
 	fmt.sbprintf(sb, "\t\t\t\ttime_in_decay := voice.age - (%s);\n", attack_str)
-	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(%s), 0.000001)) * (1.0 - (%s)); else do envelope = (%s);\n", decay_str, decay_str, sustain_str, sustain_str)
+	if decay_curve_flat {
+		fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = 1.0 - (time_in_decay / math.max(f32(%s), 0.000001)) * (1.0 - (%s)); else do envelope = (%s);\n", decay_str, decay_str, sustain_str, sustain_str)
+	} else {
+		fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = 1.0 - skald_adsr_warp(time_in_decay / math.max(f32(%s), 0.000001), f32(%s)) * (1.0 - (%s)); else do envelope = (%s);\n", decay_str, decay_str, decay_curve_str, sustain_str, sustain_str)
+	}
 	fmt.sbprintf(sb, "\t\t\t\tvoice.adsr_%s_release_level = envelope;\n", node.id)
 	fmt.sbprintf(sb, "\t\t\t\tif time_in_decay >= (%s) {{\n", decay_str)
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Sustain;\n", node.id)
@@ -130,7 +172,11 @@ generate_adsr_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan
 	// other, and the one-shot _trigger already auto-releases at attack+decay.
 	fmt.sbprint(sb, "\t\t\tcase .Release:\n")
 	fmt.sbprint(sb, "\t\t\t\ttime_in_release := voice.age - voice.time_released;\n")
-	fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_release_level * (1.0 - (time_in_release / math.max(f32(%s), 0.000001))); else do envelope = 0.0;\n", release_str, node.id, release_str)
+	if release_curve_flat {
+		fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_release_level * (1.0 - (time_in_release / math.max(f32(%s), 0.000001))); else do envelope = 0.0;\n", release_str, node.id, release_str)
+	} else {
+		fmt.sbprintf(sb, "\t\t\t\tif (%s) > 0 do envelope = voice.adsr_%s_release_level * (1.0 - skald_adsr_warp(time_in_release / math.max(f32(%s), 0.000001), f32(%s))); else do envelope = 0.0;\n", release_str, node.id, release_str, release_curve_str)
+	}
 	fmt.sbprint(sb, "\t\t\t\tif envelope <= 0 {\n")
 	fmt.sbprint(sb, "\t\t\t\t\tenvelope = 0;\n")
 	fmt.sbprintf(sb, "\t\t\t\t\tvoice.adsr_%s_stage = .Idle;\n", node.id)

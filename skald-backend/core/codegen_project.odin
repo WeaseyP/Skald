@@ -241,6 +241,26 @@ emit_dc_block_proc :: proc(sb: ^strings.Builder) {
 	fmt.sbprint(sb, "}\n\n")
 }
 
+// E8 (roadmap 9.4 item 2): the one warp function every curved ADSR stage
+// calls, shared with skald-ui/src/components/controls/AdsrEnvelopeEditor.tsx
+// (mirrored case-by-case, comment says so there) so a dragged tension handle
+// previews the exact shape the export plays. c in [-1,1], 0 = linear — the
+// `c == 0.0` branch is not an optimisation, it is what keeps this safe to
+// call from an EXPOSED curve field that a live edit can set back to exactly
+// 0 at runtime (see adsr_curve_is_flat: codegen decides ONLY whether to call
+// this proc at all, never whether the proc itself sees a zero). k = c * 6.0
+// is the strength that lands warp(0.5, +-1) at ~0.95/~0.05 instead of 0.5 —
+// see tests/unit/dc_blocker_and_nonfinite_test.odin's neighbour for the ADSR
+// warp unit test and tests/fixtures/adsr_curve.json for the acceptance proof.
+emit_adsr_warp_proc :: proc(sb: ^strings.Builder) {
+	fmt.sbprint(sb, "// y = warp(t, c): (1-exp(-k*t))/(1-exp(-k)), k = c*6.0, c==0 => t.\n")
+	fmt.sbprint(sb, "skald_adsr_warp :: proc(t: f32, c: f32) -> f32 {\n")
+	fmt.sbprint(sb, "\tif c == 0.0 do return t\n")
+	fmt.sbprint(sb, "\tk := c * 6.0\n")
+	fmt.sbprint(sb, "\treturn (1.0 - math.exp(-k * t)) / (1.0 - math.exp(-k))\n")
+	fmt.sbprint(sb, "}\n\n")
+}
+
 // B7-2-followup / SKB-016: seconds for a feedback delay line to fall 60dB,
 // mirroring feedback_tail_seconds (codegen_analysis.odin) exactly, but
 // callable at runtime against LIVE field values instead of the compile-time
@@ -452,6 +472,26 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
             delete(nodes)
         }
         if any_tail do emit_feedback_tail_proc(&sb)
+    }
+    // E8: same reasoning as B7-x3 above — skald_adsr_warp is called only
+    // from an ADSR node whose attackCurve/decayCurve/releaseCurve is not
+    // flat (adsr_curve_is_flat). Emitting it unconditionally would add dead
+    // code to every project that has never touched a curve, breaking
+    // byte-identity for every patch that predates this packet.
+    {
+        any_curve := false
+        for i in 0 ..< len(project.instruments) {
+            inst := &project.instruments[i]
+            nodes := nodes_sorted_by_id(&inst.graph)
+            for node in nodes {
+                if node.type != "ADSR" do continue
+                if !adsr_curve_is_flat(&plans[i], node, "attackCurve") do any_curve = true
+                if !adsr_curve_is_flat(&plans[i], node, "decayCurve") do any_curve = true
+                if !adsr_curve_is_flat(&plans[i], node, "releaseCurve") do any_curve = true
+            }
+            delete(nodes)
+        }
+        if any_curve do emit_adsr_warp_proc(&sb)
     }
 
     fmt.sbprint(&sb, "Note_Event :: struct {\n")

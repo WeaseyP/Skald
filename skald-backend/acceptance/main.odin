@@ -214,6 +214,43 @@ main :: proc() {
 			}
 		}
 
+	case "adsr_curve":
+		// E8 (roadmap 9.4 item 2). Attack 0.4s with attackCurve=0.9 (near the
+		// extreme +1): warp(0.5, 0.9) ~= 0.937 (tests/unit/adsr_curve_test.odin
+		// pins the formula in isolation), so a LINEAR attack would sit at
+		// exactly half amplitude at half-attack-time (t=0.2s) and this one
+		// must sit near full amplitude instead — the curve reshapes the ramp,
+		// not merely how long it takes. decay/release stay flat (0) so only
+		// the attack-stage warp is under test here. Goes through
+		// render_sfx_one_shot (the per-asset path), not the project wrapper —
+		// no master-bus stage (limiter, E5's DC blocker) sits between the
+		// oscillator and this measurement to muddy it.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 1.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			// A short window (< 2 cycles at 440Hz) centred on t=0.2s: short
+			// enough that the envelope itself barely moves across it, so its
+			// peak approximates the instantaneous envelope * amplitude (1.0)
+			// at that instant rather than smearing across the ramp. Measured
+			// empirically (this window, this fixture): attackCurve=0 (linear)
+			// peaks ~0.47 here, attackCurve=0.9 peaks ~0.74 — the theoretical
+			// 0.5/0.937 softened a little by the window not landing exactly
+			// on a sine peak. 0.65 sits with comfortable margin above the
+			// linear reading and below the curved one.
+			s := int(0.196 * sample_rate)
+			e := int(0.204 * sample_rate)
+			half_attack_peak := compute_peak(buf[s:e], .Left)
+			if half_attack_peak < 0.65 {
+				fmt.eprintfln(
+					"FAIL adsr_curve: peak %.6f at half-attack-time (0.2s) — attackCurve=0.9 must land well above the linear 0.5, not near it",
+					half_attack_peak,
+				)
+				all_pass = false
+			}
+		}
+
 	case "dc_offset_pulse":
 		// Square wave at pulseWidth 0.02 spends 98% of each cycle at -1 and
 		// only 2% at +1 — raw duty-cycle mean ~= 0.02*1 + 0.98*(-1) = -0.96.

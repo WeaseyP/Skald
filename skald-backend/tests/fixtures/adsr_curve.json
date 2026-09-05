@@ -1,0 +1,82 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 1.0,
+    "instruments": [
+      {
+        "id": "adsrcurve01",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0.0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": {
+          "device": "All",
+          "channel": 1
+        },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "id_raw": "1",
+              "type": "Oscillator",
+              "position": { "x": -448.0, "y": -105.0 },
+              "parameters": {
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 1.0,
+                "pulseWidth": 0.5,
+                "phase": 0,
+                "exposedParameters": []
+              },
+              "exposed_parameters": []
+            },
+            {
+              "id": "2",
+              "id_raw": "2",
+              "type": "ADSR",
+              "position": { "x": -5.0, "y": -59.0 },
+              "parameters": {
+                "attack": 0.4,
+                "decay": 0.05,
+                "sustain": 1.0,
+                "release": 0.5,
+                "depth": 1,
+                "velocitySensitivity": 0,
+                "attackCurve": 0.9,
+                "decayCurve": 0,
+                "releaseCurve": 0,
+                "exposedParameters": []
+              },
+              "exposed_parameters": []
+            },
+            {
+              "id": "3",
+              "id_raw": "3",
+              "type": "GraphOutput",
+              "position": { "x": 454.0, "y": 165.0 },
+              "parameters": {},
+              "exposed_parameters": []
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" }
+          ],
+          "sequencer_tracks": [
+            {
+              "target_node_id": "adsrcurve01",
+              "name": "Asset",
+              "mute": false,
+              "solo": false,
+              "num_steps": 16,
+              "events": []
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

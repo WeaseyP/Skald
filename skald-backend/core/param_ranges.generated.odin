@@ -42,6 +42,16 @@ PARAM_RANGE_OVERRIDES := [?]Param_Range_Entry{
 	{"ADSR", "sustain", {0.0, 1.0, 0.5, ""}},
 	// C2: editor 1.0, generic row 0.2. Backfilled 3->4.
 	{"ADSR", "release", {0.0, 10.0, 1.0, "s"}},
+	// E8 (roadmap 9.4 item 2): per-stage curve tension. 0 = linear, the shape
+	// every ADSR emitted before this row existed — an exposed-but-untouched
+	// attackCurve must generate the same envelope as a patch with no curve at
+	// all, so this default is the one number that keeps every pre-E8 patch's
+	// goldens byte-identical.
+	{"ADSR", "attackCurve", {-1.0, 1.0, 0.0, ""}},
+	// E8, same shape as attackCurve above — 0 = linear.
+	{"ADSR", "decayCurve", {-1.0, 1.0, 0.0, ""}},
+	// E8, same shape as attackCurve above — 0 = linear.
+	{"ADSR", "releaseCurve", {-1.0, 1.0, 0.0, ""}},
 	// F-A10-17 / C2: the shared decay row's 0 minimum is right for an ADSR
 	// stage and wrong for a tail (both editor surfaces say 0.1), and its 0.1
 	// default was a 0.1 s room where the editor means a 3 s hall. Backfilled

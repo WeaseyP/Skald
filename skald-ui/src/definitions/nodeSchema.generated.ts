@@ -37,6 +37,9 @@ export const RANGE_OVERRIDES: Record<string, Record<string, SchemaRange>> = {
         "decay": { min: 0, max: 10, default: 0.2, unit: "s" },
         "sustain": { min: 0, max: 1, default: 0.5, unit: "" },
         "release": { min: 0, max: 10, default: 1, unit: "s" },
+        "attackCurve": { min: -1, max: 1, default: 0, unit: "" },
+        "decayCurve": { min: -1, max: 1, default: 0, unit: "" },
+        "releaseCurve": { min: -1, max: 1, default: 0, unit: "" },
     },
     "Reverb": {
         "decay": { min: 0.1, max: 10, default: 3, unit: "s" },

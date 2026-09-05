@@ -115,6 +115,12 @@ export interface AdsrParams extends BaseNodeParams {
   release: number;
   depth: number;
   velocitySensitivity: number;
+  // Roadmap E8 (9.4 item 2): per-stage curve tension, -1..1, 0 = linear —
+  // the shape every ADSR generated before this packet, and what an
+  // exposed-but-untouched curve field still generates at (schema/nodes.json).
+  attackCurve: number;
+  decayCurve: number;
+  releaseCurve: number;
   lastTrigger?: number;
 }
 
