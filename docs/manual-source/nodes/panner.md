@@ -195,32 +195,6 @@ Finally, the values reach the speakers. The Output node adds each Panner's pair 
 - **Clamping** — forcing a value back inside a legal range. Audible as the sound "sticking" at an extreme instead of continuing to move.
 - **Headroom** — the gap between your loudest signal and the point where the output stage starts distorting.
 
-## Code-vs-intent notes
+## Known issues
 
-**1. A voice-domain LFO feeding a bus-domain Panner gets summed across active voices, so auto-pan depth scales with polyphony.** *(confusing)*
-
-In `glassy-fm-pluck.skald.json`, the Auto Pan LFO has no inputs, so it stays in the voice domain, while the Panner sits downstream of the Delay and is therefore in the bus domain (`codegen.odin:70-88`). Skald bridges that gap by accumulating the LFO's per-voice output into a `_vsum` variable (`codegen.odin:1016-1035`, `1846-1848`) and handing the *sum* to the bus block (`codegen.odin:1889-1891`). Each voice carries its own LFO phase (`codegen.odin:1079`), so with N notes ringing you get N sine waves added together. The instrument allows 12 voices (`glassy-fm-pluck.skald.json:11`), and with a 0.4 s release against 0.125 s steps (`:52`, plus 120 BPM / 16 steps at `:155-156`) two to four voices routinely overlap. Amplitude 0.7 (`:92`) becomes 1.4–2.8 at the Panner's Pan input, which the clamp at `codegen.odin:674` flattens into a hard left-right flip. The audible result is that the auto-pan is smooth when the pattern is sparse and square when it is dense — modulation depth that depends on how many notes you are playing. This is a consequence of correct domain bridging, not a bug in the Panner, but nothing in the UI hints at it.
-
-**2. A Panner wired into anything other than the Output node silently loses its stereo image.** *(confusing)*
-
-The UI presents a single `output` handle with no indication that it carries two different things depending on destination (`skald-ui/src/components/Nodes/PannerNode.tsx:10`). The codegen routes the stereo pair only when the source node is a Panner connecting directly to a GraphOutput (`codegen.odin:1978-1980`); every other consumer reads the mono downmix (`codegen.odin:680`), as the golden output shows at `skald-backend/tests/golden/panner_mono.odin.golden:328-332` where the Gain node reads `node_3_out`. The mono downmix was itself a fix for total silence (`skald-backend/acceptance/main.odin:412-414`), so the current behaviour is a deliberate improvement — but the editor still lets you build a chain whose stereo work is discarded without a warning, an error, or a visual cue.
-
-**3. The Mixer stores a per-channel `pan` value that no control edits and no code reads.** *(confusing)*
-
-`MixerChannelParams` declares `pan: number` with the comment "Added pan for more realistic mixing" (`skald-ui/src/definitions/types.ts:123-126`), the default mixer seeds `pan: 0` on all four channels (`skald-ui/src/definitions/node-definitions.ts:137-146`), and the parameter panel preserves it when rebuilding the levels array (`skald-ui/src/components/NodeParameterControls.tsx:260`). But the panel renders only a level slider per channel (`NodeParameterControls.tsx:280-292`), and `generate_mixer_code` reads only the `level` key (`codegen.odin:626-663`). The field is dead in both directions. Practically this means there is no way to place individual sources inside a Mixer; each source that needs its own position needs its own Panner wired straight to Output.
-
-**4. The backend accepts `output_left` and `output_right` as Panner output ports, but the UI offers no handles for them.** *(cosmetic)*
-
-`valid_output_port` explicitly permits `output_left` / `output_right` for a Panner (`skald-backend/core/graph_validate.odin:70-71`), the error message advertises them (`graph_validate.odin:111`), and `get_output_var` maps them to the real variables (`skald-backend/core/param_utils.odin:68-69`). The node component declares one output handle, `output` (`skald-ui/src/components/Nodes/PannerNode.tsx:10`), so these ports are reachable only by hand-editing project JSON. That capability — tapping one leg of the stereo pair to process it separately — is currently invisible to users.
-
-**5. The exposed LFO `amplitude` range is calibrated for filter modulation and is meaningless as a pan depth.** *(cosmetic)*
-
-`lookup_param_range` overrides LFO amplitude to `{0.0, 20000.0, 1.0}` (`skald-backend/core/param_ranges.odin:31`) — a range that exists so an LFO can sweep a cutoff across the audible spectrum. When that same LFO drives a Panner's Pan input, useful values live in 0.0–1.0 and everything above 1.0 is clamped away by `codegen.odin:674`. A game calling `set_param` on an exposed auto-pan amplitude gets a knob whose top 99.995% of travel does nothing. The range is also non-negative, so an exposed amplitude cannot be used to invert the pan direction.
-
-**6. `skald-ui/new_docs/PannerNode.md` is stale.** *(cosmetic)*
-
-It documents only a `data` prop and claims "Emitted Events / Outputs: None" (`skald-ui/new_docs/PannerNode.md:5-11`). It does not mention the `pan` parameter, the `input` / `input_pan` / `output` handles, or the equal-power law — all of which are in `skald-ui/src/components/Nodes/PannerNode.tsx:3-14`.
-
-**7. Skald offers no pan-law choice, and standard practice expects one.** *(cosmetic)*
-
-The law is hard-coded sine/cosine constant-power with a −3 dB centre (`codegen.odin:674-676`), and the UI documents it as such (`skald-ui/src/components/Sidebar.tsx:277`). Most DAWs and consoles let you pick between −3 dB (constant power, correct over speakers), −6 dB (constant voltage, correct for mono fold-down) and a −4.5 dB compromise [Source: https://www.soundonsound.com/sound-advice/q-what-pan-law-setting-should-use]. For game audio delivered through a stereo bus this is a defensible default, but it means a Skald mix folded to mono by a phone speaker or a club PA will show centred material about 3 dB hotter than hard-panned material, and there is no control to compensate.
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-004, KI-045, KI-049, KI-050, KI-051. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.

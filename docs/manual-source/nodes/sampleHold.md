@@ -203,44 +203,6 @@ Finally, note what is *absent*: there is no interpolation, no filtering, and no 
 - **Parameter clamp** — the min/max a runtime setter enforces, defined per parameter name in `param_ranges.odin`.
 - **Mapper** — Skald's rescaling node: converts a modulator's native range into the real units the destination needs, with clamping.
 
-## Code-vs-intent notes
+## Known issues
 
-**1. Exposing `amplitude` silently caps it at 1.0, while the node card offers 10 — and the first setter call causes an audible jump.** *(severity: blocker for the runtime-control workflow this chapter recommends)*
-
-The node card’s Amount box allows 0–10 (`skald-ui/src/components/Nodes/SampleHoldNode.tsx:14`), and the UI default is 1.0 (`skald-ui/src/definitions/node-definitions.ts:67`). But `lookup_param_range` has **no `amplitude` override for `SampleHold`**, so it falls through to the generic case `{0.0, 1.0, 0.5, ""}` (`skald-backend/core/param_ranges.odin:86-87`). The LFO node has exactly such an override — `if name == "amplitude" do return {0.0, 20000.0, 1.0, ""}` (`skald-backend/core/param_ranges.odin:31`) — added, per the comment block at `skald-backend/core/param_ranges.odin:23-26`, precisely because the name-keyed table was wrong for modulators. S&H appears to have been missed.
-
-Three consequences, all reproducible:
-- The emitted setter clamps to 1.0 (`skald-backend/core/codegen.odin:1614-1624`), so `set_amplitude(p, 5.0)` stores 1.0.
-- Live preview goes through the same clamp: exposed values are masked from the rebuild fingerprint and applied via `skald_set_param` (`skald-ui/src/utils/projectSerializer.ts:230-248` → `skald-backend/core/codegen.odin:1677-1691`), so typing a value above 1 into the card’s Amount box on the example patch's `wob-sh` — which exposes `amplitude` — is audibly inert.
-- **Init bypasses the clamp.** The exposed field is initialised from the node's stored value, not the range default (`skald-backend/core/codegen.odin:1189-1196`), and the init writes it directly with no clamp (`skald-backend/core/codegen.odin:1325-1329`). So a patch saved with `amplitude: 6` and `amplitude` exposed starts at 6.0, runs at 6.0, and drops to 1.0 the instant any game code touches the parameter. The `_PARAMS` table will also advertise `{"amplitude", 0.0, 1.0, 6.0, ""}` — a default outside its own declared range (`skald-backend/core/codegen.odin:1631-1642`).
-
-Standard practice supports the wider range: hardware S&H depth controls are attenuverters spanning the module's full CV range, not 0–1 [Source: https://ajhsynth.com/SampleHold.html].
-
-**2. Three different `rate` maxima across three surfaces.** *(severity: confusing)*
-
-- Node card number box: `min: 0.1, max: 1000` (`skald-ui/src/components/Nodes/SampleHoldNode.tsx:13`)
-- Parameter Panel slider: `slider('rate', 0.1, 50, 10, 'log')` (`skald-ui/src/components/NodeParameterControls.tsx:186`)
-- Codegen clamp: `{0.1, 1000.0, 10.0, "Hz"}` (`skald-backend/core/param_ranges.odin:33`)
-
-A rate of 400 Hz is perfectly legal on the card and in the exported asset, but the Parameter Panel cannot reach it and — depending on how the panel's slider handles an out-of-bounds value — a user who opens the panel on such a node may see it pinned to 50. For comparison, the panel's `amplitude` slider is `(0, 1, 1)` (`skald-ui/src/components/NodeParameterControls.tsx:188`), which matches the codegen clamp but *not* the node card's 0–10. Neither surface is wrong about the DSP; they simply disagree with each other.
-
-**3. Exposing `rate` on a BPM-synced S&H generates a setter that does nothing.** *(severity: confusing)*
-
-`generate_sample_hold_code` computes `rate_str` from the (possibly exposed) `rate` parameter at `skald-backend/core/codegen.odin:390`, then unconditionally **overwrites** it with the sync expression if `bpmSync` is true (`skald-backend/core/codegen.odin:391-393`). The `p.rate` field, the `<Asset>_set_rate` setter, the `_PARAMS` row and the `set_param` dispatch arm are all still emitted, because exposure resolution runs independently of the sync flag (`skald-backend/core/codegen.odin:1185-1229`). Game code calling `set_rate` gets `true` back and hears no change. `rate` is exposed by default (`skald-ui/src/definitions/node-definitions.ts:70`), so this is the *default* configuration the moment a user ticks BPM Sync. The same pattern exists for the LFO's `frequency` (`skald-backend/core/codegen.odin:364-367`), so it looks systemic rather than S&H-specific.
-
-**4. `new_docs/SampleHoldNode.md` is thin but not wrong.** *(severity: cosmetic)*
-
-`skald-ui/new_docs/SampleHoldNode.md` documents only `data` as a prop and says "Emitted Events / Outputs: None". The component is now built by `makeParamNode` and declares a real output handle `output` plus four editable fields (`skald-ui/src/components/Nodes/SampleHoldNode.tsx:6-16`). The doc's core claim — "acts as a signal source and has no inputs" — is accurate and matches `skald-backend/core/graph_validate.odin:57-58`. It is simply out of date about the node's UI surface.
-
-**5. No test coverage for this node.** *(severity: cosmetic, noted as an evidence gap)*
-
-Nothing under `skald-ui/src/tests/` references `sampleHold`, `SampleHold` or `S & H` (searched across the whole test tree; the only hit for "sample" in `skald-ui/src/tests/codegen/Codegen.test.ts:190` is the unrelated `sample_rate:` struct field assertion). So there is no test asserting the intended `rate`/`amplitude` ranges, and none of the three findings above is pinned down by an executable expectation in either direction.
-
----
-
-**Sources**
-
-- [Sound On Sound — Synth Secrets, From Sample & Hold To Sample-rate Converters (Part 1)](https://www.soundonsound.com/techniques/sample-hold-sample-rate-converters-1)
-- [Synth Secrets Part 16 (text mirror)](https://github.com/micjamking/synth-secrets/blob/master/part-16.md)
-- [The Scientist and Engineer's Guide to DSP — Ch. 3, Digital-to-Analog Conversion (zeroth-order hold, sinc)](https://www.dspguide.com/ch3/3.htm)
-- [AJH Synth — Sample Hold & Slew module documentation](https://ajhsynth.com/SampleHold.html)
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-001, KI-006, KI-027. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.

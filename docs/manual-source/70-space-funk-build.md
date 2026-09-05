@@ -825,32 +825,6 @@ voices.
 
 ---
 
-## Code-vs-intent notes
+## Known issues
 
-**`arp-sh`'s `rate` and `arp-echo`'s `delayTime` are dead values.** Both nodes
-have `bpmSync: true`, and a synced node's time base comes from `syncRate`
-(`codegen.odin:35-57`). The stored `8` and `0.28` are only there so that turning
-sync off leaves something sensible behind. The UI hides both boxes while sync is
-on. The code wins.
-
-**The pad's oscillator stores `"frequency": 220` and does not use it.** With
-Fixed Pitch off, pitch comes from the played note (`codegen.odin:138` and the
-`input_freq` handling at `:163`). The number in the file is decoration — the
-same is true of `slap-bass`'s 110 and `starfield-arp`'s 440. The two oscillators
-that *do* read their frequency are the kick's and the snare's shell, both of
-which set `fixedPitch: true`.
-
-**The hat's 7000 Hz cutoff is close to the real ceiling, not a quarter of the
-way up the slider.** The slider ends at 20000; the generated filter clamps to
-`sample_rate × 0.16` (`codegen.odin:346`), about 7680 Hz at 48 kHz. Anything you
-type above that is silently identical.
-
-**Resonance is inverted internally.** The UI's `resonance` becomes damping
-`q = 1 / max(res, 0.1)`, clamped to `[0.05, 1.9 − f]` (`codegen.odin:348`). Higher
-UI resonance means lower damping means more ringing. The clamp is why res 20
-screams instead of producing NaN.
-
-**Instrument volume is applied at the return, not inside the patch.** The
-`* 0.4` on the pad's return value (from `volume`) happens after the reverb, so
-turning an instrument down does not change how its own effects behave — only how
-much of it reaches the project mix, and therefore the limiter.
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-037. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.

@@ -197,19 +197,6 @@ If you want to read the real output, wire up a small patch and hit **Generate Co
 - **Voice** — one simultaneously-sounding note. A polyphonic instrument runs the whole graph once per active voice, per sample.
 - **Bus domain** — the once-per-sample block that runs after all voices are summed, where Delay and Reverb live.
 
-## Code-vs-intent notes
+## Known issues
 
-**1. Every surface says 0–4, including the Parameter Panel.** *(no discrepancy — this one used to be real)*
-The on-canvas control accepts 0–4 (`skald-ui/src/components/Nodes/GainNode.tsx:12`), the panel slider is `slider('gain', 0, 4, 0.75)` (`skald-ui/src/components/NodeParameterControls.tsx:301-305`), and the codegen clamps exposed setters to `[0.0, 4.0]` (`skald-backend/core/param_ranges.odin:84-85`, applied at `skald-backend/core/codegen.odin:1621-1622`). Set 2.5 on the canvas, open the Parameter Panel, and you see 2.5 — an earlier build pinned that slider at a maximum of 1.0 and silently dropped the value on the next nudge, which is what step 9 of *Try it* would otherwise be unable to ask you to do. The comment at the head of `param_ranges.odin:9-10`, claiming these ranges "match the ranges sliders use in the UI's parameter panel", is true for `gain`.
-
-**2. The default `gain` of 0.75 used to be the wrong default for the node's main idiom.** *(no discrepancy — this one used to be real)*
-Until save version 3, Gain-port modulation was *added* to the knob value, so a freshly dragged VCA at `gain: 0.75` with an ADSR wired in produced a multiplier floor of 0.75 and a note that never stopped; every shipped example that used the idiom overrode the default to zero (`examples/songs/full/four-bar-song.skald.json:18`, `:49`, `:82`, `:112`, `:142`; `examples/instruments/keys/fm-rhodes-electric-piano.skald.json:66`). Roadmap packet C4 made a new VCA's Gain port multiplicative (`gainMode: 'multiply'` in `skald-ui/src/definitions/node-definitions.ts`), kept the additive form for every node that predates the field, and put the choice on the card as **Gain in**. The 0.75 default is now simply the ceiling of the envelope.
-
-**3. Graph modulation of gain is unclamped; the exposed setter is clamped.** *(confusing)*
-`MyAsset_set_gain` forces the value into `[0, 4]` (`skald-backend/core/codegen.odin:1620-1623`). The multiply itself applies no clamp at all (`skald-backend/core/codegen.odin:714`), so an LFO or Mapper patched into `input_gain` can drive the multiplier negative or far past 4. Negative multipliers invert the waveform. This is a meaningful asymmetry — a game developer reading `MyAsset_PARAMS` sees `{"gain", 0.0, 4.0, ...}` and would reasonably assume 0–4 is the operating envelope of that parameter, when the patch itself can exceed it. Contrast with Panner (`skald-backend/core/codegen.odin:672-674`) and Distortion mix (`:597`), which *do* clamp modulated values at the point of use with explanatory comments. Whether the VCA's freedom is deliberate (it enables through-zero/ring-mod tricks) is not recorded anywhere in the code.
-
-**4. The sidebar tooltip promises tremolo, but the obvious patch gives ring modulation.** *(cosmetic)*
-`skald-ui/src/components/Sidebar.tsx:278` suggests modulating the gain input "for tremolo". Skald's only LFO is bipolar around zero (`skald-backend/core/codegen.odin:379-385`) with a default `amplitude` of 1.0 (`skald-ui/src/definitions/node-definitions.ts:76`). Patched straight into a VCA whose knob is at the recommended 0, that gives a multiplier of ±1.0 — half of every cycle inverted, which standard practice classifies as ring modulation, not tremolo [Source: https://docs.cycling74.com/max8/tutorials/06_synthesischapter02]. Getting true tremolo requires either raising the knob above the LFO amplitude or inserting a Mapper to make the modulator unipolar. Neither is hinted at in the UI.
-
-**5. There is no `GainNode.md` in `skald-ui/new_docs/`.** *(cosmetic)*
-Twenty-four component docs exist there, including one for every other node type, but the VCA has none. No stale claims to reconcile — just a gap.
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-047, KI-048. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.

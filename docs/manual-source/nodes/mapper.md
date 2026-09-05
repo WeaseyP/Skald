@@ -216,24 +216,6 @@ Finally: node evaluation order is solved for you. The generator topologically so
 - **DC offset** — a constant added to an audio waveform, pushing it off centre. Putting audio through a Mapper produces a large one.
 - **Exposed parameter** — a parameter promoted into the generated instrument's public API so game code can set it at runtime.
 
-## Code-vs-intent notes
+## Known issues
 
-**1. The Parameter Panel's Out Min / Out Max sliders cannot reach the node's own default. (confusing)**
-
-A Mapper dragged from the sidebar is created with `outMax: 20000` (`skald-ui/src/definitions/node-definitions.ts:199`). The Parameter Panel renders Out Min and Out Max as sliders bounded to -10,000..+10,000 (`skald-ui/src/components/ParameterPanel.tsx:354-355`), and `CustomSlider` clamps typed values to those bounds on commit (`skald-ui/src/components/controls/CustomSlider.tsx:172`). So a fresh Mapper shows a slider pinned at maximum displaying a value the slider cannot represent, and the first time you touch that slider — or type into its number box — the value silently halves to 10,000 or less. The on-canvas number boxes have no bounds at all (`skald-ui/src/components/Nodes/MapperNode.tsx:14-15`; `NumberInput` only clamps when `min`/`max` are supplied, `skald-ui/src/components/common/NumberInput.tsx:83-84`), so the two editing surfaces for the same parameter disagree about what is legal. The backend clamp is ±1,000,000 (`skald-backend/core/param_ranges.odin:100-101`), so neither UI bound reflects the enforced range.
-
-**2. `exposedParameters` is missing from the Mapper's default parameters. (cosmetic)**
-
-Every other node definition seeds `exposedParameters: []` — see `defaultMidiInputParams` at `skald-ui/src/definitions/node-definitions.ts:181-185`, or `group` at `:217`. The Mapper's `defaultParameters` block omits it entirely (`skald-ui/src/definitions/node-definitions.ts:195-200`). Nothing breaks, because the exposure toggle defaults to an empty array when the key is absent (`skald-ui/src/components/ParameterPanel.tsx:202`) and the panel's read is optional-chained (`:282`), but a freshly created Mapper serialises without the key while every other node has it.
-
-**3. Exposure is offered in one panel and refused in another. (cosmetic)**
-
-`ParameterPanel`'s Mapper branch renders all four parameters with exposure enabled (`skald-ui/src/components/ParameterPanel.tsx:349-358` — the `wrapper` helper defaults `isExposable` to true, `:281`). `NodeParameterControls`'s Mapper branch passes `false` for the same argument on all four (`skald-ui/src/components/NodeParameterControls.tsx:249-252`). In practice this is harmless today: `ParameterPanel` intercepts `mapper` before it can reach the shared component (`:349` runs before the fall-through at `:381`), and the only other consumer, the sequencer's step editor, ignores the fourth argument entirely and renders a lock toggle instead (`skald-ui/src/components/Sequencer/StepPropertiesEditor.tsx:108-154`). But the two components state opposite intents about the same four parameters.
-
-**4. The default `outMax` of 20,000 encodes an assumption the node cannot honour. (cosmetic)**
-
-20,000 is the top of the audible spectrum and the top of the `cutoff` range (`skald-backend/core/param_ranges.odin:51`), so the default clearly anticipates "LFO into filter cutoff". But a Mapper's output is additive on top of the destination's own value (`skald-backend/core/param_utils.odin:149-153`), and the SVF clamps cutoff at `sample_rate * 0.16` — roughly 7 kHz at 44.1 kHz (`skald-backend/core/codegen.odin:339`). A default-configured Mapper into a filter therefore spends most of its range beyond the point where the filter stops responding. It also means the default maps *anything* into a nearly full-spectrum sweep, which is why every shipped example overrides it (150–1900, 0–900, 0–2600, 0–2.5).
-
-**5. The suggested wobble patch has no Mapper and barely wobbles. (confusing)**
-
-`examples/instruments/bass/lfo-filter-wobble-bass.skald.json:10` wires the LFO's output straight to the filter's `cutoff` port. That port name is valid — `normalize_port` rewrites `cutoff` to `input_cutoff` (`skald-backend/core/json.odin:41`) — but the LFO has no `amplitude` set, so the generator uses the default 1.0 (`skald-backend/core/codegen.odin:368`), and the modulation adds to the filter's cutoff of 150 Hz (`:5`, and the additive rule at `skald-backend/core/param_utils.odin:149-153`). The result is a cutoff oscillating between 149 Hz and 151 Hz — inaudible, in a patch whose filename promises a wobble. Compare `examples/instruments/bass/wobble-samplehold-bass.skald.json:90-101,117-128`, which puts Mappers in the same position and gets a 1750 Hz and a 900 Hz sweep. This is the clearest demonstration in the repository of what the Mapper is for, but as shipped the patch is a bug rather than a teaching aid.
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-013, KI-032, KI-033, KI-037. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.
