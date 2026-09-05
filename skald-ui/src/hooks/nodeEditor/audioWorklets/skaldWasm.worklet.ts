@@ -30,6 +30,13 @@
 |   {type:'step', step}      sequencer step changed (drives the UI playhead)  |
 |   {type:'ended'}           non-looping pattern finished                      |
 |   {type:'error', message}  worklet failure — playback itself is broken       |
+|   {type:'nonfinite', total, perAsset}   E5 (roadmap 9.9): the DC-blocker/    |
+|                                     limiter flushed a NaN/Inf sample to      |
+|                                     silence and counted it. Posted only when |
+|                                     either number changes (skald_process     |
+|                                     runs 300+ times/sec; a message every     |
+|                                     call would flood the port for no reason  |
+|                                     once the count stops moving).            |
 |   {type:'param-dropped', key, reason}   a set-param did NOT apply: the       |
 |                                     running module rejected the name (e.g.  |
 |                                     a stale build without the "::" alias)   |
@@ -57,6 +64,10 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         // Without a host-side copy to reapply, a mid-play topology edit would
         // snap the fader back to full every time the module rebuilt.
         this.masterVolume = 1.0;
+        // E5: last-reported values, so process() below can post a 'nonfinite'
+        // message only on a real change instead of every single block.
+        this.lastNonfiniteTotal = 0;
+        this.lastNonfinitePerAsset = [];
         const opts = options.processorOptions || {};
         if (typeof opts.loop === 'boolean') this.loopEnabled = opts.loop;
         // typeof check, not a nullish/OR default: an authored/live 0 (silence)
@@ -125,6 +136,13 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         this.rightPtr = ex.skald_right_ptr();
         this.nameBufPtr = ex.skald_name_buf_ptr();
         this.wasPlaying = ex.skald_is_playing(stepAsset) === 1;
+        // E5: skald_init just reset the fresh module's own counters to 0
+        // (project_init's p.dc = {} / skald_master_flush_count never having
+        // moved, Asset_init's p.nonfinite_count = 0), so the host-side "last
+        // reported" tracking must follow suit — sized to THIS module's asset
+        // count, which may differ from whatever module preceded it.
+        this.lastNonfiniteTotal = 0;
+        this.lastNonfinitePerAsset = new Array(assetCount).fill(0);
     }
 
     forEachAsset(fn) {
@@ -213,6 +231,27 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
         if (step !== this.lastStep) {
             this.lastStep = step;
             this.port.postMessage({ type: 'step', step });
+        }
+
+        // E5: a typeof guard, not a version check — a hot-swap can carry a
+        // module built before this packet existed (a preview rebuilt from a
+        // cached artifact), and calling an export that isn't there would
+        // throw out of process() and kill playback outright.
+        if (typeof this.ex.skald_get_nonfinite_count === 'function') {
+            const total = this.ex.skald_get_nonfinite_count();
+            const count = this.ex.skald_asset_count();
+            const perAsset = new Array(count);
+            let changed = total !== this.lastNonfiniteTotal;
+            for (let a = 0; a < count; a++) {
+                const c = this.ex.skald_get_asset_nonfinite_count(a);
+                perAsset[a] = c;
+                if (c !== (this.lastNonfinitePerAsset[a] ?? 0)) changed = true;
+            }
+            if (changed) {
+                this.lastNonfiniteTotal = total;
+                this.lastNonfinitePerAsset = perAsset;
+                this.port.postMessage({ type: 'nonfinite', total, perAsset });
+            }
         }
         const playing = this.ex.skald_is_playing(this.stepAsset) === 1;
         if (this.wasPlaying && !playing && !this.loopEnabled) {

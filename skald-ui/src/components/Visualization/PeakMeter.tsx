@@ -39,6 +39,21 @@ export const PeakMeter: React.FC<PeakMeterProps> = ({ analysers, width = 100, he
     const lastFrameMs = useRef<number | null>(null);
     const rafId = useRef<number | undefined>(undefined);
 
+    // E5 (roadmap 9.9): the DC-blocker/limiter's non-finite flush count.
+    // `analysers.nonfiniteCounts` is a REF (useWasmAudioEngine mutates
+    // `.current` in place from the worklet's message handler, never replacing
+    // it), so this component polls it inside the same rAF tick that already
+    // reads the audio buffers below, rather than subscribing to it as a prop
+    // change — a count that can move dozens of times a second has no business
+    // forcing sixty extra re-renders for a badge nobody is watching that
+    // closely. React state here exists ONLY to re-render when the polled
+    // value actually changes, same shape as the clip latch above.
+    const [nonfiniteTotal, setNonfiniteTotal] = useState(0);
+    // Compared against inside the rAF closure below (which is set up once per
+    // `analysers` and never sees its own setState calls) — same reason
+    // clipLatched sits next to clipLit above, instead of reading state back.
+    const lastNonfiniteSeen = useRef(0);
+
     const resetClip = useCallback(() => {
         clipLatched.current = false;
         setClipLit(false);
@@ -66,6 +81,13 @@ export const PeakMeter: React.FC<PeakMeterProps> = ({ analysers, width = 100, he
             // kept — an over that happened before Stop is still information.
             holdDb.current = [-Infinity, -Infinity];
             paint(0, 0, -Infinity, -Infinity);
+            // Unlike the clip latch, the non-finite badge does NOT persist
+            // across Stop: useWasmAudioEngine resets the count on the next
+            // Play (a fresh module has genuinely flushed nothing yet), and a
+            // stopped transport showing a warning about audio that is no
+            // longer playing is misleading, not informative.
+            lastNonfiniteSeen.current = 0;
+            setNonfiniteTotal(0);
             return;
         }
         const { left, right } = analysers;
@@ -91,6 +113,14 @@ export const PeakMeter: React.FC<PeakMeterProps> = ({ analysers, width = 100, he
             if (!clipLatched.current && (isClipping(peakL) || isClipping(peakR))) {
                 clipLatched.current = true;
                 setClipLit(true);
+            }
+            // E5: read fresh every tick — this is a plain mutated object, not
+            // a subscription, so nothing else will tell this component the
+            // value moved.
+            const total = analysers.nonfiniteCounts?.current.total ?? 0;
+            if (total !== lastNonfiniteSeen.current) {
+                lastNonfiniteSeen.current = total;
+                setNonfiniteTotal(total);
             }
             paint(peakL, peakR, holdDb.current[0], holdDb.current[1]);
             rafId.current = requestAnimationFrame(tick);
@@ -141,6 +171,25 @@ export const PeakMeter: React.FC<PeakMeterProps> = ({ analysers, width = 100, he
             >
                 CLIP
             </button>
+            {nonfiniteTotal > 0 && (
+                // E5 (roadmap 9.9): a fault the CLIP LED cannot show any more —
+                // the backend now flushes every NaN/Inf sample to silence
+                // before it reaches this meter's analyser tap (see meter.ts's
+                // note on peakOf), so an unstable patch that used to read as a
+                // stuck-lit clip LED would otherwise just look quiet.
+                <div
+                    data-testid="nonfinite-warning"
+                    title={`${nonfiniteTotal} non-finite (NaN/Inf) sample${nonfiniteTotal === 1 ? '' : 's'} flushed to silence by the DC-blocker/limiter since Play — the patch is producing invalid audio somewhere.`}
+                    style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        height: 14, padding: '0 5px', borderRadius: 2, border: '1px solid #a8720f',
+                        backgroundColor: 'rgba(178,120,25,0.95)', color: '#fff',
+                        fontSize: 9, fontWeight: 'bold', lineHeight: '12px', whiteSpace: 'nowrap',
+                    }}
+                >
+                    ⚠ {nonfiniteTotal}
+                </div>
+            )}
         </div>
     );
 };

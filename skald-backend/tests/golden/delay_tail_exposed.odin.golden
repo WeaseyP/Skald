@@ -92,12 +92,42 @@ skald_wavetable_sample :: proc(ph: f32, pos: f32, pw: f32) -> f32 {
 	return s1 + (s2 - s1) * frac
 }
 
+skald_master_flush_count: i32
+
 // Soft limiter with a ceiling that really is 1.0 — plain tanh, not
 // tanh(x*k)/k, which topped out above 1 and still clipped the device.
 // Transparent for small signals (tanh(x) ~= x below ~0.3), saturating
 // smoothly instead of clipping as the mix gets hot.
+//
+// E5: tanh(NaN) is NaN, and tanh(+-Inf) is +-1 — a NaN INPUT would poison
+// the entire mix silently, and an Inf input would report a false full-scale
+// tone. Flushed to silence and counted instead, here, so this is caught no
+// matter which of the three call sites (a per-asset _process, project_process,
+// or the wasm shim's skald_process) fed it a bad sample.
 skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
-	return math.tanh(l), math.tanh(r)
+	lf, rf := l, r
+	if math.is_nan(lf) || math.is_inf(lf) || math.is_nan(rf) || math.is_inf(rf) {
+		lf, rf = 0.0, 0.0
+		skald_master_flush_count += 1
+	}
+	return math.tanh(lf), math.tanh(rf)
+}
+
+// E5: one-pole DC blocker state, one instance per master bus (project_process
+// or the wasm shim's skald_process — see skald_dc_block below). Reset
+// alongside every other master-bus field (project_init / skald_init).
+Skald_Dc_Block_State :: struct {
+	x1_l, y1_l, x1_r, y1_r: f32,
+}
+
+// y = x - x1 + R*y1, R = 0.995 (~38 Hz cutoff at 48 kHz — see the note
+// above generate_project_code's call to emit_dc_block_proc).
+skald_dc_block :: proc(s: ^Skald_Dc_Block_State, l: f32, r: f32) -> (f32, f32) {
+	yl := l - s.x1_l + 0.995 * s.y1_l
+	yr := r - s.x1_r + 0.995 * s.y1_r
+	s.x1_l, s.y1_l = l, yl
+	s.x1_r, s.y1_r = r, yr
+	return yl, yr
 }
 
 skald_feedback_tail_seconds :: proc(period: f32, gain: f32) -> f32 {
@@ -158,6 +188,7 @@ ExposedTail_Processor :: struct {
 	ext_in_l: f32,
 	ext_in_r: f32,
 	volume: f32,
+	nonfinite_count: i32,
 	bus_tail_remaining: u64,
 	bus_tail_armed: bool,
 	delay_3_buffer: [96000]f32,
@@ -201,6 +232,7 @@ ExposedTail_init :: proc(p: ^ExposedTail_Processor, sr: f32) {
 	p.step_frac_acc = 0.0
 	p.ext_in_l = 0.0
 	p.ext_in_r = 0.0
+	p.nonfinite_count = 0
 	p.bus_tail_remaining = 0
 	p.bus_tail_armed = false
 	p.delay_3_buffer = {}
@@ -509,6 +541,10 @@ ExposedTail_process :: proc(p: ^ExposedTail_Processor) -> (f32, f32) {
 			p.bus_tail_remaining -= 1
 		}
 	}
+	if math.is_nan(output_left) || math.is_inf(output_left) || math.is_nan(output_right) || math.is_inf(output_right) {
+		p.nonfinite_count += 1
+		output_left, output_right = 0.0, 0.0
+	}
 	return skald_soft_limit(output_left * p.volume, output_right * p.volume)
 }
 ExposedTail_process_sequence :: proc(p: ^ExposedTail_Processor) {
@@ -518,10 +554,12 @@ ExposedTail_process_sequence :: proc(p: ^ExposedTail_Processor) {
 Project_State :: struct {
 	ExposedTail: ^ExposedTail_Processor,
 	master_volume: f32,
+	dc: Skald_Dc_Block_State,
 }
 
 project_init :: proc(p: ^Project_State, sr: f32) {
 	p.master_volume = 0.800000012
+	p.dc = {}
 	p.ExposedTail = new(ExposedTail_Processor)
 	ExposedTail_init(p.ExposedTail, sr)
 }
@@ -536,6 +574,7 @@ project_process :: proc(p: ^Project_State) -> (f32, f32) {
 	{ l, r := ExposedTail_process(p.ExposedTail); mixed_left += l; mixed_right += r }
 	mixed_left *= p.master_volume
 	mixed_right *= p.master_volume
+	mixed_left, mixed_right = skald_dc_block(&p.dc, mixed_left, mixed_right)
 	return skald_soft_limit(mixed_left, mixed_right)
 }
 

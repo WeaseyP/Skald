@@ -328,7 +328,12 @@ Each asset's `_process` ends with its own volume and its own soft limiter:
 
 ```odin
 skald_soft_limit :: proc(l: f32, r: f32) -> (f32, f32) {
-	return math.tanh(l), math.tanh(r)
+	lf, rf := l, r
+	if math.is_nan(lf) || math.is_inf(lf) || math.is_nan(rf) || math.is_inf(rf) {
+		lf, rf = 0.0, 0.0
+		skald_master_flush_count += 1
+	}
+	return math.tanh(lf), math.tanh(rf)
 }
 ```
 
@@ -339,6 +344,10 @@ It is transparent below about 0.3 and saturates smoothly instead of clipping as 
 **Your sum of N assets is not bounded.** Three assets each returning 0.9 give you 2.7. This is your final mix stage and Skald does not write it for you, but it does give you the same limiter to call: `skald_soft_limit` is a free function in the generated package, emitted into every file. So the honest shape of a game's mix is `skald_soft_limit(sum_l * your_gain, sum_r * your_gain)`. The demo instead multiplies its sum by a bare `0.6` (`examples/integration_demo/main.odin::producer_thread`) — enough for two assets, and not a formula to copy.
 
 An asset can opt out of its own limiter, in which case `_process` returns the raw product and says so in a comment. There is no editor control for this; it is the Instrument's `limit` parameter, settable only by hand-editing the save or in a project-shaped JSON, and absent means limited (`skald-backend/core/codegen_processor.odin::generate_processor_code`).
+
+**Roadmap 9.9 (audio-safety guardrails) changed one thing for the game-facing API specifically, and it is unconditional — `limit: false` does not opt out of it.** Immediately before that `return` line, `_process` now checks its own `output_left`/`output_right` for NaN or Inf (an unstable filter, a runaway feedback network, a divide-by-zero in a hand-authored graph) and flushes them to silence, counting the flush in a new per-asset field: `p.nonfinite_count` (`skald-backend/core/codegen_processor.odin::generate_processor_code`). Before this, a NaN output propagated through `math.tanh` as NaN — silently poisoning anything summed with it — and an Inf output came out of `tanh` as a false, perfectly in-range `±1.0` tone, indistinguishable from a real loud sample. There is no setter to read `p.nonfinite_count` back from your own game code today (the editor's preview reads it through the separate wasm-shim exports below); treat its existence as a guarantee that a broken patch goes silent instead of glitching, not as a diagnostic you can currently query at runtime.
+
+The **DC blocker** roadmap 9.9 also asks for lives on the master bus (`project_process` / the preview shim's `skald_process`), not on the per-asset path above: a one-pole filter like it rings for a couple of milliseconds on a sudden note onset, which would have broken this manual's own pinned `panner_center_unity`/`panner_mono_sum` exact-gain fixtures had it sat inside `_process`. Since `project_process` is the wrapper this chapter already tells you to ignore, **the DC blocker never reaches your game** — if a patch has a genuine DC offset problem (the asymmetric Distortion shape is the one node that can introduce one, `docs/manual-source/85-deliberate-exclusions.md`'s `KI-041`), your own final mix is still the only place it gets removed, exactly as before this packet (`skald-backend/core/codegen_project.odin::emit_dc_block_proc`).
 
 The project's **master volume** slider is a different thing again, and on the per-asset path it does not reach you: it is applied inside the `project_process` wrapper that game code is told not to use, and (as `skald_set_master_volume`) inside the preview shim. If the sound designer's master fader is part of the intended mix, ask them for the number and fold it into your own final gain — or, better, treat their per-asset Volume settings as the mix and your final gain as a master you control. One trap to know about: a project saved with `masterVolume` at exactly 0 exports **silent**, and the generator prints a loud warning saying so, because an authored 0 means the fader was pulled down; an *absent* key still means unity (`skald-backend/core/json.odin::resolved_master_volume`, `::warn_authored_master_silence`, pinned by `skald-backend/tests/unit/master_volume_test.odin::resolved_master_volume_authored_zero_is_silence`).
 
@@ -515,7 +524,8 @@ Some things the generated code does not do are not gaps — they are decisions, 
 | **`_PARAMS` table** | A slice of `{name, min, max, default, unit}` describing everything an asset exposes, for tooling to enumerate at runtime. |
 | **P-lock** | A per-step parameter override in the sequencer. Emitted as a call to the asset's own string setter, so it overwrites the game's value and the new value persists. |
 | **Bus tail** | The audible ring of a Delay or Reverb after the last voice has stopped. Counted down from live parameter values and reported by `_is_playing`. |
-| **Soft limiter** | `skald_soft_limit`, a plain per-channel `tanh` with a true ceiling of 1.0. Applied per asset inside `_process`, and available for your own final mix. |
+| **Soft limiter** | `skald_soft_limit`, a plain per-channel `tanh` with a true ceiling of 1.0. Applied per asset inside `_process`, and available for your own final mix. Flushes a NaN/Inf input to silence and counts it, unconditionally — `limit: false` does not opt out of this half. |
+| **Non-finite flush count** | `p.nonfinite_count` on each asset's own processor struct — how many times that asset's `_process` has had to silence a NaN/Inf output. No per-asset getter ships to game code today; the editor's preview reads the equivalent through the wasm shim's `skald_get_nonfinite_count`/`skald_get_asset_nonfinite_count`. |
 | **Provenance stamp** | The `generator:` and `input:` digests in the header. Content-derived, so they cannot be forgotten, and they answer "is this file current". |
 | **Save-format version** | The number the editor stamps into every save. A file from a newer Skald is refused whole rather than half-read. |
 | **Preview shim** | The second file emitted from the same analysis, `@(export) skald_*`, used only by the editor's WASM preview. Not part of the game-facing API; do not ship it. |

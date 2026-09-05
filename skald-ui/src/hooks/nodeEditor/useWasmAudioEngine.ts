@@ -28,7 +28,7 @@ import {
 } from '../../utils/projectSerializer';
 import { SequencerTrack } from '../../definitions/types';
 import { logger } from '../../utils/logger';
-import { StereoAnalysers } from '../../utils/meter';
+import { NonfiniteCounts, StereoAnalysers } from '../../utils/meter';
 
 // Debounce for regenerate+recompile on topology edits. Long enough to
 // coalesce a drag, short enough to feel live (measured build is ~200ms).
@@ -67,6 +67,16 @@ export const useWasmAudioEngine = (
     const [analyserState, setAnalyserState] = useState<AnalyserNode | null>(null);
     // Packet B10: the peak meter's stereo tap, one analyser per channel.
     const [meterState, setMeterState] = useState<StereoAnalysers | null>(null);
+    // E5 (roadmap 9.9): the DC-blocker/limiter's non-finite flush counts, as a
+    // ref rather than React state — the worklet can post an updated count
+    // dozens of times a second (once per skald_process call that changed it)
+    // and a warning badge has no business forcing a re-render on every one.
+    // PeakMeter polls `.current` the same way it already polls the audio
+    // buffers, via its own rAF loop. Reset at the top of handlePlay (not just
+    // relying on the fresh module's own zeroed counters) so a STALE reading
+    // from a stopped session's ref can never be exposed through a NEW
+    // session's meterState before the first 'nonfinite' message arrives.
+    const nonfiniteCountsRef = useRef<NonfiniteCounts>({ total: 0, perAsset: [] });
 
     // Surfaced to the UI — these errors were console-only, which made every
     // failure mode (Odin missing, codegen error, build timeout) look exactly
@@ -264,6 +274,11 @@ export const useWasmAudioEngine = (
         heldNotes.current.clear();
         setPreviewError(null);
         setPreviewStale(null);
+        // E5: a fresh session's meter must never show a leftover count from
+        // whatever the LAST session's patch did — a one-off glitch flushed
+        // ten notes ago must not read as "still happening" after the very
+        // next Play.
+        nonfiniteCountsRef.current = { total: 0, perAsset: [] };
         try {
             // Create the AudioContext synchronously, inside the click
             // gesture's window — created after the multi-hundred-ms build
@@ -318,6 +333,14 @@ export const useWasmAudioEngine = (
                     logger.error('WasmAudioEngine', 'Live param edit dropped', message);
                     setPreviewStale(message);
                 }
+                // E5: the DC-blocker/limiter flushed a NaN/Inf sample to
+                // silence and counted it. Mutated in place on the SAME ref
+                // object handed to meterState below, not replaced — PeakMeter
+                // holds onto that ref across re-renders and reads `.current`
+                // itself, so no setState (and no re-render) is needed here.
+                else if (m.type === 'nonfinite') {
+                    nonfiniteCountsRef.current = { total: m.total, perAsset: m.perAsset ?? [] };
+                }
             };
             // Structured-deserialization failures on messages FROM the worklet
             // are otherwise dropped without a trace (the worklet side has the
@@ -363,7 +386,7 @@ export const useWasmAudioEngine = (
             // against on the very first live edit after Play.
             prevInstruments.current = wrappedInstrumentNodes(nodes);
             setAnalyserState(analyser);
-            setMeterState({ left: meterLeft, right: meterRight });
+            setMeterState({ left: meterLeft, right: meterRight, nonfiniteCounts: nonfiniteCountsRef });
             setIsPlaying(true);
             logger.info('WasmAudioEngine', 'Playing generated wasm module');
         } catch (e) {

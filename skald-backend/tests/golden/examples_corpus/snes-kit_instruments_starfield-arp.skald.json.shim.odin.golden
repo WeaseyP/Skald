@@ -13,6 +13,7 @@ import "core:math"
 
 @(private="file") wasm_SNES_Starfield_Arp: SNES_Starfield_Arp_Processor
 @(private="file") wasm_master_volume: f32
+@(private="file") wasm_dc: Skald_Dc_Block_State
 
 SKALD_WASM_BLOCK :: 128
 @(private="file") skald_left: [SKALD_WASM_BLOCK]f32
@@ -35,6 +36,7 @@ skald_asset_count :: proc "c" () -> i32 { return 1 }
 skald_init :: proc "c" (sample_rate: f32) {
 	context = runtime.default_context()
 	wasm_master_volume = 0.750000000
+	wasm_dc = {}
 	wasm_SNES_Starfield_Arp = {}
 	SNES_Starfield_Arp_init(&wasm_SNES_Starfield_Arp, sample_rate)
 }
@@ -141,6 +143,23 @@ skald_get_step_wait :: proc "c" (asset: i32) -> i32 {
 }
 
 @(export)
+skald_get_asset_nonfinite_count :: proc "c" (asset: i32) -> i32 {
+	context = runtime.default_context()
+	switch asset {
+	case 0: return wasm_SNES_Starfield_Arp.nonfinite_count
+	}
+	return 0
+}
+
+@(export)
+skald_get_nonfinite_count :: proc "c" () -> i32 {
+	context = runtime.default_context()
+	total := skald_master_flush_count
+	total += wasm_SNES_Starfield_Arp.nonfinite_count
+	return total
+}
+
+@(export)
 skald_seek :: proc "c" (asset: i32, step: i32, samples_until_next: i32) {
 	context = runtime.default_context()
 	if step < 0 || samples_until_next < 0 do return
@@ -161,7 +180,10 @@ skald_process :: proc "c" (nframes: i32) -> i32 {
 		mixed_left: f32 = 0.0
 		mixed_right: f32 = 0.0
 		{ l, r := SNES_Starfield_Arp_process(&wasm_SNES_Starfield_Arp); mixed_left += l; mixed_right += r }
-		skald_left[i], skald_right[i] = skald_soft_limit(mixed_left * wasm_master_volume, mixed_right * wasm_master_volume)
+		vol_left := mixed_left * wasm_master_volume
+		vol_right := mixed_right * wasm_master_volume
+		dcb_left, dcb_right := skald_dc_block(&wasm_dc, vol_left, vol_right)
+		skald_left[i], skald_right[i] = skald_soft_limit(dcb_left, dcb_right)
 	}
 	return i32(n)
 }

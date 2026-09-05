@@ -239,6 +239,8 @@ The preview engine has to be running: press **Play** first. A letter key pressed
 
 The sequencer dock's Master section carries a stereo peak meter — two bars reading −60 to 0 dBFS with a falling peak-hold tick — and a **CLIP** LED that latches on the instant any sample reaches 0 dBFS and stays lit until you click it (`skald-ui/src/components/Visualization/PeakMeter.tsx::PeakMeter`). It is tapped from the same signal your exported game gets: the worklet's mixed, faded, soft-limited output, after the master volume fader and the `tanh` soft limiter, not some separate approximation. Next to it is the **master volume** slider, which multiplies every Instrument's summed output before that limiter — pull it down if the clip LED keeps lighting on a busy project rather than expecting individual Instruments to leave headroom for you.
 
+A patch that goes actively unstable — a self-feeding Reverb/Delay, a resonant Filter driven past its clamp, a Mapper output gone out of range — used to just get quieter or fall silent with no indication why: the master limiter's own NaN/Inf guard swallows the fault before it reaches your speakers. An amber **⚠ N** badge next to CLIP now appears the moment that has happened one or more times since the last Play — N is the running count of samples the DC-blocker/limiter stage had to flush to silence (`skald-ui/src/utils/meter.ts::NonfiniteCounts`). It clears on the next Play (a freshly built preview has flushed nothing yet), not on click — unlike CLIP, there is no "acknowledge and keep playing" state for a patch that is producing invalid audio, because the fix is in the graph, not in the meter.
+
 ---
 
 ## Generate Code

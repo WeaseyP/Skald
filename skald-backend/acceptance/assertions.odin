@@ -67,6 +67,39 @@ dc_offset :: proc(buf: []Stereo_Sample, ch: Channel) -> f32 {
 
 // ----- Public assertion procs -----
 
+// E5 (roadmap 9.9): proves the DC blocker actually pulls a steady-state bias
+// back toward zero, not merely that it doesn't make one worse — run_smoke's
+// existing dc_offset check is whole-buffer and tolerant (0.05), which would
+// pass trivially on a fixture whose attack/release silence dominates the
+// mean. The window here is explicit so a caller can sit inside the sustain
+// stage of a patch built to be DC-heavy there, clear of the transients.
+assert_dc_offset_below :: proc(buf: []Stereo_Sample, sample_rate: f32, start_s: f32, end_s: f32, max_offset: f32, ch: Channel) -> bool {
+	s := int(start_s * sample_rate)
+	e := int(end_s * sample_rate)
+	if s < 0 {
+		s = 0
+	}
+	if e > len(buf) {
+		e = len(buf)
+	}
+	if e - s <= 0 {
+		fmt.eprintfln(
+			"FAIL assert_dc_offset_below: window [%.3f,%.3f]s is outside the buffer",
+			start_s, end_s,
+		)
+		return false
+	}
+	dc := dc_offset(buf[s:e], ch)
+	if abs(dc) > max_offset {
+		fmt.eprintfln(
+			"FAIL assert_dc_offset_below: DC offset %.6f exceeds %.6f in [%.3f,%.3f]s on %v channel",
+			dc, max_offset, start_s, end_s, ch,
+		)
+		return false
+	}
+	return true
+}
+
 assert_silent :: proc(buf: []Stereo_Sample, ch: Channel) -> bool {
 	rms := compute_rms(buf, ch)
 	if rms >= 0.001 {
