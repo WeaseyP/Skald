@@ -1,6 +1,6 @@
 # Skald Roadmap — Issue Tracker
 
-> **Last updated:** 2026-09-05
+> **Last updated:** 2026-09-06
 > **Wave A:** ✅ Complete (13/13 packets landed)
 > **Wave B:** ✅ **12 of 12 sections closed** (2026-09-05) — B1/B3/B4/B11 verified already landed in
 > the Wave A remediation pass; B5 and B7 landed `d9922a0` / `fe05093`, B7-2's shipped tail defect was
@@ -12,6 +12,7 @@
 > or stay per-voice as today?) and **B2-x1** (which parameters a freshly placed Oscillator exposes by
 > default). Exit criterion 1 is met: the `forge.env` typecheck/lint baseline is fixed and every gate is
 > green at baseline.
+> **Wave D:** ✅ **4 of 4 closed** (2026-09-06, five commits on `web-app`: D4 `1811f07`, D3 tooling `82b0267`, D2 `ddcda7b`, D1 `765f2a7`, D3 `3f92958`). The manual has 27 chapters, `KNOWN-ISSUES.md` holds 56 open defects with IDs, and the citation gate (`npm run check` in `scripts/manual`, run by CI) is green: 1,838 `path::identifier` citations, 0 mismatches. Exit criteria 4, 6 and 7 are met; see the Wave D section.
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -682,21 +683,60 @@ A conservative static warning cannot see a defect that another defect is hiding.
 
 ## Wave D — Documentation
 
-- [ ] **D1** (L) — Four new chapters: Getting Started, Sequencer, Exporting Odin, Deliberate Exclusions
-- [ ] **D2** (M) — Retire "Code-vs-intent" — ~150 defect paragraphs → centralized `KNOWN-ISSUES.md`
-- [ ] **D3** (L) — Post-freeze citation re-pinning using proc-name convention; chapter rewrites from `FIXED.md`
-- [ ] **D4** (S) — Plan-document reconciliation — mark old tracking docs as superseded
+> **Wave D:** started and closed 2026-09-06, after Wave C. Everything below was produced by triage and
+> rewrite passes that verified each claim against the current tree, never against the July audit.
 
----
-
-## Wave E — Make It Playable
+- [x] **D1** (L) — ✅ **CLOSED** `765f2a7`. Four new chapters in `docs/manual-source/`:
+  `01-getting-started.md` (install routes, editor tour, the one rule — an Instrument is what preview and
+  export compile, and a loose graph auto-wraps since B6-1 — sound in 60 seconds, save/load/autosave,
+  every shortcut from `ShortcutLegend.tsx`), `05-sequencer.md` (transport, BPM, pattern length, tracks,
+  Step Grid vs Piano Roll at MIDI 0–127, Key + Scale and `nearestInScale`, and the P-lock rule read from
+  emitted code: a P-lock *is* `<Asset>_set_param` before the step's `note_on`, sticky, additive
+  modulation on top, auto-exposes — preview and export share `generate_sequencer_logic`, so they cannot
+  differ), `80-exporting-odin.md` (exit criterion 6 as a document: file shape, export IDs, lifecycle,
+  buffer contract, `_is_playing` through the tail, `_PARAMS` and both setter kinds, the `::` alias,
+  per-asset volume + `skald_soft_limit`, the threading rule, regeneration and the provenance digest,
+  preflight refusals quoted from real stderr, the integration demo run to `silent-test PASS`), and
+  `85-deliberate-exclusions.md` (every `docs/0.2-ROADMAP.md` §7 row with reason and revisit condition, plus
+  the 19 design notes D2 lifted out of the chapters — exit criterion 7). Each chapter was fact-checked by
+  a second agent that re-ran the commands. Chapter order per `EDITORIAL-REPORT.md`: Instrument and the
+  Sequencer are 3rd and 4th because every exercise needs them (`build-manual.mjs` PARTS, 27 chapters).
+  `examples/integration_demo/README.md` now builds `codegen.exe` first (it failed on a fresh clone).
+- [x] **D2** (M) — ✅ **CLOSED** `ddcda7b`. Every chapter's "Code-vs-intent notes" section is gone
+  (~160 paragraphs). Five triage passes classified each item against the tree, `FIXED.md` and this file:
+  53 still-open defects → `docs/manual-source/KNOWN-ISSUES.md` as KI-001..053 (deduplicated, grouped by
+  area, status/severity/chapters/citations; a registered chapter, so it ships), 44 fixed items → its
+  "Resolved before 0.2" table naming the closing packet, 19 design decisions → D1's exclusions chapter,
+  the `skald-ui/new_docs` staleness → one sentence. Each chapter ends with a "Known issues" section
+  naming the KI ids that touch it. D3 added KI-054..056.
+- [x] **D3** (L) — ✅ **CLOSED** `82b0267` + `3f92958`. Convention is `path::identifier` (a name that
+  literally appears in the file); `scripts/manual/check-citations.mjs` gates it (strict over the PARTS
+  chapters, `--all` advisory over `docs/**`), runs inside `npm run check`/`npm run build`, and replaced
+  the Python checker that exited 0 unconditionally. 1,323 legacy citations converted by eight passes
+  that re-verified every claim; 97 passages rewritten because the code no longer did what they said,
+  each listed in `FIXED.md`'s D3 entry with the packet that changed the code (Piano Roll 0–127, auto-wrap,
+  real pre-delay, the B7-1 Panner law, multiplicative VCA, per-asset limiter, C6 voice lifecycle, "In"
+  port, the sax3 exercise rebuilt against the shipped file, "Open File..."/"Download Code"). The
+  checker was tightened twice by what the pass found (bare `:153` continuations, comma lists, bare
+  `::identifier` shorthand); 12 self-tests. Foundations' "How to read this manual" states the new order,
+  the convention and the mono-until-the-terminal-Panner model. Exit criterion 4: `FIXED.md` carries the
+  entry; the gate reports 0 mismatches. **Not done from the row:** "make 'chapter sections invalidated'
+  a required packet-report field, cross-checked against the diff" — a process rule, recorded under To-do.
+- [x] **D4** (S) — ✅ **CLOSED** `1811f07`. Dated status banners on `CODEX-REMEDIATION-BRIEF.md` (with the
+  W0–W5 → A/B/C mapping, all closed), `bpm-ux.md` (retitled *BPM input hygiene*; each proposal marked
+  landed / not / superseded, B2 and C7 named), `0.2-ROADMAP.md` (origin plan, frozen; §7/§9 still the
+  reference), `0.2-AUDIT-GAPS.md`, `docs/audit/0.2/README.md`, `EDITORIAL-REPORT.md`, and the gitignored
+  `review-checkpoints/REVIEW-REPORT.md` (T8 superseded by architecture). `BUGS.md` was folded into this
+  file at `35a1654`; `examples/AUDIT.md` was already deleted once A5 went green; audio-oddities #4 already
+  read CONFIRMED-FIXED. `TESTING.md` records the one brief coverage gap still open (Sample & Hold has no
+  backend fixture).## Wave E — Make It Playable
 
 > The features that make Skald feel like a real instrument.
 
 - [ ] **E1** (S) — **QWERTY keyboard auditioning.** Press keys to trigger synth voices live while adjusting parameters. No more sequencing just to hear a sound. *(§9.7)*
 - [ ] **E2** (M) — **Piano Roll: note duration dragging.** Remove `pointerEvents: 'none'`; implement drag handles to adjust `NoteEvent.duration` horizontally across step boundaries. *(§9.1 item 1)*
 - [ ] **E3** (M) — **Piano Roll: per-note P-lock editing.** Click individual chord members to assign P-locks, micro-timing, and probability independently. *(§9.1 item 2)*
-- [ ] **E4** (S) — **Piano Roll: full 0–127 scrollable canvas.** Replace hardcoded MIDI 21–84 with scrollable full-range pitch view. *(§9.1 item 4)*
+- [x] **E4** (S) — ✅ **already landed** by B5-3 (SKB-026): `stepMetrics.ts::MIDI_NOTE_MIN/MAX` are 0/127, `pitchRowsDescending` draws all 128 rows and the roll opens scrolled to middle C. Verified 2026-09-06 while writing the Sequencer chapter; the row's "hardcoded 21–84" premise was stale. *(§9.1 item 4)*
 - [ ] **E5** (S) — **Audio safety: DC blocker + brickwall limiter.** Un-bypassable safety limiter on monitor output bus. Visual NaN/Inf/overflow warnings on canvas. *(§9.9)*
 - [ ] **E6** (S) — **Node graph: minimap + snap-to-grid.** React Flow minimap, alignment tools, lasso selection ergonomics. *(§9.6 item 1)*
 - [ ] **E7** (S) — **Node graph: semantic cable colors.** Audio = green, modulation = orange, trigger = blue. *(§9.6 item 2)*
@@ -775,6 +815,32 @@ figure: 44/573 is the tracked-tree number, confirmed by running vitest in a `git
 
 Work the agent left deliberately undone. Each is small and self-contained; none blocks 0.2.
 
+- [ ] **KI-055 · feedback loop does not stop generation** (S, **high**) — `codegen_processor.odin::generate_processor_code`
+  prints "contains a feedback loop" and then continues past a commented-out `os.exit(1)`, emitting the asset
+  without the cyclic nodes and exiting 0. Restore the exit behind an acceptance fixture that fails first
+  (a two-node cycle inside an Instrument), and make the editor surface the refusal. Found by the D3 pass.
+- [ ] **FM Operator Ratio reset** (S) — `NodeParameterControls.tsx` still hardcodes 1 as the slider's
+  double-click reset target while `schema/nodes.json` says 2 (C2 flipped the polarity of the old split;
+  KI-024). Read the reset value from the schema row so there is one reader.
+- [ ] **Stale comments and pinned-nothing scales** (S) — `useSequencerState.ts` header says "50-entry
+  stack" (`editorSnapshot.ts::HISTORY_LIMIT` is 100); `stepMetrics.ts` and `EffectiveStepRange.test.tsx`
+  say `four-bar-song.skald.json` has no `session` block (B8-1 gave it one); no vitest pins `SCALES`, the
+  `Chromatic` default or `nearestInScale`'s tie-break (interval listed first wins — A♯ in C major goes
+  *down* to A). Add the test, fix the comments.
+- [ ] **Example hygiene** (S) — `wobble-samplehold-bass.skald.json` stores a pre-C7 LFO free-run value
+  (C7 corrects it on first open; re-save so the file holds one truth); `hat-static.skald.json` P-locks
+  `decay` 0.12 with no restore, so every step after 2 is long (KI-056) — lock 0.045 on the other steps.
+- [ ] **Packet-report field** (process) — the half of D3 not done: every packet report lists the chapter
+  sections it invalidates, cross-checked mechanically against the diff. Today the discipline is the
+  `FIXED.md` entry plus the citation gate; the mechanical cross-check does not exist.
+- [ ] **Integration demo does not exit without an audio device** (S) — `examples/integration_demo` in its default
+  full-demo mode prints its 8 s timeline through `shutdown` and then never returns when run from a session with no
+  audio device (observed 2026-09-06 under the agent shell); the process holds `integration_demo.exe` open and the
+  next `build_and_run.bat` fails with LNK1104. `-mode:silent-test` exits cleanly. Check the device teardown path in
+  `main.odin`; CI's smoke job should use silent-test or a timeout.
+- [ ] **ESLint caveat lost with BUGS.md** — the old `BUG-LINT-WARNINGS` note ("the fix was a suppression;
+  four rule families are still `off`") did not carry into this file. Re-verify `skald-ui`'s ESLint config
+  and either turn the rules on or record the decision here.
 - [ ] **C2-followup** (M, 0.3) — the generated-bindings remainder of C2, each a mechanical consumer of
   `schema/nodes.json` once ports and per-node state are added to it: generated TS param types (drop the
   `[key: string]: any` escape hatch), the validator's port tables (`graph_validate.odin`),
@@ -782,7 +848,7 @@ Work the agent left deliberately undone. Each is small and self-contained; none 
   `ParamField[]` spec (F-B07-8). None changes a shipped sound.
 - [ ] **SKB-040 / SKB-042 / SKB-055** — listed under C2 as "closes" but described nowhere in the repo
   (no BUGS.md, no code or doc mention). Recover what they were, or strike them from the C2 row.
-- [ ] **Manual rebuild** — `docs/manual/skald-manual.html` is gitignored (`.gitignore:46`). The
+- [ ] **Manual rebuild / publish** — `npm run build:html` was run 2026-09-06 after Wave D (27 chapters, 2.5 MB); the PDF needs Chrome and was not built. Still yours to place. Original note: `docs/manual/skald-manual.html` is gitignored (`.gitignore:46`). The
   manual-source edits from C3 (Instrument: Export ID, Type), C4 (VCA: Gain-in modes) and C5
   (Wavetable PW/Phase, FM Amp, Reverb Damping) are committed in `docs/manual-source/` but the
   published HTML is whatever was last built. Run `npm run build:html` in `scripts/manual/` wherever
@@ -811,7 +877,7 @@ one-line changes once decided; the agent did not choose.
 
 | ID | Issue | Severity |
 |---|---|---|
-| **SKB-020** | Checked-in `generated_audio.odin` copies are stale (3 of 4 regenerated; 1 left for D3 citation reasons) | high |
+| **SKB-020** | ✅ **FIXED** `e1e48cf` (2026-09-06). All three gated copies regenerated; `regen_generated.bat check` green, acceptance 48/48, goldens 67/67 + identical, demo `silent-test PASS`. The ungated fourth copy `skald-backend/tests/generated_audio.odin` has no source JSON and no consumer; D3 removed the citations that kept it — delete it and update the script header. | high |
 | **SKB-048** | `NumberInput` unguarded `.toString()` on focus can throw if value is null | low |
 | **SKB-053** | Audio worklet allocates 2 fresh Float32Array views every render quantum | low |
 | **SKB-056** | CustomSlider/XYPad log-scale math breaks for `min ≤ 0` (dormant — no current caller) | low |
