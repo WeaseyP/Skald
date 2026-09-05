@@ -1,5 +1,14 @@
 # Skald — Remediation Brief for Codex
 
+> **Status (2026-09-06): superseded by `ROADMAP.md`.** Unexecuted content carried forward:
+> W0 (Create Group) → **A7**, closed (`20d6d02`). W2/B1 (unplayable loose-graph examples) →
+> **B6**, closed. W2/B6 (`sax3.json`) → **B8**, closed (`120081a`). W3/B7 (dead exposed
+> setters) → **B2**, closed. W4 C2–C6 (modulation semantics) → §7 / Wave C of
+> `docs/0.2-ROADMAP.md`, tracked as **Wave C** in `ROADMAP.md`, closed (C2 core, C3–C6 full).
+> W5 (batched remainder) → **A7** / Wave B items, closed. Its §4 golden-file discipline and
+> §7 stop conditions: `TESTING.md` already carries the substance; the one gap folded in is
+> under “Coverage gaps carried forward from the Codex remediation brief” there.
+
 **Version 2** — supersedes v1 in full. v1 was written before verification and contained two
 wrong packets; see §2.
 **Branch:** `review-fixes`

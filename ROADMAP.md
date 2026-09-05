@@ -23,6 +23,9 @@
 - **Severity:** critical · high · medium · low
 - Bug IDs (SKB-xxx) are preserved from the original `BUGS.md` for traceability
 - Each wave must fully complete before the next wave is assigned
+- `BUGS.md` itself was folded into this file at `35a1654` ("Replace BUGS.md with consolidated
+  ROADMAP.md") and no longer exists at the repo root; see Closed History (Wave A) below for its
+  preserved SKB IDs
 
 ---
 

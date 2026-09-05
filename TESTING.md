@@ -138,3 +138,13 @@ Two traps seen in Wave B:
 - Asserting a value computed by the function under test
   (`expect(x).toBe(helper(60))`) passes for any implementation. Pin a literal
   somewhere.
+
+## Coverage gaps carried forward from the Codex remediation brief
+
+`docs/CODEX-REMEDIATION-BRIEF.md` §4 flagged that Distortion and Sample & Hold had no fixture,
+golden or UI test at all — "unpinned — add a fixture rather than trusting a green run." Re-checked
+2026-09-06: Distortion now has both (`tests/fixtures/codegen_only/distortion_default_gain.json`,
+`distortion_output_gain.json`, and their `.odin.golden`/`.shim.odin.golden` pairs). **Sample & Hold
+still has no acceptance or golden fixture** — it has UI-side coverage only (`SyncRateDefault.test.tsx`,
+`PlockTargets.test.ts`, `NodeSchema.test.ts`). A change to its codegen is still unpinned on the
+backend side; add a `codegen_only` fixture before trusting a green run there.

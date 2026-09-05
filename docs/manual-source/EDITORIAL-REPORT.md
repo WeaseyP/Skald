@@ -1,5 +1,10 @@
 # Skald Manual - Editorial Report
 
+> **Status (2026-09-06):** written 2026-07-30, before Wave D existed. Its "Code-vs-intent
+> findings" list and proposed table of contents are what Wave D (D1-D3, `ROADMAP.md`) is
+> executing — reorder, de-duplication, `KNOWN-ISSUES.md` extraction. This file remains the
+> reference for that reorder/de-dup plan; it is a working note, not a manual chapter.
+
 *Handoff document for the assembly workflow. Written 2026-07-30. Synthesises four independent
 audits: node-chapter code claims (verified), spine-chapter code claims (verified), pedagogy /
 order / gaps / glossary, and a fact-check of every number in the chapters.*

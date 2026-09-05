@@ -4,10 +4,11 @@ Provenance for `docs/0.2-ROADMAP.md`, `docs/0.2-AUDIT-GAPS.md` and `BUGS.md`. Th
 per-agent reports the three deliverables were compiled from, preserved so any claim in them can be
 traced back to the agent that made it and the evidence that agent cited.
 
-**Nothing in this folder is a plan.** The roadmap is the plan; where a report here disagrees with
-it, the roadmap wins — it was compiled after the corrections below were applied. Several findings
-in these files were later downgraded, merged, or refuted outright. Read them as testimony, not as
-a work list.
+**Nothing in this folder is a plan.** *(2026-09-06: the live tracker is now `ROADMAP.md`; this
+folder is historical testimony behind the 2026-08-01 `docs/0.2-ROADMAP.md`.)* The roadmap is the
+plan; where a report here disagrees with it, the roadmap wins — it was compiled after the
+corrections below were applied. Several findings in these files were later downgraded, merged, or
+refuted outright. Read them as testimony, not as a work list.
 
 ## Structure
 
