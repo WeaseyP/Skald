@@ -476,7 +476,7 @@ describe('useFileIO — save-file schema version (C1)', () => {
         await act(async () => { await result.current.handleSave(); });
         const written = JSON.parse(saveGraph.mock.calls[0][0]);
         // Before C1 no save carried a version at all (F-B06-1).
-        expect(written.version).toBe(2); // C3 bumped the schema to 2 (CURRENT_SAVE_VERSION)
+        expect(written.version).toBe(3); // C3 bumped the schema to 2, C4 to 3 (CURRENT_SAVE_VERSION)
     });
 
     it('Load migrates parentNode -> parentId inside an Instrument subgraph, which the old shim skipped (F-B06-7)', async () => {

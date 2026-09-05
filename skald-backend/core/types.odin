@@ -154,7 +154,8 @@ Session_Raw :: struct {
 // The save-file schema version this reader understands (packet C1). Mirrors
 // CURRENT_SAVE_VERSION in skald-ui/src/utils/saveMigrations.ts — bump both.
 //   2 (C3): Instrument nodes carry `exportId` and `assetType`.
-SAVE_FORMAT_VERSION :: 2
+//   3 (C4): Gain nodes carry `gainMode` ("multiply" | "add").
+SAVE_FORMAT_VERSION :: 3
 
 Graph_Raw :: struct {
 	// Stamped by the editor's Save since C1; absent (pre-C1) unmarshals as 0.

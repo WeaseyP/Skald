@@ -30,7 +30,8 @@ import { NodeParams } from '../definitions/types';
 
 // 1 (C1): versioned; parentNode -> parentId; dead syncRate exposures removed.
 // 2 (C3): Instrument nodes carry `exportId` and `assetType`.
-export const CURRENT_SAVE_VERSION = 2;
+// 3 (C4): Gain nodes carry `gainMode` ('multiply' | 'add').
+export const CURRENT_SAVE_VERSION = 3;
 
 /** The untyped save-file object as parsed from JSON. */
 export type SaveFlow = Record<string, unknown> & { nodes: unknown[] };
@@ -123,6 +124,24 @@ export const MIGRATIONS: readonly Migration[] = [
                     node.data.assetType = inferAssetType(n.id, tracks);
                 }
             }
+        },
+    },
+    {
+        from: 2,
+        to: 3,
+        describe: 'VCA nodes stamped with the Gain-port arithmetic they already used (add); new VCAs multiply',
+        // C4 (F-A04-4). The generator reads an absent `gainMode` as the legacy
+        // additive form, so this stamp changes no sound — it makes the file say
+        // what it does, so the card can show it and the author can flip it.
+        // Recurses into instruments: that is where every real VCA lives.
+        apply: (flow) => {
+            walkNodes(flow.nodes, (node) => {
+                if (node.type !== 'gain') return;
+                if (!node.data) node.data = {};
+                if (node.data.gainMode !== 'multiply' && node.data.gainMode !== 'add') {
+                    node.data.gainMode = 'add';
+                }
+            });
         },
     },
 ];

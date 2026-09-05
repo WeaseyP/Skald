@@ -20,7 +20,7 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
 describe('the registry', () => {
     it('is contiguous from 0 to CURRENT_SAVE_VERSION with one step per version', () => {
-        expect(CURRENT_SAVE_VERSION).toBe(2);
+        expect(CURRENT_SAVE_VERSION).toBe(3);
         const froms = MIGRATIONS.map((m) => m.from);
         expect(froms).toEqual([...Array(CURRENT_SAVE_VERSION).keys()]);
         MIGRATIONS.forEach((m) => expect(m.to).toBe(m.from + 1));
@@ -196,6 +196,55 @@ describe('migration 1 -> 2 (Instrument identity made explicit — packet C3)', (
         const flow = before();
         migrateSaveFile(flow);
         expect(dataOf(flow, 'f')).toEqual({ label: 'F', cutoff: 800 });
+        const once = clone(flow);
+        migrateSaveFile(flow);
+        expect(flow).toEqual(once);
+    });
+});
+
+describe('migration 2 -> 3 (VCA Gain-port mode made explicit — packet C4)', () => {
+    // Every pre-C4 VCA computed `audio * (knob + incoming)`. New nodes are
+    // multiplicative; the migration stamps the legacy form on nodes that
+    // predate the field so the file SAYS what it does and the card can show it.
+    const before = (): SaveFlow => ({
+        version: 2,
+        nodes: [
+            { id: 'top', type: 'gain', position: { x: 0, y: 0 }, data: { label: 'VCA', gain: 0 } },
+            { id: 'f', type: 'filter', position: { x: 0, y: 0 }, data: { label: 'F', cutoff: 800 } },
+            {
+                id: 'inst', type: 'instrument', position: { x: 0, y: 0 },
+                data: {
+                    name: 'I', label: 'I', exportId: 'I', assetType: 'sfx',
+                    subgraph: {
+                        nodes: [
+                            { id: 'inner', type: 'gain', position: { x: 0, y: 0 }, data: { label: 'Amp', gain: 0 } },
+                            { id: 'already', type: 'gain', position: { x: 0, y: 0 }, data: { label: 'New', gain: 1, gainMode: 'multiply' } },
+                        ],
+                        connections: [],
+                    },
+                },
+            },
+        ],
+        edges: [],
+    });
+    const find = (flow: SaveFlow, id: string): Record<string, unknown> => {
+        let found: Record<string, unknown> | undefined;
+        walkNodes(flow.nodes, (n) => { if (n.id === id) found = n.data as Record<string, unknown>; });
+        return found!;
+    };
+
+    it('stamps gainMode "add" on every Gain node that predates the field, inside instruments too', () => {
+        const flow = before();
+        expect(migrateSaveFile(flow).ok).toBe(true);
+        expect(find(flow, 'top').gainMode).toBe('add');
+        expect(find(flow, 'inner').gainMode).toBe('add');
+    });
+
+    it('leaves a node that already chose alone, and touches nothing else', () => {
+        const flow = before();
+        migrateSaveFile(flow);
+        expect(find(flow, 'already').gainMode).toBe('multiply');
+        expect(find(flow, 'f')).toEqual({ label: 'F', cutoff: 800 });
         const once = clone(flow);
         migrateSaveFile(flow);
         expect(flow).toEqual(once);

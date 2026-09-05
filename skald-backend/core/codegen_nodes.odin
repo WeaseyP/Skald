@@ -565,7 +565,36 @@ generate_mapper_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, pl
 generate_gain_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph, plan: ^Instrument_Plan) {
 	input_str := sum_port_inputs(graph, node.id, "input", "0.0")
 
-	gain_str := get_f32_param(graph, plan, node, "gain", "input_gain", 1.0)
+	// C4 (F-A04-4): every modulation port in the generator is additive —
+	// `(knob) + (incoming)` — and on the VCA's Gain port that defeated the one
+	// idiom the node exists for: a bare envelope into a separate amplifier
+	// computed `audio * (0.75 + envelope)`, a note that never stopped. All
+	// five VCAs in the flagship song hand-set `gain: 0` to work around it.
+	// `gainMode` "multiply" (what the editor gives every new VCA) scales the
+	// knob by the product of the incoming signals: `audio * knob * env` has
+	// full authority from silence to unity. Anything else — including the
+	// field being ABSENT, which is every pre-C4 file on disk and every CLI
+	// input the editor never migrated — keeps the additive form, so no
+	// existing patch changes sound; the 2->3 save migration stamps "add" so
+	// the file says which it is. Exact match on the lowercase spelling the
+	// editor writes: an unknown value is legacy, never a guess.
+	gain_str: string
+	if get_string_param(node, "gainMode", "") == "multiply" {
+		gain_str = get_f32_param(graph, plan, node, "gain", "", 1.0)
+		sources := find_inputs_for_port(graph, node.id, "input_gain")
+		defer delete(sources)
+		if len(sources) > 0 {
+			gsb := strings.builder_make()
+			defer strings.builder_destroy(&gsb)
+			fmt.sbprintf(&gsb, "(%s)", gain_str)
+			for src in sources {
+				fmt.sbprintf(&gsb, " * (%s)", get_output_var(src.id, src.port))
+			}
+			gain_str = strings.clone(strings.to_string(gsb), context.temp_allocator)
+		}
+	} else {
+		gain_str = get_f32_param(graph, plan, node, "gain", "input_gain", 1.0)
+	}
 
 	fmt.sbprintf(sb, "\t\t// --- Gain Node %s ---\n", node.id)
 	fmt.sbprintf(sb, "\t\tnode_%s_out = (%s) * (%s);\n\n", node.id, input_str, gain_str)

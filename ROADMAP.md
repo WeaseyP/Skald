@@ -528,7 +528,7 @@ A conservative static warning cannot see a defect that another defect is hiding.
 
 ## Wave C — Schema & Behaviour
 
-> **Wave C:** started 2026-09-05 after Wave B closed. C1, C3, C6 and C7 landed; C2, C4 and C5 open.
+> **Wave C:** started 2026-09-05 after Wave B closed. C1, C3, C4, C6 and C7 landed; C2 and C5 open.
 
 ### C1 — Schema Version + Migration Registry
 - [x] **C1** (M) — ✅ **CLOSED**. `skald-ui/src/utils/saveMigrations.ts`: `CURRENT_SAVE_VERSION = 1`,
@@ -576,7 +576,20 @@ A conservative static warning cannot see a defect that another defect is hiding.
   watched failing first.
 
 ### C4 — Multiplicative VCA `input_gain`
-- [ ] **C4** (M) — Additive offset → multiplicative scaling (version-gated). Keep ADSR-direct as canonical.
+- [x] **C4** (M) — ✅ **CLOSED** (2026-09-05). Save version 3. The Gain node carries `gainMode`:
+  `"multiply"` emits `audio * knob * in1 * in2…` (`generate_gain_code`), anything else — including an
+  ABSENT field, which is every pre-C4 file on disk and every CLI input — keeps the additive
+  `audio * (knob + in)`. So no existing patch changes sound, and the cross-path corpus gate stays
+  exact. Version-gating: migration 2→3 stamps `gainMode: 'add'` on every existing Gain node (inside
+  instruments too) so the file says what it does; a VCA dragged in fresh gets `'multiply'`
+  (node-definitions default). The card shows the choice as **Gain in** with a hint per mode. ADSR-direct
+  stays the taught canonical; the ADSR's own multiply is untouched. Tests, each watched failing first:
+  acceptance `vca_multiply` (knob 1.0 + bare envelope: decay-window RMS 0.54 → 0.25, late-release
+  RMS 0.3 → ~0; the first draft asserted silence after the note and passed before the fix because an
+  Idle envelope deactivates the voice either way — re-targeted at the live windows), 5 Odin unit tests
+  (`gain_mode_test`), and 5 vitest cases (GainNode card, migration 2→3, registry). Manual: VCA chapter's
+  gotcha section rewritten as the two-arithmetic rule; ADSR chapter's "modulation inputs add" sentence
+  carries the exception.
 
 ### C5 — Finish the Nodes
 - [ ] **C5** (M) — Wavetable/FM unison decision; Wavetable PWM + phase; FM Operator output level; Reverb `damping`.

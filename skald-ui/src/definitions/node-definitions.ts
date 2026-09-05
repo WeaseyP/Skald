@@ -160,6 +160,10 @@ const defaultPannerParams: PannerParams = {
 
 const defaultGainParams: GainParams = {
     gain: 0.75,
+    // C4: a fresh VCA scales its knob by what arrives on the Gain port, so
+    // the modular idiom — envelope into a separate amplifier — works without
+    // first zeroing the knob (the workaround every shipped example used).
+    gainMode: 'multiply',
     exposedParameters: ['gain']
 };
 

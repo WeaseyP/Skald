@@ -1075,6 +1075,41 @@ main :: proc() {
 			}
 		}
 
+	case "vca_multiply":
+		// C4 (F-A04-4): the modular idiom — a bare envelope into a separate
+		// VCA's Gain port — used to compute `audio * (knob + envelope)`, so with
+		// the knob at 1.0 the multiplier swung 1 -> 2 -> 1 and the note never
+		// stopped. A VCA whose `gainMode` is "multiply" computes
+		// `audio * knob * envelope`: full authority from silence to unity, and
+		// the note ends when the envelope does. Knob deliberately at 1.0 — the
+		// value that makes the additive form fail loudest.
+		{
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				all_pass &= assert_audible(buf[0:int(0.05 * sample_rate)], .Left)
+				// Two windows the additive form gets wrong while the voice is alive
+				// (once the envelope is Idle the voice is inactive either way, so a
+				// silence check after the note proves nothing). During the decay the
+				// envelope is ~0.9: multiply gives 0.5 * 0.8 * 0.9 -> RMS ~0.25;
+				// additive gives a multiplier of ~1.9 -> RMS ~0.54. Late in the
+				// release (0.13-0.16 s, envelope 0.24 -> 0) multiply is nearly
+				// silent; additive is still ~1.0x, a full-level tone about to be
+				// hard-cut.
+				rms_decay := compute_rms(buf[int(0.02 * sample_rate):int(0.05 * sample_rate)], .Left)
+				rms_late := compute_rms(buf[int(0.13 * sample_rate):int(0.16 * sample_rate)], .Left)
+				if rms_decay > 0.35 || rms_late > 0.1 {
+					fmt.eprintfln(
+						"FAIL vca_multiply: decay RMS %.3f (want < 0.35), late-release RMS %.3f (want < 0.1) — the Gain port is adding to the knob instead of scaling it",
+						rms_decay, rms_late,
+					)
+					all_pass = false
+				}
+				all_pass &= assert_silence_after(buf, sample_rate, 0.3)
+			}
+		}
+
 	case "steal_click":
 		// Voice-steal continuity gate: voice_count=1 patch holds A4, then a
 		// second note_on steals the only voice. The retrigger must be

@@ -144,6 +144,12 @@ export interface PannerParams extends BaseNodeParams {
 
 export interface GainParams extends BaseNodeParams {
   gain: number;
+  // C4 (F-A04-4): how the Gain port combines with the knob. 'multiply' —
+  // what every new VCA gets — is `audio * knob * incoming`, so a bare
+  // envelope shapes a note from silence. 'add' is the pre-C4 form
+  // (`audio * (knob + incoming)`) every existing file keeps; the 2->3
+  // migration stamps it. Absent reads as 'add' in the generator.
+  gainMode?: 'multiply' | 'add';
 }
 
 export interface OutputParams extends BaseNodeParams {

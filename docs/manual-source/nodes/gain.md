@@ -65,21 +65,14 @@ Where those numbers come from, and why there are two defaults:
 
 The musically useful zone for the knob alone is **0.3 to 1.2**. Everything above that is either an effect or a mistake.
 
-### The one gotcha: Gain-port modulation is ADDED, not substituted
+### The Gain port has two arithmetics — and the card says which
 
-When you patch something into the **Gain** port, Skald does not replace the knob value with the incoming signal. It **adds** them. The generated expression is literally `(knob) + (incoming)` (`skald-backend/core/param_utils.odin:149-153`), and then that sum multiplies the audio (`skald-backend/core/codegen.odin:714`).
+The **Gain in** control under the knob is the single most important setting on this node. It decides what happens to the knob value when a signal arrives on the **Gain** port (`generate_gain_code` in `skald-backend/core/codegen_nodes.odin`):
 
-So a brand-new VCA at its 0.75 default, with an ADSR wired into Gain, computes:
+- **multiply** — the default for every VCA you drag in — computes `out = audio * knob * incoming`. Patch a bare ADSR into Gain and the note goes from silence to the knob's level and back to silence; the knob is the ceiling. This is the modular-synth idiom exactly as your intuition expects it, and it is what the *Try it* section below assumes.
+- **add** computes `out = audio * (knob + incoming)`. The knob is a **floor** and the patched signal is a deviation from it. That is what you want for tremolo that must never fully disappear — knob at 1.0, a small bipolar LFO on top, the level breathing around unity.
 
-```
-out = audio * (0.75 + envelope)
-```
-
-The envelope swings 0 → 1 → 0, so the multiplier swings **0.75 → 1.75 → 0.75**. It never reaches zero. The note never stops. You get a permanent drone with a bump at the start, and it sounds broken because it is.
-
-The fix is one keystroke: **set the knob to 0** before you patch the envelope in. Then the expression is `audio * (0.0 + envelope)` and the envelope has full authority from silence to unity. Every VCA in every shipped example that receives envelope modulation is set to zero for exactly this reason (`examples/songs/full/four-bar-song.skald.json:18`; `examples/instruments/keys/fm-rhodes-electric-piano.skald.json:66`).
-
-Read the other way round, the additive behaviour is a feature: the knob is your **offset**, and the patched signal is your **deviation from that offset**. That is precisely what you want for tremolo, where the sound should never fully disappear — knob at 1.0, a small bipolar LFO added on top, and the level breathes around unity.
+Why two? Until save version 3 the Gain port was *always* additive, on every modulation port in the generator. Applied to amplitude that defeated the node's main job: a new VCA at its 0.75 default with an envelope wired in computed `audio * (0.75 + envelope)`, a multiplier that swung 0.75 → 1.75 → 0.75 and a note that never stopped. Every shipped example that used the idiom worked around it by zeroing the knob (`examples/songs/full/four-bar-song.skald.json:18`; `examples/instruments/keys/fm-rhodes-electric-piano.skald.json:66`). Those files still sound exactly as they did: when an older save is opened, every VCA in it is stamped **add** (the arithmetic it was built with), and a file that never says is read as **add** by the generator. Flip a legacy VCA to **multiply** and raise its knob from 0 to the level you want — that is the whole conversion.
 
 ### What "expose" does
 
@@ -209,8 +202,8 @@ If you want to read the real output, wire up a small patch and hit **Generate Co
 **1. Every surface says 0–4, including the Parameter Panel.** *(no discrepancy — this one used to be real)*
 The on-canvas control accepts 0–4 (`skald-ui/src/components/Nodes/GainNode.tsx:12`), the panel slider is `slider('gain', 0, 4, 0.75)` (`skald-ui/src/components/NodeParameterControls.tsx:301-305`), and the codegen clamps exposed setters to `[0.0, 4.0]` (`skald-backend/core/param_ranges.odin:84-85`, applied at `skald-backend/core/codegen.odin:1621-1622`). Set 2.5 on the canvas, open the Parameter Panel, and you see 2.5 — an earlier build pinned that slider at a maximum of 1.0 and silently dropped the value on the next nudge, which is what step 9 of *Try it* would otherwise be unable to ask you to do. The comment at the head of `param_ranges.odin:9-10`, claiming these ranges "match the ranges sliders use in the UI's parameter panel", is true for `gain`.
 
-**2. The default `gain` of 0.75 is the wrong default for the node's main idiom.** *(confusing)*
-A freshly dragged VCA has `gain: 0.75` (`skald-ui/src/definitions/node-definitions.ts:154`). Because Gain-port modulation is *added* to the knob value rather than replacing it (`skald-backend/core/param_utils.odin:149-153`), the single most common patch in synthesis — ADSR into VCA Gain — produces a multiplier floor of 0.75 and a note that never stops. Every shipped example that uses this idiom explicitly overrides the default to zero (`examples/songs/full/four-bar-song.skald.json:18`, `:49`, `:82`, `:112`, `:142`; `examples/instruments/keys/fm-rhodes-electric-piano.skald.json:66`), which is good evidence that the default fights the intent. Nothing in the UI warns about it — the sidebar tooltip just says "modulate the gain input for tremolo or volume control" (`skald-ui/src/components/Sidebar.tsx:278`). Documented above rather than fixed, per this being a documentation pass.
+**2. The default `gain` of 0.75 used to be the wrong default for the node's main idiom.** *(no discrepancy — this one used to be real)*
+Until save version 3, Gain-port modulation was *added* to the knob value, so a freshly dragged VCA at `gain: 0.75` with an ADSR wired in produced a multiplier floor of 0.75 and a note that never stopped; every shipped example that used the idiom overrode the default to zero (`examples/songs/full/four-bar-song.skald.json:18`, `:49`, `:82`, `:112`, `:142`; `examples/instruments/keys/fm-rhodes-electric-piano.skald.json:66`). Roadmap packet C4 made a new VCA's Gain port multiplicative (`gainMode: 'multiply'` in `skald-ui/src/definitions/node-definitions.ts`), kept the additive form for every node that predates the field, and put the choice on the card as **Gain in**. The 0.75 default is now simply the ceiling of the envelope.
 
 **3. Graph modulation of gain is unclamped; the exposed setter is clamped.** *(confusing)*
 `MyAsset_set_gain` forces the value into `[0, 4]` (`skald-backend/core/codegen.odin:1620-1623`). The multiply itself applies no clamp at all (`skald-backend/core/codegen.odin:714`), so an LFO or Mapper patched into `input_gain` can drive the multiplier negative or far past 4. Negative multipliers invert the waveform. This is a meaningful asymmetry — a game developer reading `MyAsset_PARAMS` sees `{"gain", 0.0, 4.0, ...}` and would reasonably assume 0–4 is the operating envelope of that parameter, when the patch itself can exceed it. Contrast with Panner (`skald-backend/core/codegen.odin:672-674`) and Distortion mix (`:597`), which *do* clamp modulated values at the point of use with explanatory comments. Whether the VCA's freedom is deliberate (it enables through-zero/ring-mod tricks) is not recorded anywhere in the code.
