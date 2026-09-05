@@ -28,4 +28,5 @@ output-target guard for exactly this use.)
 | `cross_domain_modulator.json` | SKB-017: a modulator feeding both the voice domain and the bus domain is a hard error, not a silent domain choice | `tests\unit\bus_domain_test.odin` |
 | `nested_instrument.json` | SKB-028 (B9-1): an Instrument node inside an instrument's subgraph is a hard error. Before B9-1 this file printed "unknown node type" and then **exited 0 and wrote the file** with the inner instrument's output stuck at 0.0 | `tests\unit\preflight_test.odin` |
 | `duplicate_node_id.json` | SKB-021 (B9-2): two nodes with the same literal id in one graph. Was a warn-and-rename to `1_dup2`, which left every connection on the first node | `tests\unit\preflight_test.odin` |
+| `duplicate_export_id.json` | C3 (F-A09-7): two instruments pinned to one Export ID. Was a silent `Keys` / `Keys_2` the editor never showed | `tests\unit\asset_identity_test.odin` |
 | `sanitized_id_collision.json` | SKB-021 (B9-2): `osc-1` and `osc_1` are distinct in the JSON and one identifier in the generated Odin | `tests\unit\preflight_test.odin` |

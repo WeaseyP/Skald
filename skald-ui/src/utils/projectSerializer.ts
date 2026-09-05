@@ -299,6 +299,13 @@ export const buildProjectData = (
         return {
             id: instNode.id,
             name: data.name || 'Unnamed Instrument',
+            // C3: the identity fields the generator reads first
+            // (instrument_export_prefix, detect_asset_type). Absent stays absent
+            // — the generator derives the prefix from `name` and infers the type
+            // from the tracks, exactly as for a pre-C3 file — so a save the 1->2
+            // migration has not touched emits what it always did.
+            export_id: typeof data.exportId === 'string' && data.exportId.length > 0 ? data.exportId : undefined,
+            asset_type: data.assetType === 'sfx' || data.assetType === 'music' ? data.assetType : undefined,
             // Instrument-level mute silences the whole asset — only when
             // EVERY track is muted (per-track mute lives on the track).
             // Solo bubbles up if any track solos.

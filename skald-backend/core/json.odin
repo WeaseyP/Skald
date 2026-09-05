@@ -339,6 +339,8 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 			// Absent -> limited: the safe default is the one games get without
 			// asking (see Project_Instrument_Raw.limit).
 			limit = raw_inst.limit.? or_else true,
+			export_id = raw_inst.export_id,
+			asset_type = parse_asset_type_setting(raw_inst.asset_type),
 			midi_config = raw_inst.midi_config,
 			graph = build_graph_from_raw(&raw_graph_copy, fmt.tprintf("instrument %q", raw_inst.name)),
 		}
@@ -486,6 +488,8 @@ build_project_from_graph_raw :: proc(graph_raw: ^Graph_Raw) -> Project {
 			detune      = get_f32_param_val(meta, "detune", 0.0),
 			volume      = get_f32_param_val(meta, "volume", 1.0),
 			limit       = limit,
+			export_id   = get_string_param(meta, "exportId", ""),
+			asset_type  = get_string_param(meta, "assetType", ""),
 			audio_graph = subgraph_raw,
 		})
 	}

@@ -40,6 +40,12 @@ package generated_audio
 //   string  <Foo>_set_param(p, "<field>", value) -> bool   (false = unknown name;
 //           also accepts the editor's "<nodeId>::<param>" key). <Foo>_get_param
 //           reads back; <Foo>_PARAMS lists name/min/max/default/unit for UI binding.
+// Stable identity: <Foo> is the Instrument's Export ID (its display name only when
+//   no Export ID is set), so renaming the instrument does not rename its procs. A
+//   typed setter's <field> gains a <Label>_ prefix when another node in the same asset
+//   exposes the same parameter, and loses it when that exposure goes away. Game code
+//   that must survive edits should key on <Foo>_set_param(p, "<nodeId>::<param>", v):
+//   the node id never changes. Both halves are listed per setter below.
 //   Clean_Electric
 //     Clean_Electric_set_Amp_attack   min 0  max 10  default 0.004  unit s   (node cl-amp, param attack)
 //     Clean_Electric_set_Amp_decay   min 0  max 10  default 0.5  unit s   (node cl-amp, param decay)

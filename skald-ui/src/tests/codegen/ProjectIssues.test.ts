@@ -431,3 +431,27 @@ describe('B6-1-x5 — a track targeting a non-Instrument node in a graph that ha
         expect(issues[0].blocksBuild).toBe(true);
     });
 });
+
+describe('C3 — two instruments pinned to one Export ID', () => {
+    it('is reported as a build-stopping issue naming both instruments and the prefix', () => {
+        const nodes = [instrument('a', 'Bass', []), instrument('b', 'Lead', [])];
+        (nodes[0].data as Record<string, unknown>).exportId = 'Keys';
+        (nodes[1].data as Record<string, unknown>).exportId = 'Keys';
+        const issues = collectProjectIssues(nodes, [], 16);
+        expect(issues.exportIds).toHaveLength(1);
+        const lines = formatProjectIssues(issues);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toContain('"Bass"');
+        expect(lines[0]).toContain('"Lead"');
+        expect(lines[0]).toContain('Keys');
+        expect(lines[0]).toContain('Generate will fail');
+    });
+
+    it('says nothing for distinct Export IDs, or for two derived duplicates the generator still suffixes', () => {
+        const distinct = [instrument('a', 'Bass', []), instrument('b', 'Lead', [])];
+        (distinct[0].data as Record<string, unknown>).exportId = 'Bass';
+        (distinct[1].data as Record<string, unknown>).exportId = 'Lead';
+        expect(collectProjectIssues(distinct, [], 16).exportIds).toEqual([]);
+        expect(collectProjectIssues([instrument('a', 'Bass', []), instrument('b', 'Bass', [])], [], 16).exportIds).toEqual([]);
+    });
+});

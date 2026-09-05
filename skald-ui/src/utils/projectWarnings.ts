@@ -61,6 +61,7 @@ import {
 } from './plockTargets';
 import { effectiveTrackSteps, outOfRangeNotes } from '../components/Sequencer/stepMetrics';
 import { getInstrumentNodes, isInstrumentNodeType } from './projectSerializer';
+import { duplicateExportIds, ExportIdIssue } from './assetIdentity';
 
 export type PlockIssueKind = 'unresolvable' | 'dead' | 'non-numeric';
 
@@ -104,6 +105,11 @@ export interface StepRangeIssue {
 export interface ProjectIssues {
     plocks: PlockIssue[];
     stepRange: StepRangeIssue[];
+    /**
+     * C3: two instruments resolving to one Export ID. Always blocks the build
+     * — the generator's find_export_prefix_conflict exits before emitting.
+     */
+    exportIds: ExportIdIssue[];
 }
 
 /**
@@ -268,6 +274,7 @@ export const collectProjectIssues = (
 ): ProjectIssues => ({
     plocks: collectPlockIssues(nodes, tracks),
     stepRange: collectStepRangeIssues(tracks, patternSteps),
+    exportIds: duplicateExportIds(nodes),
 });
 
 /**
@@ -283,8 +290,16 @@ export const collectProjectIssues = (
  * actually succeeded, on all 24 loose-graph examples. It is announced once,
  * on load, via the auto-clearing success toast instead (useFileIO.ts).
  */
-export const formatProjectIssues = ({ plocks, stepRange }: ProjectIssues): string[] => {
+export const formatProjectIssues = ({ plocks, stepRange, exportIds }: ProjectIssues): string[] => {
     const lines: string[] = [];
+
+    for (const issue of exportIds) {
+        lines.push(
+            `Instruments "${issue.aName}" and "${issue.bName}" would both export as "${issue.prefix}" — `
+            + 'the generator refuses two assets with one Export ID, so Generate will fail until one of them '
+            + 'gets a different Export ID (the display names can stay as they are).'
+        );
+    }
 
     for (const issue of plocks) {
         const where = `"${issue.trackName}" step ${issue.step + 1} (note ${issue.notePitch})`;

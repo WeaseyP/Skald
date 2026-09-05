@@ -20,7 +20,7 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
 describe('the registry', () => {
     it('is contiguous from 0 to CURRENT_SAVE_VERSION with one step per version', () => {
-        expect(CURRENT_SAVE_VERSION).toBe(1);
+        expect(CURRENT_SAVE_VERSION).toBe(2);
         const froms = MIGRATIONS.map((m) => m.from);
         expect(froms).toEqual([...Array(CURRENT_SAVE_VERSION).keys()]);
         MIGRATIONS.forEach((m) => expect(m.to).toBe(m.from + 1));
@@ -61,8 +61,9 @@ describe('migration 0 -> 1 (the two former ad hoc shims, now recursing)', () => 
         expect(out.ok).toBe(true);
         if (!out.ok) return;
         expect(out.fromVersion).toBe(0);
-        expect(out.applied).toHaveLength(1);
-        expect(flow.version).toBe(1);
+        // A version-0 file walks EVERY registered step, so this grows with the registry.
+        expect(out.applied).toHaveLength(CURRENT_SAVE_VERSION);
+        expect(flow.version).toBe(CURRENT_SAVE_VERSION);
 
         const top = flow.nodes[1] as Record<string, unknown>;
         expect(top.parentId).toBe('g');
@@ -146,5 +147,57 @@ describe('round trip over shipped examples', () => {
         const second = migrateSaveFile(again);
         expect(second.ok && second.applied).toEqual([]);
         expect(again).toEqual(parsed);
+    });
+});
+
+describe('migration 1 -> 2 (Instrument identity made explicit — packet C3)', () => {
+    // Canvas order z, a; the generator orders assets by sanitized id, so the
+    // pre-C3 symbols this file ALREADY emitted were Bass (a) and Bass_2 (z).
+    const before = (): SaveFlow => ({
+        version: 1,
+        nodes: [
+            { id: 'z', type: 'instrument', position: { x: 0, y: 0 }, data: { name: 'Bass', label: 'Bass', subgraph: { nodes: [], connections: [] } } },
+            { id: 'a', type: 'instrument', position: { x: 0, y: 0 }, data: { name: 'Bass', label: 'Bass', subgraph: { nodes: [], connections: [] } } },
+            { id: 'f', type: 'filter', position: { x: 0, y: 0 }, data: { label: 'F', cutoff: 800 } },
+        ],
+        edges: [],
+        sequencerTracks: [
+            { id: 't1', targetNodeId: 'z', name: 'Bass', color: '#fff', steps: 16, notes: [{ step: 0, note: 36, velocity: 1, duration: 0.25 }], isMuted: false, isSolo: false },
+            { id: 't2', targetNodeId: 'a', name: 'Bass', color: '#fff', steps: 16, notes: [], isMuted: false, isSolo: false },
+        ],
+    });
+    const dataOf = (flow: SaveFlow, id: string) => (flow.nodes as { id: string; data: Record<string, unknown> }[]).find((n) => n.id === id)!.data;
+
+    it('backfills the Export ID with the symbol the generator already emitted for this file, so no game build breaks on upgrade', () => {
+        const flow = before();
+        const out = migrateSaveFile(flow);
+        expect(out.ok).toBe(true);
+        expect(dataOf(flow, 'a').exportId).toBe('Bass');
+        expect(dataOf(flow, 'z').exportId).toBe('Bass_2');
+    });
+
+    it('backfills the asset type from the tracks the file had, once (F-A09-8)', () => {
+        const flow = before();
+        migrateSaveFile(flow);
+        expect(dataOf(flow, 'z').assetType).toBe('music'); // its track has a note
+        expect(dataOf(flow, 'a').assetType).toBe('sfx');   // its track is empty
+    });
+
+    it('does not overwrite an Export ID or asset type the file already carries', () => {
+        const flow = before();
+        dataOf(flow, 'a').exportId = 'Pinned';
+        dataOf(flow, 'a').assetType = 'music';
+        migrateSaveFile(flow);
+        expect(dataOf(flow, 'a').exportId).toBe('Pinned');
+        expect(dataOf(flow, 'a').assetType).toBe('music');
+    });
+
+    it('leaves non-instrument nodes alone and is idempotent', () => {
+        const flow = before();
+        migrateSaveFile(flow);
+        expect(dataOf(flow, 'f')).toEqual({ label: 'F', cutoff: 800 });
+        const once = clone(flow);
+        migrateSaveFile(flow);
+        expect(flow).toEqual(once);
     });
 });

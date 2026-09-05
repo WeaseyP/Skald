@@ -28,6 +28,7 @@ import {
 import { NodeParams, SkaldGraphNode } from '../../definitions/types';
 import { useNodeComposition } from './useNodeComposition';
 import { EditorHistoryApi } from './editorSnapshot';
+import { deriveExportId, nextExportId, takenExportPrefixes } from '../../utils/assetIdentity';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 
@@ -219,6 +220,8 @@ export const useGraphState = ({ pushHistory, endGesture }: GraphHistoryHooks) =>
             return suffixed;
         };
 
+        const takenPrefixes = takenExportPrefixes(nodes);
+
         // 2. Create new Nodes with new IDs
         const newNodes: Node<NodeParams>[] = clipboard.nodes.map(node => {
             const newId = idMap.get(node.id)!;
@@ -231,6 +234,17 @@ export const useGraphState = ({ pushHistory, endGesture }: GraphHistoryHooks) =>
                 const suffixedName = nextInstrumentName(clonedData.name);
                 clonedData.name = suffixedName;
                 clonedData.label = suffixedName;
+                // C3: a pinned Export ID must not travel with the copy — two
+                // assets on one prefix are a hard error in the generator, not
+                // the silent `_2` of F-A09-7. The copy gets one derived from its
+                // new name, unique among the prefixes on the canvas and among
+                // the copies made in this same paste. An unpinned source stays
+                // unpinned: its new name already derives a distinct prefix.
+                if (typeof clonedData.exportId === 'string' && clonedData.exportId.length > 0) {
+                    const fresh = nextExportId(deriveExportId(suffixedName, newId), takenPrefixes);
+                    takenPrefixes.add(fresh);
+                    clonedData.exportId = fresh;
+                }
             }
 
             const newNode: Node<NodeParams> = {

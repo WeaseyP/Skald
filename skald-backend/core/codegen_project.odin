@@ -2,6 +2,7 @@ package skald_core
 
 import "core:fmt"
 import "core:math"
+import "core:os"
 import "core:strings"
 import "core:slice"
 
@@ -150,11 +151,21 @@ generate_sequencer_logic :: proc(
 }
 
 resolve_unique_names :: proc(project: ^Project) -> []string {
+    // C3: a prefix the author pinned with an Export ID is never suffixed
+    // behind their back. Two pins on one name, or a pin another instrument's
+    // display name happens to derive to, stop the build and say which two.
+    if conflict, found := find_export_prefix_conflict(project); found {
+        fmt.eprintf(
+            "Error: instruments %q and %q would both export as %q. Give one of them a different Export ID (the display name can stay as it is).\n",
+            conflict.a_name, conflict.b_name, conflict.prefix,
+        )
+        os.exit(1)
+    }
     unique_names := make([]string, len(project.instruments))
     name_counts := make(map[string]int)
     defer delete(name_counts)
     for i in 0 ..< len(project.instruments) {
-        base := clean_instrument_name(&project.instruments[i])
+        base, _ := instrument_export_prefix(&project.instruments[i])
         count := name_counts[base]
         if count == 0 {
             unique_names[i] = base
@@ -678,6 +689,20 @@ emit_exposed_param_contract :: proc(sb: ^strings.Builder, project: ^Project, uni
     fmt.sbprint(sb, "//   string  <Foo>_set_param(p, \"<field>\", value) -> bool   (false = unknown name;\n")
     fmt.sbprint(sb, "//           also accepts the editor's \"<nodeId>::<param>\" key). <Foo>_get_param\n")
     fmt.sbprint(sb, "//           reads back; <Foo>_PARAMS lists name/min/max/default/unit for UI binding.\n")
+    // C3 (F-B05-4): the naming contract, stated where the game team reads
+    // it. The typed setter's field is collision-prefixed — it gains a
+    // "<Label>_" prefix when another node in the same asset exposes the same
+    // parameter and loses it again when that exposure goes away — so an edit
+    // to node B can rename node A's setter. The "<nodeId>::<param>" key
+    // cannot move: the node id never changes. Labels are defaulted on every
+    // node, so no rule local to node A could pin the typed name without
+    // renaming every existing setter; the alias is the stable key instead.
+    fmt.sbprint(sb, "// Stable identity: <Foo> is the Instrument's Export ID (its display name only when\n")
+    fmt.sbprint(sb, "//   no Export ID is set), so renaming the instrument does not rename its procs. A\n")
+    fmt.sbprint(sb, "//   typed setter's <field> gains a <Label>_ prefix when another node in the same asset\n")
+    fmt.sbprint(sb, "//   exposes the same parameter, and loses it when that exposure goes away. Game code\n")
+    fmt.sbprint(sb, "//   that must survive edits should key on <Foo>_set_param(p, \"<nodeId>::<param>\", v):\n")
+    fmt.sbprint(sb, "//   the node id never changes. Both halves are listed per setter below.\n")
     for i in 0 ..< len(project.instruments) {
         name := unique_names[i]
         plan := &plans[i]

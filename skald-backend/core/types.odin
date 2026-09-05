@@ -153,7 +153,8 @@ Session_Raw :: struct {
 
 // The save-file schema version this reader understands (packet C1). Mirrors
 // CURRENT_SAVE_VERSION in skald-ui/src/utils/saveMigrations.ts — bump both.
-SAVE_FORMAT_VERSION :: 1
+//   2 (C3): Instrument nodes carry `exportId` and `assetType`.
+SAVE_FORMAT_VERSION :: 2
 
 Graph_Raw :: struct {
 	// Stamped by the editor's Save since C1; absent (pre-C1) unmarshals as 0.
@@ -192,6 +193,13 @@ Project_Instrument_Raw :: struct {
 	// measured peaking at 3.93 on the manual's own canonical patch — can never
 	// exceed ±1 unless the author explicitly opts out.
 	limit:       Maybe(bool),
+	// C3 (F-B05-4, F-A09-7): the symbol prefix the game compiles against,
+	// decoupled from the display name. Empty = not set (pre-C3 files), and
+	// the prefix is derived from `name` exactly as it always was.
+	export_id:   string,
+	// C3 (F-A09-8): "sfx" | "music". Empty = infer from the tracks, the
+	// pre-C3 rule. See parse_asset_type_setting.
+	asset_type:  string,
 	midi_config: Midi_Config,
 	audio_graph: Graph_Raw,
 }
@@ -244,6 +252,9 @@ Project_Instrument :: struct {
 	// generated <Foo>_process passes its post-volume output through
 	// skald_soft_limit so it can never exceed ±1.
 	limit:       bool,
+	// See Project_Instrument_Raw.export_id / asset_type.
+	export_id:   string,
+	asset_type:  Asset_Type_Setting,
 	midi_config: Midi_Config,
 	graph:       Graph,
 }
@@ -262,4 +273,27 @@ Project :: struct {
 Asset_Type :: enum {
 	SFX,
 	Music_Layer,
+}
+
+// C3 (F-A09-8): what the Instrument node SAYS it is. Auto is the pre-C3
+// behaviour — detect_asset_type infers Music_Layer from an active sequencer
+// track — kept so files that predate the field generate exactly as before.
+// The editor's migration 1->2 backfills every instrument with the inferred
+// value once, after which the classification is a deliberate setting that
+// deleting the last note from a track can no longer flip.
+Asset_Type_Setting :: enum {
+	Auto,
+	SFX,
+	Music_Layer,
+}
+
+// The editor writes lowercase "sfx" / "music". Anything else — including a
+// spelling a future editor might introduce — is Auto: inferring is safer
+// than guessing what an unknown value meant.
+parse_asset_type_setting :: proc(s: string) -> Asset_Type_Setting {
+	switch s {
+	case "sfx":   return .SFX
+	case "music": return .Music_Layer
+	}
+	return .Auto
 }

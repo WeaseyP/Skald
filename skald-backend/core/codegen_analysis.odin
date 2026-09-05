@@ -597,6 +597,13 @@ compute_bus_domain :: proc(graph: ^Graph, sorted_nodes: []Node, inst_name: strin
 }
 
 detect_asset_type :: proc(instrument: ^Project_Instrument, project: ^Project) -> Asset_Type {
+	// C3 (F-A09-8): an explicit setting is the author's decision. Only a
+	// file that never had the field falls through to the track inference.
+	switch instrument.asset_type {
+	case .SFX:         return .SFX
+	case .Music_Layer: return .Music_Layer
+	case .Auto:
+	}
 	active := active_sequencer_tracks(instrument, project)
 	defer delete(active)
 	if len(active) > 0 {
@@ -758,6 +765,57 @@ clean_instrument_name :: proc(inst: ^Project_Instrument) -> string {
 		return fmt.tprintf("Instrument_%s", sanitize_identifier(inst.id, true))
 	}
 	return sanitized
+}
+
+// C3 (F-B05-4): the symbol prefix every exported proc of this asset carries.
+// An Export ID the author set wins — that is the whole point of the field:
+// renaming the instrument's display name no longer renames <Foo>_trigger in
+// the game's build. Without one (every pre-C3 file) the prefix is derived
+// from the display name exactly as before, so no existing symbol moves.
+// `explicit` tells resolve_unique_names whether a collision on this prefix
+// is a pin the author made (hard error) or the legacy same-name case (`_2`).
+// An Export ID that sanitizes to nothing usable ("---") is treated as absent
+// rather than emitting `____trigger`, the same rule as a degenerate name.
+instrument_export_prefix :: proc(inst: ^Project_Instrument) -> (prefix: string, explicit: bool) {
+	if len(inst.export_id) > 0 {
+		sanitized := sanitize_identifier(inst.export_id)
+		if has_usable_identifier_chars(sanitized) {
+			return sanitized, true
+		}
+	}
+	return clean_instrument_name(inst), false
+}
+
+Export_Prefix_Conflict :: struct {
+	a_name: string,
+	b_name: string,
+	prefix: string,
+}
+
+// Two assets resolving to one prefix where at least one of them pinned it
+// with an Export ID. Before C3 every collision was silently suffixed
+// (`Keys`, `Keys_2`) and the editor never showed which on-canvas
+// instrument had become `Keys_2_trigger` (F-A09-7). A pinned prefix is a
+// promise to the game; two of them cannot both be kept, and renaming a
+// derived one out of the way would defeat the pin just as surely. Factored
+// out of resolve_unique_names (which exits) so the rule runs under
+// `odin test`. Pairs are visited in instrument order, so the first
+// conflict reported is deterministic.
+find_export_prefix_conflict :: proc(project: ^Project) -> (Export_Prefix_Conflict, bool) {
+	n := len(project.instruments)
+	for i in 0 ..< n {
+		pa, ea := instrument_export_prefix(&project.instruments[i])
+		for j in i + 1 ..< n {
+			pb, eb := instrument_export_prefix(&project.instruments[j])
+			if pa != pb || !(ea || eb) do continue
+			return Export_Prefix_Conflict{
+				a_name = project.instruments[i].name,
+				b_name = project.instruments[j].name,
+				prefix = pa,
+			}, true
+		}
+	}
+	return {}, false
 }
 
 param_is_reachable :: proc(node: Node, param: string) -> bool {

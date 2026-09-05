@@ -528,7 +528,7 @@ A conservative static warning cannot see a defect that another defect is hiding.
 
 ## Wave C — Schema & Behaviour
 
-> **Wave C:** started 2026-09-05 after Wave B closed. C1, C6 and C7 landed; C2–C5 open.
+> **Wave C:** started 2026-09-05 after Wave B closed. C1, C3, C6 and C7 landed; C2, C4 and C5 open.
 
 ### C1 — Schema Version + Migration Registry
 - [x] **C1** (M) — ✅ **CLOSED**. `skald-ui/src/utils/saveMigrations.ts`: `CURRENT_SAVE_VERSION = 1`,
@@ -552,7 +552,28 @@ A conservative static warning cannot see a defect that another defect is hiding.
   - **Closes:** SKB-024, SKB-040, SKB-042, SKB-055
 
 ### C3 — Stable Asset Identity
-- [ ] **C3** (M) — `exportId` on Instrument; stable per-node collision prefixes; explicit `assetType` field replacing has-notes inference.
+- [x] **C3** (M) — ✅ **CLOSED** (2026-09-05). Save version 2. The Instrument node carries `exportId` and
+  `assetType`; the generator reads them first (`instrument_export_prefix`, `detect_asset_type`) and
+  falls back to the display name / the track inference only when they are absent, so every pre-C3 file
+  emits exactly what it did. Two assets resolving to one prefix where either pinned it is a hard error
+  naming both instruments (`find_export_prefix_conflict`; `_negative/duplicate_export_id.json`) — the
+  silent `Keys`/`Keys_2` (F-A09-7) survives only for two *derived* duplicates. Migration 1→2 backfills
+  `exportId` with the symbol the file already emitted (legacy `_2` dedupe in generator order) and
+  `assetType` with what the tracks would have inferred, once; `utils/assetIdentity.ts` is the
+  case-by-case mirror and the cross-path corpus gate holds it to the Odin. The card shows Export ID
+  (placeholder = derived prefix), the resulting `<prefix>_trigger`, the asset index, and a Type select
+  (Auto / One-shot SFX / Music layer). Paste and Export-Step give a clone a fresh Export ID instead of
+  the source's pin; the issues banner reports a duplicate in the same frame it happens.
+  **Two deliberate deviations from the row in docs/0.2-ROADMAP.md:** (1) instruments stay sorted by
+  sanitized node id, not by Export ID — the id order is already stable and total (SKB-003) and
+  re-sorting would churn every existing project's asset indices for nothing; the index is now shown on
+  the card instead. (2) The collision prefix rule is unchanged: every node carries a defaulted label,
+  so no rule local to node A can pin its typed setter without renaming every existing setter. The
+  generated header now states the contract — `<nodeId>::<param>` is the stable key, typed names are
+  collision-prefixed — where the game team reads it. Tests: 11 Odin unit tests (asset_identity_test),
+  golden `codegen_only/export_id_pinned`, and 36 vitest cases across assetIdentity, InstrumentNode,
+  saveMigrations, ProjectSerializer, ProjectIssues, GraphEditing and ExportStepOverrides — every one
+  watched failing first.
 
 ### C4 — Multiplicative VCA `input_gain`
 - [ ] **C4** (M) — Additive offset → multiplicative scaling (version-gated). Keep ADSR-direct as canonical.

@@ -56,8 +56,8 @@ export const useProjectIssues = (
     patternSteps: number,
 ): LiveProjectIssues => useMemo(() => {
     const issues = collectProjectIssues(nodes, tracks, patternSteps);
-    const blocksBuild = issues.plocks.some(p => p.blocksBuild);
-    const hasWarnings = issues.plocks.length > 0 || issues.stepRange.length > 0;
+    const blocksBuild = issues.plocks.some(p => p.blocksBuild) || issues.exportIds.length > 0;
+    const hasWarnings = issues.plocks.length > 0 || issues.stepRange.length > 0 || issues.exportIds.length > 0;
     const severity: ProjectIssueSeverity = blocksBuild
         ? 'error'
         : hasWarnings

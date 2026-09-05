@@ -195,6 +195,14 @@ export interface SkaldGraphConnection {
 
 export interface InstrumentParams extends BaseNodeParams {
   name: string;
+  // C3 (F-B05-4): the symbol prefix the game compiles against
+  // (<exportId>_trigger, _note_on, _set_<param>…), decoupled from the display
+  // `name` so a cosmetic rename no longer breaks the game's build. Absent =
+  // derive from `name`, the pre-C3 rule; the 1->2 migration backfills it.
+  exportId?: string;
+  // C3 (F-A09-8): one-shot SFX or self-playing music layer. Absent = infer
+  // from the tracks at Generate time (the pre-C3 rule, shown as "Auto").
+  assetType?: 'sfx' | 'music';
   // Instrument output level (0..1). The serializer floors it at 0.001 —
   // the backend treats an exact 0 as "absent, default to unity".
   volume?: number;

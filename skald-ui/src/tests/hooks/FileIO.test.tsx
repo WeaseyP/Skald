@@ -164,7 +164,11 @@ describe('useFileIO — load validation', () => {
         });
         const { result } = renderFileIO();
         await act(async () => { await result.current.handleLoad(); });
-        expect(setNodes).toHaveBeenCalledWith([{ id: 'a', type: 'instrument' }]);
+        // The file is version-less, so it walks every migration on the way in;
+        // C3 (1->2) gives the instrument its explicit identity fields, backfilled
+        // from what it would have generated: a nameless instrument derives
+        // Instrument_<id>, and no track means SFX.
+        expect(setNodes).toHaveBeenCalledWith([{ id: 'a', type: 'instrument', data: { exportId: 'Instrument_a', assetType: 'sfx' } }]);
         expect(loadTracks).toHaveBeenCalledWith([{ id: 't1' }]);
         expect(applySession).toHaveBeenCalledWith({ bpm: 90, patternSteps: 64, masterVolume: 0.5 });
         expect(notify).not.toHaveBeenCalled(); // success is visible in the editor itself
@@ -472,7 +476,7 @@ describe('useFileIO — save-file schema version (C1)', () => {
         await act(async () => { await result.current.handleSave(); });
         const written = JSON.parse(saveGraph.mock.calls[0][0]);
         // Before C1 no save carried a version at all (F-B06-1).
-        expect(written.version).toBe(1);
+        expect(written.version).toBe(2); // C3 bumped the schema to 2 (CURRENT_SAVE_VERSION)
     });
 
     it('Load migrates parentNode -> parentId inside an Instrument subgraph, which the old shim skipped (F-B06-7)', async () => {

@@ -283,3 +283,20 @@ describe('B6-1-x1 — instruments are emitted sorted by sanitized id, as the CLI
         expect(sanitizeIdentifier('キ')).toBe('___');
     });
 });
+
+describe('C3 — instrument identity fields', () => {
+    it('emits export_id and asset_type when the Instrument node carries them', () => {
+        const inst = makeInstrument();
+        (inst.data as Record<string, unknown>).exportId = 'Bass';
+        (inst.data as Record<string, unknown>).assetType = 'sfx';
+        const emitted = JSON.parse(JSON.stringify(build(inst))).project.instruments[0];
+        expect(emitted.export_id).toBe('Bass');
+        expect(emitted.asset_type).toBe('sfx');
+    });
+
+    it('leaves both absent when the node has neither — the generator is the one reader of absence', () => {
+        const emitted = JSON.parse(JSON.stringify(build(makeInstrument()))).project.instruments[0];
+        expect('export_id' in emitted).toBe(false);
+        expect('asset_type' in emitted).toBe(false);
+    });
+});

@@ -13,6 +13,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { Node, ReactFlowProvider } from '@xyflow/react';
 import { useEditorState } from '../../hooks/nodeEditor/useEditorState';
 import { InstrumentParams, SequencerTrack } from '../../definitions/types';
+import { deriveExportId } from '../../utils/assetIdentity';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ReactFlowProvider>{children}</ReactFlowProvider>
@@ -77,5 +78,27 @@ describe('handleExportStep applies P-locks through the generator\'s resolver', (
         const exported = result.current.nodes.find(n => n.id === newId)!;
         const osc = (exported.data as InstrumentParams).subgraph.nodes.find(n => n.id === 'osc-1')!;
         expect((osc.data as { amplitude: number }).amplitude).toBe(0.5);
+    });
+});
+
+describe('C3 — an exported step does not keep its source Instrument\'s Export ID', () => {
+    it('gives the clone a fresh Export ID derived from its suffixed name, leaving the source pinned as it was', () => {
+        const { result } = renderHook(() => useEditorState(), { wrapper });
+        const pinned = JSON.parse(JSON.stringify(instrument)) as Node;
+        (pinned.data as Record<string, unknown>).exportId = 'Bass';
+        act(() => { result.current.setNodes([pinned]); });
+        act(() => { result.current.loadTracks([trackFor('inst-1', { 'osc:amplitude': 0.9 })]); });
+
+        let newId: string | null = null;
+        act(() => { newId = result.current.handleExportStep('t1', 0, 60); });
+        expect(newId).not.toBeNull();
+
+        const clone = result.current.nodes.find(n => n.id === newId)!;
+        const cloneData = clone.data as { name: string; exportId?: string };
+        // Before C3 the clone carried the source's pin verbatim — two assets
+        // that the generator now refuses to emit.
+        expect(cloneData.exportId).not.toBe('Bass');
+        expect(cloneData.exportId).toBe(deriveExportId(cloneData.name, clone.id));
+        expect((result.current.nodes.find(n => n.id === 'inst-1')!.data as { exportId?: string }).exportId).toBe('Bass');
     });
 });

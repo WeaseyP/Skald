@@ -47,7 +47,7 @@ const containerStyles = (severity: ProjectIssueSeverity): React.CSSProperties =>
 });
 
 const headline = (severity: ProjectIssueSeverity, lineCount: number): string => {
-    if (severity === 'error') return 'Code generation will fail — a step override is broken (see below)';
+    if (severity === 'error') return 'Code generation will fail — see below';
     return lineCount === 1 ? '1 sequencer problem' : `${lineCount} sequencer problems`;
 };
 

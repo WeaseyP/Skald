@@ -23,7 +23,14 @@
 ================================================================================
 */
 
-export const CURRENT_SAVE_VERSION = 1;
+import { isInstrumentNodeType } from './projectSerializer';
+import { inferAssetType, isAssetTypeSetting, legacyExportIds } from './assetIdentity';
+import { Node } from '@xyflow/react';
+import { NodeParams } from '../definitions/types';
+
+// 1 (C1): versioned; parentNode -> parentId; dead syncRate exposures removed.
+// 2 (C3): Instrument nodes carry `exportId` and `assetType`.
+export const CURRENT_SAVE_VERSION = 2;
 
 /** The untyped save-file object as parsed from JSON. */
 export type SaveFlow = Record<string, unknown> & { nodes: unknown[] };
@@ -83,6 +90,39 @@ export const MIGRATIONS: readonly Migration[] = [
                     );
                 }
             });
+        },
+    },
+    {
+        from: 1,
+        to: 2,
+        describe: 'instruments given an explicit Export ID (the symbol prefix they already emitted) and an explicit asset type (from their tracks)',
+        // C3 (F-B05-4, F-A09-8). The Export ID is backfilled with the symbol
+        // this file ALREADY produced — resolve_unique_names' legacy rule,
+        // display name sanitized and same-name duplicates suffixed _2 in
+        // generator order — so a game built against the old file compiles
+        // against the upgraded one unchanged. The asset type is backfilled from
+        // the tracks exactly as detect_asset_type would have inferred it at the
+        // moment of upgrade; from then on it is a setting, and deleting the last
+        // note from a track can no longer silently turn a music layer into an
+        // SFX. Top-level instruments only: an Instrument inside an Instrument is
+        // a hard error in the generator (B9-1), not a thing to migrate.
+        apply: (flow) => {
+            const nodes = Array.isArray(flow.nodes) ? (flow.nodes as Node<NodeParams>[]) : [];
+            const instruments = nodes.filter(n => n && typeof n === 'object' && isInstrumentNodeType(n.type));
+            const legacy = legacyExportIds(instruments);
+            const tracks = Array.isArray(flow.sequencerTracks)
+                ? (flow.sequencerTracks as { targetNodeId: string; isMuted: boolean; isSolo: boolean; notes?: unknown[] }[])
+                : [];
+            for (const n of instruments) {
+                const node = n as AnyNode;
+                if (!node.data) node.data = {};
+                if (typeof node.data.exportId !== 'string' || node.data.exportId.length === 0) {
+                    node.data.exportId = legacy.get(n.id);
+                }
+                if (!isAssetTypeSetting(node.data.assetType)) {
+                    node.data.assetType = inferAssetType(n.id, tracks);
+                }
+            }
         },
     },
 ];

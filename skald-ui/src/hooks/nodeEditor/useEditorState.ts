@@ -21,6 +21,7 @@ import { useInstrumentRegistry } from '../sequencer/useInstrumentRegistry';
 import { EditorSnapshot, HistoryIO } from './editorSnapshot';
 import { effectiveTrackSteps } from '../../components/Sequencer/stepMetrics';
 import { resolvePlockTargets } from '../../utils/plockTargets';
+import { freshExportIdForClone } from '../../utils/assetIdentity';
 
 // Export-Step's existing "(Step N)" suffix convention, applied to both the
 // node's display label and (F-A09-7) an Instrument's `name` — the field
@@ -119,6 +120,12 @@ export const useEditorState = () => {
         // (F-A09-7) even though the label above already reads as distinct.
         if (newNode.type === 'instrument' && typeof newNode.data.name === 'string') {
             newNode.data.name = suffixForStepExport(newNode.data.name, step);
+            // C3: same rule as paste (useGraphState) — a pinned Export ID does
+            // not travel with the clone, because two assets on one prefix stop
+            // the build. Derived from the suffixed name, unique on the canvas.
+            if (typeof newNode.data.exportId === 'string' && newNode.data.exportId.length > 0) {
+                newNode.data.exportId = freshExportIdForClone(newNode.data.name, newNode.id, nodes);
+            }
         }
 
         // Apply Overrides — through the SAME resolver the generator mirrors
