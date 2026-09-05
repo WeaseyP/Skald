@@ -1,0 +1,138 @@
+/*
+================================================================================
+| FILE: skald-ui/src/styles/responsive.css                                     |
+|                                                                              |
+| The handful of responsive rules that inline `React.CSSProperties` cannot     |
+| express (roadmap E13): pseudo-elements, React Flow's own class names, and    |
+| `touch-action`.                                                              |
+|                                                                              |
+| Everything here selects on `[data-pointer="coarse"]` or                      |
+| `[data-viewport="narrow"]`, which `useViewport.ts` stamps onto the app root  |
+| (app.tsx) and onto the individual controls that need it. That is deliberate: |
+| a `@media (pointer: coarse)` block here would be a SECOND reader of the same |
+| fact, free to drift from the booleans the components branch on — the         |
+| SKB-002 defect class. One reader: the hook decides, this file reacts.        |
+================================================================================
+*/
+
+/*
+ * Node ports. A `.react-flow__handle` is drawn 6px across, which is a fine
+ * mouse target and an impossible finger target — the WCAG 2.2 floor is 24px.
+ * The hit area grows through a transparent ::after rather than the handle's
+ * own width so the wire still visibly leaves the port it is drawn at; growing
+ * the handle itself would move every connection point on the canvas and make
+ * the coarse-pointer layout disagree with the mouse one.
+ */
+[data-pointer="coarse"] .react-flow__handle {
+    touch-action: none;
+}
+
+[data-pointer="coarse"] .react-flow__handle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    /* Invisible, but it is the thing the finger actually lands on. */
+    background: transparent;
+}
+
+/*
+ * The canvas itself. React Flow already sets `touch-action: none` on
+ * `.react-flow__pane`, which is why pinch-zoom and two-finger pan work at
+ * all; nodes are not covered by that rule, so dragging a node by touch could
+ * hand the gesture to the browser (pull-to-refresh, overscroll) instead of to
+ * the graph.
+ */
+[data-pointer="coarse"] .react-flow__node {
+    touch-action: none;
+}
+
+/*
+ * React Flow's own zoom/fit buttons are 16px icons in a ~26px button.
+ */
+[data-pointer="coarse"] .react-flow__controls-button {
+    width: 32px;
+    height: 32px;
+}
+
+/*
+ * Anything clickable, at the WCAG 2.2 minimum. Scoped to the coarse-pointer
+ * root so no desktop control changes size by one pixel. 32 rather than 44
+ * because the sequencer dock's rows are 34px tall and a 44px button would
+ * burst them; the grid cells get their own floor in stepMetrics.ts.
+ */
+[data-pointer="coarse"] button,
+[data-pointer="coarse"] [role="button"] {
+    min-height: 32px;
+}
+
+[data-pointer="coarse"] input[type="text"],
+[data-pointer="coarse"] input[type="number"] {
+    min-height: 32px;
+}
+
+/*
+ * Range inputs. A UA-drawn thumb is ~12px and cannot be resized without
+ * `appearance: none`, which also drops the track — so both are restated here,
+ * and only under a coarse pointer, where the alternative is a control the
+ * user cannot grab.
+ */
+.skald-slider[data-pointer="coarse"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 28px;
+    background: transparent;
+    touch-action: none;
+}
+
+.skald-slider[data-pointer="coarse"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background: #4A5568;
+}
+
+.skald-slider[data-pointer="coarse"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: #3182CE;
+    /* Centre the 28px thumb on the 6px track. */
+    margin-top: -11px;
+}
+
+.skald-slider[data-pointer="coarse"]::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background: #4A5568;
+}
+
+.skald-slider[data-pointer="coarse"]::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: #3182CE;
+}
+
+/*
+ * Narrow layout. The drawer and the sheet are positioned from app.tsx (they
+ * need the same booleans the rest of the layout branches on); only the slide
+ * belongs here, because a transform transition is not something a React style
+ * object can hand to a browser without a re-render per frame.
+ */
+[data-viewport="narrow"] .skald-drawer {
+    transition: transform 0.18s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-viewport="narrow"] .skald-drawer {
+        transition: none;
+    }
+}
