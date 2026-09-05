@@ -50,7 +50,7 @@ package generated_audio
 //     Wind_set_Pink_Air_amplitude   min 0  max 1  default 0.5  unit -   (node wind-noise, param amplitude)
 //     Wind_set_Slow_Gust_amplitude   min 0  max 20000  default 0.25  unit -   (node wind-gust, param amplitude)
 //     Wind_set_cutoff   min 20  max 20000  default 600  unit Hz   (node wind-filter, param cutoff)
-//     Wind_set_decay   min 0  max 10  default 5  unit s   (node wind-reverb, param decay)
+//     Wind_set_decay   min 0.1  max 10  default 5  unit s   (node wind-reverb, param decay)
 //     Wind_set_frequency   min 0.01  max 100  default 0.1  unit Hz   (node wind-gust, param frequency)
 //     Wind_set_gain   min 0  max 4  default 0.65  unit x   (node wind-gain, param gain)
 //     Wind_set_mix   min 0  max 1  default 0.5  unit -   (node wind-reverb, param mix)
@@ -370,7 +370,7 @@ Wind_set_cutoff :: proc(p: ^Wind_Processor, value: f32) {
 
 Wind_set_decay :: proc(p: ^Wind_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.decay = v
 }
@@ -407,7 +407,7 @@ Wind_PARAMS := []Skald_Param_Info{
 	{"Pink_Air_amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"Slow_Gust_amplitude", 0.000000000, 20000.000000000, 0.250000000, ""},
 	{"cutoff", 20.000000000, 20000.000000000, 600.000000000, "Hz"},
-	{"decay", 0.000000000, 10.000000000, 5.000000000, "s"},
+	{"decay", 0.100000001, 10.000000000, 5.000000000, "s"},
 	{"frequency", 0.010000000, 100.000000000, 0.100000001, "Hz"},
 	{"gain", 0.000000000, 4.000000000, 0.649999976, "x"},
 	{"mix", 0.000000000, 1.000000000, 0.500000000, ""},

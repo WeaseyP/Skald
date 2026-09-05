@@ -83,5 +83,5 @@ test_gain_mode_multiply_without_a_modulator_is_the_plain_knob :: proc(t: ^testin
 	g := core.Graph{nodes = nodes}
 	code := emit_gain(&g)
 	testing.expect(t, strings.contains(code, "* (f32(0.500000000))"), code)
-	testing.expect_value(t, core.SAVE_FORMAT_VERSION, 3)
+	testing.expect_value(t, core.SAVE_FORMAT_VERSION, 4)
 }

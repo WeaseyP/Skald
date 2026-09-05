@@ -528,7 +528,7 @@ A conservative static warning cannot see a defect that another defect is hiding.
 
 ## Wave C — Schema & Behaviour
 
-> **Wave C:** started 2026-09-05 after Wave B closed. C1 and C3–C7 landed; C2 open.
+> **Wave C:** started 2026-09-05 after Wave B closed. **All seven sections landed** (C2 in its schema-as-data core; its generated-bindings remainder is recorded as C2-followup for 0.3).
 
 ### C1 — Schema Version + Migration Registry
 - [x] **C1** (M) — ✅ **CLOSED**. `skald-ui/src/utils/saveMigrations.ts`: `CURRENT_SAVE_VERSION = 1`,
@@ -548,8 +548,30 @@ A conservative static warning cannot see a defect that another defect is hiding.
   - **Closes:** SKB-054
 
 ### C2 — Node Schema + Generated Bindings
-- [ ] **C2** (M–L) — Single `schema/nodes.json` → TS types, Odin ranges, UI control bounds. Delete `codegen.odin` inline fallback defaults.
-  - **Closes:** SKB-024, SKB-040, SKB-042, SKB-055
+- [x] **C2** (M–L) — ✅ **CLOSED — core** (2026-09-05), remainder cut to 0.3 as the row itself allows.
+  **Landed:** `schema/nodes.json` is the one authored copy of the parameter-range contract
+  (overrides, prefix rules, generic rows, fallback, each with its `why`). `scripts/gen-node-schema.mjs`
+  renders it to `skald-backend/core/param_ranges.generated.odin` (the tables `lookup_param_range` walks;
+  the hand-written tables are gone) and `skald-ui/src/definitions/nodeSchema.generated.ts` (the same
+  data plus `lookupRange`, a case-by-case mirror of the Odin precedence). `node-definitions.ts` reads
+  every numeric default with a row through `sd()`, so a default is authored once. Gates:
+  `NodeSchema.test.ts` regenerates both files in memory and fails on a stale copy, pins the mirror's
+  precedence, and asserts node-definitions agrees with the schema; the range-parity gate keeps asking
+  the real backend. **The nine live default divergences are closed** (Wavetable/S&H amplitude 0.5→1,
+  ADSR decay 0.1→0.2 / sustain 0.7→0.5 / release 0.2→1, Reverb decay 0.1→3 with the tail's 0.1 floor,
+  Gain 1→0.75, FM ratio 1→2, Mapper outMax 1→20000) as node-scoped override rows, and the parity
+  allowlists shrink accordingly (instrument.volume stays: dormant path, not a divergence). Save version
+  4: migration 3→4 stores the OLD generated value on any exposed-but-unstored parameter of those nine
+  pairs, so no existing file changes sound — SKB-024's 6 dB is kept as it sounded, and a fresh node now
+  generates at what its card shows. No shipped example had an exposed-but-unstored parameter (scripted
+  check over all 97), so every golden is unchanged. Tests watched failing first: 3 Odin unit tests
+  (`range_schema_test`), NodeSchema.test.ts (7 cases), migration 3→4 (2 cases).
+  **Closes:** SKB-024 (and the S&H twin). SKB-040 / SKB-042 / SKB-055 are not described anywhere in
+  the repo (no BUGS.md; no code or doc mention) — left as they were, flagged for the user.
+  **Cut to 0.3 (C2-followup):** generating TS param types (dropping the `[key: string]: any` escape
+  hatch), the validator's port tables, `normalize_node_type`, struct-field/reset emission, and
+  rendering the sidebar from the node-card `ParamField[]` spec (F-B07-8). Each is a mechanical
+  consumer of the same schema once ports/state are added to it; none changes a shipped sound.
 
 ### C3 — Stable Asset Identity
 - [x] **C3** (M) — ✅ **CLOSED** (2026-09-05). Save version 2. The Instrument node carries `exportId` and

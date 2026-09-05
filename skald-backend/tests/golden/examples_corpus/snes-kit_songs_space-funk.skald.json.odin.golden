@@ -69,7 +69,7 @@ package generated_audio
 //   SNES_Snare
 //     SNES_Snare_set_Rattle_Env_decay   min 0  max 10  default 0.16  unit s   (node snare-noise-env, param decay)
 //     SNES_Snare_set_Rattle_amplitude   min 0  max 1  default 0.8  unit -   (node snare-noise, param amplitude)
-//     SNES_Snare_set_SNES_Room_decay   min 0  max 10  default 1.1  unit s   (node snare-room, param decay)
+//     SNES_Snare_set_SNES_Room_decay   min 0.1  max 10  default 1.1  unit s   (node snare-room, param decay)
 //     SNES_Snare_set_Shell_Env_decay   min 0  max 10  default 0.09  unit s   (node snare-tone-env, param decay)
 //     SNES_Snare_set_Shell_amplitude   min 0  max 1  default 0.35  unit -   (node snare-tone-osc, param amplitude)
 //     SNES_Snare_set_cutoff   min 20  max 20000  default 2200  unit Hz   (node snare-band, param cutoff)
@@ -81,7 +81,7 @@ package generated_audio
 //     SNES_Space_Pad_set_Wide_Saw_amplitude   min 0  max 1  default 0.35  unit -   (node pad-osc, param amplitude)
 //     SNES_Space_Pad_set_attack   min 0  max 10  default 0.9  unit s   (node pad-amp, param attack)
 //     SNES_Space_Pad_set_cutoff   min 20  max 20000  default 900  unit Hz   (node pad-filter, param cutoff)
-//     SNES_Space_Pad_set_decay   min 0  max 10  default 6  unit s   (node pad-space, param decay)
+//     SNES_Space_Pad_set_decay   min 0.1  max 10  default 6  unit s   (node pad-space, param decay)
 //     SNES_Space_Pad_set_frequency   min 0.01  max 100  default 0.12  unit Hz   (node pad-drift-lfo, param frequency)
 //     SNES_Space_Pad_set_mix   min 0  max 1  default 0.55  unit -   (node pad-space, param mix)
 //     SNES_Space_Pad_set_release   min 0  max 10  default 1.8  unit s   (node pad-amp, param release)
@@ -2055,7 +2055,7 @@ SNES_Snare_set_Rattle_amplitude :: proc(p: ^SNES_Snare_Processor, value: f32) {
 
 SNES_Snare_set_SNES_Room_decay :: proc(p: ^SNES_Snare_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.SNES_Room_decay = v
 }
@@ -2105,7 +2105,7 @@ SNES_Snare_set_resonance :: proc(p: ^SNES_Snare_Processor, value: f32) {
 SNES_Snare_PARAMS := []Skald_Param_Info{
 	{"Rattle_Env_decay", 0.000000000, 10.000000000, 0.159999996, "s"},
 	{"Rattle_amplitude", 0.000000000, 1.000000000, 0.800000012, ""},
-	{"SNES_Room_decay", 0.000000000, 10.000000000, 1.100000024, "s"},
+	{"SNES_Room_decay", 0.100000001, 10.000000000, 1.100000024, "s"},
 	{"Shell_Env_decay", 0.000000000, 10.000000000, 0.090000004, "s"},
 	{"Shell_amplitude", 0.000000000, 1.000000000, 0.349999994, ""},
 	{"cutoff", 20.000000000, 20000.000000000, 2200.000000000, "Hz"},
@@ -2695,7 +2695,7 @@ SNES_Space_Pad_set_cutoff :: proc(p: ^SNES_Space_Pad_Processor, value: f32) {
 
 SNES_Space_Pad_set_decay :: proc(p: ^SNES_Space_Pad_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.decay = v
 }
@@ -2733,7 +2733,7 @@ SNES_Space_Pad_PARAMS := []Skald_Param_Info{
 	{"Wide_Saw_amplitude", 0.000000000, 1.000000000, 0.349999994, ""},
 	{"attack", 0.000000000, 10.000000000, 0.899999976, "s"},
 	{"cutoff", 20.000000000, 20000.000000000, 900.000000000, "Hz"},
-	{"decay", 0.000000000, 10.000000000, 6.000000000, "s"},
+	{"decay", 0.100000001, 10.000000000, 6.000000000, "s"},
 	{"frequency", 0.010000000, 100.000000000, 0.119999997, "Hz"},
 	{"mix", 0.000000000, 1.000000000, 0.550000012, ""},
 	{"release", 0.000000000, 10.000000000, 1.799999952, "s"},

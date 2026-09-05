@@ -29,7 +29,7 @@ test_save_version_absent_and_current_are_accepted :: proc(t: ^testing.T) {
 	testing.expect(t, err_absent == "", err_absent)
 	_, err_current := core.build_project_from_json(transmute([]byte)graph_with_version(`"version": 1,`))
 	testing.expect(t, err_current == "", err_current)
-	testing.expect_value(t, core.SAVE_FORMAT_VERSION, 3)
+	testing.expect_value(t, core.SAVE_FORMAT_VERSION, 4)
 }
 
 @(test)

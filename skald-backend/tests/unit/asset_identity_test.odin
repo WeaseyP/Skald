@@ -168,5 +168,5 @@ test_graph_shape_reads_export_id_and_asset_type_from_the_instrument_node :: proc
 	testing.expect_value(t, prefix, "Bass")
 	// The track has a note, but the node says SFX.
 	testing.expect_value(t, core.detect_asset_type(inst, &project), core.Asset_Type.SFX)
-	testing.expect_value(t, core.SAVE_FORMAT_VERSION, 3)
+	testing.expect_value(t, core.SAVE_FORMAT_VERSION, 4)
 }

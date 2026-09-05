@@ -39,6 +39,7 @@ Run backend gates from `skald-backend`, UI gates from `skald-ui`.
 | Examples corpus (backend) | `.\run_corpus_golden.bat` | Every shipped example still generates deterministically. |
 | UI | `npx vitest run` | Editor behaviour, serializer, hooks. |
 | Examples corpus (UI) | `npx vitest run src/tests/corpus/ExamplesCorpus.test.ts` | Every shipped example ingests through **both** the editor and CLI paths. |
+| Schema staleness (UI) | `npx vitest run src/tests/contracts/NodeSchema.test.ts` (or `node scripts/gen-node-schema.mjs --check` from the repo root) | `schema/nodes.json` is the one authored range contract (C2); fails when `param_ranges.generated.odin` or `nodeSchema.generated.ts` is not what the schema renders to. Fix by regenerating, never by editing a generated file. |
 | Typecheck / lint | `npx tsc --noEmit` / `npm run lint` | — |
 
 `.bat` gates need the `.\` prefix under `cmd /c`. A bare

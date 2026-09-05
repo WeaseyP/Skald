@@ -31,7 +31,26 @@ import { NodeParams } from '../definitions/types';
 // 1 (C1): versioned; parentNode -> parentId; dead syncRate exposures removed.
 // 2 (C3): Instrument nodes carry `exportId` and `assetType`.
 // 3 (C4): Gain nodes carry `gainMode` ('multiply' | 'add').
-export const CURRENT_SAVE_VERSION = 3;
+// 4 (C2): exposed-but-unstored parameters of the nine unified defaults are
+//         stored at the value they generated at.
+export const CURRENT_SAVE_VERSION = 4;
+
+// C2 (SKB-024): what an exposed-but-unstored parameter GENERATED at before the
+// range table was unified with the editor's defaults — the old table's
+// default, per (editor node type, param). Only these nine pairs differed.
+// The migration writes the old number into any node that relied on it, so a
+// file that sounded one way keeps sounding that way; a fresh node stores the
+// editor default and now generates at it. Values are the pre-C2 table's, kept
+// here verbatim on purpose: they are history, not a live contract.
+const PRE_C2_EXPOSED_DEFAULTS: Record<string, Record<string, number>> = {
+    wavetable: { amplitude: 0.5 },
+    sampleHold: { amplitude: 0.5 },
+    adsr: { decay: 0.1, sustain: 0.7, release: 0.2 },
+    reverb: { decay: 0.1 },
+    gain: { gain: 1.0 },
+    fmOperator: { frequency: 1 },
+    mapper: { outMax: 1 },
+};
 
 /** The untyped save-file object as parsed from JSON. */
 export type SaveFlow = Record<string, unknown> & { nodes: unknown[] };
@@ -140,6 +159,22 @@ export const MIGRATIONS: readonly Migration[] = [
                 if (!node.data) node.data = {};
                 if (node.data.gainMode !== 'multiply' && node.data.gainMode !== 'add') {
                     node.data.gainMode = 'add';
+                }
+            });
+        },
+    },
+    {
+        from: 3,
+        to: 4,
+        describe: 'exposed-but-unstored parameters stored at the value they generated at (the range table now matches the editor defaults)',
+        apply: (flow) => {
+            walkNodes(flow.nodes, (node) => {
+                const olds = PRE_C2_EXPOSED_DEFAULTS[String(node.type)];
+                if (!olds || !node.data) return;
+                const exposed = node.data.exposedParameters;
+                if (!Array.isArray(exposed)) return;
+                for (const [param, old] of Object.entries(olds)) {
+                    if (exposed.includes(param) && node.data[param] === undefined) node.data[param] = old;
                 }
             });
         },

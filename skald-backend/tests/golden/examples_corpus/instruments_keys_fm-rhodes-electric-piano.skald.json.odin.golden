@@ -54,7 +54,7 @@ package generated_audio
 //     FM_Electric_Piano_set_Amp_sustain   min 0  max 1  default 0.22  unit -   (node ep-amp, param sustain)
 //     FM_Electric_Piano_set_Body_Mod_frequency   min 0.01  max 32  default 1  unit ratio   (node ep-body-mod, param frequency)
 //     FM_Electric_Piano_set_Carrier_frequency   min 0.01  max 32  default 1  unit ratio   (node ep-carrier, param frequency)
-//     FM_Electric_Piano_set_Room_decay   min 0  max 10  default 1.6  unit s   (node ep-reverb, param decay)
+//     FM_Electric_Piano_set_Room_decay   min 0.1  max 10  default 1.6  unit s   (node ep-reverb, param decay)
 //     FM_Electric_Piano_set_Tine_Env_attack   min 0  max 10  default 0.001  unit s   (node ep-tine-env, param attack)
 //     FM_Electric_Piano_set_Tine_Env_decay   min 0  max 10  default 0.12  unit s   (node ep-tine-env, param decay)
 //     FM_Electric_Piano_set_Tine_Env_depth   min 0  max 1  default 1  unit -   (node ep-tine-env, param depth)
@@ -477,7 +477,7 @@ FM_Electric_Piano_set_Carrier_frequency :: proc(p: ^FM_Electric_Piano_Processor,
 
 FM_Electric_Piano_set_Room_decay :: proc(p: ^FM_Electric_Piano_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Room_decay = v
 }
@@ -560,7 +560,7 @@ FM_Electric_Piano_PARAMS := []Skald_Param_Info{
 	{"Amp_sustain", 0.000000000, 1.000000000, 0.219999999, ""},
 	{"Body_Mod_frequency", 0.010000000, 32.000000000, 1.000000000, "ratio"},
 	{"Carrier_frequency", 0.010000000, 32.000000000, 1.000000000, "ratio"},
-	{"Room_decay", 0.000000000, 10.000000000, 1.600000024, "s"},
+	{"Room_decay", 0.100000001, 10.000000000, 1.600000024, "s"},
 	{"Tine_Env_attack", 0.000000000, 10.000000000, 0.001000000, "s"},
 	{"Tine_Env_decay", 0.000000000, 10.000000000, 0.119999997, "s"},
 	{"Tine_Env_depth", 0.000000000, 1.000000000, 1.000000000, ""},

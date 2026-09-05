@@ -155,7 +155,7 @@ test_multi_name_cases_are_distinct_rows :: proc(t: ^testing.T) {
 test_node_type_override_wins_over_generic :: proc(t: ^testing.T) {
 	// The generic rows these shadow, for contrast:
 	//   frequency 20..20000 Hz / 440   amplitude 0..1 / 0.5   rate 0.1..100 / 10
-	expect_range(t, "frequency", "FmOperator", 0.01, 32.0, 1.0, "ratio")
+	expect_range(t, "frequency", "FmOperator", 0.01, 32.0, 2.0, "ratio") // default 2 = the editor's (C2)
 	expect_range(t, "frequency", "LFO", 0.01, 100.0, 5.0, "Hz")
 	expect_range(t, "amplitude", "LFO", 0.0, 20000.0, 1.0, "")
 	expect_range(t, "rate", "SampleHold", 0.1, 1000.0, 10.0, "Hz")
@@ -188,18 +188,16 @@ test_override_does_not_leak_to_other_types_or_names :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_wavetable_amplitude_is_still_the_generic_row :: proc(t: ^testing.T) {
-	// SKB-024, DELIBERATELY OPEN. `{"Wavetable", "amplitude", {0,1,1,""}}` is
-	// the one-line fix and is not applied: an already-shipped patch with an
-	// exposed-but-unstored Wavetable amplitude generates 0.5 today, and
-	// correcting the row makes that patch 6 dB LOUDER. Owned by packet C2
-	// (with C1's version field), not by this gate.
-	//
-	// This test asserts the BUG, on purpose. When C2 lands the row, this test
-	// fails — which is the reminder to delete it and the matching allowlist
-	// entry in RangeParity.test.ts. A pinned known-divergence is the only kind
-	// of exception that does not rot silently.
-	expect_range(t, "amplitude", "Wavetable", 0.0, 1.0, 0.5, "")
+test_wavetable_amplitude_row_is_applied :: proc(t: ^testing.T) {
+	// SKB-024, CLOSED by packet C2. This test used to assert the bug on
+	// purpose (the generic 0.5) so that landing the row would fail it and
+	// remind whoever did so to delete the matching allowlist entry in
+	// RangeParity.test.tsx — done. The row is safe now because the 3->4 save
+	// migration stores 0.5 on any exposed-but-unstored Wavetable amplitude
+	// first, so a patch that generated at 0.5 keeps generating at 0.5; a fresh
+	// node stores 1.0 and now generates at what its card shows.
+	expect_range(t, "amplitude", "Wavetable", 0.0, 1.0, 1.0, "")
+	expect_range(t, "amplitude", "SampleHold", 0.0, 1.0, 1.0, "")
 }
 
 @(test)
@@ -361,8 +359,9 @@ test_exposed_default_json_null :: proc(t: ^testing.T) {
 @(test)
 test_exposed_default_absent :: proc(t: ^testing.T) {
 	// The SKB-024/SKB-051 case: the key is not present at all, so the range
-	// table's default is what the generated field initializes to. Every patch
-	// saved before a parameter existed looks like this.
+	// table's default is what the generated field initializes to. Since C2 that
+	// default is the editor's (1.0); files that relied on the old 0.5 had it
+	// stored by the 3->4 save migration before this row changed.
 	params := json.Object{}
 	defer delete(params)
 	n := node_with("Wavetable", params)
@@ -371,8 +370,8 @@ test_exposed_default_absent :: proc(t: ^testing.T) {
 	got := core.exposed_param_default(n, "amplitude", rng.default)
 	testing.expectf(
 		t,
-		got == 0.5,
-		"an absent Wavetable amplitude still resolves to the generic 0.5 (SKB-024 open): got %v",
+		got == 1.0,
+		"an absent Wavetable amplitude resolves to the unified 1.0 (SKB-024 closed by C2): got %v",
 		got,
 	)
 	// Contrast: Noise has an override, so the same absent shape resolves to

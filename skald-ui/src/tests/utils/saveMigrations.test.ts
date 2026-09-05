@@ -20,7 +20,7 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
 describe('the registry', () => {
     it('is contiguous from 0 to CURRENT_SAVE_VERSION with one step per version', () => {
-        expect(CURRENT_SAVE_VERSION).toBe(3);
+        expect(CURRENT_SAVE_VERSION).toBe(4);
         const froms = MIGRATIONS.map((m) => m.from);
         expect(froms).toEqual([...Array(CURRENT_SAVE_VERSION).keys()]);
         MIGRATIONS.forEach((m) => expect(m.to).toBe(m.from + 1));
@@ -245,6 +245,57 @@ describe('migration 2 -> 3 (VCA Gain-port mode made explicit — packet C4)', ()
         migrateSaveFile(flow);
         expect(find(flow, 'already').gainMode).toBe('multiply');
         expect(find(flow, 'f')).toEqual({ label: 'F', cutoff: 800 });
+        const once = clone(flow);
+        migrateSaveFile(flow);
+        expect(flow).toEqual(once);
+    });
+});
+
+describe('migration 3 -> 4 (the nine unified defaults — packet C2)', () => {
+    // Before C2 an exposed-but-unstored parameter generated at the range
+    // table's default, which for nine (node, param) pairs differed from the
+    // default the editor stored on a fresh node. The table now says what the
+    // editor says; this migration stores the OLD generated value on exactly
+    // the nodes that relied on it, so no existing file changes sound.
+    const before = (): SaveFlow => ({
+        version: 3,
+        nodes: [
+            { id: 'wt', type: 'wavetable', position: { x: 0, y: 0 }, data: { label: 'W', position: 0, exposedParameters: ['amplitude', 'position'] } },
+            { id: 'env', type: 'adsr', position: { x: 0, y: 0 }, data: { label: 'E', attack: 0.1, decay: 0.3, exposedParameters: ['decay', 'release'] } },
+            { id: 'g', type: 'gain', position: { x: 0, y: 0 }, data: { label: 'G', gainMode: 'add' } },
+            {
+                id: 'inst', type: 'instrument', position: { x: 0, y: 0 },
+                data: {
+                    name: 'I', label: 'I', exportId: 'I', assetType: 'sfx',
+                    subgraph: { nodes: [
+                        { id: 'rv', type: 'reverb', position: { x: 0, y: 0 }, data: { label: 'R', mix: 0.5, exposedParameters: ['decay'] } },
+                    ], connections: [] },
+                },
+            },
+        ],
+        edges: [],
+    });
+    const find = (flow: SaveFlow, id: string): Record<string, unknown> => {
+        let found: Record<string, unknown> | undefined;
+        walkNodes(flow.nodes, (n) => { if (n.id === id) found = n.data as Record<string, unknown>; });
+        return found!;
+    };
+
+    it('stores the value an exposed-but-unstored parameter used to generate at, inside instruments too', () => {
+        const flow = before();
+        expect(migrateSaveFile(flow).ok).toBe(true);
+        expect(find(flow, 'wt').amplitude).toBe(0.5);   // SKB-024's 6 dB: kept as it sounded
+        expect(find(flow, 'env').release).toBe(0.2);
+        expect(find(flow, 'rv').decay).toBe(0.1);
+    });
+
+    it('leaves a stored value, an unexposed parameter, and a node with no exposure alone', () => {
+        const flow = before();
+        migrateSaveFile(flow);
+        expect(find(flow, 'env').decay).toBe(0.3);              // stored: untouched
+        expect(find(flow, 'env').sustain).toBeUndefined();      // not exposed: the generator's own fallback applies, as before
+        expect(find(flow, 'wt').position).toBe(0);
+        expect(find(flow, 'g').gain).toBeUndefined();           // gain not exposed
         const once = clone(flow);
         migrateSaveFile(flow);
         expect(flow).toEqual(once);

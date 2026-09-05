@@ -48,7 +48,7 @@ package generated_audio
 //   the node id never changes. Both halves are listed per setter below.
 //   GW_Gold_Midas_Bells
 //     GW_Gold_Midas_Bells_set_Carrier_frequency   min 0.01  max 32  default 1  unit ratio   (node midas-carrier, param frequency)
-//     GW_Gold_Midas_Bells_set_Gilded_Hall_decay   min 0  max 10  default 2.5  unit s   (node midas-reverb, param decay)
+//     GW_Gold_Midas_Bells_set_Gilded_Hall_decay   min 0.1  max 10  default 2.5  unit s   (node midas-reverb, param decay)
 //     GW_Gold_Midas_Bells_set_Gilded_Hall_mix   min 0  max 1  default 0.3  unit -   (node midas-reverb, param mix)
 //     GW_Gold_Midas_Bells_set_Mod_frequency   min 0.01  max 32  default 3.5  unit ratio   (node midas-mod, param frequency)
 //     GW_Gold_Midas_Bells_set_Sparkle_mix   min 0  max 1  default 0.3  unit -   (node midas-sparkle, param mix)
@@ -396,7 +396,7 @@ GW_Gold_Midas_Bells_set_Carrier_frequency :: proc(p: ^GW_Gold_Midas_Bells_Proces
 
 GW_Gold_Midas_Bells_set_Gilded_Hall_decay :: proc(p: ^GW_Gold_Midas_Bells_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Gilded_Hall_decay = v
 }
@@ -452,7 +452,7 @@ GW_Gold_Midas_Bells_set_release :: proc(p: ^GW_Gold_Midas_Bells_Processor, value
 
 GW_Gold_Midas_Bells_PARAMS := []Skald_Param_Info{
 	{"Carrier_frequency", 0.010000000, 32.000000000, 1.000000000, "ratio"},
-	{"Gilded_Hall_decay", 0.000000000, 10.000000000, 2.500000000, "s"},
+	{"Gilded_Hall_decay", 0.100000001, 10.000000000, 2.500000000, "s"},
 	{"Gilded_Hall_mix", 0.000000000, 1.000000000, 0.300000012, ""},
 	{"Mod_frequency", 0.010000000, 32.000000000, 3.500000000, "ratio"},
 	{"Sparkle_mix", 0.000000000, 1.000000000, 0.300000012, ""},

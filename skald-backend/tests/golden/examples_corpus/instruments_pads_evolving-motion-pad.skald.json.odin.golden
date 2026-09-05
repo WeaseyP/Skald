@@ -47,7 +47,7 @@ package generated_audio
 //   that must survive edits should key on <Foo>_set_param(p, "<nodeId>::<param>", v):
 //   the node id never changes. Both halves are listed per setter below.
 //   Evolving_Motion_Pad
-//     Evolving_Motion_Pad_set_Deep_Verb_decay   min 0  max 10  default 4.5  unit s   (node pad-reverb, param decay)
+//     Evolving_Motion_Pad_set_Deep_Verb_decay   min 0.1  max 10  default 4.5  unit s   (node pad-reverb, param decay)
 //     Evolving_Motion_Pad_set_Detuned_Saws_amplitude   min 0  max 1  default 0.2  unit -   (node pad-osc, param amplitude)
 //     Evolving_Motion_Pad_set_Random_Motion_amplitude   min 0  max 1  default 1  unit -   (node pad-sh, param amplitude)
 //     Evolving_Motion_Pad_set_Shimmer_amplitude   min 0  max 20000  default 0.015  unit -   (node pad-shimmer, param amplitude)
@@ -418,7 +418,7 @@ Evolving_Motion_Pad_is_playing :: proc(p: ^Evolving_Motion_Pad_Processor) -> boo
 
 Evolving_Motion_Pad_set_Deep_Verb_decay :: proc(p: ^Evolving_Motion_Pad_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Deep_Verb_decay = v
 }
@@ -543,7 +543,7 @@ Evolving_Motion_Pad_set_sustain :: proc(p: ^Evolving_Motion_Pad_Processor, value
 }
 
 Evolving_Motion_Pad_PARAMS := []Skald_Param_Info{
-	{"Deep_Verb_decay", 0.000000000, 10.000000000, 4.500000000, "s"},
+	{"Deep_Verb_decay", 0.100000001, 10.000000000, 4.500000000, "s"},
 	{"Detuned_Saws_amplitude", 0.000000000, 1.000000000, 0.200000003, ""},
 	{"Random_Motion_amplitude", 0.000000000, 1.000000000, 1.000000000, ""},
 	{"Shimmer_amplitude", 0.000000000, 20000.000000000, 0.015000000, ""},

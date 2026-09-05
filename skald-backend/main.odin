@@ -68,6 +68,7 @@ CODEGEN_SOURCES := [?]Source_File {
 	{"core/graph_validate.odin", #load("core/graph_validate.odin")},
 	{"core/json.odin", #load("core/json.odin")},
 	{"core/param_ranges.odin", #load("core/param_ranges.odin")},
+	{"core/param_ranges.generated.odin", #load("core/param_ranges.generated.odin")},
 	{"core/param_utils.odin", #load("core/param_utils.odin")},
 	{"core/provenance.odin", #load("core/provenance.odin")},
 	{"core/target_guard.odin", #load("core/target_guard.odin")},

@@ -51,7 +51,7 @@ package generated_audio
 //     GW_Boss_War_Tuba_set_Amp_attack   min 0  max 10  default 0.07  unit s   (node war-amp, param attack)
 //     GW_Boss_War_Tuba_set_Amp_decay   min 0  max 10  default 0.15  unit s   (node war-amp, param decay)
 //     GW_Boss_War_Tuba_set_Amp_sustain   min 0  max 1  default 0.85  unit -   (node war-amp, param sustain)
-//     GW_Boss_War_Tuba_set_Arena_decay   min 0  max 10  default 1.6  unit s   (node war-reverb, param decay)
+//     GW_Boss_War_Tuba_set_Arena_decay   min 0.1  max 10  default 1.6  unit s   (node war-reverb, param decay)
 //     GW_Boss_War_Tuba_set_Arena_mix   min 0  max 1  default 0.12  unit -   (node war-reverb, param mix)
 //     GW_Boss_War_Tuba_set_Body_cutoff   min 20  max 20000  default 320  unit Hz   (node war-body, param cutoff)
 //     GW_Boss_War_Tuba_set_Body_resonance   min 0.1  max 20  default 1  unit Q   (node war-body, param resonance)
@@ -508,7 +508,7 @@ GW_Boss_War_Tuba_set_Amp_sustain :: proc(p: ^GW_Boss_War_Tuba_Processor, value: 
 
 GW_Boss_War_Tuba_set_Arena_decay :: proc(p: ^GW_Boss_War_Tuba_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Arena_decay = v
 }
@@ -630,7 +630,7 @@ GW_Boss_War_Tuba_PARAMS := []Skald_Param_Info{
 	{"Amp_attack", 0.000000000, 10.000000000, 0.070000000, "s"},
 	{"Amp_decay", 0.000000000, 10.000000000, 0.150000006, "s"},
 	{"Amp_sustain", 0.000000000, 1.000000000, 0.850000024, ""},
-	{"Arena_decay", 0.000000000, 10.000000000, 1.600000024, "s"},
+	{"Arena_decay", 0.100000001, 10.000000000, 1.600000024, "s"},
 	{"Arena_mix", 0.000000000, 1.000000000, 0.119999997, ""},
 	{"Body_cutoff", 20.000000000, 20000.000000000, 320.000000000, "Hz"},
 	{"Body_resonance", 0.100000001, 20.000000000, 1.000000000, "Q"},

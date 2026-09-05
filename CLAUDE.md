@@ -65,6 +65,14 @@ emitted. See `TESTING.md`.
 If you add a file under `skald-backend/core/`, add it to `CODEGEN_SOURCES` in
 `main.odin` or the editor's provenance guard reports it uncovered.
 
+**Parameter ranges and defaults are authored once**, in `schema/nodes.json`.
+`node scripts/gen-node-schema.mjs` renders `core/param_ranges.generated.odin`
+and `skald-ui/src/definitions/nodeSchema.generated.ts`; never edit a
+`*.generated.*` file by hand (the staleness gate `NodeSchema.test.ts` fails).
+A new row's default is what an exposed-but-untouched parameter generates at,
+so changing a default for an existing (node, param) needs a save migration
+that stores the old value first (see migration 3→4 in `saveMigrations.ts`).
+
 ## Conventions
 
 - **Every fix ships with a test you watched fail first** (roadmap exit criterion

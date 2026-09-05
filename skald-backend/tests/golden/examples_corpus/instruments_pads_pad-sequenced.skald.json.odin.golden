@@ -48,7 +48,7 @@ package generated_audio
 //   the node id never changes. Both halves are listed per setter below.
 //   Pad
 //     Pad_set_Amp_decay   min 0  max 10  default 0.5  unit s   (node pad-amp-envelope, param decay)
-//     Pad_set_Reverb_decay   min 0  max 10  default 4  unit s   (node pad-reverb, param decay)
+//     Pad_set_Reverb_decay   min 0.1  max 10  default 4  unit s   (node pad-reverb, param decay)
 //     Pad_set_amplitude   min 0  max 20000  default 0.6  unit -   (node pad-morph-lfo, param amplitude)
 //     Pad_set_attack   min 0  max 10  default 0.9  unit s   (node pad-amp-envelope, param attack)
 //     Pad_set_cutoff   min 20  max 20000  default 900  unit Hz   (node pad-filter, param cutoff)
@@ -396,7 +396,7 @@ Pad_set_Amp_decay :: proc(p: ^Pad_Processor, value: f32) {
 
 Pad_set_Reverb_decay :: proc(p: ^Pad_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Reverb_decay = v
 }
@@ -473,7 +473,7 @@ Pad_set_sustain :: proc(p: ^Pad_Processor, value: f32) {
 
 Pad_PARAMS := []Skald_Param_Info{
 	{"Amp_decay", 0.000000000, 10.000000000, 0.500000000, "s"},
-	{"Reverb_decay", 0.000000000, 10.000000000, 4.000000000, "s"},
+	{"Reverb_decay", 0.100000001, 10.000000000, 4.000000000, "s"},
 	{"amplitude", 0.000000000, 20000.000000000, 0.600000024, ""},
 	{"attack", 0.000000000, 10.000000000, 0.899999976, "s"},
 	{"cutoff", 20.000000000, 20000.000000000, 900.000000000, "Hz"},

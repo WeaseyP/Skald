@@ -55,7 +55,7 @@ package generated_audio
 //     Ambient_Clean_set_Fundamental_amplitude   min 0  max 1  default 0.32  unit -   (node am-fund, param amplitude)
 //     Ambient_Clean_set_Quarter_Echo_mix   min 0  max 1  default 0.28  unit -   (node am-echo, param mix)
 //     Ambient_Clean_set_Shimmer_amplitude   min 0  max 1  default 0.28  unit -   (node am-shimmer, param amplitude)
-//     Ambient_Clean_set_Space_decay   min 0  max 10  default 2.8  unit s   (node am-space, param decay)
+//     Ambient_Clean_set_Space_decay   min 0.1  max 10  default 2.8  unit s   (node am-space, param decay)
 //     Ambient_Clean_set_Space_mix   min 0  max 1  default 0.3  unit -   (node am-space, param mix)
 //     Ambient_Clean_set_Swell_Env_attack   min 0  max 10  default 0.3  unit s   (node am-swell-env, param attack)
 //     Ambient_Clean_set_Swell_Env_decay   min 0  max 10  default 1  unit s   (node am-swell-env, param decay)
@@ -513,7 +513,7 @@ Ambient_Clean_set_Shimmer_amplitude :: proc(p: ^Ambient_Clean_Processor, value: 
 
 Ambient_Clean_set_Space_decay :: proc(p: ^Ambient_Clean_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Space_decay = v
 }
@@ -618,7 +618,7 @@ Ambient_Clean_PARAMS := []Skald_Param_Info{
 	{"Fundamental_amplitude", 0.000000000, 1.000000000, 0.319999993, ""},
 	{"Quarter_Echo_mix", 0.000000000, 1.000000000, 0.280000001, ""},
 	{"Shimmer_amplitude", 0.000000000, 1.000000000, 0.280000001, ""},
-	{"Space_decay", 0.000000000, 10.000000000, 2.799999952, "s"},
+	{"Space_decay", 0.100000001, 10.000000000, 2.799999952, "s"},
 	{"Space_mix", 0.000000000, 1.000000000, 0.300000012, ""},
 	{"Swell_Env_attack", 0.000000000, 10.000000000, 0.300000012, "s"},
 	{"Swell_Env_decay", 0.000000000, 10.000000000, 1.000000000, "s"},

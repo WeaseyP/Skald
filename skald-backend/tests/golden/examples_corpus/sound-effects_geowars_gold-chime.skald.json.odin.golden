@@ -48,7 +48,7 @@ package generated_audio
 //   the node id never changes. Both halves are listed per setter below.
 //   GW_SFX_Gold_Chime
 //     GW_SFX_Gold_Chime_set_Carrier_frequency   min 0.01  max 32  default 1  unit ratio   (node chime-carrier, param frequency)
-//     GW_SFX_Gold_Chime_set_Halo_decay   min 0  max 10  default 3  unit s   (node chime-reverb, param decay)
+//     GW_SFX_Gold_Chime_set_Halo_decay   min 0.1  max 10  default 3  unit s   (node chime-reverb, param decay)
 //     GW_SFX_Gold_Chime_set_Mod_frequency   min 0.01  max 32  default 4.2  unit ratio   (node chime-mod, param frequency)
 //     GW_SFX_Gold_Chime_set_Strike_decay   min 0  max 10  default 1.2  unit s   (node chime-strike, param decay)
 //     GW_SFX_Gold_Chime_set_mix   min 0  max 1  default 0.35  unit -   (node chime-reverb, param mix)
@@ -377,7 +377,7 @@ GW_SFX_Gold_Chime_set_Carrier_frequency :: proc(p: ^GW_SFX_Gold_Chime_Processor,
 
 GW_SFX_Gold_Chime_set_Halo_decay :: proc(p: ^GW_SFX_Gold_Chime_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Halo_decay = v
 }
@@ -419,7 +419,7 @@ GW_SFX_Gold_Chime_set_release :: proc(p: ^GW_SFX_Gold_Chime_Processor, value: f3
 
 GW_SFX_Gold_Chime_PARAMS := []Skald_Param_Info{
 	{"Carrier_frequency", 0.010000000, 32.000000000, 1.000000000, "ratio"},
-	{"Halo_decay", 0.000000000, 10.000000000, 3.000000000, "s"},
+	{"Halo_decay", 0.100000001, 10.000000000, 3.000000000, "s"},
 	{"Mod_frequency", 0.010000000, 32.000000000, 4.199999809, "ratio"},
 	{"Strike_decay", 0.000000000, 10.000000000, 1.200000048, "s"},
 	{"mix", 0.000000000, 1.000000000, 0.349999994, ""},

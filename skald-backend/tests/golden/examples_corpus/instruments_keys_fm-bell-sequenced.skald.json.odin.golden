@@ -47,7 +47,7 @@ package generated_audio
 //   that must survive edits should key on <Foo>_set_param(p, "<nodeId>::<param>", v):
 //   the node id never changes. Both halves are listed per setter below.
 //   FM_Bell
-//     FM_Bell_set_Bell_Space_decay   min 0  max 10  default 2  unit s   (node bell-reverb, param decay)
+//     FM_Bell_set_Bell_Space_decay   min 0.1  max 10  default 2  unit s   (node bell-reverb, param decay)
 //     FM_Bell_set_Carrier_frequency   min 0.01  max 32  default 1  unit ratio   (node bell-carrier, param frequency)
 //     FM_Bell_set_Mod_frequency   min 0.01  max 32  default 3.5  unit ratio   (node bell-mod, param frequency)
 //     FM_Bell_set_Strike_decay   min 0  max 10  default 0.8  unit s   (node bell-amp, param decay)
@@ -382,7 +382,7 @@ FM_Bell_is_playing :: proc(p: ^FM_Bell_Processor) -> bool {
 
 FM_Bell_set_Bell_Space_decay :: proc(p: ^FM_Bell_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.Bell_Space_decay = v
 }
@@ -458,7 +458,7 @@ FM_Bell_set_velocitySensitivity :: proc(p: ^FM_Bell_Processor, value: f32) {
 }
 
 FM_Bell_PARAMS := []Skald_Param_Info{
-	{"Bell_Space_decay", 0.000000000, 10.000000000, 2.000000000, "s"},
+	{"Bell_Space_decay", 0.100000001, 10.000000000, 2.000000000, "s"},
 	{"Carrier_frequency", 0.010000000, 32.000000000, 1.000000000, "ratio"},
 	{"Mod_frequency", 0.010000000, 32.000000000, 3.500000000, "ratio"},
 	{"Strike_decay", 0.000000000, 10.000000000, 0.800000012, "s"},

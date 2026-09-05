@@ -52,7 +52,7 @@ package generated_audio
 //     GW_Gold_Gilded_Fanfare_set_amplitude   min 0  max 1  default 0.5  unit -   (node fanfare-osc, param amplitude)
 //     GW_Gold_Gilded_Fanfare_set_attack   min 0  max 10  default 0.04  unit s   (node fanfare-amp, param attack)
 //     GW_Gold_Gilded_Fanfare_set_cutoff   min 20  max 20000  default 1300  unit Hz   (node fanfare-filter, param cutoff)
-//     GW_Gold_Gilded_Fanfare_set_decay   min 0  max 10  default 1.8  unit s   (node fanfare-reverb, param decay)
+//     GW_Gold_Gilded_Fanfare_set_decay   min 0.1  max 10  default 1.8  unit s   (node fanfare-reverb, param decay)
 //     GW_Gold_Gilded_Fanfare_set_drive   min 1  max 100  default 5  unit x   (node fanfare-shine, param drive)
 //     GW_Gold_Gilded_Fanfare_set_release   min 0  max 10  default 0.12  unit s   (node fanfare-amp, param release)
 //     GW_Gold_Gilded_Fanfare_set_resonance   min 0.1  max 20  default 1  unit Q   (node fanfare-filter, param resonance)
@@ -418,7 +418,7 @@ GW_Gold_Gilded_Fanfare_set_cutoff :: proc(p: ^GW_Gold_Gilded_Fanfare_Processor, 
 
 GW_Gold_Gilded_Fanfare_set_decay :: proc(p: ^GW_Gold_Gilded_Fanfare_Processor, value: f32) {
 	v := value
-	if v < 0.000000000 do v = 0.000000000
+	if v < 0.100000001 do v = 0.100000001
 	if v > 10.000000000 do v = 10.000000000
 	p.decay = v
 }
@@ -457,7 +457,7 @@ GW_Gold_Gilded_Fanfare_PARAMS := []Skald_Param_Info{
 	{"amplitude", 0.000000000, 1.000000000, 0.500000000, ""},
 	{"attack", 0.000000000, 10.000000000, 0.039999999, "s"},
 	{"cutoff", 20.000000000, 20000.000000000, 1300.000000000, "Hz"},
-	{"decay", 0.000000000, 10.000000000, 1.799999952, "s"},
+	{"decay", 0.100000001, 10.000000000, 1.799999952, "s"},
 	{"drive", 1.000000000, 100.000000000, 5.000000000, "x"},
 	{"release", 0.000000000, 10.000000000, 0.119999997, "s"},
 	{"resonance", 0.100000001, 20.000000000, 1.000000000, "Q"},
