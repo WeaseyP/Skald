@@ -65,6 +65,7 @@ const contentAreaStyles: React.CSSProperties = {
 
 import { AudioVisualizer } from '../Visualization/AudioVisualizer';
 import { PeakMeter } from '../Visualization/PeakMeter';
+import { useVisualizerModePreference } from '../../hooks/nodeEditor/useVisualizerModePreference';
 import { StereoAnalysers } from '../../utils/meter';
 import { PianoRoll } from './PianoRoll';
 import { NumberInput } from '../common/NumberInput';
@@ -98,6 +99,10 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+    // E9 (roadmap 0.2 §9.4 item 3): same persisted mode preference the
+    // per-Output-node visualizer uses — one app-wide setting, not a second
+    // one that could disagree about which mode "the visualizer" means.
+    const [visualizerMode, setVisualizerMode] = useVisualizerModePreference();
 
     const [height, setHeight] = useState(300);
     const [isResizing, setIsResizing] = useState(false);
@@ -195,10 +200,11 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                         <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', color: '#ccc' }}>MASTER</div>
                         <AudioVisualizer
                             analyser={analyserNode}
+                            stereoAnalysers={meterAnalysers}
                             width={100}
                             height={60}
-                            showSpectrum={true}
-                            showOscilloscope={true}
+                            mode={visualizerMode}
+                            onModeChange={setVisualizerMode}
                         />
                         {/* Packet B10: stereo peak-hold meter + clip LED, tapped
                             from the worklet output — what the export produces. */}

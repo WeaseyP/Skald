@@ -9,6 +9,7 @@ import {
     HOLD_DECAY_DB_PER_SECOND,
     METER_FLOOR_DB,
     advanceHold,
+    correlation,
     isClipping,
     meterFill,
     peakOf,
@@ -76,5 +77,47 @@ describe('isClipping', () => {
         expect(isClipping(1)).toBe(true);
         expect(isClipping(1.3)).toBe(true);
         expect(isClipping(Infinity)).toBe(true);
+    });
+});
+
+// E9 (roadmap 0.2 §9.4 item 3) — the phase-correlation meter's arithmetic,
+// pinned on pure signals so the three readings a sound designer actually
+// looks for (mono-compatible, out-of-phase, unrelated) don't depend on a
+// live AnalyserNode to verify.
+describe('correlation', () => {
+    const sine = (n: number, cycles: number) =>
+        Float32Array.from({ length: n }, (_, i) => Math.sin((2 * Math.PI * cycles * i) / n));
+    const cosine = (n: number, cycles: number) =>
+        Float32Array.from({ length: n }, (_, i) => Math.cos((2 * Math.PI * cycles * i) / n));
+
+    it('is +1 when L and R are identical (perfectly mono-compatible)', () => {
+        const l = sine(64, 4);
+        expect(correlation(l, l)).toBeCloseTo(1, 6);
+    });
+
+    it('is -1 when R is L inverted (cancels to silence in mono)', () => {
+        const l = sine(64, 4);
+        const r = l.map(v => -v) as Float32Array;
+        expect(correlation(l, r)).toBeCloseTo(-1, 6);
+    });
+
+    it('is 0 for independent (orthogonal) channels', () => {
+        // A sine and a cosine at the same integer number of whole cycles are
+        // discretely orthogonal over the window — no phase relationship to
+        // report, the reading a "nothing correlated" patch should produce.
+        const l = sine(64, 4);
+        const r = cosine(64, 4);
+        expect(correlation(l, r)).toBeCloseTo(0, 6);
+    });
+
+    it('is 0 for silence rather than NaN from a 0/0 division', () => {
+        const silence = new Float32Array(64);
+        expect(correlation(silence, silence)).toBe(0);
+    });
+
+    it('is 0 when only one channel is silent', () => {
+        const l = sine(64, 4);
+        const silence = new Float32Array(64);
+        expect(correlation(l, silence)).toBe(0);
     });
 });

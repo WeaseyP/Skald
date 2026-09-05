@@ -78,3 +78,32 @@ export const advanceHold = (prevHoldDb: number, peakDb: number, dtSeconds: numbe
     Math.max(peakDb, prevHoldDb - decay * dtSeconds);
 
 export const isClipping = (peak: number): boolean => peak >= CLIP_THRESHOLD;
+
+/** E9 (roadmap 9.4 item 3): stereo phase correlation over one analysis
+ *  window. +1 means L and R carry identical signal (fully mono-compatible);
+ *  -1 means R is L inverted — a mix that cancels to silence the moment a
+ *  game (or a phone speaker) sums it to mono, the exact fault this meter
+ *  exists to catch; 0 means the channels are unrelated. This is cosine
+ *  similarity of the two buffers, not Pearson's r: by the time a signal
+ *  reaches this tap it has already been through the backend's own DC
+ *  blocker (codegen_project.odin's `skald_dc_block`, E5), so subtracting a
+ *  second, independently-computed running mean here would just be a second
+ *  DC estimate that can disagree with the first — the SKB-002 shape, one
+ *  layer up. Guards against the 0/0 a silent channel would produce (NaN
+ *  reads as a fault everywhere else in this file; here it is simply "no
+ *  correlation to report", the same as true silence). */
+export const correlation = (l: Float32Array, r: Float32Array): number => {
+    const n = Math.min(l.length, r.length);
+    let sumLR = 0;
+    let sumLL = 0;
+    let sumRR = 0;
+    for (let i = 0; i < n; i++) {
+        const a = l[i];
+        const b = r[i];
+        sumLR += a * b;
+        sumLL += a * a;
+        sumRR += b * b;
+    }
+    const denom = Math.sqrt(sumLL * sumRR);
+    return denom === 0 ? 0 : sumLR / denom;
+};

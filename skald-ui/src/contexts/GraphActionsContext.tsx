@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import { NodeParams } from '../definitions/types';
 import { BPM_DEFAULT } from '../definitions/bpm';
+import { StereoAnalysers } from '../utils/meter';
 
 /**
  * Gives on-canvas node components (rendered inside React Flow) access to the
@@ -18,6 +19,11 @@ interface GraphActionsContextType {
     // division resolves to. Optional because the provider predates it and
     // isolated renders have no tempo; readers fall back to BPM_DEFAULT.
     bpm?: number;
+    // E9 (roadmap 0.2 §9.4 item 3): the peak meter's stereo tap, reused
+    // (not re-wired) so GraphOutputNode's correlation mode reads the same
+    // pair PeakMeter already does — see useWasmAudioEngine's meterAnalysers.
+    // Optional for the same reason bpm is: isolated renders have no engine.
+    meterAnalysers?: StereoAnalysers | null;
 }
 const GraphActionsContext = createContext<GraphActionsContextType | undefined>(undefined);
 export const GraphActionsProvider = GraphActionsContext.Provider;
@@ -26,3 +32,7 @@ export const GraphActionsProvider = GraphActionsContext.Provider;
 export const useGraphActions = () => useContext(GraphActionsContext);
 /** The project tempo for display on node cards; BPM_DEFAULT outside the app. */
 export const useProjectBpm = (): number => useContext(GraphActionsContext)?.bpm ?? BPM_DEFAULT;
+/** The peak meter's stereo tap, for GraphOutputNode's correlation-mode
+ *  visualizer; null (not undefined) outside the app or before Play, so a
+ *  caller can treat "no context" and "engine stopped" identically. */
+export const useMeterAnalysers = (): StereoAnalysers | null => useContext(GraphActionsContext)?.meterAnalysers ?? null;

@@ -497,7 +497,11 @@ const EditorLayout = () => {
     // internal store made those edits silently inert.)
     // `bpm` rides along (C7) so synced node cards can print the time their
     // division resolves to at the project tempo.
-    const graphActions = useMemo(() => ({ updateNodeData, bpm }), [updateNodeData, bpm]);
+    // E9: meterAnalysers rides along the same context bpm already uses to
+    // reach node cards — a second prop threaded through every node component
+    // for one visualizer's correlation mode would be the kind of duplicate
+    // wiring CLAUDE.md's "one reader" note warns about.
+    const graphActions = useMemo(() => ({ updateNodeData, bpm, meterAnalysers }), [updateNodeData, bpm, meterAnalysers]);
 
     // E7: a rendering-only derivation (styleEdgesBySemanticKind), never fed
     // back into setEdges — the document's `edges` (what save/undo/codegen
