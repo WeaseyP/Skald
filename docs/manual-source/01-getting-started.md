@@ -109,7 +109,9 @@ Once a graph grows past a handful of nodes, the colour is what lets you read it 
 
 ### Placing, wiring, selecting and deleting nodes
 
-**Navigating the canvas.** Scroll to zoom in and out; click and drag on empty canvas to pan around. This is standard behaviour of the node-graph library the canvas is built on, not something Skald adds.
+**Navigating the canvas.** Scroll to zoom in and out; click and drag on empty canvas to pan around. This is standard behaviour of the node-graph library the canvas is built on, not something Skald adds. A minimap in the bottom-right corner mirrors the full graph at a glance, tinting each node the same fixed accent colour its card uses (`skald-ui/src/app.tsx::EditorLayout`, colours from `skald-ui/src/components/Nodes/NodeStyles.ts::accentFor`) — useful once a patch outgrows one screen.
+
+**Snap to grid.** The checkbox in the canvas's top-right corner makes a dragged or dropped node land on a 20-pixel grid — the same spacing as the dots in the background — instead of wherever the pointer happened to be, which keeps a tidy patch tidy. It is a view preference, not part of your patch: it is remembered on this machine but never saved into the file and never appears in the undo history (`skald-ui/src/hooks/nodeEditor/useSnapToGridPreference.ts::useSnapToGridPreference`).
 
 **Placing.** Drag an entry from the sidebar's Nodes palette and drop it on the canvas.
 

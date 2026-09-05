@@ -8,7 +8,7 @@
 ================================================================================
 */
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { ReactFlow, Background, Controls, ReactFlowInstance, ReactFlowProvider } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, Panel, ReactFlowInstance, ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 // Import your components
@@ -38,6 +38,8 @@ import { shouldLoadFirstRunPatch, useFirstRunPatch } from './hooks/nodeEditor/us
 import { useQwertyKeyboard } from './hooks/useQwertyKeyboard';
 import { useGraphKeyboardTraversal } from './hooks/useGraphKeyboardTraversal';
 import { isTypingTarget } from './utils/keyboardTarget';
+import { useSnapToGridPreference } from './hooks/nodeEditor/useSnapToGridPreference';
+import { accentFor } from './components/Nodes/NodeStyles';
 
 // Re-exported: the Export-Step naming rule now lives with the Export-Step
 // action itself (useEditorState), which is where its undo entry is pushed.
@@ -88,6 +90,9 @@ const EditorLayout = () => {
     // Playback preference, not part of the document: neither saved nor
     // undoable, so it stays local instead of joining the session block.
     const [isLooping, setIsLooping] = useState(false);
+    // E6: view preference, same rule as isLooping above — not the document,
+    // not undoable, persisted only so it survives a reload.
+    const [snapToGrid, setSnapToGrid] = useSnapToGridPreference();
     // `notePitch` is part of the selection now: a step can hold a chord, and a
     // step-only selection meant every edit landed on an arbitrary member
     // (SKB-025).
@@ -499,9 +504,44 @@ const EditorLayout = () => {
                             deleteKeyCode={['Backspace', 'Delete']}
                             fitView
                             style={{ width: '100%', height: '100%' }}
+                            // E6: 20 matches Background's default dot gap below,
+                            // so the grid a dragged node snaps to is the one
+                            // the user can actually see.
+                            snapToGrid={snapToGrid}
+                            snapGrid={[20, 20]}
                         >
                             <Background />
                             <Controls />
+                            {/* E6: bottom-right, same corner React Flow uses by
+                                default — the sequencer dock lives in a separate
+                                row below this canvas (see workspaceContainerStyles/
+                                SequencerDock below) and ShortcutLegend's "?" sits
+                                in the parameter panel's corner, not this one, so
+                                nothing else claims this space. */}
+                            <MiniMap
+                                nodeColor={(node) => accentFor(node.type)}
+                                maskColor="rgba(30, 30, 30, 0.6)"
+                                style={{ backgroundColor: '#252526', border: '1px solid #4A5568' }}
+                            />
+                            <Panel position="top-right">
+                                <label
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        background: '#252526', border: '1px solid #4A5568',
+                                        borderRadius: '4px', padding: '4px 8px',
+                                        color: '#E2E8F0', fontSize: '0.8em', fontFamily: 'Inter, system-ui, sans-serif',
+                                        cursor: 'pointer', userSelect: 'none',
+                                    }}
+                                    title="Snap dragged and dropped nodes to the grid"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={snapToGrid}
+                                        onChange={(e) => setSnapToGrid(e.target.checked)}
+                                    />
+                                    Snap to grid
+                                </label>
+                            </Panel>
                         </ReactFlow>
                         </GraphActionsProvider>
                         <ShortcutLegend />
