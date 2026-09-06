@@ -1,0 +1,28 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "wavetablephase",
+        "name": "Asset",
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "audio_graph": {
+          "nodes": [
+            { "id": "a", "type": "Wavetable", "parameters": { "fixedPitch": true, "frequency": 440, "position": 0, "amplitude": 0.5, "phase": 0 } },
+            { "id": "b", "type": "Wavetable", "parameters": { "fixedPitch": true, "frequency": 440, "position": 0, "amplitude": 0.25, "phase": 180 } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "a", "from_port": "output", "to_node": "out", "to_port": "input" },
+            { "from_node": "b", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

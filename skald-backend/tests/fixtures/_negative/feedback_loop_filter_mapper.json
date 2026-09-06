@@ -1,0 +1,33 @@
+{
+  "__comment": "KI-055: Filter(2)'s output feeds Mapper(3), and Mapper(3)'s output feeds back into Filter(2)'s own input_cutoff — the simplest cycle validate_connections does not already reject (every port used is a real, valid port on its node type). Before the fix, generate_processor_code printed 'Error: instrument \"Asset\" contains a feedback loop...' naming Filter(2) and Mapper(3), then fell through past a commented-out os.exit(1) and wrote the file anyway with those two nodes (and GraphOutput(4), which only reads Filter(2)) silently missing — exit 0. Expected now: exit 1, no file written, and the same 'feedback loop' message naming Filter(2) and Mapper(3).",
+  "project": {
+    "bpm": 120,
+    "master_volume": 1.0,
+    "instruments": [
+      {
+        "id": "feedbackloopinst",
+        "name": "Asset",
+        "voice_count": 4,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "audio_graph": {
+          "nodes": [
+            { "id": "1", "type": "Oscillator", "parameters": { "frequency": 220, "waveform": "Sawtooth", "amplitude": 0.5 } },
+            { "id": "2", "type": "Filter", "parameters": { "type": "LowPass", "cutoff": 800, "resonance": 1.0 } },
+            { "id": "3", "type": "Mapper", "parameters": { "inMin": 0, "inMax": 1, "outMin": 0, "outMax": 2000 } },
+            { "id": "4", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "3", "from_port": "output", "to_node": "2", "to_port": "input_cutoff" },
+            { "from_node": "2", "from_port": "output", "to_node": "4", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

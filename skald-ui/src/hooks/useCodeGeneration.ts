@@ -12,8 +12,22 @@ import { useState } from 'react';
 import { Node, Edge } from '@xyflow/react';
 import { NodeParams, SequencerTrack } from '../definitions/types';
 import { buildProjectData } from '../utils/projectSerializer';
+import { collectProjectIssues, formatProjectIssues } from '../utils/projectWarnings';
+import { FileStatus } from './nodeEditor/useFileIO';
 
-export const useCodeGeneration = () => {
+/**
+ * `notify` carries export warnings to the same on-canvas status banner
+ * Save/Load uses, where an 'error' stays up until the next file action.
+ *
+ * Serialization is the moment a non-numeric P-lock is filtered away (SKB-045),
+ * an unresolvable one is handed to a codegen that will exit(1) over it
+ * (SKB-009), and an out-of-range note is written into a `case` the generated
+ * sequencer can never reach (SKB-010). None of those had ANY user-facing
+ * report — not even a console.warn — so an override authored in the step
+ * editor could vanish between the preview and the export leaving no trace at
+ * all. The warnings do not veto the build; they say what it cost.
+ */
+export const useCodeGeneration = (notify?: (status: FileStatus) => void) => {
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
 
     const handleGenerate = async (
@@ -36,6 +50,16 @@ export const useCodeGeneration = () => {
             console.warn("Graph is empty.");
             setGeneratedCode("// Graph is empty.");
             return;
+        }
+
+        const warnings = formatProjectIssues(
+            collectProjectIssues(nodes, sequencerTracks, patternSteps)
+        );
+        if (warnings.length > 0 && notify) {
+            notify({
+                kind: 'error',
+                message: [`Export warnings (${warnings.length}):`, ...warnings.map(w => `- ${w}`)].join('\n'),
+            });
         }
 
         const projectData = buildProjectData(

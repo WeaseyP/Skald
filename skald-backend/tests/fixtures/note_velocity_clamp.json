@@ -1,0 +1,59 @@
+{
+  "__comment": "Packet B7-5 / BUGS.md SKB-029: _note_on took `note: u8` and `velocity: f32` raw. This instrument authors limit:false (so nothing downstream hides an over-unity peak) and velocitySensitivity:1.0 (so the envelope gain IS the velocity), and the acceptance case calls Asset_note_on(200, 5.0, 0.0). Before the clamp that rendered a 2.5 peak at an 850kHz-aliased pitch; after it, 0.5 peak at note 127 = 12543.85Hz.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 1.0,
+    "instruments": [
+      {
+        "id": "noteclampfixture",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "limit": false,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0
+              }
+            },
+            {
+              "id": "2",
+              "type": "ADSR",
+              "parameters": {
+                "attack": 0.001,
+                "decay": 0.001,
+                "sustain": 1.0,
+                "release": 0.05,
+                "depth": 1,
+                "velocitySensitivity": 1.0
+              }
+            },
+            {
+              "id": "3",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

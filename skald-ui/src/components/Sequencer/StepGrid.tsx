@@ -1,15 +1,36 @@
 import React from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
-import { stepWidthFor } from './stepMetrics';
+import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, stepWidthFor } from './stepMetrics';
 import { useElementWidth } from './useElementWidth';
+import { OutOfRangeNotice } from './OutOfRangeNotice';
 
 interface StepGridProps {
     tracks: SequencerTrack[];
     currentStep: number;
     steps: number; // usually 16
-    onToggleStep: (trackId: string, step: number) => void;
+    // SKB-025: the pitch is not optional from this component any more. A grid
+    // row has no pitch axis, so every gesture here has to say out loud which
+    // note it means; omitting it meant "the first note in insertion order".
+    onToggleStep: (trackId: string, step: number, notePitch?: number) => void;
+    // Right-click erase. A row cannot express "erase the G of this chord", so
+    // it erases the step — explicitly, rather than deleting one arbitrary
+    // member and leaving a sibling to take over the block.
+    onClearStep?: (trackId: string, step: number) => void;
     bpm: number;
 }
+
+/** The pitch a click on the cell itself means: the root, deterministically. */
+const lowestPitchAt = (track: SequencerTrack, step: number): number | undefined => {
+    let lowest: number | undefined;
+    for (const note of track.notes) {
+        if (note.step !== step) continue;
+        if (lowest === undefined || note.note < lowest) lowest = note.note;
+    }
+    return lowest;
+};
+
+/** Default pitch for a note painted into an empty cell (middle C). */
+const PAINT_PITCH = 60;
 
 const gridContainerStyles: React.CSSProperties = {
     flexGrow: 1,
@@ -43,7 +64,8 @@ const cellStylesFor = (stepWidth: number): React.CSSProperties => ({
 });
 
 const noteStyle: React.CSSProperties = {
-    height: '80%',
+    // Height and vertical offset come from the lane calculation instead: a step
+    // draws one block per chord member now, stacked (SKB-025).
     borderRadius: '2px',
     backgroundColor: '#007acc',
     position: 'absolute',
@@ -76,11 +98,22 @@ const Playhead: React.FC<{ step: number; bpm: number; stepWidth: number }> = ({ 
 
 export const StepGrid: React.FC<StepGridProps & {
     onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
-    onStepContext?: (trackId: string, step: number, x: number, y: number) => void;
-}> = ({ tracks, currentStep, steps = 16, onToggleStep, onUpdateNote, bpm, onStepContext }) => {
-    // Calculate max steps based on tracks
-    const maxSteps = Math.max(steps, ...tracks.map(t => t.steps || 16));
+    // `notePitch` is which chord member the selection refers to — the step
+    // properties editor is otherwise left guessing (SKB-025).
+    onStepContext?: (trackId: string, step: number, notePitch: number, x: number, y: number) => void;
+}> = ({ tracks, currentStep, steps = 16, onToggleStep, onClearStep, onUpdateNote, bpm, onStepContext }) => {
+    // Columns to draw. `noteExtent` is the SKB-010 half: lowering BOTH the
+    // pattern length and a track's length used to leave a note at step 20 with
+    // no column at all — invisible in the editor, still in the save file, still
+    // in the export, and back again the instant either count was raised. It
+    // only widens the grid when such a note exists, so an ordinary pattern
+    // draws exactly as many columns as before.
+    const maxSteps = Math.max(steps, noteExtent(tracks), ...tracks.map(t => t.steps || 16));
     const stepArray = Array.from({ length: maxSteps }, (_, i) => i);
+
+    // Notes the generated sequencer can never reach. Counted across every
+    // track so one lowered pattern length reports the whole loss at once.
+    const strandedCount = outOfRangeNoteCount(tracks, steps);
 
     // Fit the whole pattern into the dock where possible; scroll past the floor.
     const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
@@ -95,6 +128,9 @@ export const StepGrid: React.FC<StepGridProps & {
         type: 'duration' | 'velocity' | 'probability';
         trackId: string;
         step: number;
+        // Which note of the step was grabbed. Without it the commit landed on
+        // whichever chord member came first in the array (SKB-025).
+        notePitch: number;
         initialValue: number;
         startX: number;
         startY: number;
@@ -116,7 +152,7 @@ export const StepGrid: React.FC<StepGridProps & {
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
     }, []);
 
-    const handleMouseDown = (e: React.MouseEvent, trackId: string, step: number, hasNote: boolean) => {
+    const handleMouseDown = (e: React.MouseEvent, track: SequencerTrack, step: number, hasNote: boolean, isDisabled = false) => {
         // 1. Modifiers check (Priority: Velocity/Duration/Prob Drag)
         if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) {
             // Let the Note's onMouseDown handle this if it exists.
@@ -124,37 +160,41 @@ export const StepGrid: React.FC<StepGridProps & {
             return;
         }
 
-        // 2. Right Click (Erase)
+        // 2. Right Click (Erase the whole step — see onClearStep)
         if (e.button === 2) {
             e.preventDefault();
-            interactionRef.current.isErasing = true;
-            if (hasNote) onToggleStep(trackId, step); // Delete
+            // B5-x2: erasing is allowed on a greyed (out-of-range) cell too.
+            // Creating there is not — the note could never sound — but a note
+            // stranded past the playable range used to be visible and
+            // untouchable, its only remedy raise-delete-lower. Erase-drag
+            // (isErasing) is left off for greyed cells so a sweep across the
+            // boundary does not silently take stranded notes with it.
+            if (!isDisabled) interactionRef.current.isErasing = true;
+            if (hasNote && onClearStep) onClearStep(track.id, step);
             return;
         }
+        if (isDisabled) return;
 
         // 3. Left Click (Paint / Select)
         if (e.button === 0) {
             e.preventDefault();
             interactionRef.current.isPainting = true;
 
-            if (hasNote) {
-                // Select existing
-                if (onStepContext) onStepContext(trackId, step, e.clientX, e.clientY);
-            } else {
-                // Place new
-                onToggleStep(trackId, step);
-                // Also Select it? Typically yes.
-                if (onStepContext) onStepContext(trackId, step, e.clientX, e.clientY);
-            }
+            // Clicking the cell rather than a specific block means the root of
+            // whatever is there, and middle C where nothing is. Both are
+            // deterministic; array order was not.
+            const pitch = hasNote ? (lowestPitchAt(track, step) ?? PAINT_PITCH) : PAINT_PITCH;
+            if (!hasNote) onToggleStep(track.id, step, pitch);
+            if (onStepContext) onStepContext(track.id, step, pitch, e.clientX, e.clientY);
         }
     };
 
-    const handleMouseEnter = (e: React.MouseEvent, trackId: string, step: number, hasNote: boolean) => {
+    const handleMouseEnter = (e: React.MouseEvent, track: SequencerTrack, step: number, hasNote: boolean) => {
         if (interactionRef.current.isErasing) {
-            if (hasNote) onToggleStep(trackId, step);
+            if (hasNote && onClearStep) onClearStep(track.id, step);
         } else if (interactionRef.current.isPainting) {
             if (!hasNote) {
-                onToggleStep(trackId, step);
+                onToggleStep(track.id, step, PAINT_PITCH);
                 // Auto-select newly painted nodes? Maybe too spammy for parameter panel updates.
             }
         }
@@ -203,13 +243,22 @@ export const StepGrid: React.FC<StepGridProps & {
                 type,
                 trackId,
                 step,
+                notePitch: note.note,
                 initialValue,
                 startX: e.clientX,
                 startY: e.clientY,
                 currentValue: initialValue
             });
+            return;
         }
-        // If no modifier, let event bubble to Cell's handleMouseDown for Select/Context logic
+        // No modifier: this block IS the selection, so it names its own pitch
+        // rather than letting the cell fall back to the root.
+        if (e.button === 0) {
+            e.stopPropagation();
+            e.preventDefault();
+            interactionRef.current.isPainting = true;
+            if (onStepContext) onStepContext(trackId, step, note.note, e.clientX, e.clientY);
+        }
     };
 
     // Drive + commit the modifier-drag. The drag state used to be set on
@@ -238,7 +287,7 @@ export const StepGrid: React.FC<StepGridProps & {
         const handleUp = () => {
             setDragState(prev => {
                 if (prev && onUpdateNote) {
-                    onUpdateNote(prev.trackId, prev.step, { [prev.type]: prev.currentValue });
+                    onUpdateNote(prev.trackId, prev.step, { [prev.type]: prev.currentValue }, prev.notePitch);
                 }
                 return null;
             });
@@ -254,24 +303,31 @@ export const StepGrid: React.FC<StepGridProps & {
 
     return (
         <div ref={gridRef} style={gridContainerStyles} onContextMenu={(e) => e.preventDefault()}>
+            <OutOfRangeNotice count={strandedCount} patternSteps={steps} />
             <Playhead step={currentStep} bpm={bpm} stepWidth={stepWidth} />
 
             {tracks.map(track => (
                 <div key={track.id} style={{ ...rowStyles, width: rowWidth }}>
                     {stepArray.map(step => {
-                        const trackSteps = track.steps || 16;
-                        const isDisabled = step >= trackSteps;
+                        // The boundary is min(track loop, global pattern) — the
+                        // grid used to grey only past the track's own length, so
+                        // steps 16..31 of a 32-step track under a 16-step
+                        // pattern were fully editable and never played.
+                        const playableSteps = effectiveTrackSteps(track.steps, steps);
+                        const isDisabled = step >= playableSteps;
 
-                        const note = track.notes.find(n => n.step === step);
-                        const hasNote = !!note;
-
-                        // Check if this note is being dragged
-                        const isDragging = dragState && dragState.trackId === track.id && dragState.step === step;
-
-                        // Use preview values if dragging, else actual
-                        const duration = isDragging && dragState.type === 'duration' ? dragState.currentValue : (note?.duration || 1);
-                        const velocity = isDragging && dragState.type === 'velocity' ? dragState.currentValue : (note?.velocity || 1);
-                        const probability = isDragging && dragState.type === 'probability' ? dragState.currentValue : (note?.probability ?? 1);
+                        // SKB-025: EVERY note on the step, lowest pitch first.
+                        // This used to be `notes.find(n => n.step === step)` —
+                        // one block, carrying the first-inserted member's
+                        // duration, velocity and probability, with the rest of
+                        // the chord not drawn at all. A user could not see that
+                        // a step held three notes, let alone which one an edit
+                        // was about to land on.
+                        const stepNotes = track.notes
+                            .filter(n => n.step === step)
+                            .slice()
+                            .sort((a, b) => a.note - b.note);
+                        const hasNote = stepNotes.length > 0;
 
                         // Base style
                         let currentCellStyle = isBeat(step) ? beatMarkerStyle : cellStyles;
@@ -288,46 +344,109 @@ export const StepGrid: React.FC<StepGridProps & {
                             };
                         }
 
-                        // Ghost Note Opacity Logic
-                        const baseOpacity = velocity;
-                        const finalOpacity = track.isMuted ? baseOpacity * 0.2 : baseOpacity;
+                        // One block per member, stacked so a chord looks like
+                        // one. Height is shared, floored so a dense chord stays
+                        // visible rather than collapsing to nothing.
+                        const laneHeight = Math.max(4, Math.floor(28 / Math.max(1, stepNotes.length)));
+
+                        // Two different reasons a cell is not editable, and
+                        // they are NOT the same fact. codegen_project.odin
+                        // emits `switch p.current_step %% track_steps` and runs
+                        // `p.current_step` over 0..pattern_steps-1, so:
+                        //   step < steps  -> the moment exists; the modulo maps
+                        //                    it onto an earlier column, which
+                        //                    is what sounds there.
+                        //   step >= steps -> `p.current_step` never reaches it
+                        //                    and nothing sounds there at all.
+                        // The test is the COLUMN against the pattern length,
+                        // not the track length against it: at trackLoop ===
+                        // steps a column past both (drawn because noteExtent
+                        // widened the grid) is silent, and telling the user it
+                        // "replays step N" would be exactly backwards.
+                        const trackLoop = track.steps || 16;
+                        const loopsBack = isDisabled && step < steps;
+                        const disabledTitle = loopsBack
+                            ? `Step ${step}: this track's loop is ${trackLoop} steps, so this column replays step ${step % trackLoop}. Edit it there, or raise the track length.`
+                            : `Step ${step} is past the pattern length (${playableSteps} playable steps = min(track ${trackLoop}, pattern ${steps})) and never sounds.${hasNote ? ' The note here is kept, not deleted — right-click to delete it.' : ''}`;
+
+                        const cellTitle = isDisabled
+                            ? disabledTitle
+                            : !hasNote
+                                ? `Step ${step}`
+                                : stepNotes.length > 1
+                                    // Naming the count is the difference between
+                                    // a chord and a note that looks like one.
+                                    ? `Step ${step}: ${stepNotes.length} notes (${stepNotes.map(n => n.note).join(', ')}) — right-click clears the step`
+                                    : `Step ${step}: Dur ${(dragState && dragState.trackId === track.id && dragState.step === step && dragState.notePitch === stepNotes[0].note && dragState.type === 'duration' ? dragState.currentValue : (stepNotes[0].duration || 1))} Vel ${Math.round((stepNotes[0].velocity ?? 1) * 100)}% Prob ${Math.round((stepNotes[0].probability ?? 1) * 100)}% (Drag: Shift=Dur, Ctrl=Vel, Alt=Prob)`;
 
                         return (
                             <div
                                 key={step}
                                 style={currentCellStyle}
-                                onMouseDown={(e) => !isDisabled && handleMouseDown(e, track.id, step, hasNote)}
-                                onMouseEnter={(e) => !isDisabled && handleMouseEnter(e, track.id, step, hasNote)}
-                                title={isDisabled ? 'Disabled Step' : (hasNote ? `Step ${step}: Dur ${duration} Vel ${Math.round(velocity * 100)}% Prob ${Math.round(probability * 100)}% (Drag: Shift=Dur, Ctrl=Vel, Alt=Prob)` : `Step ${step}`)}
+                                onMouseDown={(e) => handleMouseDown(e, track, step, hasNote, isDisabled)}
+                                onMouseEnter={(e) => !isDisabled && handleMouseEnter(e, track, step, hasNote)}
+                                aria-disabled={isDisabled}
+                                title={cellTitle}
                                 data-testid={`step-${track.id}-${step}`}
                             >
-                                {hasNote && !isDisabled && (
-                                    <div
-                                        style={{
-                                            ...noteStyle,
-                                            width: `${Math.max(2, duration * stepWidth - 4)}px`,
-                                            backgroundColor: track.color || '#007acc',
-                                            opacity: finalOpacity,
-                                            cursor: modifiers.ctrl ? 'ns-resize' : (modifiers.shift ? 'ew-resize' : (modifiers.alt ? 'help' : 'pointer')), // Visual cue
-                                            border: isDragging ? '1px solid white' : (modifiers.shift || modifiers.ctrl || modifiers.alt ? '1px dashed rgba(255,255,255,0.5)' : 'none'),
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            justifyContent: 'flex-end'
-                                        }}
-                                        onMouseDown={(e) => handleNoteMouseDown(e, track.id, step, note!)}
-                                    >
-                                        {/* Probability Bar */}
-                                        {probability < 1 && (
-                                            <div style={{
-                                                height: '3px',
-                                                width: `${probability * 100}%`,
-                                                backgroundColor: 'yellow',
-                                                opacity: 0.8,
-                                                marginBottom: '1px'
-                                            }} />
-                                        )}
-                                    </div>
-                                )}
+                                {/* An out-of-range note is drawn, dimmed, not
+                                    hidden: the user has to be able to see the
+                                    data they are about to lose the sound of. */}
+                                {stepNotes.map((note, lane) => {
+                                    const isDragging = !!dragState
+                                        && dragState.trackId === track.id
+                                        && dragState.step === step
+                                        && dragState.notePitch === note.note;
+                                    const duration = isDragging && dragState!.type === 'duration' ? dragState!.currentValue : (note.duration || 1);
+                                    const velocity = isDragging && dragState!.type === 'velocity' ? dragState!.currentValue : (note.velocity ?? 1);
+                                    const probability = isDragging && dragState!.type === 'probability' ? dragState!.currentValue : (note.probability ?? 1);
+                                    const finalOpacity = (track.isMuted ? velocity * 0.2 : velocity)
+                                        * (isDisabled ? 0.35 : 1);
+
+                                    return (
+                                        <div
+                                            key={note.note}
+                                            data-testid={`step-note-${track.id}-${step}-${note.note}`}
+                                            title={`Step ${step} note ${note.note}: Dur ${duration} Vel ${Math.round(velocity * 100)}% Prob ${Math.round(probability * 100)}% (Drag: Shift=Dur, Ctrl=Vel, Alt=Prob)`}
+                                            style={{
+                                                ...noteStyle,
+                                                width: `${Math.max(2, duration * stepWidth - 4)}px`,
+                                                height: `${laneHeight}px`,
+                                                top: `${3 + lane * laneHeight}px`,
+                                                backgroundColor: track.color || '#007acc',
+                                                opacity: finalOpacity,
+                                                outline: isDisabled ? '1px dashed rgba(224,160,48,0.9)' : 'none',
+                                                cursor: modifiers.ctrl ? 'ns-resize' : (modifiers.shift ? 'ew-resize' : (modifiers.alt ? 'help' : 'pointer')), // Visual cue
+                                                border: isDragging ? '1px solid white' : (modifiers.shift || modifiers.ctrl || modifiers.alt ? '1px dashed rgba(255,255,255,0.5)' : 'none'),
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                justifyContent: 'flex-end'
+                                            }}
+                                            onMouseDown={(e) => {
+                                                if (!isDisabled) { handleNoteMouseDown(e, track.id, step, note); return; }
+                                                // B5-x2: a stranded note can be deleted where it
+                                                // sits (right-click), even though it cannot be
+                                                // edited or dragged there.
+                                                if (e.button === 2) {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    onToggleStep(track.id, step, note.note);
+                                                }
+                                            }}
+                                        >
+                                            {/* Probability Bar */}
+                                            {probability < 1 && (
+                                                <div style={{
+                                                    height: '3px',
+                                                    width: `${probability * 100}%`,
+                                                    backgroundColor: 'yellow',
+                                                    opacity: 0.8,
+                                                    marginBottom: '1px'
+                                                }} />
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         );
                     })}

@@ -29,8 +29,12 @@ let fileHistory: FileIOHistoryHooks;
 let setViewport: ReturnType<typeof vi.fn>;
 let fitView: ReturnType<typeof vi.fn>;
 
+// What toObject() hands Save; a test overrides it to save a specific graph.
+let rfObject: { nodes: unknown[]; edges: unknown[]; viewport: { x: number; y: number; zoom: number } } =
+    { nodes: [{ id: 'n1' }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+
 const rfInstance = () => ({
-    toObject: () => ({ nodes: [{ id: 'n1' }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }),
+    toObject: () => rfObject,
     getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
     setViewport,
     fitView,
@@ -58,6 +62,7 @@ const renderFileIO = () =>
     );
 
 beforeEach(() => {
+    rfObject = { nodes: [{ id: 'n1' }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
     saveGraph = vi.fn();
     loadGraph = vi.fn();
     importPatches = vi.fn();
@@ -147,18 +152,58 @@ describe('useFileIO — load validation', () => {
     });
 
     it('loads a valid save and restores the session block', async () => {
+        // `type: 'instrument'` matters here even though this test is about
+        // session restore, not SKB-019: an untyped node reads as a loose
+        // graph (no Instrument node) and triggers the auto-wrap load toast
+        // (packet B6-1) below, which is a different test's concern.
         loadGraph.mockResolvedValue({
             content: JSON.stringify({
-                nodes: [{ id: 'a' }], edges: [], sequencerTracks: [{ id: 't1' }],
+                nodes: [{ id: 'a', type: 'instrument' }], edges: [], sequencerTracks: [{ id: 't1' }],
                 session: { bpm: 90, patternSteps: 64, masterVolume: 0.5 },
             }),
         });
         const { result } = renderFileIO();
         await act(async () => { await result.current.handleLoad(); });
-        expect(setNodes).toHaveBeenCalledWith([{ id: 'a' }]);
+        // The file is version-less, so it walks every migration on the way in;
+        // C3 (1->2) gives the instrument its explicit identity fields, backfilled
+        // from what it would have generated: a nameless instrument derives
+        // Instrument_<id>, and no track means SFX.
+        expect(setNodes).toHaveBeenCalledWith([{ id: 'a', type: 'instrument', data: { exportId: 'Instrument_a', assetType: 'sfx' } }]);
         expect(loadTracks).toHaveBeenCalledWith([{ id: 't1' }]);
         expect(applySession).toHaveBeenCalledWith({ bpm: 90, patternSteps: 64, masterVolume: 0.5 });
         expect(notify).not.toHaveBeenCalled(); // success is visible in the editor itself
+    });
+
+    // SKB-019 / packet B6-1: a loose graph (no Instrument node) auto-wraps as
+    // one "Asset" SFX instrument on Play/Generate. That is worth telling the
+    // user about, unlike an ordinary load — so it gets the ONE exception to
+    // "success is visible in the editor itself" above: a toast, via the same
+    // auto-clearing success channel Save already uses (app.tsx's
+    // notifyFileStatus clears a 'success' after 4s). It is NOT reported
+    // through ProjectIssuesBanner, which is non-dismissible by design (it
+    // reports unplayable data) and would otherwise paint a permanent
+    // "something is wrong" overlay over a build that actually succeeds.
+    it('announces a loose-graph auto-wrap via the load-time success toast', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'osc', type: 'oscillator' }], edges: [],
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(lastStatus().kind).toBe('success');
+        expect(lastStatus().message).toContain('auto-wrap');
+    });
+
+    it('does NOT announce anything extra for a graph that already has an Instrument node', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'inst-1', type: 'instrument' }], edges: [],
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(notify).not.toHaveBeenCalled();
     });
 
     it('treats a canceled dialog as a silent no-op', async () => {
@@ -418,5 +463,82 @@ describe('useFileIO — dead exposed-parameter scrub on load', () => {
         const { result } = renderFileIO();
         await act(async () => { await result.current.handleLoad(); });
         expect(setNodes).toHaveBeenCalledWith([{ id: 'a', data: {} }, { id: 'b' }]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Packet C1 — schema version + migration registry, through the real hook.
+// ---------------------------------------------------------------------------
+describe('useFileIO — save-file schema version (C1)', () => {
+    it('Save stamps the current schema version on every file', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/track.json' });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        // Before C1 no save carried a version at all (F-B06-1).
+        expect(written.version).toBe(4); // C3 bumped the schema to 2, C4 to 3, C2 to 4 (CURRENT_SAVE_VERSION)
+    });
+
+    it('Load migrates parentNode -> parentId inside an Instrument subgraph, which the old shim skipped (F-B06-7)', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{
+                    id: 'inst', type: 'instrument',
+                    data: { name: 'I', label: 'I', subgraph: { nodes: [{ id: 'inner', type: 'lfo', parentNode: 'grp', data: { label: 'L' } }], connections: [] } },
+                }],
+                edges: [],
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const loaded = setNodes.mock.calls[0][0] as { data: { subgraph: { nodes: Record<string, unknown>[] } } }[];
+        const inner = loaded[0].data.subgraph.nodes[0];
+        expect(inner.parentId).toBe('grp');
+        expect(inner).not.toHaveProperty('parentNode');
+    });
+
+    it('Load refuses a file from a newer Skald without touching the current graph', async () => {
+        loadGraph.mockResolvedValue({ content: JSON.stringify({ version: 42, nodes: [], edges: [] }) });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(setNodes).not.toHaveBeenCalled();
+        expect(lastStatus().kind).toBe('error');
+        expect(lastStatus().message).toMatch(/newer Skald/);
+        expect(lastStatus().message).toMatch(/version 42/);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Packet C7 — BPM-sync value hygiene through the real hook.
+// ---------------------------------------------------------------------------
+describe('useFileIO — synced free-run values are normalized (C7)', () => {
+    const syncedLfo = (frequency: number) => ({
+        id: 'lfo', type: 'lfo', position: { x: 0, y: 0 },
+        data: { label: 'Wob', bpmSync: true, syncRate: '1/8', frequency, amplitude: 1 },
+    });
+
+    it('Save writes the resolved Hz into a synced LFO\'s frequency, not the stale stored value', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/x.json' });
+        rfObject = { nodes: [syncedLfo(3.4)], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        // 1/8 at this harness's session tempo (140 BPM) = 0.2143 s = 4.667 Hz.
+        // Before C7 the file carried the stale 3.4.
+        expect(written.nodes[0].data.frequency).toBeCloseTo(140 / 60 * 2, 9);
+    });
+
+    it('Load rewrites a stale synced free-run value at the file\'s own tempo', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'i', type: 'instrument', data: { name: 'I', subgraph: { nodes: [syncedLfo(3.4)], connections: [] } } }],
+                edges: [], session: { bpm: 90, patternSteps: 16, masterVolume: 0.8 },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const loaded = setNodes.mock.calls[0][0] as { data: { subgraph: { nodes: { data: { frequency: number } }[] } } }[];
+        // 1/8 at 90 BPM = 0.333 s -> 3 Hz.
+        expect(loaded[0].data.subgraph.nodes[0].data.frequency).toBeCloseTo(3, 9);
     });
 });

@@ -51,6 +51,18 @@ export const SYNC_RATE_OPTIONS = [
     '1/64', '1/64t',
 ];
 
+// SKB-058: what a BPM-synced node follows when it stores no `syncRate` at all.
+// The backend has exactly one answer — codegen_analysis.odin's
+// `get_string_param(node, "syncRate", "1/4")` inside bpm_sync_seconds_expr,
+// the same for every node type. The UI had three: the node card's select fell
+// back to `SYNC_RATE_OPTIONS[0]` ("1/1") and the sidebar hardcoded a per-type
+// fallback ("1/4" for LFO, "1/8" for Delay and SampleHold). The shipped
+// example examples/instruments/bass/lfo-filter-wobble-bass.skald.json is in
+// exactly that state, so one file read as three different tempos depending on
+// where you looked. Every UI reader of an absent syncRate now goes through
+// this constant.
+export const DEFAULT_SYNC_RATE = '1/4';
+
 // Seconds per cycle for a sync rate at a tempo. Mirror of the backend's
 // bpm_sync_seconds_expr: whole note = 4 beats, trailing 't' = triplet (2/3).
 export const syncRateToSeconds = (syncRate: string, bpm: number): number => {
@@ -74,3 +86,21 @@ export const syncRateToSeconds = (syncRate: string, bpm: number): number => {
 // global BPM field.
 export const formatSyncTime = (syncRate: string, bpm: number): string =>
     `${syncRate} at ${bpm} BPM = ${syncRateToSeconds(syncRate, bpm).toFixed(3)} s`;
+
+// The delta a BPM Sync toggle must write. Turning sync ON while the node
+// stores no rate is the SKB-058 state, so the toggle authors the default
+// explicitly rather than leaving three readers to guess. Turning it off, or
+// turning it on over an authored rate, touches only `bpmSync` — silently
+// rewriting a rate the user chose would be its own bug.
+//
+// Callers must be able to write BOTH keys in one delta. A caller that can
+// only write one key at a time (the step-properties editor, where every
+// onChange becomes a P-lock) must NOT use this: a `syncRate` P-lock is a hard
+// codegen error, since nothing in any node configuration makes syncRate live.
+export const bpmSyncToggleChanges = (
+    enabled: boolean,
+    data: { syncRate?: unknown },
+): { bpmSync: boolean; syncRate?: string } =>
+    enabled && typeof data.syncRate !== 'string'
+        ? { bpmSync: true, syncRate: DEFAULT_SYNC_RATE }
+        : { bpmSync: enabled };

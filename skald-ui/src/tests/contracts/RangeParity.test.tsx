@@ -225,28 +225,6 @@ const KNOWN_DIVERGENCES: KnownDivergence[] = [
     //    jump from a 0.1 s room to a 3 s hall. That is SKB-024's exact shape,
     //    so it needs the same owner.
     // -----------------------------------------------------------------------
-    {
-        uiType: 'reverb',
-        param: 'decay',
-        surface: 'card',
-        uiMin: 0.1,
-        uiMax: 10,
-        backendMin: 0,
-        backendMax: 10,
-        owner: 'F-A10-17 / packet C2 (per-node schema)',
-        why: 'Shared `decay` row: 0 is correct for an ADSR stage, 0.1 for a reverb tail.',
-    },
-    {
-        uiType: 'reverb',
-        param: 'decay',
-        surface: 'sidebar',
-        uiMin: 0.1,
-        uiMax: 10,
-        backendMin: 0,
-        backendMax: 10,
-        owner: 'F-A10-17 / packet C2 (per-node schema)',
-        why: 'Same shared-row collision as the card above.',
-    },
 
     // -----------------------------------------------------------------------
     // 2. The backend bound is a SAFETY clamp, deliberately wider than any
@@ -421,89 +399,10 @@ const SURFACE_DISAGREEMENTS: {
  * exposure generates. Pinned on both values, so a fix on either side fails.
  */
 const KNOWN_DEFAULT_DIVERGENCES: { uiType: string; param: string; ui: number; backend: number; owner: string; why: string }[] = [
-    {
-        uiType: 'wavetable',
-        param: 'amplitude',
-        ui: 1.0,
-        backend: 0.5,
-        owner: 'SKB-024 (open, deliberately) / packet C2 + C1 version field',
-        why:
-            'THE named case. The one-line fix is a `{"Wavetable", "amplitude", {0,1,1,""}}` row, ' +
-            'byte-for-byte the shape that closed SKB-051 for Noise, and it is held back because ' +
-            'it is not neutral for existing content: a shipped patch with an exposed-but-unstored ' +
-            'Wavetable amplitude generates at 0.5 today and would become 6 dB louder. This gate ' +
-            'does NOT force that green — it pins it, so the day someone owns the consequence the ' +
-            'test fails and points at this entry.',
-    },
-    {
-        uiType: 'sampleHold',
-        param: 'amplitude',
-        ui: 1.0,
-        backend: 0.5,
-        owner: 'packet C2 — same shape as SKB-024',
-        why: 'Same as Wavetable: no S&H override, so the generic 0.5 halves an untouched exposure.',
-    },
-    {
-        uiType: 'adsr',
-        param: 'decay',
-        ui: 0.2,
-        backend: 0.1,
-        owner: 'packet C2 (one of SKB-024\'s ten default divergences)',
-        why: 'Shared `decay` row again; the editor and the table were never reconciled.',
-    },
-    {
-        uiType: 'adsr',
-        param: 'sustain',
-        ui: 0.5,
-        backend: 0.7,
-        owner: 'packet C2 (one of SKB-024\'s ten default divergences)',
-        why: 'Table says 0.7, editor says 0.5.',
-    },
-    {
-        uiType: 'adsr',
-        param: 'release',
-        ui: 1.0,
-        backend: 0.2,
-        owner: 'packet C2 (one of SKB-024\'s ten default divergences)',
-        why: 'A 5x difference in release time between an old save and a new one.',
-    },
-    {
-        uiType: 'reverb',
-        param: 'decay',
-        ui: 3.0,
-        backend: 0.1,
-        owner: 'F-A10-17 / packet C2',
-        why:
-            'Worst of the set: an old save with an exposed reverb decay generates a 0.1 s room ' +
-            'where the editor shows a 3 s hall. Cannot be fixed without a Reverb-scoped row, and ' +
-            'adding one changes shipped audio — SKB-024 all over again.',
-    },
-    {
-        uiType: 'gain',
-        param: 'gain',
-        ui: 0.75,
-        backend: 1.0,
-        owner: 'packet C2 (one of SKB-024\'s ten default divergences)',
-        why: 'Editor VCA default 0.75, table unity. ~2.5 dB.',
-    },
-    {
-        uiType: 'fmOperator',
-        param: 'frequency',
-        ui: 2,
-        backend: 1,
-        owner: 'packet C2 (one of SKB-024\'s ten default divergences)',
-        why: 'Ratio default: editor 2 (an octave up), table 1 (unison).',
-    },
-    {
-        uiType: 'mapper',
-        param: 'outMax',
-        ui: 20000,
-        backend: 1,
-        owner: 'packet C2 (one of SKB-024\'s ten default divergences)',
-        why:
-            'Editor default maps to 20 kHz (the Mapper exists to drive a cutoff); the table says ' +
-            '1. Mapper params are non-exposable today, which is the only reason this is dormant.',
-    },
+    // Roadmap packet C2 closed the nine live divergences this list carried (the
+    // range table is generated from schema/nodes.json with the editor's defaults;
+    // the 3->4 save migration stores the old generated value on the nodes that
+    // relied on it). The one entry left is a dormant path, not a divergence.
     {
         uiType: 'instrument',
         param: 'volume',

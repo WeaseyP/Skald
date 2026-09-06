@@ -1,4 +1,6 @@
-# BPM setup UX — current state, inconsistencies, proposal (BUG-BPM-SETUP-UX)
+# BPM input hygiene
+
+*(formerly “BPM setup UX — current state, inconsistencies, proposal (BUG-BPM-SETUP-UX)”)*
 
 Status: Phase A/B analysis + proposal. The "Implemented now" subset at the end
 of this document has landed on this branch; everything else is a
@@ -6,6 +8,44 @@ recommendation only and deliberately **not** implemented, because it could
 change how existing saved projects sound.
 
 ---
+
+## 0. Status update (2026-09-06)
+
+This proposal's tempo-consistency defects are closed, not open. **B2 (Exposure Honesty)** and
+**C7 (BPM-Sync Value Hygiene)** in `ROADMAP.md` are both ✅ CLOSED (2026-09-05) and cover the
+dead-parameter class this document's inconsistencies feed into: a `bpmSync`/`syncRate` control
+that reads as live in the editor while the generated setter for it is never actually reachable
+(F-A03-3). Do not read what follows as unfinished tempo work — it is a historical record of
+what shipped on this branch before B2/C7 landed, checked against the code as of today.
+
+**§4 "Implemented now" — status of each item:**
+
+1. `bpm.ts` shared `BPM_MIN/MAX/DEFAULT`, `clampBpm`, `SYNC_RATE_OPTIONS`, `syncRateToSeconds` —
+   **landed**, unchanged.
+2. `Sidebar.tsx` clamped `NumberInput`, shared tooltip — **landed**.
+3. `SequencerToolbar.tsx` shared clamp/constants — **landed**.
+4. Shared sync-rate dropdowns (`BpmSyncControl.tsx`, `DelayNode.tsx`, `LFONode.tsx`,
+   `SampleHoldNode.tsx`) — **landed**.
+5. Effective-time annotation in `NodeParameterControls.tsx`/`ParameterPanel.tsx` — **landed**.
+6. `json.odin`'s `build_project_from_raw` defaulting `bpm <= 0` to 120 — **landed**.
+7. `BpmConsistency.test.tsx` + golden `bpm_absent_defaults` — **landed**.
+
+**§3.4 "Deferred / explicitly not implemented" — current status:**
+
+- Removing the sidebar BPM field — **not landed**; the field is still in `Sidebar.tsx`. Still a
+  UX decision, not a defect.
+- Node-card tempo badge + resolved-time on cards — **landed, superseded by C7**:
+  `ParamNode.tsx`'s `ParamField.hint` renders `formatSyncTime` on the LFO/Delay/SampleHold cards
+  via `useProjectBpm`/`GraphActionsContext`. No decorative "♩ = project BPM" badge was added,
+  but the substantive resolved-time annotation this item asked for exists.
+- Dropping `start_time` from the export contract — **not landed**; `projectSerializer.ts` still
+  serializes it. Still a JSON-contract change, not forced by anything closed since.
+- Unifying UI (300) and backend (999) max BPM — **landed, superseded**: `SKB-050` (Wave A) set
+  `BPM_MAX = 999` everywhere (`skald-ui/src/definitions/bpm.ts`), unifying from the opposite
+  direction than this row proposed (raise the UI ceiling, not lower the backend's).
+- "No tempo in this save" load banner — **not landed**; no such banner exists in `useFileIO.ts`.
+- Runtime tempo changes without rebuild (`skald_set_param` for bpm) — **not landed**; still an
+  engine feature, not a UX fix.
 
 ## 1. Current-state map: where tempo lives
 

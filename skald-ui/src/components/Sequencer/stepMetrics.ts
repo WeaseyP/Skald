@@ -64,6 +64,146 @@ export const stepWidthFor = (
 export const stepsOverflow = (steps: number, availableWidth: number, options?: StepWidthOptions): boolean =>
     steps * stepWidthFor(steps, availableWidth, options) > availableWidth && availableWidth > 0;
 
+/*
+--------------------------------------------------------------------------------
+The effective step range.
+
+SKB-010: a track plays `min(track.steps, patternSteps)` steps — its own loop
+length, bounded by the global pattern length. codegen_project.odin makes that
+concrete: it emits `switch p.current_step % <track_steps>` and advances
+`p.current_step` only as far as `pattern_steps`, so a `case 20:` inside a
+`% 16` switch is code the modulo can never produce, and steps 16..31 of a
+32-step track never run under a 16-step pattern.
+
+Neither editor respected the minimum, so those cells were fully editable and
+silently inaudible — and lowering a count could leave a note with no column to
+render in at all, invisible in the editor but still in the save file and still
+in the export.
+
+The policy is KEEP the data and SHOW it, never drop it. The shipped
+examples/songs/full/four-bar-song.skald.json has 64-step tracks and no session
+block, so it loads at the default patternSteps of 16: three of its four bars
+are out of range on arrival. The music is the authored data and the 16 is an
+unsaved default, so anything that trusted the boundary over the notes would
+silently delete three bars on export. Out-of-range steps are greyed, counted
+and reported instead.
+--------------------------------------------------------------------------------
+*/
+
+/** Track loop length when the track stores none. Mirrors the backend's `if track_steps <= 0 do track_steps = 16`. */
+export const DEFAULT_TRACK_STEPS = 16;
+
+/**
+ * How many of a track's steps can actually play: its own loop length, capped
+ * by the global pattern length. The single definition of "in range" — the step
+ * grid, the piano roll, Export-Step and the Generate warnings all read it, so
+ * they cannot drift apart (SKB-002).
+ */
+export const effectiveTrackSteps = (trackSteps: number | undefined, patternSteps: number): number => {
+    const track = Number.isFinite(trackSteps) && (trackSteps as number) > 0
+        ? Math.floor(trackSteps as number)
+        : DEFAULT_TRACK_STEPS;
+    const pattern = Number.isFinite(patternSteps) && patternSteps > 0
+        ? Math.floor(patternSteps)
+        : DEFAULT_TRACK_STEPS;
+    return Math.max(1, Math.min(track, pattern));
+};
+
+/** Minimal shape both editors and the serializer share. */
+export interface StepRangeTrack {
+    steps?: number;
+    notes: { step: number }[];
+}
+
+/**
+ * The notes a track holds beyond its effective range: authored, saved,
+ * exported, and never heard. Returned rather than counted so callers can point
+ * at the offending steps.
+ */
+export const outOfRangeNotes = <T extends { step: number }>(
+    track: { steps?: number; notes: T[] },
+    patternSteps: number,
+): T[] => {
+    const limit = effectiveTrackSteps(track.steps, patternSteps);
+    return track.notes.filter(n => n.step >= limit);
+};
+
+/** Total across every track — what the editors put in front of the user. */
+export const outOfRangeNoteCount = (
+    tracks: { steps?: number; notes: { step: number }[] }[],
+    patternSteps: number,
+): number => tracks.reduce((sum, t) => sum + outOfRangeNotes(t, patternSteps).length, 0);
+
+/**
+ * Highest step index any note occupies, +1 — the number of columns needed to
+ * keep every authored note visible. 0 when the track is empty.
+ */
+export const noteExtent = (tracks: { notes: { step: number }[] }[]): number => {
+    let extent = 0;
+    for (const track of tracks) {
+        for (const note of track.notes) {
+            if (Number.isFinite(note.step) && note.step + 1 > extent) extent = note.step + 1;
+        }
+    }
+    return extent;
+};
+
+/*
+--------------------------------------------------------------------------------
+The pitch axis.
+
+SKB-026: the piano roll hardcoded MIDI 21..84 as local constants, so the top
+two octaves of the MIDI range had no row in a *chromatic* editor. A note above
+84 still lived in the track, still played in the preview and still shipped in
+the export — it just had nowhere to be seen, edited or deleted. The scroll
+container was already `overflow: auto`, so the hardcoded window was the only
+thing between it and the full range roadmap E4 asks for.
+
+Range and row height live beside the step width because roadmap F1 unifies the
+piano roll with a new drum roll on this module; two editors measuring the same
+axis with their own private constants is the SKB-002 disagreeing-readers class.
+--------------------------------------------------------------------------------
+*/
+
+/** The whole MIDI note range. A chromatic editor must reach all of it. */
+export const MIDI_NOTE_MIN = 0;
+export const MIDI_NOTE_MAX = 127;
+
+/** Height of one pitch lane, in pixels. */
+export const NOTE_ROW_HEIGHT = 20;
+
+/**
+ * Pitch rows in the order they are drawn: highest at the top, as on a score.
+ * Defaults to the full MIDI range; a narrower window is honoured as given (a
+ * drum roll only ever wants its kit's pitches).
+ */
+export const pitchRowsDescending = (
+    min: number = MIDI_NOTE_MIN,
+    max: number = MIDI_NOTE_MAX,
+): number[] => {
+    const rows: number[] = [];
+    for (let pitch = max; pitch >= min; pitch--) rows.push(pitch);
+    return rows;
+};
+
+/**
+ * Initial scrollTop that puts `pitch` in the middle of a `viewportHeight`-tall
+ * viewport. Clamped at 0: centring a pitch near the top of the range wants a
+ * negative offset, which scrolls nowhere and (assigned to scrollTop) silently
+ * reads back as 0 anyway. A pitch outside the window scrolls to the top rather
+ * than to NaN.
+ */
+export const scrollTopForPitch = (
+    pitch: number,
+    viewportHeight: number,
+    min: number = MIDI_NOTE_MIN,
+    max: number = MIDI_NOTE_MAX,
+    rowHeight: number = NOTE_ROW_HEIGHT,
+): number => {
+    if (!Number.isFinite(pitch) || pitch < min || pitch > max) return 0;
+    return Math.max(0, (max - pitch) * rowHeight - viewportHeight / 2);
+};
+
 /** Clamp a user-entered pattern length into the supported range. */
 export const clampPatternSteps = (steps: number): number => {
     if (!Number.isFinite(steps)) return 1;

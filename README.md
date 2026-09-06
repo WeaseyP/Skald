@@ -2,11 +2,13 @@
 
 Skald is a Windows desktop application for building audio instruments, sound effects, and songs with a node graph. It previews the audio and generates Odin source code for use in a game or audio application.
 
+New here? Read the [user manual](docs/manual-source/) (22 chapters, from the first patch to integrating the generated package), then open one of the [examples](examples/) from the app's Examples button.
+
 ## Status
 
 Version 0.1.0 is a prerelease. The main editing, sequencing, preview, save/load, and Odin export workflows are in place. Bugs are expected, and project files or generated APIs may change before 1.0.
 
-See the [v0.1.0 release notes](docs/releases/v0.1.0.md), [release process](docs/RELEASING.md), and [bug list](BUGS.md).
+See the [v0.1.0 release notes](docs/releases/v0.1.0.md), [release process](docs/RELEASING.md), [roadmap and issue tracker](ROADMAP.md), and [how to run and read the test gates](TESTING.md).
 
 ## Manual
 

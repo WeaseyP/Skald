@@ -168,3 +168,32 @@ describe('item 15 — Group paste remaps parentId through the paste id-map (F-B0
         expect(pastedChild.extent).toBeUndefined();
     });
 });
+
+describe('C3 — a pasted Instrument does not keep its source\'s Export ID', () => {
+    it('gives the copy a fresh Export ID so the two can never export as one asset (the generator refuses that)', () => {
+        const { result } = renderHook(() => useEditorState(), { wrapper });
+        const pinned = instrumentNode('inst-1', 'Bass', { selected: true });
+        (pinned.data as Record<string, unknown>).exportId = 'Bass';
+
+        act(() => { result.current.setNodes([pinned]); });
+        act(() => { result.current.handleCopy(); });
+        act(() => { result.current.handlePaste(); });
+
+        const instruments = result.current.nodes.filter(n => n.type === 'instrument');
+        expect(instruments).toHaveLength(2);
+        const original = instruments.find(n => n.id === 'inst-1')!;
+        const copy = instruments.find(n => n.id !== 'inst-1')!;
+        expect((original.data as { exportId?: string }).exportId).toBe('Bass');
+        // Derived from the copy's new display name ("Bass 2"), not the pin.
+        expect((copy.data as { exportId?: string }).exportId).toBe('Bass_2');
+    });
+
+    it('leaves the copy unpinned when the source was unpinned — its new name already derives a distinct prefix', () => {
+        const { result } = renderHook(() => useEditorState(), { wrapper });
+        act(() => { result.current.setNodes([instrumentNode('inst-1', 'Bass', { selected: true })]); });
+        act(() => { result.current.handleCopy(); });
+        act(() => { result.current.handlePaste(); });
+        const copy = result.current.nodes.find(n => n.type === 'instrument' && n.id !== 'inst-1')!;
+        expect('exportId' in (copy.data as object)).toBe(false);
+    });
+});

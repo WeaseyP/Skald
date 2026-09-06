@@ -1,5 +1,12 @@
 @echo off
 setlocal enabledelayedexpansion
+
+REM Packet B12: every emitted header carries the generator's source digest.
+REM That digest changes with every edit to skald-backend, which would make
+REM every golden red on every generator commit. The harness pins the string
+REM instead; the input digest on the next header line has no override and
+REM stays a function of the fixture alone.
+set "SKALD_CODEGEN_STAMP=golden"
 set MODE=%1
 if "%MODE%"=="" set MODE=check
 
@@ -12,6 +19,7 @@ echo [CORPUS] Building codegen.exe...
 odin build main.odin -file -out:codegen.exe
 if errorlevel 1 exit /b 1
 
+if not exist tests\golden mkdir tests\golden
 if not exist tests\golden\examples_corpus mkdir tests\golden\examples_corpus
 if not exist tests\golden\examples_corpus\.gen mkdir tests\golden\examples_corpus\.gen
 
@@ -58,6 +66,7 @@ set "RERUN=tests\golden\examples_corpus\.gen\%NAME%.rerun.odin"
 set "SHIM=tests\golden\examples_corpus\.gen\%NAME%.shim.odin"
 set "SHIM2=tests\golden\examples_corpus\.gen\%NAME%.shim.rerun.odin"
 set "GOLD=tests\golden\examples_corpus\%NAME%.odin.golden"
+set "SHIMGOLD=tests\golden\examples_corpus\%NAME%.shim.odin.golden"
 
 .\codegen.exe -in:%1 -out:"%GEN%" -wasm-shim:"%SHIM%" -package:generated_audio >nul
 if errorlevel 1 (
@@ -83,7 +92,7 @@ if errorlevel 1 (
 
 fc /B "%SHIM%" "%SHIM2%" >nul
 if errorlevel 1 (
-    echo NON-DETERMINISTIC %NAME% (shim)
+    echo NON-DETERMINISTIC %NAME% ^(shim^)
     set /a FAILED+=1
     set /a NONDET+=1
     goto :eof
@@ -91,6 +100,7 @@ if errorlevel 1 (
 
 if /I "%MODE%"=="update" (
     copy /Y "%GEN%" "%GOLD%" >nul
+    copy /Y "%SHIM%" "%SHIMGOLD%" >nul
     echo UPDATED %NAME%
     goto :eof
 )
@@ -100,10 +110,24 @@ if not exist "%GOLD%" (
     set /a FAILED+=1
     goto :eof
 )
+if not exist "%SHIMGOLD%" (
+    echo MISSING SHIM GOLDEN for %NAME%
+    set /a FAILED+=1
+    goto :eof
+)
 
 fc "%GOLD%" "%GEN%" >nul
 if errorlevel 1 (
     echo DIFF %NAME%
+    set /a FAILED+=1
+    goto :eof
+)
+REM B6-2-x3: the wasm shim is the SECOND shape emitted from one analysis and
+REM was compared only against its own re-run - a shim-only regression across
+REM the whole corpus was invisible until this line.
+fc "%SHIMGOLD%" "%SHIM%" >nul
+if errorlevel 1 (
+    echo DIFF %NAME% ^(shim^)
     set /a FAILED+=1
     goto :eof
 )

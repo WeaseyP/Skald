@@ -1,13 +1,9 @@
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
 
-export interface ExampleItem {
-    id: string;
-    name: string;
-    category: string;
-    categoryKey: string;
-    subcategory?: string;
-    path: string;
-}
+// ExampleItem lives in a real module (src/definitions/examples.ts) so the
+// renderer and its tests can import it through paths ESLint and tsc both
+// resolve; this file only consumes it for the preload API surface below.
+import type { ExampleItem } from './src/definitions/examples';
 
 export interface IElectronAPI {
     invokeCodegen: (graphJson: string, options?: { packageName?: string, outputPath?: string }) => Promise<string>,

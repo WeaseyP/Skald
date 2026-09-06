@@ -101,6 +101,10 @@ interface SidebarProps {
     onCreateInstrument: () => void;
     onCreateGroup: () => void;
     canCreateInstrument: boolean;
+    // B9-5: when set, Create Instrument is disabled and this is its tooltip,
+    // even though the selection is non-empty (so Create Group stays enabled —
+    // a visual group around an instrument is fine; a wrap is not).
+    createInstrumentBlockedReason?: string;
     bpm: number;
     onBpmChange: (newBpm: number) => void;
     isLooping: boolean;
@@ -140,6 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     onCreateInstrument,
     onCreateGroup,
     canCreateInstrument,
+    createInstrumentBlockedReason,
     bpm,
     onBpmChange,
     isLooping,
@@ -208,7 +213,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                         {outputPath ? (outputPath.split(/[\\/]/).pop() || 'Output File Selected') : 'Select Output File'}
                     </button>
                 </div>
-                <button style={primaryButtonStyles} onClick={onGenerate}>Generate Code</button>
+                {/* B6-7: "Generate Code" dated from when this button was the
+                    only way to run the generator. Play has compiled and run
+                    the real generated code on every edit since the WASM
+                    preview landed; this button only writes that code out. */}
+                <button
+                    style={primaryButtonStyles}
+                    onClick={onGenerate}
+                    title="Write the generated Odin package to the selected output file. The preview already runs this exact code; this only saves the .odin for your game."
+                >
+                    Download Code
+                </button>
             </div>
 
             <div>
@@ -271,10 +286,13 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div>
                 <h2 style={sectionTitleStyles}>Grouping</h2>
                 <button
-                    style={canCreateInstrument ? secondaryButtonStyles : disabledButtonStyles}
+                    style={canCreateInstrument && !createInstrumentBlockedReason ? secondaryButtonStyles : disabledButtonStyles}
                     onClick={onCreateInstrument}
-                    disabled={!canCreateInstrument}
-                    title={canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select one or more nodes to create an instrument"}
+                    disabled={!canCreateInstrument || !!createInstrumentBlockedReason}
+                    title={
+                        createInstrumentBlockedReason
+                            ?? (canCreateInstrument ? "Group selected nodes into a reusable instrument" : "Select one or more nodes to create an instrument")
+                    }
                 >
                     Create Instrument
                 </button>

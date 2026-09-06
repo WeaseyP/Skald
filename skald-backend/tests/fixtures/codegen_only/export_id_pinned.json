@@ -1,0 +1,45 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "a",
+        "name": "Bass Synth (v2)",
+        "export_id": "Bass",
+        "asset_type": "sfx",
+        "voice_count": 1,
+        "audio_graph": {
+          "nodes": [
+            { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 110, "waveform": "Sine", "amplitude": 0.5 } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "osc", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": [
+            { "target_node_id": "a", "name": "Bass Synth (v2)", "mute": false, "solo": false, "num_steps": 16,
+              "events": [ { "step": 0, "note": 36, "velocity": 1.0, "duration": 0.25 } ] }
+          ]
+        }
+      },
+      {
+        "id": "b",
+        "name": "Bass",
+        "export_id": "Sub",
+        "asset_type": "music",
+        "voice_count": 1,
+        "audio_graph": {
+          "nodes": [
+            { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 55, "waveform": "Sine", "amplitude": 0.5 } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "osc", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

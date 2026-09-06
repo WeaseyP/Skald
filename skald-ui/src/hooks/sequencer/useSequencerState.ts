@@ -20,6 +20,7 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
 import { EditorHistoryApi } from '../nodeEditor/editorSnapshot';
 import { logger } from '../../utils/logger';
+import { dedupeTrackNotes } from '../../utils/trackNotes';
 // Helper to generate a unique ID if uuid not available
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -100,7 +101,13 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
      * clears the whole history instead.
      */
     const loadTracks = useCallback((newTracks: SequencerTrack[]) => {
-        writeTracks(newTracks);
+        // B5-x3: (step, pitch) uniqueness is enforced for every edit (B5-2)
+        // but was never established for what a FILE brought in — two notes at
+        // one (step, pitch) rendered as a React duplicate-key warning with one
+        // block hidden. Every track the editor holds enters through here (Load,
+        // Import, autosave restore, history), so this is the one place the
+        // invariant is made true. useFileIO reports the count on Load.
+        writeTracks(dedupeTrackNotes(newTracks).tracks);
     }, [writeTracks]);
 
     // ---- User gestures: each pushes one labelled entry ---------------------
@@ -140,6 +147,32 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         });
     }, [mapTracks, pushHistory]);
 
+    /**
+     * Delete every note on a step.
+     *
+     * SKB-025: right-click-erase used to call toggleStep with no pitch, which
+     * deleted `notes.find(n => n.step === step)` — the first member in
+     * insertion order. Erasing a triad therefore took three clicks, and after
+     * each one a sibling took over the block, so the step never appeared to
+     * clear. A grid row has no pitch axis, so "erase this step" is the only
+     * unambiguous thing a right-click there can mean; the piano roll, which
+     * does have one, still erases per pitch through toggleStep.
+     */
+    const clearStep = useCallback((trackId: string, step: number) => {
+        const track = tracksRef.current.find(t => t.id === trackId);
+        if (!track) return;
+        const doomed = track.notes.filter(n => n.step === step);
+        if (doomed.length === 0) return;
+
+        pushHistory(
+            doomed.length === 1 ? `Delete step ${step + 1}` : `Clear step ${step + 1} (${doomed.length} notes)`,
+            { gesture: `clearStep:${trackId}:${step}` },
+        );
+        mapTracks(t => (t.id === trackId
+            ? { ...t, notes: t.notes.filter(n => n.step !== step) }
+            : t));
+    }, [mapTracks, pushHistory]);
+
     // notePitch identifies WHICH note on the step to edit — without it, a
     // chord could only ever have its first note addressed, and the cleanup
     // below deleted every sibling on the step (the "Snap to Scale destroys
@@ -175,6 +208,14 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
                 // Tie cleanup applies per pitch lane: a long C4 swallows the
                 // C4s under it, but leaves the E4/G4 chord siblings alone.
                 if (coveredSteps.has(n.step) && n.note === updatedNote.note) return false;
+                // SKB-025: (step, pitch) is the address every editor and
+                // Export-Step now uses, so it has to be unique. Retuning a
+                // chord member onto a sibling's pitch used to leave TWO notes
+                // at the same (step, pitch) — two events the generated
+                // sequencer fires together, and an address that no longer
+                // named one note. The retuned note wins; the note it landed on
+                // is absorbed, the same way a tie absorbs what it covers.
+                if (n.step === updatedNote.step && n.note === updatedNote.note) return false;
                 return true;
             });
 
@@ -214,6 +255,7 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         syncInstrumentTracks,
         updateTrackSteps,
         toggleStep,
+        clearStep,
         toggleMute,
         toggleSolo,
         loadTracks,
@@ -224,6 +266,7 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         syncInstrumentTracks,
         updateTrackSteps,
         toggleStep,
+        clearStep,
         toggleMute,
         toggleSolo,
         loadTracks,

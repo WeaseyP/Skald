@@ -1,0 +1,30 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "sustainzerohold",
+        "name": "Asset",
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "audio_graph": {
+          "nodes": [
+            { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 220, "waveform": "Sawtooth", "amplitude": 0.5 } },
+            { "id": "env", "type": "ADSR", "parameters": { "attack": 0.005, "decay": 0.1, "sustain": 0.0, "release": 0.3, "depth": 3000, "velocitySensitivity": 0 } },
+            { "id": "flt", "type": "Filter", "parameters": { "type": "Lowpass", "cutoff": 400, "resonance": 1 } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "osc", "from_port": "output", "to_node": "flt", "to_port": "input" },
+            { "from_node": "env", "from_port": "output", "to_node": "flt", "to_port": "input_cutoff" },
+            { "from_node": "flt", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

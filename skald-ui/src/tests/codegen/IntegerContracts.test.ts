@@ -59,10 +59,17 @@ describe('integer contracts — instrument voice_count / unison', () => {
         expect(buildProjectData([makeInstrument({ unison: 99 })], [], [], 120, 1.0).project.instruments[0].unison).toBe(16);
     });
 
-    it('falls back to the default for NaN / Infinity / missing values (non-finite is rejected, not clamped)', () => {
-        expect(buildProjectData([makeInstrument({ voiceCount: NaN })], [], [], 120, 1.0).project.instruments[0].voice_count).toBe(8);
-        expect(buildProjectData([makeInstrument({ voiceCount: Infinity })], [], [], 120, 1.0).project.instruments[0].voice_count).toBe(8);
-        expect(buildProjectData([makeInstrument({})], [], [], 120, 1.0).project.instruments[0].voice_count).toBe(8);
+    it('rejects NaN / Infinity to the backend default (1, not clamped) and leaves a missing value absent', () => {
+        // B6-1-x2: the backend owns absent-value defaults. A non-finite
+        // authored value is garbage the JSON cannot even carry (NaN -> null
+        // -> 0 -> 1 in build_project_from_raw), so it resolves to the same 1
+        // here; a MISSING value is not invented at all — the key is left out
+        // and the generator resolves it exactly as it does for a -in: run.
+        // This used to pin 8, the editor's invented default.
+        expect(buildProjectData([makeInstrument({ voiceCount: NaN })], [], [], 120, 1.0).project.instruments[0].voice_count).toBe(1);
+        expect(buildProjectData([makeInstrument({ voiceCount: Infinity })], [], [], 120, 1.0).project.instruments[0].voice_count).toBe(1);
+        const missing = JSON.parse(JSON.stringify(buildProjectData([makeInstrument({})], [], [], 120, 1.0)));
+        expect(missing.project.instruments[0]).not.toHaveProperty('voice_count');
     });
 });
 

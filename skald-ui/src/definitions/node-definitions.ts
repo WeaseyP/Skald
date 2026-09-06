@@ -30,6 +30,13 @@ import {
     MidiInputParams,
     NodeParams
 } from './types';
+// Roadmap packet C2: every numeric default with a range row is READ from the
+// generated schema (schema/nodes.json -> nodeSchema.generated.ts), the same
+// source the backend's typed setters and exposed-parameter defaults are
+// generated from. Before C2 these were literals that drifted from the table
+// nine times (SKB-024's "6 dB from a checkbox"). NodeSchema.test.ts asserts
+// the two agree; sd() is how they cannot disagree.
+import { schemaDefault as sd } from './nodeSchema.generated';
 
 // --- Type Definition for a Node Definition Entry ---
 
@@ -50,26 +57,31 @@ const defaultFmOperatorParams: FmOperatorParams = {
     // Ratio of the played note's frequency (golden-path semantics), NOT
     // absolute Hz. The old default of 440 as a ratio put the carrier at
     // ~190kHz — pure ultrasonic aliasing in the generated code.
-    frequency: 2,
-    modIndex: 100,
+    frequency: sd('FmOperator', 'frequency'),
+    modIndex: sd('FmOperator', 'modIndex'),
+    // C5: unity, the full-scale output the node always had.
+    amplitude: sd('FmOperator', 'amplitude'),
     exposedParameters: ['frequency', 'modIndex']
 };
 
 const defaultWavetableParams: WavetableParams = {
     tableName: 'Sine',
-    frequency: 440,
-    position: 0,
+    frequency: sd('Wavetable', 'frequency'),
+    position: sd('Wavetable', 'position'),
+    // C5: the symmetric square and zero offset the engine always used.
+    pulseWidth: sd('Wavetable', 'pulseWidth'),
+    phase: sd('Wavetable', 'phase'),
     // 1.0 = unity, matching the codegen fallback for an absent value. A new
     // node now stores it explicitly, so exposing amplitude initializes the
     // generated field from the stored 1.0 instead of the generic range-table
     // default (0.5) — the "-6 dB from a checkbox" case.
-    amplitude: 1.0,
+    amplitude: sd('Wavetable', 'amplitude'),
     exposedParameters: ['frequency', 'position', 'amplitude']
 };
 
 const defaultSampleHoldParams: SampleHoldParams = {
-    rate: 10.0,
-    amplitude: 1.0,
+    rate: sd('SampleHold', 'rate'),
+    amplitude: sd('SampleHold', 'amplitude'),
     bpmSync: false,
     syncRate: '1/8',
     exposedParameters: ['rate', 'amplitude']
@@ -77,68 +89,70 @@ const defaultSampleHoldParams: SampleHoldParams = {
 
 const defaultLfoParams: LfoParams = {
     waveform: "Sine",
-    frequency: 5.0,
-    amplitude: 1.0,
+    frequency: sd('LFO', 'frequency'),
+    amplitude: sd('LFO', 'amplitude'),
     bpmSync: false,
     syncRate: '1/4',
     exposedParameters: ['frequency', 'amplitude']
 };
 
 const defaultOscillatorParams: OscillatorParams = {
-    frequency: 440.0,
+    frequency: sd('Oscillator', 'frequency'),
     waveform: "Sawtooth",
-    amplitude: 0.5,
-    pulseWidth: 0.5,
-    phase: 0,
+    amplitude: sd('Oscillator', 'amplitude'),
+    pulseWidth: sd('Oscillator', 'pulseWidth'),
+    phase: sd('Oscillator', 'phase'),
     exposedParameters: ['frequency', 'amplitude', 'pulseWidth', 'phase']
 };
 
 const defaultFilterParams: FilterParams = {
     type: 'Lowpass',
-    cutoff: 800.0,
-    resonance: 1.0,
+    cutoff: sd('Filter', 'cutoff'),
+    resonance: sd('Filter', 'resonance'),
     exposedParameters: ['cutoff', 'resonance']
 };
 
 const defaultNoiseParams: NoiseParams = {
     type: 'White',
-    amplitude: 1.0,
+    amplitude: sd('Noise', 'amplitude'),
     exposedParameters: ['amplitude']
 };
 
 const defaultAdsrParams: AdsrParams = {
-    attack: 0.1,
-    decay: 0.2,
-    sustain: 0.5,
-    release: 1.0,
-    depth: 1.0,
-    velocitySensitivity: 0.5,
+    attack: sd('ADSR', 'attack'),
+    decay: sd('ADSR', 'decay'),
+    sustain: sd('ADSR', 'sustain'),
+    release: sd('ADSR', 'release'),
+    depth: sd('ADSR', 'depth'),
+    velocitySensitivity: sd('ADSR', 'velocitySensitivity'),
     exposedParameters: ['attack', 'decay', 'sustain', 'release', 'depth']
 };
 
 const defaultDelayParams: DelayParams = {
-    delayTime: 0.5,
-    feedback: 0.5,
-    mix: 0.5,
+    delayTime: sd('Delay', 'delayTime'),
+    feedback: sd('Delay', 'feedback'),
+    mix: sd('Delay', 'mix'),
     bpmSync: false,
     syncRate: '1/8',
     exposedParameters: ['delayTime', 'feedback', 'mix']
 };
 
 const defaultReverbParams: ReverbParams = {
-    decay: 3.0,
-    preDelay: 0.02,
-    mix: 0.5,
+    decay: sd('Reverb', 'decay'),
+    preDelay: sd('Reverb', 'preDelay'),
+    mix: sd('Reverb', 'mix'),
+    // C5: undamped, the comb every existing patch has.
+    damping: sd('Reverb', 'damping'),
     // preDelay is implemented in the engine and now editable on the node card;
     // it belongs in the default public API alongside decay and mix.
     exposedParameters: ['decay', 'preDelay', 'mix']
 };
 
 const defaultDistortionParams: DistortionParams = {
-    drive: 20,
+    drive: sd('Distortion', 'drive'),
     shape: 'classic',
-    tone: 4000,
-    mix: 0.5,
+    tone: sd('Distortion', 'tone'),
+    mix: sd('Distortion', 'mix'),
     exposedParameters: ['drive', 'tone', 'mix']
 };
 
@@ -154,12 +168,16 @@ const defaultMixerParams: MixerParams = {
 };
 
 const defaultPannerParams: PannerParams = {
-    pan: 0,
+    pan: sd('Panner', 'pan'),
     exposedParameters: ['pan']
 };
 
 const defaultGainParams: GainParams = {
-    gain: 0.75,
+    gain: sd('Gain', 'gain'),
+    // C4: a fresh VCA scales its knob by what arrives on the Gain port, so
+    // the modular idiom — envelope into a separate amplifier — works without
+    // first zeroing the knob (the workaround every shipped example used).
+    gainMode: 'multiply',
     exposedParameters: ['gain']
 };
 
@@ -189,7 +207,11 @@ const defaultInstrumentParams: InstrumentParams = {
 const defaultMidiInputParams: MidiInputParams = {
     device: 'All',
     useMpe: false,
-    exposedParameters: ['device', 'useMpe']
+    // SKB-059 / packet B2: this used to ship ['device', 'useMpe']. Neither
+    // string appears anywhere in skald-backend/core — they are editor-side
+    // routing settings — so every fresh MIDI Input node minted two setters
+    // for fields no sample ever read. Nothing on this node is exposable.
+    exposedParameters: []
 };
 
 export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
@@ -201,10 +223,10 @@ export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
         type: 'mapper',
         label: 'Mapper (Scale)',
         defaultParameters: {
-            inMin: 0,
-            inMax: 1,
-            outMin: 0,
-            outMax: 20000
+            inMin: sd('Mapper', 'inMin'),
+            inMax: sd('Mapper', 'inMax'),
+            outMin: sd('Mapper', 'outMin'),
+            outMax: sd('Mapper', 'outMax')
         },
         codegenType: 'Mapper',
         inputs: ['input'],

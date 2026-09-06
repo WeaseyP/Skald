@@ -1,0 +1,27 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "exposedstringparam",
+        "name": "Asset",
+        "voice_count": 1,
+        "unison": 1,
+        "audio_graph": {
+          "nodes": [
+            { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 440, "waveform": "Sawtooth", "amplitude": 0.4 } },
+            { "id": "flt", "type": "Filter", "parameters": { "type": "Lowpass", "cutoff": 800, "resonance": 1, "exposedParameters": ["type", "cutoff"] } },
+            { "id": "midi", "type": "MidiInput", "parameters": { "device": "All", "useMpe": false, "exposedParameters": ["device", "useMpe"] } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "osc", "from_port": "output", "to_node": "flt", "to_port": "input" },
+            { "from_node": "flt", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

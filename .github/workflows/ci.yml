@@ -224,13 +224,14 @@ jobs:
 
       # `npm test` includes the examples-corpus gate (roadmap packet A5,
       # BUGS.md SKB-019/SKB-002): every JSON under examples/ — the glob is
-      # deliberately *.json, NOT *.skald.json, which would skip 19 files
-      # including the one known codegen failure — must load, generate and
+      # deliberately *.json, NOT *.skald.json, which would skip the bare-.json
+      # files — among them the one that used to fail codegen — must load, generate and
       # `odin check` cleanly on the editor path, generate and check on the CLI
       # path, and honour its authored session block (tempo + master volume) in
-      # the emitted Odin. Known-broken files live in an explicit quarantine
-      # list in src/tests/corpus/corpusGate.ts that fails when an entry starts
-      # passing, so it cannot rot. This gate replaced examples/AUDIT.md.
+      # the emitted Odin. There is no quarantine list any more: B6-2 deleted the
+      # one file that failed codegen and B6-1 made the loose graphs playable, so
+      # every file is held to the full assertion set. This gate replaced
+      # examples/AUDIT.md.
       - name: Tests
         run: npm test
 

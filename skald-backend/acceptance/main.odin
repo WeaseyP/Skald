@@ -214,6 +214,22 @@ main :: proc() {
 			}
 		}
 
+	case "dc_offset_pulse":
+		// Square wave at pulseWidth 0.02 spends 98% of each cycle at -1 and
+		// only 2% at +1 — raw duty-cycle mean ~= 0.02*1 + 0.98*(-1) = -0.96.
+		// E5's un-bypassable DC blocker lives on the master bus, not the
+		// per-asset processor (see render_project_one_shot's comment), so
+		// this renders through project_process. Must pull the mean back near
+		// zero well inside the sustain window below, which sits clear of the
+		// 0.02s attack/decay and the release at 1.7s.
+		render_project_one_shot(buf, sample_rate, 60, 1.0, 1.7)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Both)
+			all_pass &= assert_dc_offset_below(buf, sample_rate, 0.3, 1.6, 0.05, .Both)
+		}
+
 	case "kick_loop_120bpm":
 		// Music Layer: 120 BPM, kicks on steps 0,4,8,12 of a 16-step
 		// pattern. Step duration = 60/120/4 = 0.125s. Kicks land at
@@ -574,6 +590,83 @@ main :: proc() {
 					all_pass = false
 				}
 			}
+			// SKB-016: the audio kept ringing but _is_playing did not say so —
+			// it reported `p.playing || any(voice.active)`, both false by
+			// ~0.30s here (0.25s duration + 0.05s release). A game polling it
+			// to decide when to free the asset therefore cut the echo off. The
+			// baked countdown for this patch is exactly 5.0s: a 0.5s line at
+			// 0.5 feedback needs 10 passes to fall 60 dB, and nothing here is
+			// exposed, so no range maximum widens it.
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				ga.Asset_trigger(p, 69, 1.0, 0.25)
+				for _ in 0 ..< int(1.0 * sample_rate) do ga.Asset_process(p)
+				if !ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail: is_playing false at 1.0s, with every voice dead but the echo still ringing",
+					)
+					all_pass = false
+				}
+				for _ in 0 ..< int(3.5 * sample_rate) do ga.Asset_process(p)
+				if !ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail: is_playing false at 4.5s, inside the 5.0s tail",
+					)
+					all_pass = false
+				}
+				// ...and it has to expire, or the asset can never be freed at
+				// all and the fix is just a different bug.
+				for _ in 0 ..< int(1.5 * sample_rate) do ga.Asset_process(p)
+				if ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail: is_playing still true at 6.0s — the tail countdown never expires",
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "delay_tail_live":
+		// B7-2-followup / SKB-016: delayTime and feedback are both exposed, so
+		// the OLD baked constant was 270s (delayTime range max 2.0s x 135
+		// passes for feedback range max 0.95 to fall 60dB) no matter what is
+		// authored. The authored values here (delayTime 0.25, feedback 0.3)
+		// give a true live tail of 0.25 x 6 passes = 1.5s. This fixture fails
+		// under the old fixed-constant countdown (is_playing is still true at
+		// 2.5s — nowhere near its 270s expiry) and passes once the countdown
+		// is armed from the live field values instead.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.25)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			{
+				p := new(ga.Asset_Processor)
+				defer free(p)
+				ga.Asset_init(p, sample_rate)
+				ga.Asset_trigger(p, 69, 1.0, 0.25)
+				// Note dies by ~0.30s (0.25s duration + 0.05s release). At 1.0s
+				// the live 1.5s tail is still ringing.
+				for _ in 0 ..< int(1.0 * sample_rate) do ga.Asset_process(p)
+				if !ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail_live: is_playing false at 1.0s, inside the live 1.5s tail",
+					)
+					all_pass = false
+				}
+				// By 2.5s the live tail (armed ~0.30s + 1.5s = expires ~1.80s)
+				// is long gone. The pre-fix baked constant would keep this true
+				// until ~270.3s, so this is the assertion that catches the bug.
+				for _ in 0 ..< int(1.5 * sample_rate) do ga.Asset_process(p)
+				if ga.Asset_is_playing(p) {
+					fmt.eprintln(
+						"FAIL delay_tail_live: is_playing still true at 2.5s — the live tail should have expired around 1.8s, not the baked worst-case 270s",
+					)
+					all_pass = false
+				}
+			}
 		}
 
 	case "wavetable_morph":
@@ -872,6 +965,250 @@ main :: proc() {
 			}
 		}
 
+	case "steal_release_first":
+		// C6-1 (F-B03-3/6): voice stealing is release-first. Two voices: B is
+		// the OLDEST and still held; A is younger but already released. The
+		// pure oldest-by-age steal took B — cutting the note the player was
+		// still holding — while a voice that was only fading out sat there.
+		// Now the releasing voice goes first; age only decides among voices
+		// in the same tier.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			t_a := int(0.1 * sample_rate)
+			t_off_a := int(0.2 * sample_rate)
+			t_c := int(0.3 * sample_rate)
+			ga.Asset_note_on(p, 57, 1.0, 0.0) // B: A3 (220 Hz), oldest, held throughout
+			for i in 0 ..< len(buf) {
+				if i == t_a do ga.Asset_note_on(p, 69, 1.0, 0.0)  // A: A4 (440 Hz)
+				if i == t_off_a do ga.Asset_note_off(p, 69)        // A releases (1.5 s tail)
+				if i == t_c do ga.Asset_note_on(p, 81, 1.0, 0.0)  // C: A5 — must steal A, not B
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				// B (220 Hz) must still be the strongest partial well after the
+				// steal. Before the fix, C stole B and the window held only
+				// C (880 Hz) plus A's fading 440.
+				all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.6, 1.0, 220.0, 5.0, .Left)
+			}
+		}
+
+	case "noadsr_fade":
+		// C6-3 (F-B03-5): a voice with no ADSR used to be switched off at the
+		// exact sample its duration expired — the default _trigger walks into
+		// this — which is a hard cut mid-waveform, an audible click. A short
+		// linear fade now follows the duration. Same discontinuity gate as
+		// steal_click, around the expiry sample.
+		{
+			dur: f32 = 0.2006 // 88.26 cycles of 440 Hz: the cut lands near a peak, not on a zero crossing
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, dur)
+			n_cut := int(dur * sample_rate)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				all_pass &= assert_audible(buf, .Left)
+				cut_max: f32 = 0.0
+				for i in n_cut - 4 ..< n_cut + int(0.006 * sample_rate) {
+					d := abs(buf[i].l - buf[i - 1].l)
+					if d > cut_max do cut_max = d
+				}
+				other_max: f32 = 0.0
+				for i in 1000 ..< n_cut - 4 {
+					d := abs(buf[i].l - buf[i - 1].l)
+					if d > other_max do other_max = d
+				}
+				if cut_max > 1.5 * other_max {
+					fmt.eprintfln(
+						"FAIL noadsr_fade: discontinuity %.4f at duration expiry (steady-state max %.4f) — the no-ADSR hard cut is back",
+						cut_max, other_max,
+					)
+					all_pass = false
+				}
+				// And the voice does end: silence shortly after the fade.
+				all_pass &= assert_silence_after(buf, sample_rate, dur + 0.05)
+			}
+		}
+
+	case "sustain_zero_hold":
+		// C6-4 (SKB-041, EDITORIAL C14): an ADSR whose sustain is 0 used to
+		// flip its stage to Idle the moment the decay ended — and an Idle
+		// envelope marks the whole VOICE inactive, so a held note whose ADSR
+		// only shapes the filter cutoff went silent after 0.1 s while the
+		// key was still down. The envelope now sits at its sustain level
+		// until note_off/duration starts the Release the UI draws.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			ga.Asset_note_on(p, 57, 1.0, 0.0) // held for the whole buffer
+			for i in 0 ..< len(buf) {
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				// Audible well after attack+decay (0.105 s). Before the fix the
+				// voice was inactive from ~0.11 s and this window was silent.
+				all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.5, 1.0, 220.0, 5.0, .Left)
+			}
+		}
+
+	case "lfo_retrigger":
+		// C6-2 (F-B03-2): the fresh-voice reset skipped LFO and Sample & Hold
+		// state, so a per-voice LFO kept its phase from the previous note and
+		// the same patch sounded different on every retrigger. The reset now
+		// covers them: two fresh notes must start with the same modulation.
+		// The LFO (0.25 Hz) drives the VCA gain; without the reset the second
+		// note starts 45 degrees further along and noticeably louder.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			t_two := int(0.5 * sample_rate)
+			ga.Asset_note_on(p, 69, 1.0, 0.3)
+			for i in 0 ..< len(buf) {
+				if i == t_two do ga.Asset_note_on(p, 69, 1.0, 0.3)
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				rms_first := compute_rms(buf[int(0.02 * sample_rate):int(0.08 * sample_rate)], .Left)
+				rms_second := compute_rms(buf[t_two + int(0.02 * sample_rate):t_two + int(0.08 * sample_rate)], .Left)
+				if rms_first <= 0.01 || abs(rms_first - rms_second) > 0.05 * rms_first {
+					fmt.eprintfln(
+						"FAIL lfo_retrigger: first-note RMS %.4f vs second-note RMS %.4f — the LFO did not restart with the fresh voice",
+						rms_first, rms_second,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "vca_multiply":
+		// C4 (F-A04-4): the modular idiom — a bare envelope into a separate
+		// VCA's Gain port — used to compute `audio * (knob + envelope)`, so with
+		// the knob at 1.0 the multiplier swung 1 -> 2 -> 1 and the note never
+		// stopped. A VCA whose `gainMode` is "multiply" computes
+		// `audio * knob * envelope`: full authority from silence to unity, and
+		// the note ends when the envelope does. Knob deliberately at 1.0 — the
+		// value that makes the additive form fail loudest.
+		{
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				all_pass &= assert_audible(buf[0:int(0.05 * sample_rate)], .Left)
+				// Two windows the additive form gets wrong while the voice is alive
+				// (once the envelope is Idle the voice is inactive either way, so a
+				// silence check after the note proves nothing). During the decay the
+				// envelope is ~0.9: multiply gives 0.5 * 0.8 * 0.9 -> RMS ~0.25;
+				// additive gives a multiplier of ~1.9 -> RMS ~0.54. Late in the
+				// release (0.13-0.16 s, envelope 0.24 -> 0) multiply is nearly
+				// silent; additive is still ~1.0x, a full-level tone about to be
+				// hard-cut.
+				rms_decay := compute_rms(buf[int(0.02 * sample_rate):int(0.05 * sample_rate)], .Left)
+				rms_late := compute_rms(buf[int(0.13 * sample_rate):int(0.16 * sample_rate)], .Left)
+				if rms_decay > 0.35 || rms_late > 0.1 {
+					fmt.eprintfln(
+						"FAIL vca_multiply: decay RMS %.3f (want < 0.35), late-release RMS %.3f (want < 0.1) — the Gain port is adding to the knob instead of scaling it",
+						rms_decay, rms_late,
+					)
+					all_pass = false
+				}
+				all_pass &= assert_silence_after(buf, sample_rate, 0.3)
+			}
+		}
+
+	case "wavetable_pwm":
+		// C5 (F-A01-7): the Wavetable's square end was hard-coded at 50 % duty
+		// while the Oscillator's square had a full pulse-width control. With
+		// `pulseWidth` exposed, narrowing the duty from 0.5 to 0.1 must change
+		// the sound (a 10 % pulse has strong even harmonics a 50 % square
+		// lacks). Before the fix the setter did not exist and the sample
+		// helper ignored the width.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "pulseWidth", value = 0.5}}},
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "pulseWidth", value = 0.1}}},
+				"wavetable pulse width 0.5 -> 0.1",
+			)
+		}
+
+	case "wavetable_phase":
+		// C5 (F-A01-8): two sine Wavetables at 440 Hz, amplitudes 0.5 and
+		// 0.25, the second offset by 180 degrees. Summed they cancel down to a
+		// 0.25 residual: RMS 0.25 * 0.8 (master) / sqrt2 ~= 0.14. Before the
+		// fix the phase field was ignored and they added to 0.75 -> RMS 0.42.
+		{
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				rms := compute_rms(buf[int(0.01 * sample_rate):int(0.3 * sample_rate)], .Left)
+				if rms > 0.25 || rms < 0.05 {
+					fmt.eprintfln(
+						"FAIL wavetable_phase: RMS %.3f (want ~0.14: a 180-degree copy must cancel) — the Wavetable phase parameter is not applied",
+						rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "fm_level":
+		// C5 (F-A02-7): the FM Operator was the only source with no output
+		// level — a bare sin() at full scale. `amplitude` 0.25 on an unmodulated
+		// carrier: RMS 0.25 * 0.8 / sqrt2 ~= 0.14. Before the fix: 0.57.
+		{
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				rms := compute_rms(buf[int(0.05 * sample_rate):int(0.5 * sample_rate)], .Left)
+				if rms > 0.25 || rms < 0.05 {
+					fmt.eprintfln(
+						"FAIL fm_level: RMS %.3f (want ~0.14) — the FM Operator amplitude is not applied",
+						rms,
+					)
+					all_pass = false
+				}
+			}
+		}
+
+	case "reverb_damping":
+		// C5 (F-A07-7): a one-pole lowpass on the fed-back sample makes highs
+		// die faster than lows, the way rooms do. A white-noise burst into a
+		// wet-only comb: raising damping from 0 to 0.95 must lower the tail's
+		// spectral centroid. Before the fix the setter did not exist.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left, 0.02) // a 20 ms noise burst's wet tail is quiet over a 2 s buffer
+			all_pass &= assert_sound_changes(
+				sample_rate,
+				len(buf),
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "damping", value = 0.0}}},
+				Render_Spec{kind = .Trigger, note = 69, velocity = 1.0, duration = 0.0, params = {{name = "damping", value = 0.95}}},
+				"reverb damping 0 -> 0.95",
+				0.10,
+				Change_Expect{centroid = .Lower},
+			)
+		}
+
 	case "steal_click":
 		// Voice-steal continuity gate: voice_count=1 patch holds A4, then a
 		// second note_on steals the only voice. The retrigger must be
@@ -980,6 +1317,197 @@ main :: proc() {
 			all_pass &= assert_audible(buf, .Left)
 		}
 
+	case "lfo_bus_cutoff":
+		// SKB-017: the LFO modulates a Filter that sits DOWNSTREAM of the
+		// Delay, so it has to be evaluated once per sample in the bus block.
+		// Evaluated per voice — which is where it used to live — its output was
+		// summed into the cross-domain accumulator, so the modulation depth
+		// tracked the number of held notes and went to exactly ZERO once the
+		// last voice released. That happens at ~0.25s here (0.2s duration plus
+		// a 0.05s release) and the delay tail runs for seconds after it, so
+		// pre-fix the whole tail was filtered at a dead-constant 3200 Hz.
+		//
+		// The LFO is 2 Hz, so sin() peaks at t=0.625s (cutoff 6200) and
+		// troughs at t=0.875s (cutoff 200). Two 4096-sample windows centred on
+		// those instants must therefore differ hugely in brightness.
+		render_sfx_note_on_raw(buf, sample_rate, 69, 1.0, 0.2)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			WIN :: 4096 // fft_channel's power-of-two floor; pass it exactly
+			bright_start := int(0.625 * sample_rate) - WIN / 2
+			dark_start := int(0.875 * sample_rate) - WIN / 2
+			spec_bright := fft_channel(buf[bright_start:bright_start + WIN], .Left)
+			defer delete(spec_bright)
+			spec_dark := fft_channel(buf[dark_start:dark_start + WIN], .Left)
+			defer delete(spec_dark)
+			c_bright := spectral_centroid(spec_bright, sample_rate)
+			c_dark := spectral_centroid(spec_dark, sample_rate)
+			if c_bright < 2.0 * c_dark {
+				fmt.eprintfln(
+					"FAIL lfo_bus_cutoff: tail centroid %.1fHz at the LFO peak vs %.1fHz at the trough — the bus filter is not being modulated once every voice is gone",
+					c_bright,
+					c_dark,
+				)
+				all_pass = false
+			}
+		}
+
+	case "panner_center_unity":
+		// SKB-013: the pan law was bare cos/sin, so pan 0 handed both channels
+		// 0.7071 — inserting a Panner and leaving it centred cost 3 dB, i.e.
+		// the neutral setting was not neutral. The oscillator is 0.5 and the
+		// asset is limit:false, so "transparent" is the number 0.5, in both
+		// channels. Note the constant-power check below passes BEFORE the fix
+		// too: normalizing by sqrt(2) moves the 0 dB point without changing
+		// the shape of the law, and that is the whole point.
+		{
+			if !render_panner_at(buf, sample_rate, 0.0) {
+				fmt.eprintfln("FAIL panner_center_unity: set_param(\"pan\") was not accepted")
+				all_pass = false
+			}
+			pl := compute_peak(buf, .Left)
+			pr := compute_peak(buf, .Right)
+			if abs(pl - 0.5) > 0.005 || abs(pr - 0.5) > 0.005 {
+				fmt.eprintfln(
+					"FAIL panner_center_unity: pan 0 peaks L=%.4f R=%.4f, expected 0.5 (unity) in both",
+					pl, pr,
+				)
+				all_pass = false
+			}
+			hard := make([]Stereo_Sample, len(buf))
+			defer delete(hard)
+			render_panner_at(hard, sample_rate, -1.0)
+			hl := compute_peak(hard, .Left)
+			hr := compute_peak(hard, .Right)
+			center_power := pl * pl + pr * pr
+			hard_power := hl * hl + hr * hr
+			if abs(hard_power - center_power) > 0.02 {
+				fmt.eprintfln(
+					"FAIL panner_center_unity: L^2+R^2 = %.4f centred vs %.4f hard-left — the law is not constant-power",
+					center_power, hard_power,
+				)
+				all_pass = false
+			}
+			if hr > 0.01 {
+				fmt.eprintfln(
+					"FAIL panner_center_unity: pan -1 leaks %.4f into the right channel",
+					hr,
+				)
+				all_pass = false
+			}
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "panner_mono_sum":
+		// SKB-013, second half: the Panner's mono fallback was (L+R)*0.7071068,
+		// which encodes pan as LEVEL — unity at centre, 0.7071 hard over. The
+		// Gain downstream of the Panner reads that fallback, so the patch got
+		// quieter as it was panned. A mono sum carries no pan information at
+		// all, so the fallback is now a pass-through and the peak must be the
+		// oscillator's own 0.5 at every pan position.
+		{
+			hard_ok := render_panner_at(buf, sample_rate, -1.0)
+			hard_peak := compute_peak(buf, .Left)
+			center := make([]Stereo_Sample, len(buf))
+			defer delete(center)
+			center_ok := render_panner_at(center, sample_rate, 0.0)
+			center_peak := compute_peak(center, .Left)
+			if !hard_ok || !center_ok {
+				fmt.eprintfln("FAIL panner_mono_sum: set_param(\"pan\") was not accepted")
+				all_pass = false
+			}
+			if abs(hard_peak - center_peak) > 0.005 {
+				fmt.eprintfln(
+					"FAIL panner_mono_sum: mono peak %.4f at pan -1 vs %.4f at pan 0 — the mono sum still tracks pan",
+					hard_peak, center_peak,
+				)
+				all_pass = false
+			}
+			if abs(hard_peak - 0.5) > 0.005 {
+				fmt.eprintfln(
+					"FAIL panner_mono_sum: mono peak %.4f, expected the 0.5 input passed straight through",
+					hard_peak,
+				)
+				all_pass = false
+			}
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "double_init":
+		// SKB-018: _init assigned the scalars and the delay rings and left
+		// everything else alone, so a second _init — a game reloading a level
+		// on a processor it already used — resumed with the previous run's
+		// voices still flagged active (the held note below allocated a SECOND
+		// voice and both sounded) and the post-Delay filter mid-stream. Two
+		// runs from _init with the same held note must be bit-identical; that
+		// makes this a determinism assertion over the 12345 / 0xC0FFEE01 seeds
+		// at the same time, which is why it compares samples and not features.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			BLOCK :: 1024
+			first: [BLOCK]Stereo_Sample
+
+			ga.Asset_init(p, sample_rate)
+			ga.Asset_note_on(p, 69, 1.0, 0.0)
+			for i in 0 ..< BLOCK {
+				l, r := ga.Asset_process(p)
+				first[i] = {l, r}
+			}
+			// Run on for a second to dirty everything the reset has to clear:
+			// duration 0 holds the note (so the voice stays active), the delay
+			// ring fills, and the bus filter's state is mid-stream.
+			for _ in 0 ..< int(sample_rate) {
+				ga.Asset_process(p)
+			}
+
+			ga.Asset_init(p, sample_rate)
+			ga.Asset_note_on(p, 69, 1.0, 0.0)
+			for i in 0 ..< len(buf) {
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			for i in 0 ..< BLOCK {
+				if buf[i].l != first[i].l || buf[i].r != first[i].r {
+					fmt.eprintfln(
+						"FAIL double_init: sample %d differs after re-init: (%.9f, %.9f) vs (%.9f, %.9f)",
+						i, buf[i].l, buf[i].r, first[i].l, first[i].r,
+					)
+					all_pass = false
+					break
+				}
+			}
+			// A patch that rendered silence would satisfy the comparison for
+			// the wrong reason.
+			all_pass &= assert_audible(buf, .Left)
+		}
+
+	case "note_velocity_clamp":
+		// SKB-029: note_on's two arguments were used raw. This fixture authors
+		// limit:false (so an over-unity peak reaches the buffer instead of
+		// being folded by skald_soft_limit) and velocitySensitivity:1.0 (so
+		// the envelope's gain IS the velocity), then asks for note 200 at
+		// velocity 5.0. Unclamped that is a 2.5 peak — six dB past full
+		// scale — at 440*2^((200-69)/12) ≈ 850kHz, which at 48k is not a
+		// pitch at all but whatever it aliases to.
+		render_sfx_note_on_raw(buf, sample_rate, 200, 5.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			if peak := compute_peak(buf, .Both); peak > 1.0 {
+				fmt.eprintfln(
+					"FAIL note_velocity_clamp: peak %.4f exceeds full scale — velocity 5.0 was not clamped to 1.0",
+					peak,
+				)
+				all_pass = false
+			}
+			// note clamps to 127, so the oscillator tracks 440*2^(58/12).
+			all_pass &= assert_peak_freq(buf, sample_rate, 12543.85, 20.0, .Left)
+		}
+
 	case:
 		fmt.eprintfln("unknown fixture: %q", fixture)
 		os.exit(3)
@@ -1021,6 +1549,66 @@ render_sfx_one_shot :: proc(
 	defer free(p)
 	ga.Asset_init(p, sample_rate)
 	ga.Asset_trigger(p, note, velocity, duration)
+	for i in 0 ..< len(buf) {
+		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+}
+
+// E5: unlike every other render_* helper, goes through the PROJECT wrapper
+// (project_init/project_process), not the per-asset processor directly — the
+// DC blocker lives on the master bus (project_process / the wasm shim's
+// skald_process), not on the per-asset API, so only this path exercises it.
+// See the note above codegen_project.odin's emit_dc_block_proc for why.
+render_project_one_shot :: proc(
+	buf: []Stereo_Sample,
+	sample_rate: f32,
+	note: u8,
+	velocity: f32,
+	duration: f32,
+) {
+	p: ga.Project_State
+	ga.project_init(&p, sample_rate)
+	defer ga.project_destroy(&p)
+	ga.Asset_trigger(p.Asset, note, velocity, duration)
+	for i in 0 ..< len(buf) {
+		l, r := ga.project_process(&p)
+		buf[i] = {l, r}
+	}
+}
+
+// Hold one note with the Panner's `pan` driven to an explicit value first.
+// Goes through the string setter so this compiles against every fixture; a
+// fixture that does not expose `pan` gets `false` back and the caller reports
+// it rather than silently measuring the authored value instead.
+render_panner_at :: proc(buf: []Stereo_Sample, sample_rate: f32, pan: f32) -> bool {
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	set_ok := ga.Asset_set_param(p, "pan", pan)
+	ga.Asset_note_on(p, 69, 1.0, 0.0)
+	for i in 0 ..< len(buf) {
+		l, r := ga.Asset_process(p)
+		buf[i] = {l, r}
+	}
+	return set_ok
+}
+
+// Straight through _note_on, with whatever note and velocity the caller
+// passes — no _trigger, which would substitute its own duration. Deliberately
+// the raw path: a fixture that wants to prove the generated clamp bites has to
+// be able to hand the generated code an argument outside its domain.
+render_sfx_note_on_raw :: proc(
+	buf: []Stereo_Sample,
+	sample_rate: f32,
+	note: u8,
+	velocity: f32,
+	duration: f32,
+) {
+	p := new(ga.Asset_Processor)
+	defer free(p)
+	ga.Asset_init(p, sample_rate)
+	ga.Asset_note_on(p, note, velocity, duration)
 	for i in 0 ..< len(buf) {
 		l, r := ga.Asset_process(p)
 		buf[i] = {l, r}

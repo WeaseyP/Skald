@@ -7,6 +7,11 @@ import {
     clampPatternSteps,
     stepWidthFor,
     stepsOverflow,
+    MIDI_NOTE_MIN,
+    MIDI_NOTE_MAX,
+    NOTE_ROW_HEIGHT,
+    pitchRowsDescending,
+    scrollTopForPitch,
 } from '../../components/Sequencer/stepMetrics';
 
 // The pattern length cap used to be 64 in the UI while the serializer already
@@ -79,5 +84,41 @@ describe('stepsOverflow', () => {
 
     it('makes no claim before measurement', () => {
         expect(stepsOverflow(512, 0)).toBe(false);
+    });
+});
+
+// SKB-026 — the pitch axis. The piano roll hardcoded MIDI 21..84 inline, which
+// put the top two octaves of the MIDI range out of reach of a *chromatic*
+// editor. The range and the row height live here now for the same reason the
+// step width does: roadmap F1 unifies the piano roll with a new drum roll on
+// this module, and two editors measuring the same axis differently is the
+// SKB-002 class all over again.
+describe('pitch axis', () => {
+    it('spans the whole MIDI range', () => {
+        expect(MIDI_NOTE_MIN).toBe(0);
+        expect(MIDI_NOTE_MAX).toBe(127);
+    });
+
+    it('lays rows out high-to-low, one per pitch', () => {
+        const rows = pitchRowsDescending();
+        expect(rows).toHaveLength(128);
+        expect(rows[0]).toBe(MIDI_NOTE_MAX);
+        expect(rows[rows.length - 1]).toBe(MIDI_NOTE_MIN);
+    });
+
+    it('accepts a narrower window without reordering it', () => {
+        expect(pitchRowsDescending(60, 63)).toEqual([63, 62, 61, 60]);
+    });
+
+    it('centres a pitch in the viewport, never scrolling above the top', () => {
+        // Middle C is row (127 - 60) = 67 from the top.
+        expect(scrollTopForPitch(60, 0)).toBe(67 * NOTE_ROW_HEIGHT);
+        expect(scrollTopForPitch(60, 400)).toBe(67 * NOTE_ROW_HEIGHT - 200);
+        // A pitch near the top of the range would want a negative offset.
+        expect(scrollTopForPitch(127, 400)).toBe(0);
+    });
+
+    it('returns 0 for a pitch outside the rendered window rather than NaN', () => {
+        expect(scrollTopForPitch(200, 400)).toBe(0);
     });
 });

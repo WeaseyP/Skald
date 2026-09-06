@@ -10,6 +10,7 @@ export const WavetableNode = makeParamNode({
         { id: 'input_freq', label: 'Freq' },
         { id: 'input_pos', label: 'Pos' },
         { id: 'input_amp', label: 'Amp' },
+        { id: 'input_pulseWidth', label: 'PW' },
     ],
     outputs: [{ id: 'output', label: 'Out' }],
     fields: [
@@ -19,6 +20,12 @@ export const WavetableNode = makeParamNode({
         // "Amp 0" while the generated code played the codegen fallback of 1.0.
         // No value is written back — the backfill is C1's job.
         { key: 'amplitude', label: 'Amp', min: 0, max: 1, step: 0.05, default: 1 },
+        // C5 (F-A01-7/8): the square end's duty cycle and a start-point
+        // offset, the two controls the Oscillator had and this node lacked.
+        // Defaults are the read-time answer for pre-C5 saves (no backfill
+        // needed: the generator reads absence the same way).
+        { key: 'pulseWidth', label: 'Pulse Width', min: 0.01, max: 0.99, step: 0.01, default: 0.5 },
+        { key: 'phase', label: 'Phase', min: 0, max: 360, step: 1, default: 0 },
         { key: 'fixedPitch', label: 'Fixed Pitch', kind: 'toggle' },
         { key: 'frequency', label: 'Freq (Hz)', min: 20, max: 20000, step: 1, showIf: (d) => !!d.fixedPitch },
     ],

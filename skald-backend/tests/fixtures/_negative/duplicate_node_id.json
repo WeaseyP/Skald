@@ -1,0 +1,25 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "dupfixture",
+        "name": "Asset",
+        "voice_count": 1,
+        "unison": 1,
+        "audio_graph": {
+          "nodes": [
+            { "id": "1", "type": "Oscillator", "parameters": { "frequency": 330, "waveform": "Sine", "amplitude": 0.4 } },
+            { "id": "1", "type": "Filter", "parameters": { "type": "Lowpass", "cutoff": 800, "resonance": 1 } },
+            { "id": "2", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

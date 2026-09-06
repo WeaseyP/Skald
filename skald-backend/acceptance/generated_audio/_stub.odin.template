@@ -69,3 +69,26 @@ Asset_set_param :: proc(p: ^Asset_Processor, name: string, value: f32) -> bool {
 Asset_get_param :: proc(p: ^Asset_Processor, name: string) -> (f32, bool) {
 	return 0.0, false
 }
+
+// E5: render_project_one_shot (acceptance/main.odin) renders through the
+// project wrapper, not Asset_process directly, so the FFT self-test build
+// (which compiles against THIS stub, before any real fixture is generated)
+// needs these too or the whole acceptance binary fails to link.
+Project_State :: struct {
+	Asset:         ^Asset_Processor,
+	master_volume: f32,
+}
+
+project_init :: proc(p: ^Project_State, sr: f32) {
+	p.Asset = new(Asset_Processor)
+	Asset_init(p.Asset, sr)
+	p.master_volume = 1.0
+}
+
+project_process :: proc(p: ^Project_State) -> (f32, f32) {
+	return Asset_process(p.Asset)
+}
+
+project_destroy :: proc(p: ^Project_State) {
+	free(p.Asset)
+}

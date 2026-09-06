@@ -5,18 +5,49 @@ import { BpmSyncControl } from './controls/BpmSyncControl';
 import { AdsrEnvelopeEditor } from './controls/AdsrEnvelopeEditor';
 import { XYPad } from './controls/XYPad';
 import { NumberInput } from './common/NumberInput';
-import { formatSyncTime } from '../definitions/bpm';
+import { DEFAULT_SYNC_RATE, bpmSyncToggleChanges, formatSyncTime } from '../definitions/bpm';
+import { macroTargetCandidates, paramDeadReason, paramIsReachable, plockNodeLabel } from '../utils/plockTargets';
+import { NODE_DEFINITIONS } from '../definitions/node-definitions';
+import { RandomizeAmount, RANDOMIZE_AMOUNTS, randomizableParamNames, randomizeParams } from '../utils/randomize';
+import { lookupRange } from '../definitions/nodeSchema.generated';
+import { NodeParams } from '../definitions/types';
 
 interface NodeParameterControlsProps {
     node: Node;
     values?: Record<string, any>; // If provided, overrides node.data
     onChange: (paramName: string, value: any) => void;
-    renderControlWrapper: (paramKey: string, label: string, control: React.ReactNode, isExposable?: boolean) => React.ReactNode;
+    // Write several parameters as ONE delta. Only callers that own node data
+    // pass this (the sidebar). The step-properties editor deliberately does
+    // not: there every onChange becomes a "<Label>:<param>" P-lock, and a
+    // `syncRate` P-lock is a hard codegen error (nothing in any node
+    // configuration ever makes syncRate live), so the BPM Sync toggle must
+    // stay a single-key write there. See bpmSyncToggleChanges.
+    onChangeMany?: (changes: Record<string, unknown>) => void;
+    // `inertReason` (packet B2): set when the node's CURRENT configuration
+    // means the generated DSP never reads this parameter — an Oscillator's
+    // frequency with fixedPitch off, an LFO's frequency with bpmSync on. The
+    // control is rendered greyed with this text as its tooltip instead of
+    // being hidden, so the user can see the knob exists and what would make
+    // it live. Wrappers that do not care (the step editor's) may ignore it.
+    renderControlWrapper: (paramKey: string, label: string, control: React.ReactNode, isExposable?: boolean, inertReason?: string) => React.ReactNode;
     // Project tempo, for display only: BPM-synced controls annotate their
     // sync rate with the effective time at this tempo so the user can see
     // what the node actually follows. Optional — callers without a tempo
     // (e.g. isolated step editors) simply get no annotation.
     bpm?: number;
+    // Roadmap E12 — live XY-pad macro routing. Writing a macro axis's target
+    // means writing a parameter on ANOTHER node inside the instrument's own
+    // subgraph, which `onChange`/`onChangeMany` cannot do: both are bound to
+    // THIS render's node (or its subNodeId, via the closures ParameterPanel
+    // built for it). Only the instrument's own panel render supplies this
+    // (ParameterPanel.tsx's `renderNodeParameters`, `type === 'instrument'`
+    // branch) — it is undefined everywhere else, including the step editor
+    // and every internal-node render, and the section renders nothing
+    // without it.
+    macroRouting?: {
+        internalNodes: Node<NodeParams>[];
+        onUpdateNode: (nodeId: string, data: Record<string, unknown>) => void;
+    };
 }
 
 const inputStyles: React.CSSProperties = {
@@ -37,7 +68,316 @@ const labelStyles: React.CSSProperties = {
     marginBottom: '5px'
 }
 
-export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, renderControlWrapper, bpm }) => {
+// The Odin type name `lookupRange`'s node-type overrides are keyed on
+// ("LFO", "FmOperator", ...), NOT React Flow's own type string ("lfo",
+// "fmOperator"). Mirrors plockTargets.ts's private `nodeCodegenType` — same
+// source (NODE_DEFINITIONS), same fallback to the raw type when a node type
+// is missing from the manifest (a subgraph node whose type never made it in).
+const codegenTypeOf = (node: Node): string => NODE_DEFINITIONS[node.type ?? '']?.codegenType ?? node.type ?? '';
+
+const randomizeSectionStyles: React.CSSProperties = {
+    marginTop: '20px',
+    paddingTop: '15px',
+    borderTop: '1px dashed #444',
+};
+
+const presetButtonStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: '6px 8px',
+    borderRadius: '4px',
+    border: active ? '1px solid #3182CE' : '1px solid #555',
+    background: active ? '#2c5282' : '#333',
+    color: '#E0E0E0',
+    cursor: 'pointer',
+    fontSize: '0.85em',
+});
+
+const rerollButtonStyle: React.CSSProperties = {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    border: '1px solid #555',
+    background: '#333',
+    color: '#E0E0E0',
+    cursor: 'pointer',
+};
+
+const applyButtonStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '8px',
+    borderRadius: '4px',
+    border: 'none',
+    background: '#3182CE',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+};
+
+/** A seed the user can note down and retype to reproduce a result exactly. */
+const rollSeed = (): number => Math.floor(Math.random() * 0xffffffff);
+
+/**
+ * Roadmap E11: "Evolve / Randomize". Mutates every eligible numeric parameter
+ * of the node currently rendered by `NodeParameterControls` — instrument-level
+ * fields (Volume, Glide, Unison, Detune) when the Instrument itself is
+ * selected, or an internal node's own controls when one of those is selected
+ * instead ("the instrument (or selected node) panel", per the brief).
+ *
+ * Only offered when the caller passed `onChangeMany` (the sidebar's
+ * multi-field delta path — see the prop doc above): the per-step P-lock
+ * editor's wrapper does not, because there every `onChange` becomes its own
+ * P-lock write with its own `pushHistory` call (useSequencerState.ts
+ * `updateNote`), so a multi-param randomize there would be N undo entries,
+ * not one — breaking the "one undo step per click" exit criterion instead of
+ * meeting it.
+ */
+const RandomizeSection: React.FC<{
+    data: Record<string, unknown>;
+    nodeType: string;
+    onChangeMany: (changes: Record<string, unknown>) => void;
+}> = ({ data, nodeType, onChangeMany }) => {
+    const [amount, setAmount] = React.useState<RandomizeAmount>('nudge');
+    const [seed, setSeed] = React.useState<number>(rollSeed);
+
+    // Computed WITHOUT drawing from the RNG (randomizableParamNames does not
+    // seed one), so merely rendering the control never consumes the sequence
+    // a later click would produce — same seed still means same result.
+    if (randomizableParamNames(data, nodeType).length === 0) return null;
+
+    const handleApply = () => {
+        const changes = randomizeParams(data, nodeType, RANDOMIZE_AMOUNTS[amount], seed);
+        if (Object.keys(changes).length > 0) onChangeMany(changes);
+    };
+
+    return (
+        <div style={randomizeSectionStyles}>
+            <label style={labelStyles}>Randomize</label>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button
+                    type="button"
+                    data-testid="randomize-amount-nudge"
+                    aria-pressed={amount === 'nudge'}
+                    title="Nudge every eligible parameter by up to 5% of its authored range"
+                    onClick={() => setAmount('nudge')}
+                    style={presetButtonStyle(amount === 'nudge')}
+                >
+                    Nudge (±5%)
+                </button>
+                <button
+                    type="button"
+                    data-testid="randomize-amount-evolve"
+                    aria-pressed={amount === 'evolve'}
+                    title="Evolve every eligible parameter by up to 25% of its authored range"
+                    onClick={() => setAmount('evolve')}
+                    style={presetButtonStyle(amount === 'evolve')}
+                >
+                    Evolve (±25%)
+                </button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.8em', color: '#a0aec0' }}>Seed</label>
+                <input
+                    type="number"
+                    data-testid="randomize-seed"
+                    value={seed}
+                    onChange={e => setSeed(Math.trunc(Number(e.target.value)) || 0)}
+                    style={{ ...numberBoxStylesShared, width: '120px' }}
+                />
+                <button
+                    type="button"
+                    data-testid="randomize-reroll"
+                    title="Roll a new random seed"
+                    onClick={() => setSeed(rollSeed())}
+                    style={rerollButtonStyle}
+                >
+                    🎲
+                </button>
+            </div>
+            <button type="button" data-testid="randomize-apply" onClick={handleApply} style={applyButtonStyle}>
+                Randomize
+            </button>
+        </div>
+    );
+};
+
+// Hoisted out of the component body (which also declares a `numberBoxStyles`
+// local) so RandomizeSection, defined at module scope, can share the look.
+const numberBoxStylesShared: React.CSSProperties = {
+    padding: '4px 6px',
+    borderRadius: '4px',
+    border: '1px solid #555',
+    background: '#1A202C',
+    color: '#E0E0E0',
+    fontSize: '0.85em',
+};
+
+/** One axis's assignment: a (node, param) target and the range the pad's 0..1 position maps into. */
+interface MacroAxisTarget {
+    nodeId: string;
+    param: string;
+    min: number;
+    max: number;
+}
+
+const macroTargetKey = (nodeId: string, param: string): string => `${nodeId}::${param}`;
+
+/**
+ * Roadmap E12 (live routing half). Each axis of a normalised 0..1 XY pad maps
+ * to zero or more (node, param) targets, chosen from `macroTargetCandidates`
+ * — "the same target list the P-lock UI offers", per the brief — each with
+ * its OWN authored-range-seeded min/max so one axis can drive a 20 Hz-20 kHz
+ * cutoff and a 0-1 mix at once. Moving the pad writes every assigned target
+ * through `onUpdateNode` (ultimately `updateNodeData`), exactly the path a
+ * direct slider drag already uses, so undo already coalesces per (node,
+ * field) gesture with no new history logic here — the existing Filter XY
+ * pad already produces one `pushHistory` per axis per drag tick this same
+ * way (`onChange('cutoff', x); onChange('resonance', y)` above).
+ *
+ * Assignment is SESSION-ONLY React state, not stored in node.data or the
+ * save file. Persisting it would mean a new InstrumentParams field, a
+ * saveMigrations.ts entry and serializer/schema test coverage for something
+ * that is a live-performance rig setting, not a fact about how the patch
+ * sounds — the smaller honest scope this roadmap item asks for when the
+ * persistent version would be disproportionate. Keyed by the instrument's
+ * own id at the call site so switching instruments starts with a clean
+ * assignment instead of one still naming the PREVIOUS instrument's nodes.
+ *
+ * Recording (capturing the pad's position into per-step P-locks while the
+ * sequencer plays) is NOT implemented — see the roadmap report for why
+ * (short version: it needs playback/current-step/track-selection state that
+ * only app.tsx currently owns, and app.tsx is out of scope for this pass).
+ */
+const MacroPadSection: React.FC<{
+    internalNodes: Node<NodeParams>[];
+    onUpdateNode: (nodeId: string, data: Record<string, unknown>) => void;
+}> = ({ internalNodes, onUpdateNode }) => {
+    const [xTargets, setXTargets] = React.useState<MacroAxisTarget[]>([]);
+    const [yTargets, setYTargets] = React.useState<MacroAxisTarget[]>([]);
+    const [pad, setPad] = React.useState({ x: 0.5, y: 0.5 });
+
+    if (internalNodes.length === 0) return null;
+
+    const nodesById = new Map(internalNodes.map(n => [n.id, n] as const));
+    const candidates = macroTargetCandidates(internalNodes);
+
+    const addTarget = (axis: 'x' | 'y', key: string) => {
+        const idx = key.indexOf('::');
+        if (idx < 0) return;
+        const nodeId = key.slice(0, idx);
+        const param = key.slice(idx + 2);
+        const targetNode = nodesById.get(nodeId);
+        if (!targetNode) return;
+        const setTargets = axis === 'x' ? setXTargets : setYTargets;
+        setTargets(prev => {
+            if (prev.some(t => t.nodeId === nodeId && t.param === param)) return prev;
+            // Same source every other clamp in this file reads: schema/nodes.json,
+            // via the generated lookupRange — a starting range, not a guess.
+            // Case by case with codegenTypeOf below: the override table is keyed
+            // on the BACKEND type name ("Filter" not "filter").
+            const range = lookupRange(param, codegenTypeOf(targetNode));
+            return [...prev, { nodeId, param, min: range.min, max: range.max }];
+        });
+    };
+
+    const removeTarget = (axis: 'x' | 'y', nodeId: string, param: string) => {
+        const setTargets = axis === 'x' ? setXTargets : setYTargets;
+        setTargets(prev => prev.filter(t => !(t.nodeId === nodeId && t.param === param)));
+    };
+
+    const updateRange = (axis: 'x' | 'y', nodeId: string, param: string, field: 'min' | 'max', value: number) => {
+        if (!Number.isFinite(value)) return;
+        const setTargets = axis === 'x' ? setXTargets : setYTargets;
+        setTargets(prev => prev.map(t => (t.nodeId === nodeId && t.param === param ? { ...t, [field]: value } : t)));
+    };
+
+    const writeAxis = (targets: MacroAxisTarget[], position: number) => {
+        for (const t of targets) {
+            onUpdateNode(t.nodeId, { [t.param]: t.min + position * (t.max - t.min) });
+        }
+    };
+
+    const handlePadChange = ({ x, y }: { x: number; y: number }) => {
+        setPad({ x, y });
+        writeAxis(xTargets, x);
+        writeAxis(yTargets, y);
+    };
+
+    const renderAxis = (axis: 'x' | 'y', targets: MacroAxisTarget[]) => {
+        const assigned = new Set(targets.map(t => macroTargetKey(t.nodeId, t.param)));
+        const available = candidates.filter(c => !assigned.has(macroTargetKey(c.nodeId, c.param)));
+        return (
+            <div style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '0.8em', color: '#a0aec0', display: 'block', marginBottom: '4px' }}>
+                    {axis.toUpperCase()} axis
+                </label>
+                {targets.map(t => (
+                    <div
+                        key={macroTargetKey(t.nodeId, t.param)}
+                        data-testid={`macro-target-${axis}-${t.nodeId}-${t.param}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}
+                    >
+                        <span style={{ fontSize: '0.8em', color: '#ccc', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {plockNodeLabel(nodesById.get(t.nodeId) as Node<NodeParams>)}:{t.param}
+                        </span>
+                        <input
+                            type="number"
+                            data-testid={`macro-min-${axis}-${t.nodeId}-${t.param}`}
+                            value={t.min}
+                            onChange={e => updateRange(axis, t.nodeId, t.param, 'min', parseFloat(e.target.value))}
+                            style={{ ...numberBoxStylesShared, width: '70px' }}
+                        />
+                        <span style={{ color: '#666' }}>..</span>
+                        <input
+                            type="number"
+                            data-testid={`macro-max-${axis}-${t.nodeId}-${t.param}`}
+                            value={t.max}
+                            onChange={e => updateRange(axis, t.nodeId, t.param, 'max', parseFloat(e.target.value))}
+                            style={{ ...numberBoxStylesShared, width: '70px' }}
+                        />
+                        <button
+                            type="button"
+                            data-testid={`macro-remove-${axis}-${t.nodeId}-${t.param}`}
+                            title={`Remove ${t.param} from the ${axis.toUpperCase()} axis`}
+                            onClick={() => removeTarget(axis, t.nodeId, t.param)}
+                            style={{ ...rerollButtonStyle, padding: '2px 6px' }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                ))}
+                <select
+                    data-testid={`macro-add-${axis}`}
+                    value=""
+                    onChange={e => { if (e.target.value) addTarget(axis, e.target.value); }}
+                    style={{ ...inputStyles, padding: '4px', fontSize: '0.85em' }}
+                >
+                    <option value="">+ Add target…</option>
+                    {available.map(c => (
+                        <option key={macroTargetKey(c.nodeId, c.param)} value={macroTargetKey(c.nodeId, c.param)}>
+                            {c.label}:{c.param}
+                        </option>
+                    ))}
+                </select>
+            </div>
+        );
+    };
+
+    return (
+        <div style={randomizeSectionStyles}>
+            <label style={labelStyles}>Macro Pad</label>
+            {renderAxis('x', xTargets)}
+            {renderAxis('y', yTargets)}
+            <div data-testid="macro-xy-pad">
+                <XYPad
+                    xValue={pad.x} yValue={pad.y}
+                    minX={0} maxX={1} minY={0} maxY={1}
+                    onChange={handlePadChange}
+                />
+            </div>
+        </div>
+    );
+};
+
+export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ node, values, onChange, onChangeMany, renderControlWrapper, bpm, macroRouting }) => {
     const { type, data: nodeData } = node;
     const data = values || nodeData;
 
@@ -57,15 +397,67 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
     // {-1e6, 1e6, 0.0, ""} and emitted a `set_syncRate` writing a struct field
     // the DSP never reads — dead public API minted in one click, persisted into
     // the save file. The backend-side guard is B2's job; this is the UI half.
-    const syncRateControl = (defaultRate: string) => {
-        const rate = data.syncRate ?? defaultRate;
+    //
+    // SKB-058: the fallback used to be a per-node-type literal passed in by
+    // each caller below — "1/4" for LFO but "1/8" for Delay and SampleHold —
+    // while the backend defaults every type to "1/4". A Delay with bpmSync on
+    // and no stored rate therefore read as an eighth here and generated as a
+    // quarter. There is one fallback now, and when it is in play the control
+    // says so instead of passing an invented value off as the node's own.
+    // Packet B2: grey out, don't hide. The mode-dependent controls used to
+    // vanish when inert (`data.fixedPitch && ...`, the bpmSync ternaries), so
+    // a user who exposed `frequency` and then turned Fixed Pitch off had no
+    // way to see that the exposure — still in the save file, still warned
+    // about by the generator — now pointed at nothing. Both readers of "is
+    // this parameter live" are the plockTargets.ts mirror of the generator's
+    // param_is_reachable, so the sidebar and the codegen agree by construction.
+    const inert = (param: string): string | undefined =>
+        paramIsReachable(node, param) ? undefined : paramDeadReason(node, param);
+    // `syncRate` is never exposable, so it has no dead-reason in the
+    // generator's table; its inertness is purely a display fact.
+    const syncRateInert = (): string | undefined =>
+        data.bpmSync ? undefined : 'BPM Sync is off, so the free-running rate is used instead';
+
+    const syncRateControl = () => {
+        const stored = typeof data.syncRate === 'string' ? data.syncRate : undefined;
+        const rate = stored ?? DEFAULT_SYNC_RATE;
         return (
             <>
                 <BpmSyncControl value={rate} onChange={val => onChange('syncRate', val)} />
                 {syncTimeHint(rate)}
+                {stored === undefined && (
+                    <div
+                        data-testid="sync-rate-implicit"
+                        style={{ color: '#e0a030', fontSize: '0.8em', marginTop: '4px' }}
+                    >
+                        No rate stored on this node — {DEFAULT_SYNC_RATE} is the generator's
+                        default. Pick a rate to author it explicitly.
+                    </div>
+                )}
             </>
         );
     };
+
+    // BPM Sync cannot be written alone: see bpmSyncToggleChanges.
+    //
+    // B5-x4: routed through renderControlWrapper (never exposable — the flag is
+    // read at codegen time, not through a struct field) so the step editor's
+    // wrapper can mark it "not automatable per step" and render it inert. As a
+    // raw div it bypassed that label, and a click minted a boolean P-lock the
+    // serializer then dropped without a word.
+    const bpmSyncToggle = () => renderControlWrapper(
+        'bpmSync',
+        'BPM Sync',
+        <input
+            type="checkbox"
+            checked={data.bpmSync || false}
+            onChange={e => {
+                if (onChangeMany) onChangeMany(bpmSyncToggleChanges(e.target.checked, data));
+                else onChange('bpmSync', e.target.checked);
+            }}
+        />,
+        false,
+    );
 
     const createSelect = (paramKey: string, options: string[]) => (
         <select name={paramKey} value={data[paramKey]} onChange={(e) => onChange(paramKey, e.target.value)} style={inputStyles}>
@@ -126,7 +518,10 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         />
     );
 
-    switch (type) {
+    // The switch used to BE the component's return value. It is now wrapped
+    // so a Randomize section (E11) can be appended after whatever controls
+    // the node type renders, without every `case` growing a duplicate tail.
+    const controls = (() => { switch (type) {
         case 'adsr':
             return (<>
                 <AdsrEnvelopeEditor
@@ -169,41 +564,25 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
         case 'lfo':
             return (<>
                 {renderControlWrapper('waveform', 'Waveform', createSelect('waveform', ['Sine', 'Sawtooth', 'Triangle', 'Square']), false)}
-                {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/4'), false)
-                    : renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 0.1, 50, 5, 'log'))
-                }
+                {renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false, syncRateInert())}
+                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 0.1, 50, 5, 'log'), true, inert('frequency'))}
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
-                {/* BPM Sync Toggle is handled specially in main panel, but we might want it here? For now, skipping complex toggle logic or implementing basic checkbox */}
-                <div style={{ margin: '10px 0' }}>
-                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
-                    <input type="checkbox" checked={data.bpmSync || false} onChange={e => onChange('bpmSync', e.target.checked)} />
-                </div>
+                {bpmSyncToggle()}
             </>);
         case 'delay':
             return (<>
-                {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'), false)
-                    : renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0, 2, 0.5))
-                }
+                {renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false, syncRateInert())}
+                {renderControlWrapper('delayTime', 'Delay Time (s)', slider('delayTime', 0, 2, 0.5), true, inert('delayTime'))}
                 {renderControlWrapper('feedback', 'Feedback', slider('feedback', 0, 1, 0.5))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
-                <div style={{ margin: '10px 0' }}>
-                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
-                    <input type="checkbox" checked={data.bpmSync || false} onChange={e => onChange('bpmSync', e.target.checked)} />
-                </div>
+                {bpmSyncToggle()}
             </>);
         case 'sampleHold':
             return (<>
-                {data.bpmSync
-                    ? renderControlWrapper('syncRate', 'Sync Rate', syncRateControl('1/8'), false)
-                    : renderControlWrapper('rate', 'Rate (Hz)', slider('rate', 0.1, 50, 10, 'log'))
-                }
+                {renderControlWrapper('syncRate', 'Sync Rate', syncRateControl(), false, syncRateInert())}
+                {renderControlWrapper('rate', 'Rate (Hz)', slider('rate', 0.1, 50, 10, 'log'), true, inert('rate'))}
                 {renderControlWrapper('amplitude', 'Amplitude (Depth)', slider('amplitude', 0, 1, 1))}
-                <div style={{ margin: '10px 0' }}>
-                    <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>BPM Sync</label>
-                    <input type="checkbox" checked={data.bpmSync || false} onChange={e => onChange('bpmSync', e.target.checked)} />
-                </div>
+                {bpmSyncToggle()}
             </>);
         case 'fmOperator':
             return (<>
@@ -218,6 +597,10 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     ~21% and leaves the default (100) near centre. Stored values
                     are untouched: this is only how position maps to value. */}
                 {renderControlWrapper('modIndex', 'Modulation Index', slider('modIndex', 0, 1000, 100, undefined, undefined, false, 3))}
+                {/* C5 (F-A02-7): output level, default 1 = the full-scale
+                    output the operator always had. Range mirrors the
+                    FmOperator/amplitude override row in param_ranges.odin. */}
+                {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 1))}
             </>);
         case 'wavetable':
             return (<>
@@ -228,13 +611,17 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
                     <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
                 </div>
-                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'), true, inert('frequency'))}
                 {renderControlWrapper('position', 'Table Position', slider('position', 0, 3, 0, undefined, 0.01))}
                 {/* Default 1.0 — matches what the generated code plays for an
                     absent value (codegen.odin's Wavetable amplitude fallback).
                     The parameter existed in the engine and on the node card but
                     had no sidebar control and no entry in WavetableParams. */}
                 {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 1))}
+                {/* C5 (F-A01-7/8): the square end's duty cycle and a start
+                    offset — the Oscillator's two controls this node lacked. */}
+                {renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5))}
+                {renderControlWrapper('phase', 'Phase', slider('phase', 0, 360, 0))}
             </>);
         case 'oscillator':
             return (<>
@@ -245,9 +632,9 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     <label style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Fixed Pitch (ignore note)</label>
                     <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
                 </div>
-                {data.fixedPitch && renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'))}
+                {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'), true, inert('frequency'))}
                 {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 0.5))}
-                {data.waveform === 'Square' && renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5))}
+                {renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5), true, inert('pulseWidth'))}
                 {renderControlWrapper('phase', 'Phase', slider('phase', 0, 360, 0))}
             </>);
         case 'noise':
@@ -260,6 +647,8 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 {renderControlWrapper('decay', 'Decay (s)', slider('decay', 0.1, 10, 3))}
                 {renderControlWrapper('preDelay', 'Pre-Delay (s)', slider('preDelay', 0, 0.25, 0.02))}
                 {renderControlWrapper('mix', 'Wet/Dry Mix', slider('mix', 0, 1, 0.5))}
+                {/* C5 (F-A07-7): 0 = the undamped comb every older patch has. */}
+                {renderControlWrapper('damping', 'Damping', slider('damping', 0, 1, 0))}
             </>);
         case 'distortion':
             return (<>
@@ -390,5 +779,26 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
             </>);
         default:
             return <div><small style={{ color: '#666' }}>No standard controls for {type}</small></div>;
-    }
+    } })();
+
+    return (<>
+        {controls}
+        {/* See RandomizeSection's doc comment for why `onChangeMany` gates this. */}
+        {onChangeMany && (
+            <RandomizeSection data={data} nodeType={codegenTypeOf(node)} onChangeMany={onChangeMany} />
+        )}
+        {/* See MacroPadSection's doc comment for why `macroRouting` gates this,
+            and for the session-only assignment state. `key={node.id}` forces a
+            fresh MacroPadSection (and so a fresh, empty assignment) when the
+            selected instrument changes — ParameterPanel does not unmount this
+            tree on that change, so without the key a macro pad would keep
+            offering targets on nodes that belong to the PREVIOUS instrument. */}
+        {macroRouting && (
+            <MacroPadSection
+                key={node.id}
+                internalNodes={macroRouting.internalNodes}
+                onUpdateNode={macroRouting.onUpdateNode}
+            />
+        )}
+    </>);
 };

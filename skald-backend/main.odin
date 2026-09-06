@@ -2,6 +2,8 @@ package skald_codegen
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
+import "core:strings"
 import "core"
 
 // =====================================================================
@@ -28,7 +30,9 @@ import "core"
 // them. It therefore changes if and only if the sources this compiler was
 // built from changed, it cannot be forgotten, and the editor can recompute it
 // from the files on disk without a build. `skald-ui/src/main/codegenStamp.ts`
-// is the other half; the algorithm below is the contract between them.
+// is the other half; the algorithm (core.fnv1a64 in core/provenance.odin,
+// shared with the input digest packet B12 prints into every generated header)
+// is the contract between them.
 //
 // Per-file digests are printed as well as the combined one so a mismatch can
 // name the file that moved ("core/codegen.odin changed since this binary was
@@ -56,42 +60,36 @@ Source_File :: struct {
 CODEGEN_SOURCES := [?]Source_File {
 	{"main.odin", #load("main.odin")},
 	{"core/codegen.odin", #load("core/codegen.odin")},
+	{"core/codegen_analysis.odin", #load("core/codegen_analysis.odin")},
+	{"core/codegen_nodes.odin", #load("core/codegen_nodes.odin")},
+	{"core/codegen_processor.odin", #load("core/codegen_processor.odin")},
+	{"core/codegen_project.odin", #load("core/codegen_project.odin")},
 	{"core/graph_utils.odin", #load("core/graph_utils.odin")},
 	{"core/graph_validate.odin", #load("core/graph_validate.odin")},
 	{"core/json.odin", #load("core/json.odin")},
 	{"core/param_ranges.odin", #load("core/param_ranges.odin")},
+	{"core/param_ranges.generated.odin", #load("core/param_ranges.generated.odin")},
 	{"core/param_utils.odin", #load("core/param_utils.odin")},
+	{"core/provenance.odin", #load("core/provenance.odin")},
+	{"core/target_guard.odin", #load("core/target_guard.odin")},
 	{"core/types.odin", #load("core/types.odin")},
 }
 
-FNV1A64_OFFSET :: 0xcbf29ce484222325
-FNV1A64_PRIME :: 0x100000001b3
-
-/// FNV-1a, 64-bit, streamable via `seed`. Chosen because it is short enough to
-/// be provably identical in Odin and in TypeScript (the editor recomputes it
-/// from the files on disk) and needs no crypto dependency on either side. This
-/// is a drift detector, not a security boundary — nothing here defends against
-/// a hostile binary, only against a stale one.
-fnv1a64 :: proc(data: []byte, seed: u64 = FNV1A64_OFFSET) -> u64 {
-	h := seed
-	for b in data {
-		h ~= u64(b)
-		h *= FNV1A64_PRIME
-	}
-	return h
-}
+/// FNV-1a itself lives in core/provenance.odin (core.fnv1a64) because the
+/// generated header's input digest needs the same function from package core,
+/// and core cannot import main. One implementation, two callers.
 
 /// Digest over every source, in list order: path, NUL, contents, NUL. The
 /// paths and the separators are part of the stream so that renaming a file, or
 /// moving bytes between two files, changes the answer.
 source_digest :: proc() -> u64 {
 	nul := [1]byte{0}
-	h := u64(FNV1A64_OFFSET)
+	h := u64(core.FNV1A64_OFFSET)
 	for src in CODEGEN_SOURCES {
-		h = fnv1a64(transmute([]byte)src.path, h)
-		h = fnv1a64(nul[:], h)
-		h = fnv1a64(src.bytes, h)
-		h = fnv1a64(nul[:], h)
+		h = core.fnv1a64(transmute([]byte)src.path, h)
+		h = core.fnv1a64(nul[:], h)
+		h = core.fnv1a64(src.bytes, h)
+		h = core.fnv1a64(nul[:], h)
 	}
 	return h
 }
@@ -104,7 +102,7 @@ print_version :: proc() {
 	fmt.printf("odin-version: %s\n", ODIN_VERSION)
 	fmt.printf("source-digest: fnv1a64:%016x\n", source_digest())
 	for src in CODEGEN_SOURCES {
-		fmt.printf("source-file: fnv1a64:%016x %s\n", fnv1a64(src.bytes), src.path)
+		fmt.printf("source-file: fnv1a64:%016x %s\n", core.fnv1a64(src.bytes), src.path)
 	}
 }
 
@@ -116,10 +114,18 @@ main :: proc() {
 	wasm_shim_file := ""
 	package_name := "generated_audio"
 	want_version := false
+	want_check := false
 
 	for arg in os.args {
 		if arg == "-version" || arg == "--version" {
 			want_version = true
+		}
+		// Packet B9-3: run the whole pipeline — parse, every preflight rule,
+		// both emissions, the output-target guard — and write nothing. Exit 0
+		// means "-out would succeed"; every refusal exits 1 with the same
+		// message a real run would print.
+		if arg == "-check" || arg == "--check" {
+			want_check = true
 		}
 		if len(arg) > 6 && arg[0:6] == "-name:" {
 			name = arg[6:]
@@ -187,12 +193,53 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	generated_code := core.generate_project_code(&project, name, package_name)
+	// Packet B12: the generator's identity and a digest of the input ride in
+	// the header of every emitted file, so a checked-in generated_audio.odin
+	// can be traced to the .skald.json and the generator that produced it.
+	// SKALD_CODEGEN_STAMP replaces the generator string when set: the golden
+	// harnesses set it to "golden", because the real digest changes with every
+	// edit to these sources and would churn all 154 snapshots per commit. The
+	// input digest has no override — it is a function of the fixture alone.
+	stamp := os.get_env("SKALD_CODEGEN_STAMP")
+	if stamp == "" do stamp = fmt.tprintf("skald_codegen fnv1a64:%016x", source_digest())
+	provenance := core.Provenance {
+		generator = stamp,
+		input     = fmt.tprintf("fnv1a64:%016x", core.input_digest(input_bytes)),
+	}
+
+	generated_code := core.generate_project_code(&project, name, package_name, provenance)
+
+	// The shim is emitted from the same analysis but is a second shape
+	// (CLAUDE.md: "two shapes from one analysis"); -check generates it even
+	// when nobody asked for the file, so a shim-only failure is a check
+	// failure too.
+	shim_code := ""
+	if wasm_shim_file != "" || want_check {
+		shim_code = core.generate_wasm_shim_code(&project, package_name, provenance)
+	}
 
 	// Always write to file. If output_file is empty, default to "generated_audio.odin"
 	target_file := output_file
 	if target_file == "" {
 		target_file = "generated_audio.odin"
+	}
+
+	// Packet B9-3: refuse to clobber a foreign Odin package, exactly as the
+	// editor has since the incident that killed the tester's test_harness.odin
+	// (skald-ui/src/main/codegenGuards.ts). Under -check with no -out nothing
+	// would be written anywhere, so there is no destination to judge.
+	if !(want_check && output_file == "") {
+		refuse_unsafe_target(target_file, package_name)
+		if wasm_shim_file != "" do refuse_unsafe_target(wasm_shim_file, package_name)
+	}
+
+	if want_check {
+		if output_file != "" {
+			fmt.printf("Check OK: %d instrument(s); -out:%s would be written\n", len(project.instruments), target_file)
+		} else {
+			fmt.printf("Check OK: %d instrument(s)\n", len(project.instruments))
+		}
+		os.exit(0)
 	}
 
 	write_bool := os.write_entire_file(target_file, transmute([]byte)generated_code)
@@ -204,7 +251,6 @@ main :: proc() {
 	// Editor-preview support: also emit the wasm export shim (same package,
 	// separate file) when asked. Game-facing generation never passes this.
 	if wasm_shim_file != "" {
-		shim_code := core.generate_wasm_shim_code(&project, package_name)
 		if !os.write_entire_file(wasm_shim_file, transmute([]byte)shim_code) {
 			fmt.eprintf("Error writing wasm shim file: %s\n", wasm_shim_file)
 			os.exit(1)
@@ -217,4 +263,19 @@ main :: proc() {
 	// the output file directly; this status line is kept for shell scripts
 	// piping codegen output.
 	fmt.printf("Codegen OK: %d instrument(s) -> %s\n", len(project.instruments), target_file)
+}
+
+/// The CLI half of assertCodegenTargetSafe. `nul` (and /dev/null) is a
+/// discard sink, not a directory entry: `-out:nul` is the documented way to
+/// run the generator for its diagnostics alone (tests/fixtures/_negative/
+/// README.md), and judging the current directory's siblings for it would
+/// refuse every such run made from skald-backend\ — main.odin here is
+/// `package skald_codegen`.
+refuse_unsafe_target :: proc(path: string, package_name: string) {
+	base := filepath.base(path)
+	if strings.equal_fold(base, "nul") || strings.equal_fold(path, "/dev/null") do return
+	if msg, conflict := core.codegen_target_conflict(path, package_name); conflict {
+		fmt.eprintf("Error: %s\n", msg)
+		os.exit(1)
+	}
 }

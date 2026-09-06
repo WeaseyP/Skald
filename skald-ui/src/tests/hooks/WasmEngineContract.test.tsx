@@ -28,6 +28,7 @@ class FakeAudioContext {
     audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
     createGain = vi.fn(() => ({ connect: vi.fn(), gain: { value: 1 } }));
     createAnalyser = vi.fn(() => ({ connect: vi.fn(), fftSize: 0 }));
+    createChannelSplitter = vi.fn(() => ({ connect: vi.fn() }));
     resume = vi.fn().mockResolvedValue(undefined);
     close = vi.fn().mockResolvedValue(undefined);
     constructor() { createdContexts.push(this); }
@@ -102,20 +103,45 @@ const renderEngine = (nodes: Node[], tracks: SequencerTrack[] = [], masterVolume
     );
 
 describe('useWasmAudioEngine — Play error path', () => {
-    it('rejects Play with no instruments: no worklet is built and the AudioContext does not leak', async () => {
-        const { result } = renderEngine([
-            { id: 'lonely-gain', type: 'gain', position: { x: 0, y: 0 }, data: { gain: 0.5 } } as unknown as Node,
-        ]);
+    it('rejects Play with a truly empty canvas: no worklet is built and the AudioContext does not leak', async () => {
+        const { result } = renderEngine([]);
 
         await act(async () => { await result.current.handlePlay(); });
 
         // Build was never dispatched — the empty-instruments check fires first.
+        // buildProjectData's loose-graph auto-wrap (packet B6-1) only fires
+        // when at least one node exists (SKB-019's guard,
+        // `instrumentNodes.length === 0 && nodes.length > 0`), so a genuinely
+        // empty canvas is the one case that must still hit this guard.
         expect(buildWasmPreview).not.toHaveBeenCalled();
         expect(createdWorklets).toHaveLength(0);
         expect(result.current.isPlaying).toBe(false);
         // The context created inside the click gesture is closed, not leaked.
         expect(createdContexts).toHaveLength(1);
         expect(createdContexts[0].close).toHaveBeenCalled();
+    });
+
+    // Packet B6-1 (SKB-019): before this packet, a graph with no Instrument
+    // node — the shape of 24 shipped examples — hit the SAME "no instruments"
+    // rejection above, because buildProjectData serialized it to zero
+    // instruments. It now auto-wraps as one "Asset" SFX instrument and plays,
+    // exactly as the CLI's fallback has always been able to build it.
+    it('auto-wraps a loose graph (no Instrument node) as one Asset instrument and plays it', async () => {
+        const { result } = renderEngine([
+            { id: 'lonely-gain', type: 'gain', position: { x: 0, y: 0 }, data: { gain: 0.5 } } as unknown as Node,
+        ]);
+
+        await act(async () => { await result.current.handlePlay(); });
+
+        expect(buildWasmPreview).toHaveBeenCalledTimes(1);
+        const sentProject = JSON.parse(buildWasmPreview.mock.calls[0][0] as string);
+        expect(sentProject.project.instruments).toHaveLength(1);
+        expect(sentProject.project.instruments[0].id).toBe('Asset');
+        expect(sentProject.project.instruments[0].audio_graph.nodes).toHaveLength(1);
+        expect(sentProject.project.instruments[0].audio_graph.nodes[0].id).toBe('lonely-gain');
+
+        expect(createdWorklets).toHaveLength(1);
+        expect(result.current.isPlaying).toBe(true);
     });
 });
 
@@ -284,6 +310,37 @@ describe('useWasmAudioEngine — live edits while playing', () => {
         // "<nodeId>::<param>" for every exposed param.
         expect(new TextDecoder().decode(setParamCalls[0].nameBytes)).toBe('flt::cutoff');
         void result;
+    });
+
+    // Packet B6-1 (SKB-019): a loose graph (no Instrument node) auto-wraps as
+    // one "Asset" SFX instrument. Before wrappedInstrumentNodes replaced
+    // getInstrumentNodes in this hook, `sendChangedExposedParams` was handed
+    // `[]` for a loose graph (nothing to diff, no set-param posted) while
+    // `topologySignature` — which walks buildProjectData's OWN wrapped
+    // Asset.audio_graph, independently of this list — masked the same param
+    // and kept the signature identical, so no rebuild fired either. The edit
+    // vanished with NEITHER path taking it.
+    const looseOsc = (freq: number): Node => ({
+        id: 'osc', type: 'oscillator', position: { x: 0, y: 0 },
+        data: { label: 'Osc', waveform: 'Sine', frequency: freq, amplitude: 0.5, exposedParameters: ['frequency'] },
+    } as unknown as Node);
+
+    it('a live exposed-param edit on a LOOSE graph (no Instrument node) reaches the engine via set-param, not silently dropped', async () => {
+        vi.useFakeTimers();
+        const { rerender } = await startPlaying([looseOsc(440)]);
+        const port = createdWorklets[0].port;
+        port.postMessage.mockClear();
+
+        await act(async () => { rerender({ n: [looseOsc(880)] }); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+        expect(buildWasmPreview).toHaveBeenCalledTimes(1); // no rebuild — instant path only
+        const setParamCalls = port.postMessage.mock.calls
+            .map((c) => c[0])
+            .filter((m: { type: string }) => m.type === 'set-param');
+        expect(setParamCalls).toHaveLength(1);
+        expect(setParamCalls[0].value).toBe(880);
+        expect(new TextDecoder().decode(setParamCalls[0].nameBytes)).toBe('osc::frequency');
     });
 
     it('an exposed param edited to a value the f32 path cannot carry (NaN) falls back to a REBUILD instead of vanishing', async () => {
@@ -534,5 +591,57 @@ describe('useWasmAudioEngine — master volume (SKB-011)', () => {
             .filter((m: { type: string }) => m.type === 'set-master-volume');
         expect(calls).toHaveLength(1);
         expect(calls[0].value).toBe(0.8);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Packet B10 — the peak meter's stereo tap.
+// ---------------------------------------------------------------------------
+describe('useWasmAudioEngine — B10 stereo meter tap', () => {
+    it('splits the worklet output into one analyser per channel and exposes both', async () => {
+        const { result } = renderEngine([makeInstrument()]);
+        await act(async () => { await result.current.handlePlay(); });
+        expect(result.current.isPlaying).toBe(true);
+
+        const ctx = createdContexts[0] as unknown as { createChannelSplitter: ReturnType<typeof vi.fn> };
+        // An AnalyserNode downmixes to mono; a single tap would hide a
+        // one-sided over. Before B10 no splitter existed at all.
+        expect(ctx.createChannelSplitter).toHaveBeenCalledWith(2);
+        const splitter = ctx.createChannelSplitter.mock.results[0].value as { connect: ReturnType<typeof vi.fn> };
+        expect(splitter.connect).toHaveBeenCalledWith(expect.anything(), 0);
+        expect(splitter.connect).toHaveBeenCalledWith(expect.anything(), 1);
+
+        const meters = result.current.meterAnalysers;
+        expect(meters).not.toBeNull();
+        expect(meters!.left).not.toBe(meters!.right);
+        // The float-domain window the meter reads: 1024 samples, ~21 ms at 48 kHz.
+        expect((meters!.left as unknown as { fftSize: number }).fftSize).toBe(1024);
+        expect((meters!.right as unknown as { fftSize: number }).fftSize).toBe(1024);
+
+        act(() => { result.current.handleStop(); });
+        expect(result.current.meterAnalysers).toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// B6-1-x1 — the asset index the worklet is handed must be the EMITTED order.
+// ---------------------------------------------------------------------------
+describe('useWasmAudioEngine — B6-1-x1 step-clock asset follows the emitted (sorted-by-id) order', () => {
+    it('hands the worklet the sorted position of the sequenced instrument, not its canvas position', async () => {
+        const zed = { ...makeInstrument(), id: 'zed' } as unknown as Node;
+        const alpha = { ...makeInstrument(), id: 'alpha' } as unknown as Node;
+        const tracks = [{
+            id: 't', targetNodeId: 'alpha', name: 'A', color: '#000', steps: 16, isMuted: false, isSolo: false,
+            notes: [{ step: 0, note: 60, velocity: 1, duration: 1 }],
+        }] as unknown as SequencerTrack[];
+
+        // Canvas order [zed, alpha]; emitted order ['alpha', 'zed'] (sorted by
+        // sanitized id, as buildProjectData now serializes and the CLI always
+        // did). Before B6-1-x1 this was 1 — the playhead followed the wrong
+        // asset whenever the sequenced instrument was not first by id.
+        const { result } = renderEngine([zed, alpha], tracks);
+        await act(async () => { await result.current.handlePlay(); });
+        expect(result.current.isPlaying).toBe(true);
+        expect(createdWorklets[0].opts.processorOptions?.stepAsset).toBe(0);
     });
 });

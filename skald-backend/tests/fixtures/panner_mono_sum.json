@@ -1,0 +1,58 @@
+{
+  "__comment": "Packet B7-1 / BUGS.md SKB-013, second half: the Panner's MONO fallback (node_<id>_out, the port a mono-input node reads). It used to be (L+R)*0.7071068 — unity at centre, 0.7071 at either extreme — so sweeping the pan made this Gain's output duck. `pan` is exposed so the acceptance case can render at pan -1 and pan 0 and require the same peak, and require it to be the 0.5 input passed through.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 1.0,
+    "instruments": [
+      {
+        "id": "pannermonosumfixture",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "limit": false,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": {
+                "frequency": 440,
+                "waveform": "Sine",
+                "amplitude": 0.5,
+                "pulseWidth": 0.5,
+                "phase": 0
+              }
+            },
+            {
+              "id": "2",
+              "type": "Panner",
+              "parameters": { "pan": -1.0, "exposedParameters": ["pan"] }
+            },
+            {
+              "id": "3",
+              "type": "Gain",
+              "parameters": { "gain": 1.0 }
+            },
+            {
+              "id": "4",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

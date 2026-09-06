@@ -20,3 +20,22 @@ body {
   border: 2px solid #5a67d8; /* A bright, clear blue */
   box-shadow: 0 0 15px rgba(90, 103, 216, 0.5); /* A subtle glow effect */
 }
+
+/*
+ * Keyboard graph traversal (roadmap E10). The walker marks React Flow's own
+ * handle elements rather than drawing an overlay, so the ring stays on the
+ * port through any pan or zoom. Without a visible ring, `,` / `.` move a
+ * selection the user cannot see — see useGraphKeyboardTraversal.ts.
+ */
+.react-flow__handle[data-skald-port-focus] {
+  outline: 2px solid #5a67d8;
+  outline-offset: 2px;
+  box-shadow: 0 0 8px rgba(90, 103, 216, 0.9);
+}
+
+/* The output a wire is being drawn from, until Enter lands it or Esc drops it. */
+.react-flow__handle[data-skald-port-pending] {
+  outline: 2px dashed #d69e2e;
+  outline-offset: 2px;
+  box-shadow: 0 0 8px rgba(214, 158, 46, 0.9);
+}

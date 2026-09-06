@@ -8,7 +8,7 @@
 ================================================================================
 */
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { ReactFlow, Background, Controls, ReactFlowInstance, ReactFlowProvider } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, Panel, ReactFlowInstance, ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 // Import your components
@@ -27,10 +27,20 @@ import { useFileIO, FileStatus } from './hooks/nodeEditor/useFileIO';
 import { useWindowTitle } from './hooks/nodeEditor/useWindowTitle';
 import { useAutosave, readAutosave, clearAutosave, AutosaveRecord } from './hooks/nodeEditor/useAutosave';
 import { useCodeGeneration } from './hooks/useCodeGeneration';
+import { useProjectIssues } from './hooks/nodeEditor/useProjectIssues';
+import { ProjectIssuesBanner } from './components/ProjectIssuesBanner';
 // import { NODE_DEFINITIONS } from './definitions/node-definitions'; // Unused
 import { SequencerDock } from './components/Sequencer/SequencerDock';
 import { useScale , ScaleProvider } from './contexts/ScaleContext';
 import { GraphActionsProvider } from './contexts/GraphActionsContext';
+import { instrumentSelectionBlockedReason } from './hooks/nodeEditor/useNodeComposition';
+import { shouldLoadFirstRunPatch, useFirstRunPatch } from './hooks/nodeEditor/useFirstRunPatch';
+import { useQwertyKeyboard } from './hooks/useQwertyKeyboard';
+import { useGraphKeyboardTraversal } from './hooks/useGraphKeyboardTraversal';
+import { isTypingTarget } from './utils/keyboardTarget';
+import { useSnapToGridPreference } from './hooks/nodeEditor/useSnapToGridPreference';
+import { accentFor } from './components/Nodes/NodeStyles';
+import { styleEdgesBySemanticKind } from './components/Edges/edgeKind';
 
 // Re-exported: the Export-Step naming rule now lives with the Export-Step
 // action itself (useEditorState), which is where its undo entry is pushed.
@@ -81,7 +91,13 @@ const EditorLayout = () => {
     // Playback preference, not part of the document: neither saved nor
     // undoable, so it stays local instead of joining the session block.
     const [isLooping, setIsLooping] = useState(false);
-    const [selectedStep, setSelectedStep] = useState<{ trackId: string, step: number } | null>(null);
+    // E6: view preference, same rule as isLooping above — not the document,
+    // not undoable, persisted only so it survives a reload.
+    const [snapToGrid, setSnapToGrid] = useSnapToGridPreference();
+    // `notePitch` is part of the selection now: a step can hold a chord, and a
+    // step-only selection meant every edit landed on an arbitrary member
+    // (SKB-025).
+    const [selectedStep, setSelectedStep] = useState<{ trackId: string, step: number, notePitch: number } | null>(null);
 
     // Not part of the document either: the Generate destination is a
     // session-scoped path, not project data.
@@ -131,6 +147,7 @@ const EditorLayout = () => {
         setCurrentStep,
         loadTracks,
         toggleStep,
+        clearStep,
         toggleMute,
         toggleSolo,
         updateNote,
@@ -151,11 +168,31 @@ const EditorLayout = () => {
         }
     }, [selectedNode]);
 
-    const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration();
+    // Save/load outcome, shown in a banner over the canvas. Errors stay up
+    // until the next file action; successes auto-clear after a few seconds.
+    const [fileStatus, setFileStatus] = useState<FileStatus | null>(null);
+    const fileStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const notifyFileStatus = useCallback((status: FileStatus) => {
+        if (fileStatusTimer.current) clearTimeout(fileStatusTimer.current);
+        setFileStatus(status);
+        if (status.kind === 'success') {
+            fileStatusTimer.current = setTimeout(() => setFileStatus(null), 4000);
+        }
+    }, []);
+
+    // Generate reports what serialization is about to drop through the same
+    // banner (SKB-009/045/010) — it used to drop it with no report at all.
+    const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration(notifyFileStatus);
 
     const { nearestInScale } = useScale();
 
-    const { isPlaying, handlePlay, handleStop, analyserNode, previewError, previewStale, isBuilding } = useWasmAudioEngine(
+    // SKB-009 (b): the P-lock/step-range verdict, recomputed from the live
+    // document. Renaming a node breaks every override that named it, and until
+    // this existed the only thing that ever noticed was codegen — which does
+    // not warn, it exits.
+    const projectIssues = useProjectIssues(nodes, tracks, patternSteps);
+
+    const { isPlaying, handlePlay, handleStop, analyserNode, meterAnalysers, previewError, previewStale, isBuilding, sendNoteOn, sendNoteOff } = useWasmAudioEngine(
         nodes,
         edges,
         isLooping,
@@ -169,17 +206,6 @@ const EditorLayout = () => {
         // hook's masterVolume param comment for why the two never agreed.
         masterVolume
     );
-    // Save/load outcome, shown in a banner over the canvas. Errors stay up
-    // until the next file action; successes auto-clear after a few seconds.
-    const [fileStatus, setFileStatus] = useState<FileStatus | null>(null);
-    const fileStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const notifyFileStatus = useCallback((status: FileStatus) => {
-        if (fileStatusTimer.current) clearTimeout(fileStatusTimer.current);
-        setFileStatus(status);
-        if (status.kind === 'success') {
-            fileStatusTimer.current = setTimeout(() => setFileStatus(null), 4000);
-        }
-    }, []);
     const [isExamplesModalOpen, setIsExamplesModalOpen] = useState(false);
 
     const { handleSave, handleLoad, handleImportGraph, loadContent, importBatch } = useFileIO(
@@ -237,6 +263,40 @@ const EditorLayout = () => {
         setRecoverableAutosave(null);
     }, []);
 
+    // Packet B6-6 — a fresh install opens with a patch that makes a sound.
+    // Decided ONCE at mount from the same facts the recovery banner uses: an
+    // autosave to offer wins, a non-empty canvas means this is not a fresh
+    // start, and the marker means it already happened on this profile. The
+    // hook itself reads the marker (storage may be blocked) and latches it
+    // only after the example actually loaded.
+    const [firstRunEligible] = useState(() =>
+        shouldLoadFirstRunPatch({
+            hasRecoverableAutosave: recoverableAutosave !== null,
+            nodeCount: nodesRef.current.length,
+            marker: null,
+        }),
+    );
+    useFirstRunPatch({ enabled: firstRunEligible, load: handleLoadExample });
+
+    // Roadmap E1 — the computer keyboard plays the patch live, through the same
+    // note door and the same scale quantiser as a hardware MIDI keyboard, so
+    // the two cannot disagree about what a keypress means.
+    const qwerty = useQwertyKeyboard({
+        enabled: isPlaying,
+        sendNoteOn,
+        sendNoteOff,
+        nearestInScale,
+    });
+
+    // Roadmap E10 — `[` / `]` already walked the nodes; this walks the selected
+    // node's ports with `,` / `.` and draws a wire with Enter, through the same
+    // onConnect a mouse drag ends in, so a keyboard-drawn edge is one ordinary
+    // undo step and not a second way of mutating the graph.
+    const traversal = useGraphKeyboardTraversal({
+        selectedNodeId: selectedNode?.id ?? null,
+        onConnect,
+    });
+
     const sequencerState = {
         isPlaying,
         currentStep,
@@ -262,8 +322,10 @@ const EditorLayout = () => {
 
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Check for valid targets (ignore inputs)
-            if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+            // Check for valid targets (ignore inputs). One reader of "is the
+            // user typing" (utils/keyboardTarget.ts) — the inline tag list this
+            // replaced knew nothing about <select> or contenteditable.
+            if (isTypingTarget(e.target)) return;
 
             // Global Undo/Redo. ONE stack, ONE pop — this used to call the
             // graph's undo and the sequencer's undo side by side, which is
@@ -346,15 +408,31 @@ const EditorLayout = () => {
     // updater so their edits land in useGraphState — the store the audio
     // engine, save and codegen actually read. (Writing to React Flow's
     // internal store made those edits silently inert.)
-    const graphActions = useMemo(() => ({ updateNodeData }), [updateNodeData]);
+    // `bpm` rides along (C7) so synced node cards can print the time their
+    // division resolves to at the project tempo.
+    const graphActions = useMemo(() => ({ updateNodeData, bpm }), [updateNodeData, bpm]);
+
+    // E7: a rendering-only derivation (styleEdgesBySemanticKind), never fed
+    // back into setEdges — the document's `edges` (what save/undo/codegen
+    // read) never gains a `style` field. Edges are re-derived on every graph
+    // change, so this is one memoised pass over `edges`, not a per-edge
+    // lookup buried in a component render.
+    const displayEdges = useMemo(() => styleEdgesBySemanticKind(nodes, edges), [nodes, edges]);
 
     // The Export-Step action itself lives in useEditorState (so its undo entry
     // is pushed next to the edit it describes); the component keeps only the
     // viewport concern.
-    const onExportStep = useCallback((trackId: string, step: number) => {
-        const newNodeId = handleExportStep(trackId, step);
+    const onExportStep = useCallback((trackId: string, step: number, notePitch: number) => {
+        const newNodeId = handleExportStep(trackId, step, notePitch);
         if (newNodeId) handleFocusNode(newNodeId);
     }, [handleExportStep, handleFocusNode]);
+
+    // One definition of "select this note", shared by the grid and by the
+    // chord-member buttons in the step editor.
+    const onSelectStep = useCallback((trackId: string, step: number, notePitch: number) => {
+        setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+        setSelectedStep({ trackId, step, notePitch });
+    }, [setNodes]);
 
     return (
         <div style={appContainerStyles}>
@@ -396,6 +474,7 @@ const EditorLayout = () => {
                             onCreateInstrument={handleCreateInstrument}
                             onCreateGroup={handleCreateGroup}
                             canCreateInstrument={selectedNodesForGrouping.length > 0}
+                            createInstrumentBlockedReason={instrumentSelectionBlockedReason(selectedNodesForGrouping)}
                             bpm={bpm}
                             onBpmChange={setBpm}
                             isLooping={isLooping}
@@ -420,7 +499,7 @@ const EditorLayout = () => {
                         <GraphActionsProvider value={graphActions}>
                         <ReactFlow
                             nodes={nodes}
-                            edges={edges}
+                            edges={displayEdges}
                             nodeTypes={memoizedNodeTypes}
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}
@@ -433,9 +512,44 @@ const EditorLayout = () => {
                             deleteKeyCode={['Backspace', 'Delete']}
                             fitView
                             style={{ width: '100%', height: '100%' }}
+                            // E6: 20 matches Background's default dot gap below,
+                            // so the grid a dragged node snaps to is the one
+                            // the user can actually see.
+                            snapToGrid={snapToGrid}
+                            snapGrid={[20, 20]}
                         >
                             <Background />
                             <Controls />
+                            {/* E6: bottom-right, same corner React Flow uses by
+                                default — the sequencer dock lives in a separate
+                                row below this canvas (see workspaceContainerStyles/
+                                SequencerDock below) and ShortcutLegend's "?" sits
+                                in the parameter panel's corner, not this one, so
+                                nothing else claims this space. */}
+                            <MiniMap
+                                nodeColor={(node) => accentFor(node.type)}
+                                maskColor="rgba(30, 30, 30, 0.6)"
+                                style={{ backgroundColor: '#252526', border: '1px solid #4A5568' }}
+                            />
+                            <Panel position="top-right">
+                                <label
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        background: '#252526', border: '1px solid #4A5568',
+                                        borderRadius: '4px', padding: '4px 8px',
+                                        color: '#E2E8F0', fontSize: '0.8em', fontFamily: 'Inter, system-ui, sans-serif',
+                                        cursor: 'pointer', userSelect: 'none',
+                                    }}
+                                    title="Snap dragged and dropped nodes to the grid"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={snapToGrid}
+                                        onChange={(e) => setSnapToGrid(e.target.checked)}
+                                    />
+                                    Snap to grid
+                                </label>
+                            </Panel>
                         </ReactFlow>
                         </GraphActionsProvider>
                         <ShortcutLegend />
@@ -464,6 +578,10 @@ const EditorLayout = () => {
                                 {previewError ?? previewStale}
                             </div>
                         )}
+                        <ProjectIssuesBanner
+                            lines={projectIssues.lines}
+                            severity={projectIssues.severity}
+                        />
                         {recoverableAutosave && (
                             <div
                                 data-testid="autosave-recovery-banner"
@@ -500,6 +618,65 @@ const EditorLayout = () => {
                                 >
                                     Dismiss
                                 </button>
+                            </div>
+                        )}
+                        {/* Where the keyboard is on the graph. A focus ring on the
+                            port alone cannot say what the port is called or that a
+                            wire is waiting for a destination; role="status" also
+                            makes it the announcement a screen reader hears. */}
+                        {(traversal.focusedPort || traversal.pendingSource) && (
+                            <div
+                                data-testid="port-focus-readout"
+                                role="status"
+                                style={{
+                                    position: 'absolute',
+                                    top: 10,
+                                    left: 10,
+                                    zIndex: 50,
+                                    padding: '6px 10px',
+                                    borderRadius: 6,
+                                    fontSize: '0.8em',
+                                    fontFamily: 'sans-serif',
+                                    color: '#E0E0E0',
+                                    backgroundColor: 'rgba(37,37,38,0.95)',
+                                    border: `1px solid ${traversal.pendingSource ? '#d69e2e' : '#444'}`,
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                {traversal.pendingSource
+                                    ? `Wiring from ${traversal.pendingSource.nodeId} → ${traversal.pendingSource.handleId ?? 'out'} — Enter on an input to connect, Esc to cancel`
+                                    : `Port ${traversal.focusedPort?.nodeId} → ${traversal.focusedPort?.handleId ?? '(unnamed)'} (${traversal.focusedPort?.type === 'source' ? 'output' : 'input'}) — , / . to move, Enter to wire`}
+                            </div>
+                        )}
+                        {/* Which octave the letter keys are playing, shown while
+                            they are held. Without a readout, Z / X shift a
+                            number the user cannot see, and a note key pressed
+                            with the preview stopped is silent with no
+                            explanation — the hook reports that as
+                            `needsPreview` rather than starting playback (see
+                            useQwertyKeyboard.ts for why). */}
+                        {(qwerty.activeNotes.length > 0 || qwerty.needsPreview) && (
+                            <div
+                                data-testid="qwerty-keyboard-readout"
+                                style={{
+                                    position: 'absolute',
+                                    bottom: 10,
+                                    left: 10,
+                                    zIndex: 50,
+                                    padding: '6px 10px',
+                                    borderRadius: 6,
+                                    fontSize: '0.8em',
+                                    fontFamily: 'sans-serif',
+                                    color: '#E0E0E0',
+                                    backgroundColor: 'rgba(37,37,38,0.95)',
+                                    border: '1px solid #444',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                {`Keyboard octave C${qwerty.octave} (Z / X to shift)`}
+                                {qwerty.needsPreview && ' — press Play to hear it'}
                             </div>
                         )}
                         {fileStatus && (
@@ -541,6 +718,7 @@ const EditorLayout = () => {
                                 selectedStep={selectedStep}
                                 tracks={tracks}
                                 onUpdateNote={updateNote}
+                                onSelectStep={onSelectStep}
                                 onExportStep={onExportStep}
                             />
                         )}
@@ -568,14 +746,12 @@ const EditorLayout = () => {
                         setSelectedStep(null);
                     }}
                     onToggleStep={toggleStep}
+                    onClearStep={clearStep}
                     onUpdateNote={updateNote}
                     onUpdateSteps={updateTrackSteps}
                     analyserNode={analyserNode?.current || null}
-                    onStepSelect={(trackId, step) => {
-                        // Deselect nodes
-                        setNodes(nds => nds.map(n => ({ ...n, selected: false })));
-                        setSelectedStep({ trackId, step });
-                    }}
+                    meterAnalysers={meterAnalysers}
+                    onStepSelect={onSelectStep}
                 />
             </div>
         </div>

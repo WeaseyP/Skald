@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Compiles docs/manual-source/*.md into a single searchable HTML manual and a print PDF.
 //
-//   node build-manual.mjs [--src <dir>] [--out <dir>] [--no-pdf] [--check]
+//   node build-manual.mjs [--src <dir>] [--out <dir>] [--no-pdf] [--check] [--skip-citations]
 //
 // --check validates the chapter registry and exits without rendering anything;
 // it is what CI runs.
+// --skip-citations skips the D3 citation gate (check-citations.mjs) for
+// emergencies — a build that must ship while citations are mid-conversion.
+// Document any use of it; it exists to unblock, not to become the default.
 //
 // Requires: marked, puppeteer-core, and a local Chrome install (for the PDF).
 
@@ -13,6 +16,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Marked } from 'marked'
 import puppeteer from 'puppeteer-core'
+import { run as runCitationCheck } from './check-citations.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -27,6 +31,7 @@ const SRC = resolve(flag('--src', join(HERE, '..', '..', 'docs', 'manual-source'
 const OUT = resolve(flag('--out', join(HERE, '..', '..', 'docs', 'manual')))
 const MAKE_PDF = !argv.includes('--no-pdf')
 const CHECK_ONLY = argv.includes('--check')
+const SKIP_CITATIONS = argv.includes('--skip-citations')
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -46,14 +51,15 @@ const CHROME_CANDIDATES = [
 // are editorial working notes, not chapters, so they are deliberately absent.
 
 const PARTS = [
-  { part: 'Foundations', files: ['00-foundations.md'] },
-  { part: 'Sources', files: ['nodes/oscillator.md', 'nodes/noise.md', 'nodes/wavetable.md', 'nodes/fmOperator.md'] },
-  { part: 'Modulation', files: ['nodes/lfo.md', 'nodes/sampleHold.md', 'nodes/adsr.md', 'nodes/mapper.md', 'nodes/midiInput.md'] },
-  { part: 'Shaping', files: ['nodes/filter.md', 'nodes/distortion.md'] },
-  { part: 'Space', files: ['nodes/delay.md', 'nodes/reverb.md'] },
-  { part: 'Routing', files: ['nodes/mixer.md', 'nodes/gain.md', 'nodes/panner.md', 'nodes/output.md'] },
-  { part: 'Packaging', files: ['nodes/instrument.md'] },
+  { part: 'Getting started', files: ['01-getting-started.md'] },
+  { part: 'Foundations', files: ['00-foundations.md', 'nodes/instrument.md', '05-sequencer.md'] },
+  { part: 'A first patch', files: ['nodes/oscillator.md', 'nodes/adsr.md', 'nodes/output.md', 'nodes/filter.md'] },
+  { part: 'Modulation', files: ['nodes/mapper.md', 'nodes/lfo.md', 'nodes/sampleHold.md', 'nodes/gain.md'] },
+  { part: 'More sources', files: ['nodes/noise.md', 'nodes/mixer.md', 'nodes/wavetable.md', 'nodes/fmOperator.md'] },
+  { part: 'Shaping and space', files: ['nodes/distortion.md', 'nodes/delay.md', 'nodes/reverb.md', 'nodes/panner.md'] },
+  { part: 'Playing from hardware', files: ['nodes/midiInput.md'] },
   { part: 'Worked examples', files: ['50-bass-teardown.md', '60-complexity-ladder.md', '70-space-funk-build.md'] },
+  { part: 'Reference', files: ['85-deliberate-exclusions.md', '80-exporting-odin.md', 'KNOWN-ISSUES.md'] },
 ]
 
 // Markdown under SRC that is deliberately not a chapter. Anything else found
@@ -101,6 +107,24 @@ const reconcileRegistry = () => {
 }
 
 reconcileRegistry()
+
+// D3: the manual convention is `path::identifier` citations, not `path:NNN`
+// line numbers — those drifted by the hundreds within one release cycle (see
+// docs/manual-source/FIXED.md). Gate the build on it the same way the
+// registry is gated, right after the registry check and before CHECK_ONLY
+// exits, so `--check` in CI catches both kinds of drift in one pass.
+if (SKIP_CITATIONS) {
+  console.log('  ! --skip-citations: citation gate skipped (emergency use only)')
+} else {
+  const citationExit = runCitationCheck([])
+  if (citationExit !== 0) {
+    console.error('')
+    console.error('Citation check failed (see above). Fix the citations, or pass --skip-citations')
+    console.error('for an emergency build (document why in the commit message).')
+    process.exit(1)
+  }
+}
+
 if (CHECK_ONLY) process.exit(0)
 
 // -------------------------------------------------------------------- utils

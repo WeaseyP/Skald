@@ -1,3 +1,10 @@
 # Transient scratch dir written by run_golden.bat during a `check`.
 # The goldens (*.odin.golden) ARE tracked; this fresh-emission output is not.
+#
+# Unrooted, so it also matches examples_corpus/.gen/ below this directory —
+# run_corpus_golden.bat's own scratch dir (4 files per fixture: .odin,
+# .rerun.odin, .shim.odin, .shim.rerun.odin). Verified with
+# `git check-ignore -v` before roadmap B6-2 recorded the examples_corpus
+# goldens, so the top-level .gitignore does not need its own entry for that
+# path — adding one would just be a second rule for the same match.
 .gen/

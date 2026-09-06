@@ -193,8 +193,16 @@ test_oscillator_frequency_live_with_fixed_pitch :: proc(t: ^testing.T) {
 test_oscillator_other_params_always_reachable :: proc(t: ^testing.T) {
 	note_wins := node_with("Oscillator", json.Object{})
 	testing.expect(t, core.param_is_reachable(note_wins, "amplitude"), "Oscillator amplitude must be reachable regardless of fixedPitch")
-	testing.expect(t, core.param_is_reachable(note_wins, "pulseWidth"), "Oscillator pulseWidth must be reachable regardless of fixedPitch")
 	testing.expect(t, core.param_is_reachable(note_wins, "phase"), "Oscillator phase must be reachable regardless of fixedPitch")
+	// pulseWidth is governed by `waveform`, not fixedPitch (packet B2 —
+	// exposure_scan_test.odin has the full rule). This test used to assert it
+	// reachable on a node with NO waveform, i.e. the generator's Sine default,
+	// whose emitted body never reads p.pulseWidth: the assertion was against a
+	// state the generator never agreed with. Pinned on a Square node instead.
+	square_params := json.Object{"waveform" = json.String("Square")}
+	defer delete(square_params)
+	square := node_with("Oscillator", square_params)
+	testing.expect(t, core.param_is_reachable(square, "pulseWidth"), "Square oscillator pulseWidth must be reachable regardless of fixedPitch")
 }
 
 @(test)

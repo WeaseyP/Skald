@@ -43,6 +43,9 @@ export interface BpmSynchronizable {
 export interface FmOperatorParams extends BaseNodeParams {
   frequency: number;
   modIndex: number;
+  // C5 (F-A02-7): output level, 0..1, with an input_amp port. Absent = 1.0,
+  // the full-scale sin() every operator emitted before the field existed.
+  amplitude?: number;
 }
 
 export interface WavetableParams extends BaseNodeParams {
@@ -51,6 +54,13 @@ export interface WavetableParams extends BaseNodeParams {
   tableName: 'Sine' | 'Triangle' | 'Sawtooth' | 'Square';
   frequency: number;
   position: number;
+  // C5 (F-A01-7): duty cycle of the square end of the morph, 0.01..0.99,
+  // with an input_pulseWidth port. Absent = 0.5, the symmetric square the
+  // engine always drew.
+  pulseWidth?: number;
+  // C5 (F-A01-8): start-point offset in degrees, as on the Oscillator.
+  // Absent = 0.
+  phase?: number;
   // Output level (0..1), multiplied into the wavetable sample. The engine has
   // always read it (with a 1.0 fallback) and the node card has always shown a
   // control for it; it was missing from this interface and from the defaults,
@@ -118,6 +128,9 @@ export interface ReverbParams extends BaseNodeParams {
   decay: number;
   preDelay: number;
   mix: number;
+  // C5 (F-A07-7): one-pole lowpass on the fed-back sample, 0..1. Absent or
+  // 0 = the undamped comb every existing patch has.
+  damping?: number;
 }
 
 export interface DistortionParams extends BaseNodeParams {
@@ -144,6 +157,12 @@ export interface PannerParams extends BaseNodeParams {
 
 export interface GainParams extends BaseNodeParams {
   gain: number;
+  // C4 (F-A04-4): how the Gain port combines with the knob. 'multiply' —
+  // what every new VCA gets — is `audio * knob * incoming`, so a bare
+  // envelope shapes a note from silence. 'add' is the pre-C4 form
+  // (`audio * (knob + incoming)`) every existing file keeps; the 2->3
+  // migration stamps it. Absent reads as 'add' in the generator.
+  gainMode?: 'multiply' | 'add';
 }
 
 export interface OutputParams extends BaseNodeParams {
@@ -195,6 +214,14 @@ export interface SkaldGraphConnection {
 
 export interface InstrumentParams extends BaseNodeParams {
   name: string;
+  // C3 (F-B05-4): the symbol prefix the game compiles against
+  // (<exportId>_trigger, _note_on, _set_<param>…), decoupled from the display
+  // `name` so a cosmetic rename no longer breaks the game's build. Absent =
+  // derive from `name`, the pre-C3 rule; the 1->2 migration backfills it.
+  exportId?: string;
+  // C3 (F-A09-8): one-shot SFX or self-playing music layer. Absent = infer
+  // from the tracks at Generate time (the pre-C3 rule, shown as "Auto").
+  assetType?: 'sfx' | 'music';
   // Instrument output level (0..1). The serializer floors it at 0.001 —
   // the backend treats an exact 0 as "absent, default to unity".
   volume?: number;
@@ -250,7 +277,17 @@ export interface NoteEvent {
   velocity: number;   // 0.0 to 1.0
   duration: number;   // In steps (defaults to 1)
   probability?: number; // 0.0 to 1.0, chance to play. Default 1.0 (100%)
-  patchOverrides?: Record<string, number>; // Parameter Name -> Value Overrides
+  /**
+   * "<NodeLabel>:<param>" -> per-step override value.
+   *
+   * `unknown`, not `number`: the step editor's controls write whatever the
+   * parameter holds, so a waveform string or a BPM-Sync boolean really can be
+   * in here (SKB-045) — projectSerializer then drops it, because the generated
+   * per-step setter takes an f32. Declaring `number` made the value look
+   * pre-validated and made `isExportablePlockValue` look like dead code, while
+   * every write site went through an `any` and stored the string anyway.
+   */
+  patchOverrides?: Record<string, unknown>;
 }
 
 /**

@@ -97,16 +97,20 @@ interface ParameterPanelProps {
     allEdges: Edge[];
     bpm: number;
     // Step Editing
-    selectedStep?: { trackId: string, step: number } | null;
+    // `notePitch` names which note of the step is selected: a step can hold a
+    // chord, and without it the editor edited whichever member came first in
+    // the array (SKB-025).
+    selectedStep?: { trackId: string, step: number, notePitch: number } | null;
     tracks?: SequencerTrack[];
     onUpdateNote?: (trackId: string, step: number, changes: Partial<NoteEvent>, notePitch?: number) => void;
-    onExportStep?: (trackId: string, step: number) => void;
+    onSelectStep?: (trackId: string, step: number, notePitch: number) => void;
+    onExportStep?: (trackId: string, step: number, notePitch: number) => void;
 }
 
 
 // --- MAIN COMPONENT ---
 
-const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm, selectedStep, tracks, onUpdateNote, onExportStep }) => {
+const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateNode, allNodes, bpm, selectedStep, tracks, onUpdateNote, onSelectStep, onExportStep }) => {
 
     if (selectedStep && tracks && onUpdateNote) {
         const track = tracks.find(t => t.id === selectedStep.trackId);
@@ -115,11 +119,11 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
         return (
             <div style={panelStyles}>
                 <div style={headerStyles}>
-                    <h3>Edit Step {selectedStep.step}</h3>
+                    <h3>Edit Step {selectedStep.step} (note {selectedStep.notePitch})</h3>
                     <div style={{ fontSize: '0.8em', color: '#888' }}>{track?.name || 'Unknown Track'}</div>
                     {onExportStep && (
                         <button
-                            onClick={() => onExportStep(selectedStep.trackId, selectedStep.step)}
+                            onClick={() => onExportStep(selectedStep.trackId, selectedStep.step, selectedStep.notePitch)}
                             style={{
                                 marginTop: '10px',
                                 padding: '6px 12px',
@@ -138,8 +142,10 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 <StepPropertiesEditor
                     trackId={selectedStep.trackId}
                     step={selectedStep.step}
+                    notePitch={selectedStep.notePitch}
                     track={track}
                     onUpdateNote={onUpdateNote}
+                    onSelectNote={onSelectStep}
                     instrumentNode={instrumentNode}
                 />
             </div>
@@ -204,60 +210,40 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
 
     // --- RENDER HELPERS ---
 
+    // `inertReason` (packet B2): the parameter exists but the node's current
+    // configuration means the generated DSP never reads it. Greyed, not
+    // hidden — the old `data.fixedPitch && ...` hid the whole control, so an
+    // exposure that had gone dead was invisible in the very panel that
+    // created it. The expose button stays visible and disabled with the
+    // reason as its tooltip; the control itself is dimmed and inert, because
+    // editing a value nothing reads would be a second lie.
     const renderParameterControl = (
         paramKey: string,
         label: string,
         children: React.ReactNode,
         isExposable = true,
         isExposed = false,
-        onToggle: () => void
+        onToggle: () => void,
+        inertReason?: string
     ) => {
         return (
-            <div style={inputGroupStyles} key={paramKey}>
+            <div style={inputGroupStyles} key={paramKey} data-inert={inertReason ? 'true' : undefined}>
                 <div style={labelContainerStyles}>
-                    <label style={labelStyles}>{label}</label>
+                    <label style={inertReason ? { ...labelStyles, opacity: 0.5 } : labelStyles} title={inertReason}>{label}</label>
                     {isExposable && (
                         <button
-                            style={iconButtonStyles}
+                            style={inertReason ? { ...iconButtonStyles, opacity: 0.4, cursor: 'not-allowed' } : iconButtonStyles}
                             onClick={onToggle}
-                            title={isExposed ? `Un-expose "${label}"` : `Expose "${label}" to public API`}
+                            disabled={!!inertReason}
+                            title={inertReason ?? (isExposed ? `Un-expose "${label}"` : `Expose "${label}" to public API`)}
                         >
                             <LinkIcon isExposed={isExposed} />
                         </button>
                     )}
                 </div>
-                {children}
-            </div>
-        );
-    };
-
-    const renderBpmSyncToggle = (node: Node<NodeParams>, subNodeId?: string) => {
-        const { data } = node;
-        const isBpmSyncExposed = data.exposedParameters?.includes('bpmSync') || false;
-        const uniqueId = `bpmSyncCheckbox-${subNodeId || node.id}`;
-
-        return (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <label htmlFor={uniqueId} style={{ ...labelStyles, cursor: 'pointer' }}>
-                    BPM Sync
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <input
-                        id={uniqueId}
-                        type="checkbox"
-                        name="bpmSync"
-                        checked={data.bpmSync || false}
-                        onChange={(e) => handleGenericChange(e, subNodeId || node.id)}
-                        style={{ height: '18px', width: '18px', cursor: 'pointer' }}
-                    />
-                    <button
-                        style={iconButtonStyles}
-                        onClick={() => toggleParameterExposure('bpmSync', subNodeId || node.id)}
-                        title={isBpmSyncExposed ? 'Un-expose "BPM Sync"' : 'Expose "BPM Sync" to public API'}
-                    >
-                        <LinkIcon isExposed={isBpmSyncExposed} />
-                    </button>
-                </div>
+                {inertReason
+                    ? <div style={{ opacity: 0.45, pointerEvents: 'none' }} title={inertReason}>{children}</div>
+                    : children}
             </div>
         );
     };
@@ -269,7 +255,15 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             handleParameterChange(paramKey, value, subNodeId || node.id);
         };
 
-        const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable = true) => {
+        // The sidebar owns node data, so it can accept a multi-key delta —
+        // which is what lets the BPM Sync toggle author `syncRate` in the same
+        // edit (SKB-058). updateNodeData merges deltas into the LATEST node
+        // data, so one delta is also one undo entry.
+        const handleControlChangeMany = (changes: Record<string, unknown>) => {
+            handleParameterChange('', changes, subNodeId || node.id);
+        };
+
+        const wrapper = (paramKey: string, label: string, children: React.ReactNode, isExposable = true, inertReason?: string) => {
             const isExposed = data.exposedParameters?.includes(paramKey) || false;
             return renderParameterControl(
                 paramKey,
@@ -277,7 +271,8 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                 children,
                 isExposable,
                 isExposed,
-                () => toggleParameterExposure(paramKey, subNodeId || node.id)
+                () => toggleParameterExposure(paramKey, subNodeId || node.id),
+                inertReason
             );
         };
 
@@ -293,8 +288,21 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
                     <NodeParameterControls
                         node={node}
                         onChange={handleControlChange}
+                        onChangeMany={handleControlChangeMany}
                         renderControlWrapper={wrapper}
                         bpm={bpm}
+                        // E12: only the Instrument's OWN panel render gets this — a
+                        // macro axis targets a node INSIDE the subgraph, which needs
+                        // `onUpdateNode(instrumentId, delta, internalNodeId)`, not the
+                        // `handleControlChange`/`handleControlChangeMany` closures
+                        // above (both bound to `node.id` itself, or `subNodeId` when
+                        // THIS render is already inside a subgraph node — which it
+                        // isn't here). A Group has no subgraph and no P-lock/plockTargets
+                        // support, so it gets no macro pad either.
+                        macroRouting={type === 'instrument' ? {
+                            internalNodes: (childNodes as Node<NodeParams>[] | undefined) ?? [],
+                            onUpdateNode: (targetNodeId, delta) => onUpdateNode(node.id, delta, targetNodeId),
+                        } : undefined}
                     />
 
                     {/* Sub-Node Rendering (Specific to Panel) */}
@@ -338,6 +346,7 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({ selectedNode, onUpdateN
             <NodeParameterControls
                 node={node}
                 onChange={handleControlChange}
+                onChangeMany={handleControlChangeMany}
                 renderControlWrapper={wrapper}
                 bpm={bpm}
             />

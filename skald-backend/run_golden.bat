@@ -1,6 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM Packet B12: every emitted header carries the generator's source digest.
+REM That digest changes with every edit to skald-backend, which would make
+REM every golden red on every generator commit. The harness pins the string
+REM instead; the input digest on the next header line has no override and
+REM stays a function of the fixture alone.
+set "SKALD_CODEGEN_STAMP=golden"
+
 REM =====================================================================
 REM Golden-file snapshot harness for the Skald codegen.
 REM
@@ -37,6 +44,11 @@ REM            its case to acceptance\main.odin
 REM     no  -> codegen_only\ (project shape) or graph\ (React Flow shape)
 REM   Fixture base names must be unique ACROSS all three directories - the
 REM   golden file name is derived from the base name alone.
+REM   A graph the generator is meant to REJECT belongs in neither: a non-zero
+REM   codegen exit is a suite failure here and in run_acceptance.bat, and there
+REM   is no expected-failure snapshot. Put it in tests\fixtures\_negative\ (the
+REM   same non-recursive escape _graph_seeds\ uses, so nothing globs it) and
+REM   gate the rule itself in tests\unit\ - see _negative\README.md.
 REM
 REM DETERMINISM GATE (roadmap packet A3 / BUGS.md SKB-003): every fixture is
 REM generated TWICE and the two emissions are compared with `fc /B`. Byte
@@ -49,6 +61,19 @@ REM different instrument on each regeneration. A golden diff cannot catch
 REM that on its own (it only ever compares one run), so the double-run check
 REM is a separate gate and it runs in `update` mode too: never record a
 REM golden from a generator that is not reproducible.
+REM
+REM BEFORE YOU BLAME YOURSELF (or clear yourself) FOR A RED GATE: run
+REM   scriptserify-baseline.ps1 -Ref HEAD~1
+REM from the repo root. It runs every gate against a pristine `git archive`
+REM export of that ref, so you can tell a regression you caused apart from one
+REM that was already there. Two of this repo's gates were red for a long time
+REM with nothing saying so - see TESTING.md.
+REM
+REM AND NOTE: a green golden gate means "nothing changed unintentionally". It
+REM does NOT mean the output is correct. These goldens faithfully pinned a pan
+REM law that attenuated a centred signal by 3dB, and an is_playing that cut
+REM effect tails off, for as long as those bugs existed. `update` on a diff you
+REM have not read launders a regression into the record as intent.
 REM
 REM Usage (run from skald-backend\):
 REM   run_golden.bat            Check current emission against the goldens.
@@ -143,6 +168,7 @@ set RERUN=tests\golden\.gen\%NAME%.rerun.odin
 set SHIM=tests\golden\.gen\%NAME%.shim.odin
 set SHIM2=tests\golden\.gen\%NAME%.shim.rerun.odin
 set GOLD=tests\golden\%NAME%.odin.golden
+set SHIMGOLD=tests\golden\%NAME%.shim.odin.golden
 
 REM The wasm shim is emitted alongside the main file on both runs. It is not
 REM goldened (only the editor preview consumes it), but it is where the
@@ -183,6 +209,7 @@ if errorlevel 1 (
 
 if /I "%MODE%"=="update" (
     copy /Y "%GEN%" "%GOLD%" >nul
+    copy /Y "%SHIM%" "%SHIMGOLD%" >nul
     echo UPDATED %NAME%
     goto :eof
 )
@@ -192,11 +219,26 @@ if not exist "%GOLD%" (
     set /a FAILED+=1
     goto :eof
 )
+if not exist "%SHIMGOLD%" (
+    echo MISSING SHIM GOLDEN for %NAME%  ^(run: run_golden.bat update^)
+    set /a FAILED+=1
+    goto :eof
+)
 REM Text comparison deliberately normalizes CRLF/LF across contributor
 REM machines and GitHub's Windows checkout.
 fc "%GOLD%" "%GEN%" >nul
 if errorlevel 1 (
     echo DIFF %NAME%  ^(current emission differs from golden^)
+    set /a FAILED+=1
+    goto :eof
+)
+REM B6-2-x3: the wasm shim is the SECOND shape emitted from one analysis
+REM (CLAUDE.md's most common defect class). Until this it was compared only
+REM against its own re-run, so a shim-only regression - a preview that lies
+REM about the export - was invisible to every golden gate.
+fc "%SHIMGOLD%" "%SHIM%" >nul
+if errorlevel 1 (
+    echo DIFF %NAME%  ^(wasm shim differs from golden^)
     set /a FAILED+=1
     goto :eof
 )

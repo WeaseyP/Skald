@@ -1,0 +1,28 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "wavetablepwm",
+        "name": "Asset",
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "audio_graph": {
+          "nodes": [
+            { "id": "wt", "type": "Wavetable", "parameters": { "fixedPitch": true, "frequency": 440, "position": 3, "amplitude": 0.5, "pulseWidth": 0.5, "exposedParameters": ["pulseWidth"] } },
+            { "id": "env", "type": "ADSR", "parameters": { "attack": 0.005, "decay": 0.05, "sustain": 0.9, "release": 0.05, "depth": 1, "velocitySensitivity": 0 } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "wt", "from_port": "output", "to_node": "env", "to_port": "input" },
+            { "from_node": "env", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

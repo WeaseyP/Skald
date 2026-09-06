@@ -57,39 +57,38 @@ catastrophic (exactly detuned, exactly opposed, and they vanish).
 
 ## What it looks like in Skald
 
-The Mixer lives in the **Nodes** section of the left sidebar (`skald-ui/src/components/Sidebar.tsx:239`),
+The Mixer lives in the **Nodes** section of the left sidebar (`skald-ui/src/components/Sidebar.tsx::Sidebar`),
 listed between Distortion and Mapper with the tooltip "Sums several inputs with per-channel level
-sliders" (`Sidebar.tsx:275`). It is drawn in the grey utility accent colour rather than a source or
-effect colour (`skald-ui/src/components/Nodes/NodeStyles.ts:98`) — a nudge that it is plumbing, not
+sliders" (`skald-ui/src/components/Sidebar.tsx::paletteNodes`). It is drawn in the grey utility accent colour rather than a source or
+effect colour (`skald-ui/src/components/Nodes/NodeStyles.ts::NODE_ACCENTS`) — a nudge that it is plumbing, not
 tone.
 
 Its handles are generated from the channel count:
 
 - **Inputs** — one target handle per channel on the left edge, with ids `input_1`, `input_2`, …
-  `input_N` (`skald-ui/src/components/Nodes/MixerNode.tsx:55`). Each sits on its own row next to an
-  "In *n*" label and that channel's level box (`MixerNode.tsx:53-62`).
+  `input_N` (`skald-ui/src/components/Nodes/MixerNode.tsx::MixerNodeComponent`). Each sits on its own row next to an
+  "In *n*" label and that channel's level box.
 - **Output** — a single source handle on the right edge with the id `output`
-  (`MixerNode.tsx:66`).
+  (`skald-ui/src/components/Nodes/MixerNode.tsx::MixerNodeComponent`).
 
 The exporter is strict about those port names. Any wire landing on a Mixer must use
 `input_1`…`input_inputCount`; anything else aborts the export with an explicit error rather than
-silently dropping the cable (`skald-backend/core/graph_validate.odin:115-128`). The practical
+silently dropping the cable (`skald-backend/core/graph_validate.odin::validate_connections`). The practical
 consequence: if you wire channel 5 and *then* reduce **Inputs** to 4, the patch stops exporting until
 you remove that wire.
 
 The output is **mono** — one number per sample, written to `node_<id>_out`
-(`skald-backend/core/codegen.odin:663`). There is no stereo pair. You can legally wire a Panner's
-`output_left` and `output_right` into two Mixer channels (`graph_validate.odin:70-71`), and the Mixer
-will happily sum them (`codegen.odin:659-661`), but the result is a mono collapse of that stereo
+(`skald-backend/core/codegen_nodes.odin::generate_mixer_code`). There is no stereo pair. You can legally wire a Panner's
+`output_left` and `output_right` into two Mixer channels (`skald-backend/core/graph_validate.odin::valid_output_port`), and the Mixer
+will happily sum them, but the result is a mono collapse of that stereo
 image, not a stereo bus. Panning belongs *after* the Mixer, not inside it (see the controls table).
 
 You can plug **more than one wire into the same channel**. The generator loops over every source
-found on that port and multiplies each by that channel's level (`codegen.odin:659-661`), so two
+found on that port and multiplies each by that channel's level (`skald-backend/core/codegen_nodes.odin::generate_mixer_code`), so two
 oscillators into `input_1` share one fader. That is occasionally exactly what you want.
 
 Rate: the Mixer is emitted inside the per-sample loop, in the voice domain
-(`codegen.odin:1816-1817`) or, if it sits downstream of a Delay or Reverb, the bus domain
-(`codegen.odin:1923-1924`). But because it is pure addition with no memory and no assumption about
+or, if it sits downstream of a Delay or Reverb, the bus domain (`skald-backend/core/codegen_processor.odin::generate_processor_code`). But because it is pure addition with no memory and no assumption about
 what the numbers mean, it works identically on audio signals and on control signals. Summing an LFO
 and an envelope into a single modulation stream is a completely legitimate use of this node.
 
@@ -98,17 +97,21 @@ and an envelope into a single modulation stream is a completely legitimate use o
 | Parameter | Range | Default | Unit | What it does to the sound |
 |---|---|---|---|---|
 | **Inputs** (`inputCount`) | 1 – 32 | 4 | channels | How many input handles the node grows. Purely structural — changing it adds or removes ports and level entries, it does not alter the mix of existing channels. |
-| **Level *n*** (`level1`…`levelN`) | 0.0 – 2.0 | 0.75 | × (linear gain) | Multiplies that channel before it joins the sum. 0 mutes it, 1.0 passes it untouched, 2.0 doubles it (+6 dB). |
-| **Pan *n*** | — | 0 | — | Stored in the patch file but has **no control and no effect**. See Code-vs-intent notes. |
+| **Level *n*** (`level1`…`levelN`) | 0.0 – 2.0 | 0.75 (new channel) / 1.0 (codegen fallback) | × (linear gain) | Multiplies that channel before it joins the sum. 0 mutes it, 1.0 passes it untouched, 2.0 doubles it (+6 dB). |
+| **Pan *n*** | — | 0 | — | Stored in the patch file but has **no control and no effect**. See KI-045. |
 
 Where those numbers come from: `inputCount` defaults to 4 and the four channels default to `level:
-0.75` in `skald-ui/src/definitions/node-definitions.ts:137-146`; the 1–32 clamp is enforced in the
-node UI (`MixerNode.tsx:19`, `MixerNode.tsx:36`) and again in the exporter
-(`codegen.odin:615-620`). The 0–2 level range is the on-canvas number box
-(`MixerNode.tsx:59`) and, decisively, the range the code generator clamps exported setters to:
-`param_ranges.odin:43-45` returns `{0.0, 2.0, 1.0, "x"}` for any parameter whose name starts with
-`level`. The parameter-panel slider for the same value is capped at 1.0
-(`skald-ui/src/components/ParameterPanel.tsx:343`), which is a genuine inconsistency — noted below.
+0.75` in `skald-ui/src/definitions/node-definitions.ts::defaultMixerParams`; the 1–32 clamp is enforced in the
+node UI (`skald-ui/src/components/Nodes/MixerNode.tsx::MixerNodeComponent`) and again in the exporter
+(`skald-backend/core/codegen_nodes.odin::generate_mixer_code`). The 0–2 level range is the on-canvas number box
+(`skald-ui/src/components/Nodes/MixerNode.tsx::MixerNodeComponent`) and, decisively, the range the code generator clamps exported setters to: a
+`level<n>` name is matched by the prefix rule `{0.0, 2.0, 1.0, "x"}`, authored once and rendered into
+both the editor and the generator (`schema/nodes.json::prefixRules`). That `1.0` prefix-rule default is
+the *fallback* used only when a channel is exposed but the patch never stored a value for it —
+an authored channel's own `levels` entry always wins (see "What 'expose' does" below), which is why a
+freshly dragged channel plays at 0.75, not 1.0. The parameter-panel slider agrees with the canvas box
+and the exported clamp, at 0–2 with a 0.05 step (`skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`)
+— all three surfaces settled on one number, closing the divergence this chapter used to describe.
 
 ### What you hear as you sweep Level
 
@@ -137,36 +140,42 @@ the correct move is almost always to pull the *other* channels down.
 ### Inputs
 
 Changing **Inputs** rewrites the channel list, preserving the levels of channels that survive and
-giving new ones 0.75 (`MixerNode.tsx:35-41`). Two or three channels covers most instruments. Reach
+giving new ones 0.75 (`skald-ui/src/components/Nodes/MixerNode.tsx::MixerNodeComponent`). Two or three channels covers most instruments. Reach
 for eight or more only for drum kits and layered impacts, and remember that every added channel is
 another few dB of potential sum.
 
 ### What "expose" does
 
 Clicking the link icon beside "Input *n* Level" in the parameter panel adds `level<n>` to the node's
-`exposedParameters` list (`ParameterPanel.tsx:197-211`, `ParameterPanel.tsx:338-347`). At export
+`exposedParameters` list (`skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`, `skald-ui/src/components/ParameterPanel.tsx::ParameterPanel`).
+Both the level fields and the **Inputs** count are rendered by `NodeParameterControls`, the single path
+for a Mixer's parameter-panel controls since packet B11 deleted the older shadowing branch that used
+to intercept Mixer editing inside `ParameterPanel` itself. At export
 time, every exposed parameter becomes a real field on the generated processor struct
-(`codegen.odin:1262-1264`), a typed setter with the clamp baked in
-(`codegen.odin:1612-1625` — for a level, that clamp is 0.0 to 2.0), an entry in the introspectable
-`<Instrument>_PARAMS` table (`codegen.odin:1631-1643`), and a string-keyed setter for tooling
-(`codegen.odin:1645+`). Inside the audio loop the constant is replaced by a read of that field
-(`skald-backend/core/param_utils.odin:81-84`), so the game can change it every frame.
+(`skald-backend/core/codegen_processor.odin::generate_processor_code`), a typed setter with the clamp baked in
+(the same proc — for a level, that clamp is 0.0 to 2.0), an entry in the introspectable
+`<Instrument>_PARAMS` table, and a string-keyed setter for tooling
+(all three emitted alongside each other in `generate_processor_code`). Inside the audio loop the constant is replaced by a read of that field
+(`skald-backend/core/param_utils.odin::get_f32_param`), so the game can change it every frame.
 
 That is the point of exposing a Mixer channel: **your game gets a fader**. Duck the bright layer of a
 weapon sound as the player goes underwater. Crossfade a calm pad layer against an aggressive one on a
 single "threat level" float. Pull the noise layer out of an engine loop when the camera is far away.
 These are exactly the jobs a per-channel level is for, and they are much cheaper than swapping
-instruments.
+instruments — and, since **SKB-043** fixed the last hardcoded exposability guard (in the sequencer's
+Step Properties path), a Mixer channel is exposable and P-lockable on exactly the same footing as any
+other node's parameter, with no remaining surface that quietly refuses it.
 
 One thing worth knowing before you rely on it: exposing a channel changes *how* the fader keeps
 working, not whether it works. The exporter does not look for a flat parameter named `level1` — it
-resolves the value out of the same `levels` array the UI already stores it in, so a channel exposed
+resolves the value out of the same `levels` array the UI already stores it in
+(`skald-backend/core/codegen_nodes.odin::exposed_param_default`, `::mixer_channel_level`), so a channel exposed
 at 0.4 exports with its field initialized to 0.4, not a generic default. What does change is the path
 an edit takes while you are playing: because that value lives inside a nested array rather than a
 bare field, dragging an exposed channel's fader does not take the same instant, same-sample path an
 exposed Filter cutoff gets — it goes through the ordinary debounced rebuild instead. The fader still
-drives the sound; it just arrives a rebuild later rather than on the next sample. Full detail in
-Code-vs-intent notes.
+drives the sound; it just arrives a rebuild later rather than on the next sample. Full detail is in
+KI-046.
 
 ## Try it (hands-on)
 
@@ -175,16 +184,16 @@ one: **`examples/instruments/bass/slap-bass.skald.json`**. Its subgraph is three
 three-channel Mixer labelled **"String + Sub + Snap"** — a textbook frequency-and-transient layering
 split.
 
-Before you start, here is what is inside (all from the patch file):
+Before you start, here is what is inside (all from the patch file, `examples/instruments/bass/slap-bass.skald.json::nodes`):
 
-- **String** — sawtooth oscillator, amplitude 0.4, into `input_1` at level **0.55** (lines 22-34, 155)
-- **Sub** — sine oscillator, amplitude 0.4, into `input_2` at level **0.55** (lines 36-49, 156)
+- **String** — sawtooth oscillator, amplitude 0.4, into `input_1` at level **0.55**
+- **Sub** — sine oscillator, amplitude 0.4, into `input_2` at level **0.55**
 - **Thumb Snap** — white noise at 0.6 through a 0.5 ms attack / 15 ms decay / 0 sustain envelope, into
-  `input_3` at level **0.45** (lines 51-76, 157-158)
+  `input_3` at level **0.45**
 - Mixer output → **Quack** lowpass, cutoff 240 Hz with resonance 2.6, swept to 4 kHz by its own
-  envelope → **Amp** ADSR → Output (lines 93-163)
-- Sequence: 9 notes over 16 steps at 100 BPM; instrument volume 0.78; project master 0.78 (lines
-  171-193)
+  envelope → **Amp** ADSR → Output
+- Sequence: 9 notes over 16 steps at 100 BPM; instrument volume 0.78; project master 0.78
+  (`examples/instruments/bass/slap-bass.skald.json::sequencerTracks`)
 
 Do this with the app open:
 
@@ -219,8 +228,8 @@ Do this with the app open:
 
 8. **Break it — bad gain staging.** Set In 1, In 2 and In 3 all to `2.0`. Every layer is now doubled,
    so the mixer output is roughly four times what the patch was designed around, and up to six voices
-   of that sum at the output before the master soft limiter
-   (`codegen.odin:2417`). What you hear is the lesson: it does *not* get four times louder. The low
+   of that sum reach the output before the per-asset soft limiter
+   (`skald-backend/core/codegen_project.odin::emit_soft_limit_proc`). What you hear is the lesson: it does *not* get four times louder. The low
    end stops growing, the transients flatten out, the whole thing takes on a fuzzy, compressed honk,
    and quiet notes get dragged up to the same loudness as loud ones. Turning everything up made the
    patch smaller and dirtier. Now pull all three down to `0.2` — the balance between the layers is
@@ -230,7 +239,7 @@ Do this with the app open:
 9. **Break it again — phase cancellation.** Click the **String** oscillator and change its waveform
    from Sawtooth to **Sine**. You now have two identical sine layers at the same pitch in channels 1
    and 2, and because a fresh voice resets both oscillators' phase to zero
-   (`codegen.odin:1426-1427`) they are perfectly correlated: the bass gets noticeably louder and
+   (`skald-backend/core/codegen_processor.odin::generate_processor_code`) they are perfectly correlated: the bass gets noticeably louder and
    duller, roughly +6 dB on that pair. Now, with String still selected, set its **Phase** to `180`
    degrees. The two sines are exactly opposed, every sample cancels, and the pitched part of the bass
    **disappears entirely** — all that survives is the snap. You added no mute and turned down no
@@ -244,7 +253,7 @@ Do this with the app open:
 ## Why you patch it this way
 
 The canonical shape is **sources → Mixer → one shared filter → one shared amp envelope → Output**,
-exactly as slap-bass is wired (`slap-bass.skald.json:155-163`). Three reasons this order and not
+exactly as slap-bass is wired. Three reasons this order and not
 another:
 
 **Mixer before the filter.** Running the summed layers through a single filter is what glues them
@@ -256,12 +265,12 @@ modulations, and they will drift into sounding like three instruments playing in
 **Mixer before the amp envelope.** One ADSR on the sum means one attack, one release, one note. Put
 the amp envelope on each layer *before* the mixer and you are now hand-syncing three envelopes. The
 exception proves the rule: slap-bass deliberately puts a separate 15 ms envelope on the noise layer
-*before* the mixer (`slap-bass.skald.json:157-158`), because that layer's job is to exist only during
+*before* the mixer, because that layer's job is to exist only during
 the transient. Per-layer envelopes go before the mixer when the layers need *different* time
 behaviour; the shared envelope goes after.
 
 **Do not use a Mixer just to merge wires.** Skald already sums every connection landing on the same
-input port — the Output node sums all its sources (`codegen.odin:1958-1974`), and so does the Mixer
+input port — the Output node sums all its sources (`skald-backend/core/codegen_nodes.odin::generate_graph_output_adds`), and so does the Mixer
 itself within one channel. If two oscillators simply need to both reach a filter, wire them both
 straight to the filter's `input`. Add a Mixer when you want *independent, adjustable, exposable* level
 per source. That is the only thing it buys you, and it is a good thing to buy.
@@ -274,8 +283,8 @@ cleaner and more controllable. Neither is wrong; know which one you chose.
 
 **Watch the domain boundary.** If your Mixer is downstream of a Delay or Reverb it moves into the bus
 domain and runs once per sample for the whole instrument, not once per voice
-(`codegen.odin:1923-1924`). Voice-only node types cannot follow it there — the exporter will refuse
-with an explicit error rather than silently drop them (`codegen.odin:1935-1944`).
+(`skald-backend/core/codegen_analysis.odin::seed_bus_domain`). Voice-only node types cannot follow it there — the exporter will refuse
+with an explicit error rather than silently drop them (`skald-backend/core/codegen_analysis.odin::compute_bus_domain`).
 
 ## Going further
 
@@ -306,12 +315,13 @@ Concrete ways to make a mixer-based instrument more expressive:
   loading two instruments and far smoother than switching between them.
 - **Fake per-channel pan.** Because Mixer pan does nothing, build two Mixers (a left sub-mix and a
   right sub-mix), put each source in both at different levels, and feed a Panner. Crude, but it is
-  the only way to get a per-layer stereo image in Skald today.
+  the only way to get a per-layer stereo image in Skald today — see **What Skald deliberately does not
+  do** for the mono-with-terminal-pan design this works around.
 
 ## Under the hood
 
 The generated Odin is about as small as DSP gets. `generate_mixer_code`
-(`skald-backend/core/codegen.odin:602-665`) opens a scoped block, declares an accumulator, and emits
+(`skald-backend/core/codegen_nodes.odin::generate_mixer_code`) opens a scoped block, declares an accumulator, and emits
 one `+=` line per connection:
 
 ```odin
@@ -325,8 +335,8 @@ which is the formula
 
 > `out = Σᵢ (sourceᵢ × levelᵢ)`
 
-emitted at `codegen.odin:635-663`. You can see this verbatim in the golden test output at
-`skald-backend/tests/golden/.gen/dual_osc.odin:505-508`.
+emitted by that same procedure. You can see this verbatim in the golden test output at
+`skald-backend/tests/golden/dual_osc.odin.golden::Asset_process`.
 
 Three things are notably *absent*, and each is a design decision you inherit:
 
@@ -335,15 +345,15 @@ Three things are notably *absent*, and each is a design decision you inherit:
 - **No pan.** The per-channel `pan` value is parsed into the node's data and never read.
 - **No smoothing.** The level is substituted as a compile-time constant when the channel is not
   exposed, so there is nothing to smooth; when it *is* exposed it becomes a struct-field read
-  (`param_utils.odin:81-84`) and a large jump written from game code lands as a step. Ramp it in your
+  (`skald-backend/core/param_utils.odin::get_f32_param`) and a large jump written from game code lands as a step. Ramp it in your
   game loop if you are moving it fast.
 
-The safety net is downstream and global, not per-mixer. Each instrument's output is scaled by its
-`volume` at the asset boundary (`codegen.odin:1952`), all instruments sum into the project mix, and
-the final stage applies master volume followed by a `tanh` soft limiter whose ceiling is exactly 1.0
-(`codegen.odin:2415-2418`). `tanh` squashes gracefully instead of slicing, which is why over-driving
+The safety net is downstream and layered, not per-mixer. Each instrument's output is scaled by its
+`volume` at the asset boundary (`skald-backend/core/codegen_processor.odin::generate_processor_code`), and that same procedure applies a per-asset `tanh` soft limiter
+whose ceiling is exactly 1.0 before the asset even returns (`skald-backend/core/codegen_project.odin::emit_soft_limit_proc`). All instruments then sum into the project mix, and
+the project stage applies master volume followed by the identical soft limiter a second time. `tanh` squashes gracefully instead of slicing, which is why over-driving
 a mixer sounds like compression and glue rather than digital crackle — but it is a last resort, not a
-mixing tool. The preview player runs the same code path (`codegen.odin:2599-2624`), so what you hear
+mixing tool. The preview player runs the same code path (`skald-backend/core/codegen_project.odin::generate_wasm_shim_code`), so what you hear
 in the app is what the exported instrument does.
 
 ## Terms introduced
@@ -378,70 +388,6 @@ in the app is what the exported instrument does.
 - **Expose** — marking a parameter so the exported Odin gets a typed setter for it, letting game code
   change it at runtime.
 
-## Code-vs-intent notes
+## Known issues
 
-**1. A finding that exposing a channel pinned it to 1.0 and left the fader inert was wrong. (resolved)**
-The claim was that the exporter looks up a flat `level1` field the UI never writes, misses, and falls
-back to the range table's default of 1.0 — silently discarding the fader and freezing the channel at
-unity in both preview and export. That is not what the exporter's default lookup does for a Mixer
-node: it recognises `level<n>` names specifically and resolves them out of the same nested `levels`
-array the UI already stores them in, before it would ever fall back to a generic default. A channel's
-exported starting value has always matched its fader. A real, narrower defect existed alongside this
-claim — the shared parameter-control component's `level<n>` row hardcoded `isExposable = false` — but
-it was never reachable for a Mixer node in the shipped editor, because the parameter panel's own
-mixer-specific branch (the one that actually renders when a Mixer is selected) has always passed
-`isExposable = true` on its own, independently of the shared component. That hardcoded `false`
-mattered only for the sequencer's Step Properties editor, which reuses the shared component, and it
-has since been flipped to `true` there too. Net effect, and the effect all along in the app you can
-actually open: exposing a channel preserves its level.
-
-**2. Per-channel `pan` is modelled, stored, and completely inert. (confusing)**
-`MixerChannelParams` declares `pan` with the comment "Added pan for more realistic mixing"
-(`skald-ui/src/definitions/types.ts:122-126`), the default params set `pan: 0` on every channel
-(`node-definitions.ts:139-144`), both UI paths carefully preserve it through edits
-(`MixerNode.tsx:23`, `NodeParameterControls.tsx:260`), and every example patch serialises it
-(e.g. `slap-bass.skald.json:85-87`). No UI anywhere renders a control for it, and
-`generate_mixer_code` (`codegen.odin:602-665`) never reads it — it only reads `inputCount` and each
-entry's `level`. Standard mixer practice would put an equal-power pan law on each channel
-(cos/sin of the pan angle, −3 dB at centre), which is exactly what the Panner node already implements
-(`codegen.odin:674-676`) [Source: https://music.arts.uci.edu/dobrian/maxcookbook/constant-power-panning-using-table-lookup].
-The Mixer simply has no stereo path to put it in.
-
-**3. Three different maximum values for the same fader. (confusing)**
-On-canvas number box: `min={0} max={2}` (`MixerNode.tsx:59`). Parameter-panel slider:
-`min={0} max={1}` (`ParameterPanel.tsx:343`). Exported setter clamp: 0.0–2.0
-(`param_ranges.odin:43-45` feeding `codegen.odin:1621-1622`). A user who sets 1.6 on the canvas and
-then opens the parameter panel sees a slider pegged at its maximum, and dragging it can only reduce
-the value.
-
-**4. `NodeParameterControls`' Mixer branch is unreachable. (confusing)**
-`ParameterPanel.renderNodeParameters` handles `type === 'mixer'` and returns at
-`ParameterPanel.tsx:338-348`, before the fall-through to the shared component at
-`ParameterPanel.tsx:381-388`. The Mixer case in `NodeParameterControls.tsx:254-296` — which has the
-0–2 slider *and* an editable **Inputs** field — therefore never renders for a Mixer node; its only
-other caller is the sequencer's step editor (`StepPropertiesEditor.tsx:174`). Visible consequence:
-**Inputs** can only be changed on the canvas node, never from the parameter panel, and the panel's
-faders are the narrower 0–1 pair.
-
-**5. Default level disagrees between UI and exporter. (cosmetic)**
-The UI's default channel level is 0.75 (`node-definitions.ts:140-143`, `MixerNode.tsx:23`), while the
-exporter's fallback for a channel with no `levels` entry is 1.0 (`codegen.odin:642`) and the range
-table's default is also 1.0 (`param_ranges.odin:44`). Harmless while the UI always serialises a
-`levels` array, but a hand-written patch that omits `levels` will be 2.5 dB per channel hotter than the
-same patch built in the app.
-
-**6. Channels are matched by array position in the exporter but by `id` in the UI. (cosmetic)**
-`codegen.odin:643` reads `levels[i-1]` — purely positional. Both UI paths look the channel up by
-`l.id === ch` (`MixerNode.tsx:22-24`, `NodeParameterControls.tsx:259`). A hand-edited or reordered
-`levels` array (say `id: 3` first) displays one way in the app and exports another.
-
-**7. `inputCount` fallback differs between UI and backend. (cosmetic)**
-Missing `inputCount` means 4 channels in the UI (`node-definitions.ts:138`, and `MixerNode.tsx:19`
-falls back to 4) but 8 in the exporter (`codegen.odin:606`) and 8 in the validator
-(`graph_validate.odin:78`). Only reachable via hand-written JSON.
-
-**8. `new_docs/MixerNode.md` is stale. (cosmetic)**
-It documents only `data.label` and `data.inputCount`, and states "Emitted Events / Outputs: None"
-(`skald-ui/new_docs/MixerNode.md:1-16`). It does not mention the `levels` array, the per-channel
-faders, the 1–32 clamp, or the `input_1`…`input_N` / `output` handle ids that the component actually
-creates (`MixerNode.tsx:19-67`).
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-045, KI-046. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.

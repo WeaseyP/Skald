@@ -6,12 +6,16 @@ safe to remove permanently whenever.
 
 That audit's write-up (`../AUDIT.md`) has been deleted: every example is now
 checked on both ingestion paths by `skald-ui/src/tests/corpus/`, which runs in CI,
-so the gate is the document. `PulsarBeam.json` below is quarantined there by name
-with its exact symptom, and the quarantine entry fails if the file ever starts
-passing or disappears.
+so the gate is the document.
+
+`PulsarBeam.json`, formerly here, wired an LFO into `Delay`'s `input_delayTime`
+— a port that has never existed in the backend (`graph_validate.odin` lists
+only `input` for Delay) — and was not a fixable data error, so roadmap B6-2
+deleted the file outright rather than quarantine it indefinitely. Its
+quarantine entry went with it; B6-1 then removed the quarantine mechanism in
+`corpusGate.ts` altogether, once auto-wrapping made the loose graphs playable.
 
 | File | Why archived |
 | --- | --- |
 | `Sax2.json` | Duplicate of `instruments/winds/midi-setup/sax3.json` — legacy pre-Instrument-node original of the same patch, superseded. |
 | `AlarmPulse.json` | Duplicate of `sound-effects/synth/Alarm.json` — same LFO→Oscillator→Output patch, same values. |
-| `PulsarBeam.json` | Broken since creation: wires an LFO into `Delay`'s `input_delayTime`, a port that has never existed in the backend (`graph_validate.odin` lists only `input` for Delay). Committed with the message "some need work". Would need redesign, not just a fix, to make sound. |

@@ -29,10 +29,14 @@ interface SequencerDockProps {
     onMuteToggle: (trackId: string) => void;
     onSoloToggle: (trackId: string) => void;
     onFocusTrack: (trackId: string) => void;
-    onToggleStep: (trackId: string, step: number) => void;
+    onToggleStep: (trackId: string, step: number, notePitch?: number) => void;
+    // Right-click erase on a grid row: the row has no pitch axis, so it clears
+    // the step rather than deleting one arbitrary chord member (SKB-025).
+    onClearStep: (trackId: string, step: number) => void;
     onUpdateNote: (trackId: string, step: number, changes: Partial<any>, notePitch?: number) => void;
     onUpdateSteps: (trackId: string, steps: number) => void;
-    onStepSelect: (trackId: string, step: number) => void;
+    // notePitch: which note of the step the selection refers to.
+    onStepSelect: (trackId: string, step: number, notePitch: number) => void;
 }
 
 const dockContainerStyles: React.CSSProperties = {
@@ -60,13 +64,15 @@ const contentAreaStyles: React.CSSProperties = {
 // import { ActionSettings } from 'react-icons/ai'; // REMOVED
 
 import { AudioVisualizer } from '../Visualization/AudioVisualizer';
+import { PeakMeter } from '../Visualization/PeakMeter';
+import { StereoAnalysers } from '../../utils/meter';
 import { PianoRoll } from './PianoRoll';
 import { NumberInput } from '../common/NumberInput';
 
 
 
 
-export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: AnalyserNode | null }> = ({
+export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: AnalyserNode | null; meterAnalysers: StereoAnalysers | null }> = ({
     state,
     isBuilding,
     bpm,
@@ -83,10 +89,12 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     onSoloToggle,
     onFocusTrack,
     onToggleStep,
+    onClearStep,
     onUpdateNote,
     onUpdateSteps,
     onStepSelect,
-    analyserNode
+    analyserNode,
+    meterAnalysers
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
@@ -192,6 +200,11 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                             showSpectrum={true}
                             showOscilloscope={true}
                         />
+                        {/* Packet B10: stereo peak-hold meter + clip LED, tapped
+                            from the worklet output — what the export produces. */}
+                        <div style={{ marginTop: '8px' }}>
+                            <PeakMeter analysers={meterAnalysers} width={100} height={40} />
+                        </div>
                         <div style={{ marginTop: '10px', width: '100%', textAlign: 'center' }}>
                             <label style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '2px' }}>Volume</label>
                             <input
@@ -222,9 +235,10 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                             currentStep={state.currentStep}
                             steps={patternSteps}
                             onToggleStep={onToggleStep}
+                            onClearStep={onClearStep}
                             onUpdateNote={onUpdateNote}
                             bpm={bpm}
-                            onStepContext={(trackId, step, x, y) => onStepSelect(trackId, step)}
+                            onStepContext={(trackId, step, notePitch) => onStepSelect(trackId, step, notePitch)}
                         />
 
                         {editingTrack && (
@@ -234,7 +248,12 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                                 onToggleStep={onToggleStep}
                                 currentStep={state.currentStep}
                                 steps={editingTrack.steps || 16}
+                                patternSteps={patternSteps}
                                 onClose={() => setEditingTrackId(null)}
+                                // E3: the same selection callback StepGrid feeds through
+                                // onStepContext, so a note picked in the roll opens the
+                                // same Step Properties panel a grid click would.
+                                onSelectNote={onStepSelect}
                             />
                         )}
                     </div>

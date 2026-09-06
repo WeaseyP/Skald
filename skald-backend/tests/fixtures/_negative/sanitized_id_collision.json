@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "id": "inst",
+      "type": "instrument",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "Collide",
+        "label": "Collide",
+        "voiceCount": 1,
+        "subgraph": {
+          "nodes": [
+            { "id": "osc-1", "type": "oscillator", "data": { "label": "Osc A", "waveform": "Sine", "amplitude": 0.4 } },
+            { "id": "osc_1", "type": "oscillator", "data": { "label": "Osc B", "waveform": "Square", "amplitude": 0.4 } },
+            { "id": "out", "type": "output", "data": { "label": "Out" } }
+          ],
+          "connections": [
+            { "from_node": "osc-1", "from_port": "output", "to_node": "out", "to_port": "input" },
+            { "from_node": "osc_1", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "session": { "bpm": 120, "patternSteps": 16, "masterVolume": 0.8 }
+}

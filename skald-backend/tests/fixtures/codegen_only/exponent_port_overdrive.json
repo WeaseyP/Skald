@@ -1,0 +1,44 @@
+{
+  "_comment": "Roadmap packet B8-3 / BUGS.md SKB-014. An ADSR ('Pitch Env') with depth 120 feeds Oscillator.input_freq directly - the same shape four-bar-song.skald.json's Kick shipped before B8-1 fixed it. input_freq is a V/Oct exponential port (`base * math.pow(2.0, math.clamp(mod, -10.0, 10.0))`), and with the ADSR's own `input` unwired (default 1.0) its output peaks at exactly the authored depth: 120, far past the +/-10 the clamp allows. This fixture pins that warn_exponent_port_overdrive fires (non-fatal stderr, naming the instrument, the Oscillator, the ADSR and the authored peak) while the emitted .odin (the golden) is unchanged - the clamp's own behaviour is intentionally left alone; only the missing diagnostic is new.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "overdrivetest",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 1,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "midi_config": { "device": "All", "channel": 1 },
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "pitchenv",
+              "type": "ADSR",
+              "parameters": { "attack": 0.001, "decay": 0.08, "sustain": 0, "release": 0.05, "depth": 120 }
+            },
+            {
+              "id": "osc",
+              "type": "Oscillator",
+              "parameters": { "frequency": 50, "waveform": "Sine", "amplitude": 1.0 }
+            },
+            {
+              "id": "out",
+              "type": "GraphOutput",
+              "parameters": {}
+            }
+          ],
+          "connections": [
+            { "from_node": "pitchenv", "from_port": "output", "to_node": "osc", "to_port": "input_freq" },
+            { "from_node": "osc", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

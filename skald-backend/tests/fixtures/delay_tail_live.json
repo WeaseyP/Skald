@@ -1,0 +1,51 @@
+{
+  "__comment": "B7-2-followup / BUGS.md SKB-016: proves the tail countdown is now computed from the LIVE field values at arm time, not baked from each exposed parameter's range maximum. delayTime and feedback are both exposed here, so the OLD code baked Asset_BUS_TAIL_SECONDS at the pessimistic 270s (delayTime max 2.0s x 135 passes for feedback max 0.95 to fall 60dB) regardless of what is authored. The authored values (delayTime 0.25, feedback 0.3) give a true live tail of 0.25 x ceil(ln(0.001)/ln(0.3)) = 0.25 x 6 = 1.5s. is_playing must go false shortly after that 1.5s tail, not 270s later.",
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "delaytaillivefixture",
+        "name": "Asset",
+        "mute": false,
+        "solo": false,
+        "voice_count": 2,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "volume": 1.0,
+        "audio_graph": {
+          "nodes": [
+            {
+              "id": "1",
+              "type": "Oscillator",
+              "parameters": { "frequency": 220, "waveform": "Sine", "amplitude": 0.5 }
+            },
+            {
+              "id": "2",
+              "type": "ADSR",
+              "parameters": { "attack": 0.005, "decay": 0.05, "sustain": 0.7, "release": 0.05, "depth": 1 }
+            },
+            {
+              "id": "3",
+              "type": "Delay",
+              "parameters": {
+                "delayTime": 0.25,
+                "feedback": 0.3,
+                "mix": 0.5,
+                "exposedParameters": ["delayTime", "feedback"]
+              }
+            },
+            { "id": "4", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "1", "from_port": "output", "to_node": "2", "to_port": "input" },
+            { "from_node": "2", "from_port": "output", "to_node": "3", "to_port": "input" },
+            { "from_node": "3", "from_port": "output", "to_node": "4", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

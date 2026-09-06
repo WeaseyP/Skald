@@ -10,7 +10,11 @@ import { useCallback } from 'react';
 import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import { SequencerTrack } from '../../definitions/types';
 import { ImportedGraph, layOutImportBatch } from '../../utils/importLayout';
+import { getInstrumentNodes } from '../../utils/projectSerializer';
 import { EditorHistoryApi, SessionSettings } from './editorSnapshot';
+import { dedupeTrackNotes } from '../../utils/trackNotes';
+import { CURRENT_SAVE_VERSION, migrateSaveFile } from '../../utils/saveMigrations';
+import { normalizeSyncedFreeRun } from '../../utils/syncNormalize';
 
 // SessionSettings (bpm / patternSteps / masterVolume / packageName) is defined
 // with the undo snapshot it belongs to, in editorSnapshot.ts — the session block
@@ -32,41 +36,10 @@ export type FileIOHistoryHooks = Pick<EditorHistoryApi, 'pushHistory' | 'resetHi
 
 export type FileStatus = { kind: 'success' | 'error'; message: string };
 
-// Parameters that must never appear in a node's `exposedParameters`, because
-// exposing them mints public API the DSP provably never reads.
-//
-// `syncRate` stores a note-division STRING ("1/8"). It was exposable in one
-// click until the three sidebar wrappers were corrected; anything saved while
-// that was true still carries the dead entry, which resolves to the
-// unknown-parameter range {-1e6, 1e6, 0.0, ""} and emits a `set_syncRate`
-// writing a field nothing reads. Strip it at parse time so existing files stop
-// carrying it. This is deliberately a value-level scrub, not a schema
-// migration (roadmap §4 constraint 4 gates those behind C1's version field):
-// removing a name from a list needs no version to be safe or idempotent.
-const NEVER_EXPOSABLE = ['syncRate'];
-
-// Applies the scrub to a node and, recursively, to any Instrument subgraph
-// nodes — which is where nearly every BPM-syncable node actually lives.
-const stripDeadExposedParameters = (node: any): void => {
-    if (!node || typeof node !== 'object') return;
-    const data = node.data;
-    if (data && typeof data === 'object') {
-        if (Array.isArray(data.exposedParameters)) {
-            data.exposedParameters = data.exposedParameters.filter(
-                (p: unknown) => typeof p !== 'string' || !NEVER_EXPOSABLE.includes(p)
-            );
-        }
-        const subNodes = data.subgraph?.nodes;
-        if (Array.isArray(subNodes)) {
-            for (const sub of subNodes) stripDeadExposedParameters(sub);
-        }
-    }
-};
-
 // Parse + shape-check a save file BEFORE any state is touched. A truncated
 // or foreign JSON used to either throw at the boundary or silently clobber
 // the graph with `undefined` fields.
-const parseSaveFile = (graphJson: string): { flow?: any; error?: string } => {
+const parseSaveFile = (graphJson: string): { flow?: any; error?: string; migratedFrom?: number; migrations?: string[] } => {
     let flow: any;
     try {
         flow = JSON.parse(graphJson);
@@ -82,17 +55,14 @@ const parseSaveFile = (graphJson: string): { flow?: any; error?: string } => {
     if (flow.sequencerTracks !== undefined && !Array.isArray(flow.sequencerTracks)) {
         return { error: 'not a Skald save file (sequencerTracks is not an array)' };
     }
-    // React Flow v11 saves stored a group child's parent as `parentNode`;
-    // v12 reads `parentId`. Rehydrate the old key here so pre-migration
-    // grouped saves keep their grouping instead of silently flattening.
-    for (const n of flow.nodes) {
-        if (n && typeof n === 'object' && n.parentId === undefined && typeof n.parentNode === 'string') {
-            n.parentId = n.parentNode;
-            delete n.parentNode;
-        }
-        stripDeadExposedParameters(n);
-    }
-    return { flow };
+    // Packet C1: every file is brought forward through the migration registry
+    // (utils/saveMigrations.ts) before any state lands — absent version ⇒ 0,
+    // the pre-C1 shape, whose two ad hoc shims (parentNode -> parentId, the
+    // dead-syncRate scrub) are now migration 0 -> 1 and finally recurse into
+    // Instrument subgraphs. A file from a newer Skald is refused here, whole.
+    const migrated = migrateSaveFile(flow);
+    if (!migrated.ok) return { error: migrated.error };
+    return { flow: migrated.flow, migratedFrom: migrated.fromVersion, migrations: migrated.applied };
 };
 
 // Packet B4 (b) — there is no `confirm(` anywhere in skald-ui/src and no
@@ -127,7 +97,17 @@ export const useFileIO = (
     const handleSave = useCallback(async () => {
         if (!reactFlowInstance) return;
         const flow = reactFlowInstance.toObject();
+        // C7: a synced node's free-run field is written as the value its
+        // division resolves to at the saved tempo, so the file holds one truth
+        // and turning sync off later lands on the sound that was playing. On a
+        // copy — the live graph is not edited by Save.
+        const savedNodes = JSON.parse(JSON.stringify(flow.nodes));
+        normalizeSyncedFreeRun(savedNodes, sessionSettings.bpm);
+        flow.nodes = savedNodes;
         const saveData = {
+            // Packet C1: Save always stamps the current schema version, so the
+            // migration registry knows exactly what shape it is reading back.
+            version: CURRENT_SAVE_VERSION,
             ...flow,
             sequencerTracks,
             session: sessionSettings
@@ -157,10 +137,26 @@ export const useFileIO = (
             return false;
         }
 
+        // C7: normalize on the way in as well, at the tempo the file was
+        // authored at (its session bpm; the current tempo when it has none),
+        // so a pre-C7 file's stale free-run values are corrected on first
+        // open rather than only on next save.
+        const fileBpm = Number.isFinite(flow.session?.bpm) && flow.session.bpm > 0 ? flow.session.bpm : sessionSettings.bpm;
+        normalizeSyncedFreeRun(flow.nodes, fileBpm);
         setNodes(flow.nodes);
         setEdges(flow.edges || []);
         if (flow.sequencerTracks) {
             loadSequencerTracks(flow.sequencerTracks);
+            // B5-x3: loadTracks drops later duplicates at one (step, pitch)
+            // silently — it has no channel to speak on. Load does, and a note
+            // that was in the file and is not on the grid is worth one line.
+            const { dropped } = dedupeTrackNotes(flow.sequencerTracks);
+            if (dropped > 0) {
+                notifyFileStatus({
+                    kind: 'error',
+                    message: `${dropped} duplicate note${dropped === 1 ? '' : 's'} dropped: the file held more than one note at the same step and pitch, which the sequencer addresses as one. The first of each pair was kept.`,
+                });
+            }
         }
         // Older saves have no session block — leave the current
         // settings alone rather than inventing defaults, and only
@@ -201,8 +197,29 @@ export const useFileIO = (
         // undo BACK to: the pre-load graph and the newly loaded tracks are not a
         // state the user ever authored.
         history.resetHistory();
-        if (sourceName) {
-            notifyFileStatus({ kind: 'success', message: `Loaded "${sourceName}"` });
+
+        // SKB-019 / packet B6-1: a graph with no Instrument node auto-wraps as
+        // one "Asset" SFX instrument on Play/Generate (buildProjectData). That
+        // is announced HERE — once, via the same auto-clearing success toast
+        // Save/Load already uses (app.tsx's notifyFileStatus auto-clears a
+        // 'success' after 4s) — rather than as a permanent banner: an earlier
+        // revision reported it in ProjectIssuesBanner instead, which is
+        // non-dismissible BY DESIGN (it reports unplayable data) and painted a
+        // problem's styling over a build that actually succeeds, on all 24
+        // shipped loose-graph examples. Same predicate buildProjectData uses,
+        // so this can't announce a wrap that doesn't actually happen (or stay
+        // silent about one that does).
+        const looseGraphNotice =
+            flow.nodes.length > 0 && getInstrumentNodes(flow.nodes).length === 0
+                ? 'no Instrument node — the whole graph will auto-wrap as one "Asset" SFX instrument for Play/Generate (SKB-019)'
+                : null;
+
+        if (sourceName || looseGraphNotice) {
+            const base = sourceName ? `Loaded "${sourceName}"` : 'Loaded';
+            notifyFileStatus({
+                kind: 'success',
+                message: looseGraphNotice ? `${base} — ${looseGraphNotice}` : base,
+            });
         }
         return true;
     }, [reactFlowInstance, setNodes, setEdges, history, loadSequencerTracks, applySessionSettings, notifyFileStatus]);

@@ -4,6 +4,7 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { removeArchiveFromPackagedExamples } from './src/main/forgePostPackage';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -41,6 +42,33 @@ const config: ForgeConfig = {
     extraResource: ['./skald_codegen.exe', '../examples'],
   },
   rebuildConfig: {},
+  // examples/archive/ (AlarmPulse.json, Sax2.json — superseded duplicates of
+  // sound-effects/synth/Alarm.json and instruments/winds/midi-setup/sax3.json,
+  // kept as low-cost historical reference; examples/archive/README.md says so
+  // and calls them safe to delete whenever) stays in the REPO, but a packaged
+  // build
+  // has no reason to ship it: the Load/Import/Save dialogs and the manual's
+  // "Try it" links (dialogDefaults.ts) never point a user at archive/.
+  //
+  // This can't be an extraResource array edit. extraResource copies a path
+  // verbatim (@electron/packager's App#copyExtraResources does
+  // `fs.copy(resource, resourcesDir/basename(resource))` per entry) — there
+  // is no glob or ignore option, so "../examples minus one subfolder" is not
+  // expressible as a list of paths without either duplicating the whole
+  // examples/ tree elsewhere first (a prePackage hook staging a filtered
+  // copy — workable, but now two on-disk example trees to keep in sync) or
+  // deleting the unwanted subfolder from the OUTPUT once packaging has
+  // already copied it. postPackage is the hook Forge runs right after that
+  // copy, and it is handed exactly what this needs
+  // (packageResult.outputPaths, one per platform/arch) — see
+  // src/main/forgePostPackage.ts for the removal itself and
+  // src/tests/main/forgePostPackage.test.ts for the fixture-tree test that
+  // proves the exclusion actually excludes and nothing else.
+  hooks: {
+    postPackage: async (_forgeConfig, packageResult) => {
+      removeArchiveFromPackagedExamples(packageResult.outputPaths);
+    },
+  },
   makers: [
     new MakerSquirrel(
       {

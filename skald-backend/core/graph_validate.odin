@@ -27,8 +27,10 @@ import json "core:encoding/json"
 @(private = "file") ADSR_INPUTS := [?]string{"input", "input_attack", "input_decay", "input_sustain", "input_release"}
 @(private = "file") NOISE_INPUTS := [?]string{"input_amp"}
 @(private = "file") FILTER_INPUTS := [?]string{"input", "input_cutoff", "input_res"}
-@(private = "file") FM_INPUTS := [?]string{"input_mod", "input_carrier", "input_freq"}
-@(private = "file") WAVETABLE_INPUTS := [?]string{"input_freq", "input_pos", "input_amp"}
+// C5: FmOperator gained input_amp (F-A02-7) and Wavetable input_pulseWidth
+// (F-A01-7), each mirroring the get_f32_param port its generator reads.
+@(private = "file") FM_INPUTS := [?]string{"input_mod", "input_carrier", "input_freq", "input_amp"}
+@(private = "file") WAVETABLE_INPUTS := [?]string{"input_freq", "input_pos", "input_amp", "input_pulseWidth"}
 @(private = "file") THROUGH_INPUTS := [?]string{"input"}
 @(private = "file") PANNER_INPUTS := [?]string{"input", "input_pan"}
 @(private = "file") GAIN_INPUTS := [?]string{"input", "input_gain"}
@@ -150,4 +152,161 @@ validate_connections :: proc(graph: ^Graph, inst_name: string) {
 			os.exit(1)
 		}
 	}
+}
+
+// =================================================================================
+// Cycle detection (KI-055).
+//
+// generate_processor_code used to run topological_sort itself, print "Error:
+// instrument %q contains a feedback loop" naming the nodes topological_sort
+// could not place — then fall through past a commented-out os.exit(1).
+// Generation continued with only the nodes the sort DID reach: every node in
+// or behind the cycle was silently missing from the emitted asset, and the
+// generator still exited 0, so both the editor preview and a CLI build
+// reported success on an incomplete patch. Every other validation failure
+// here exits 1 (validate_connections above).
+//
+// find_cycle is the same finder/caller split as find_nested_instrument below,
+// for the same reason: `odin test tests\unit` (tests/unit/cycle_test.odin)
+// can exercise the detection without exiting the test binary.
+// =================================================================================
+
+/// Returns, sorted by id, every node topological_sort could not place — the
+/// nodes in the cycle itself plus everything downstream of it (a downstream
+/// node has an unsatisfiable in-edge the moment its upstream never gets
+/// emitted into the sort, so it is exactly as unreachable as the cycle).
+/// `found` is false for a DAG, in which case `nodes` is nil.
+find_cycle :: proc(graph: ^Graph) -> (nodes: []Node, found: bool) {
+	sorted, is_dag := topological_sort(graph)
+	defer delete(sorted)
+	if is_dag do return nil, false
+
+	in_sorted := make(map[string]bool)
+	defer delete(in_sorted)
+	for n in sorted do in_sorted[n.id] = true
+
+	all := nodes_sorted_by_id(graph)
+	defer delete(all)
+	out := make([dynamic]Node)
+	for node in all {
+		if !in_sorted[node.id] do append(&out, node)
+	}
+	// topological_sort's own contract (is_dag == (len(sorted) == len(nodes)))
+	// guarantees at least one node is excluded here whenever is_dag is false.
+	return out[:], true
+}
+
+/// The message is unchanged from the pre-fix version (the manual quotes it —
+/// 00-foundations.md, "Legal connections, and what happens when you get it
+/// wrong"); only the missing os.exit(1) is new.
+validate_no_cycle :: proc(graph: ^Graph, inst_name: string) {
+	// find_cycle returns nil for a DAG, so the early return below frees
+	// nothing; the found branch ends in os.exit(1), where the process
+	// tearing down makes an explicit delete pointless (same convention as
+	// validate_no_nested_instruments / validate_unique_node_ids below).
+	cycle_nodes, found := find_cycle(graph)
+	if !found do return
+	fmt.eprintf("Error: instrument %q contains a feedback loop. Nodes in or behind the cycle:", inst_name)
+	for node in cycle_nodes {
+		fmt.eprintf(" %s(%s)", node.type, node.id)
+	}
+	fmt.eprintf("\nBreak the cycle (remove the feedback wire) and regenerate.\n")
+	os.exit(1)
+}
+
+// =================================================================================
+// Preflight structural rules (roadmap packet B9-1 / B9-2).
+//
+// Each rule is a FINDER that returns what it found plus a caller that turns the
+// finding into a hard error. The split exists so `odin test tests\unit` can
+// exercise the rule (tests/unit/preflight_test.odin): every other hard-error
+// path in the codegen calls os.exit(1) inline and therefore has no in-process
+// test at all — the exit would take the test binary with it.
+// =================================================================================
+
+/// SKB-028 (packet B9-1). An Instrument node inside an instrument's graph.
+/// build_graph_from_raw parses it faithfully — it recurses into the inner
+/// subgraph — but there is no generator for the type, so the emission dispatch
+/// fell through to its "unknown node type" branch. That branch printed an
+/// error and did not exit: the file was written, "Codegen OK" was printed, and
+/// the inner instrument's nodes were simply absent from the export with its
+/// output variable stuck at 0.0. Sorted by id so two nested instruments name
+/// the same offender on every run (the error text is part of the output the
+/// determinism gate would otherwise see vary).
+find_nested_instrument :: proc(graph: ^Graph) -> (Node, bool) {
+	sorted := nodes_sorted_by_id(graph)
+	defer delete(sorted)
+	for node in sorted {
+		if node.type == "Instrument" do return node, true
+	}
+	return Node{}, false
+}
+
+validate_no_nested_instruments :: proc(graph: ^Graph, inst_name: string) {
+	inner, found := find_nested_instrument(graph)
+	if !found do return
+	inner_name := get_string_param(inner, "name", inner.raw_id)
+	fmt.eprintf(
+		"Error: instrument %q contains another Instrument (%q, node id %s). Skald has no generator for an instrument inside an instrument: its nodes would be left out of the export and its output would sit at 0.0 for the whole asset. In the editor, select the inner instrument and use Explode Instrument so its nodes join this graph, or move it onto the canvas as a top-level instrument of its own, then regenerate.\n",
+		inst_name, inner_name, inner.raw_id,
+	)
+	os.exit(1)
+}
+
+/// The two raw ids that collapsed to one identifier. `first_raw == second_raw`
+/// is a literal duplicate in the JSON; otherwise the two differ only in bytes
+/// sanitize_identifier maps to `_` ("osc-1" vs "osc_1") — a collision the
+/// author cannot see by eye, which is why the message spells the reduced form.
+Duplicate_Node_Id :: struct {
+	first_raw:  string,
+	second_raw: string,
+	sanitized:  string,
+}
+
+/// SKB-021 (packet B9-2). Node ids are the key connections and step overrides
+/// address a node by, and they are spliced into generated identifiers after
+/// sanitize_identifier. Two nodes with the same key used to be renamed
+/// (`<id>_dup2`) with a warning that admitted "connections still target the
+/// first node" — the mis-wire the rename was meant to prevent survived it,
+/// because a renamed node is a node nothing in the file can reach.
+///
+/// Types that normalize to "" (React Flow groups, the legacy polyphonicWrapper)
+/// never enter the node map and cannot shadow anything, so they are skipped.
+/// `instrument_only` is the graph-shape top level's scope: there only
+/// Instrument nodes are keyed and every other node is discarded, so a helper
+/// node sharing an instrument's id is not something the generated code can
+/// observe.
+find_duplicate_node_id :: proc(nodes: []Node_Raw, instrument_only := false) -> (Duplicate_Node_Id, bool) {
+	seen := make(map[string]string)
+	defer delete(seen)
+	for raw in nodes {
+		node_type := normalize_node_type(raw.type)
+		if node_type == "" do continue
+		if instrument_only && node_type != "Instrument" do continue
+		id := sanitize_identifier(raw.id, true)
+		if first, taken := seen[id]; taken {
+			return Duplicate_Node_Id{first_raw = first, second_raw = raw.id, sanitized = id}, true
+		}
+		seen[id] = raw.id
+	}
+	return Duplicate_Node_Id{}, false
+}
+
+/// `owner` reads as a noun phrase in the message: `instrument "Kick"` or
+/// `the top-level graph`.
+validate_unique_node_ids :: proc(nodes: []Node_Raw, owner: string, instrument_only := false) {
+	dup, found := find_duplicate_node_id(nodes, instrument_only)
+	if !found do return
+	if dup.first_raw == dup.second_raw {
+		fmt.eprintf(
+			"Error: %s has two nodes with the same id %q. Connections and step overrides address a node by its id, so only one of them could ever be wired and the other would silently take or lose wires meant for it. Give every node a unique id and regenerate.\n",
+			owner, dup.first_raw,
+		)
+	} else {
+		fmt.eprintf(
+			"Error: %s has node ids %q and %q that become the same identifier %q in the generated code (ids are reduced to letters, digits and underscores). Connections and step overrides would then address one node when they meant the other. Rename one so they differ in a letter, digit or underscore, and regenerate.\n",
+			owner, dup.first_raw, dup.second_raw, dup.sanitized,
+		)
+	}
+	os.exit(1)
 }

@@ -3,10 +3,13 @@
 ================================================================================
 | Roadmap packet A5 — THE EXAMPLES-CORPUS GATE.                                |
 |                                                                              |
-| Nothing in CI ever checked the shipped examples; 26 of them cannot be played |
-| from the editor and one hard-fails codegen in every packaged build           |
-| (BUGS.md SKB-019), and until packet A4 the CLI path silently retimed 100 of  |
-| them to 120 BPM with every P-lock dropped (SKB-002) while exiting 0.         |
+| Nothing checked the shipped examples until this gate landed. At the time,   |
+| ~26 of them could not be played from the editor and one hard-failed codegen  |
+| in every packaged build (BUGS.md SKB-019) — packet B6-1 has SINCE fixed the  |
+| editor-path half of that (see the note below: a loose graph auto-wraps and   |
+| plays like any other example now) — and until packet A4 the CLI path         |
+| silently retimed 100 of them to 120 BPM with every P-lock dropped (SKB-002)  |
+| while exiting 0.                                                             |
 |                                                                              |
 | TWO GATES, BECAUSE TWO READERS OF .skald.json EXIST — and this packet was    |
 | mis-specced twice by testing only the wrong one:                             |
@@ -24,9 +27,15 @@
 | 2. THE CLI PATH (the smaller secondary gate). `skald_codegen.exe -in:<file>` |
 |    for every file — the fallback parser (`build_project_from_graph`) that    |
 |    F-B11-1's original spec exercised EXCLUSIVELY, kept covered because it    |
-|    is a real ingestion surface (and the only reader of the 25 loose-graph    |
-|    files and the project-shaped demo). This resurrects AUDIT.md's            |
-|    codegen + odin-check step (F-B11-10) as a permanent gate.                 |
+|    is a real ingestion surface. Before packet B6-1 this was also the only    |
+|    path that could GENERATE from the 24 loose-graph-shaped files (the        |
+|    editor rejected them at serialization); today the editor path reads,      |
+|    plays and generates all of them too. It remains the only path that can    |
+|    generate from the one project-shaped demo file, which the editor still    |
+|    refuses at PARSE — gate 1 asserts that refusal, so both gates read it,    |
+|    but only this one emits from it (a different failure, see gate 1          |
+|    below). This resurrects AUDIT.md's codegen + odin-check step (F-B11-10)   |
+|    as a permanent gate.                                                      |
 |                                                                              |
 | SESSION ASSERTIONS (both paths): for every file carrying a `session` block,  |
 | the emitted `p.bpm` and the master-volume tanh coefficient must equal what   |
@@ -38,9 +47,11 @@
 | constraint §4.2/§4.3 forbids it until A11 (the corpus snapshot); this gate   |
 | is exit codes, `odin check`, and the session values only.                    |
 |                                                                              |
-| Failures are quarantined in corpusGate.ts's explicit allowlists (file +      |
-| symptom + owning packet), and a quarantined file that starts PASSING fails   |
-| the gate, so the lists cannot rot.                                           |
+| Packet B6-1 removed the quarantine mechanism this gate used to lean on      |
+| (corpusGate.ts): the 24-entry EDITOR_UNPLAYABLE allowlist existed only       |
+| because buildProjectData serialized a no-Instrument-node graph to zero      |
+| instruments (SKB-019); now it auto-wraps that shape as one "Asset" SFX      |
+| instrument, so every one of those files just passes outright like any other. |
 ================================================================================
 */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
@@ -54,13 +65,10 @@ import { SequencerTrack } from '../../definitions/types';
 import { buildProjectData } from '../../utils/projectSerializer';
 import {
     CorpusFile,
-    EDITOR_UNPLAYABLE,
-    CLI_CODEGEN_FAILS,
     buildCodegen,
     emittedBpm,
     emittedMasterCoeff,
     findRepoRoot,
-    isQuarantined,
     listCorpus,
     odinCheck,
     resolveOdin,
@@ -230,25 +238,6 @@ describe('examples corpus — editor path (parseSaveFile -> buildProjectData -> 
             const outPath = path.join(pkgDir, 'generated_audio.odin');
             const gen = runCodegenStdin(codegenExe, JSON.stringify(projectData, null, 2), outPath);
 
-            const quarantined = isQuarantined(EDITOR_UNPLAYABLE, rel);
-            if (quarantined) {
-                // Pinned failure: the file loads but carries no Instrument node,
-                // so the editor path cannot generate from it (SKB-019).
-                expect(
-                    projectData.project.instruments,
-                    `${rel} is quarantined as instrument-less (${quarantined.owner}) but serialized ` +
-                        `${projectData.project.instruments.length} instrument(s) — the premise changed; ` +
-                        `remove it from EDITOR_UNPLAYABLE in corpusGate.ts`,
-                ).toHaveLength(0);
-                expect(
-                    gen.status,
-                    `${rel} is quarantined (${quarantined.symptom}; owner ${quarantined.owner}) but its ` +
-                        `editor-path codegen now SUCCEEDS — the fix landed, so delete its quarantine entry ` +
-                        `so the gate protects it from here on`,
-                ).not.toBe(0);
-                return;
-            }
-
             expect(
                 gen.status,
                 `${rel}: editor-path codegen failed (exit ${gen.status}).\nstderr:\n${gen.stderr}`,
@@ -295,22 +284,6 @@ describe('examples corpus — CLI path (skald_codegen -in -> odin check)', () =>
             const outPath = path.join(pkgDir, 'generated_audio.odin');
             const gen = runCodegenFile(codegenExe, file.abs, outPath);
 
-            const quarantined = isQuarantined(CLI_CODEGEN_FAILS, rel);
-            if (quarantined) {
-                expect(
-                    gen.status,
-                    `${rel} is quarantined (${quarantined.symptom}; owner ${quarantined.owner}) but its ` +
-                        `CLI-path codegen now SUCCEEDS — the fix landed, so delete its quarantine entry`,
-                ).not.toBe(0);
-                // Pin the symptom too: a DIFFERENT failure in a quarantined file
-                // must not hide behind the entry.
-                expect(
-                    gen.stderr,
-                    `${rel}: quarantined for the unknown-port symptom but failed differently:\n${gen.stderr}`,
-                ).toContain('input_delayTime');
-                return;
-            }
-
             expect(
                 gen.status,
                 `${rel}: CLI-path codegen failed (exit ${gen.status}).\nstderr:\n${gen.stderr}`,
@@ -331,20 +304,10 @@ describe('examples corpus — CLI path (skald_codegen -in -> odin check)', () =>
 });
 
 // ---------------------------------------------------------------------------
-// Gate hygiene: the quarantine lists and the corpus itself cannot rot
+// Gate hygiene: the coverage floor and the corpus shape report
 // ---------------------------------------------------------------------------
 
 describe('examples corpus — gate hygiene', () => {
-    it('every quarantined file still exists in the corpus (delete stale entries)', () => {
-        for (const q of [...EDITOR_UNPLAYABLE, ...CLI_CODEGEN_FAILS]) {
-            expect(
-                byRel.has(q.rel),
-                `quarantine entry ${q.rel} (${q.owner}) matches no file on disk — ` +
-                    `the file was removed, so delete its entry from corpusGate.ts`,
-            ).toBe(true);
-        }
-    });
-
     it('the session assertions are exercised, not vacuous (A8\'s coverage-floor lesson)', () => {
         // If every session block vanished from the corpus, the retiming
         // assertion above would pass by never running — the exact vacuous
@@ -363,15 +326,85 @@ describe('examples corpus — gate hygiene', () => {
 
     it('reports the corpus shape (the numbers AUDIT.md used to hand-maintain)', () => {
         const withSession = graphFiles.filter((f) => f.session !== null).length;
-        const unplayable = graphFiles.filter((f) => !f.hasInstrument).length + projectFiles.length;
+        const looseGraphs = graphFiles.filter((f) => !f.hasInstrument).length;
+        // Packet B6-1: a graph with no Instrument node is no longer unplayable
+        // — buildProjectData auto-wraps it as one "Asset" SFX instrument, so
+        // it loads AND generates through the editor path exactly like any
+        // other example. The one file still unplayable from the editor is the
+        // project-shaped integration-demo input, and for an unrelated reason
+        // (SKB-019's other half): parseSaveFile requires a top-level `nodes`
+        // array, which a project export does not have, so it is rejected at
+        // parse rather than at serialization.
+        const unplayable = projectFiles.length;
         // No count is asserted against a constant — the glob is the truth. This
         // test only guarantees the classification stays total and visible.
         expect(corpus.length).toBe(graphFiles.length + projectFiles.length);
         console.info(
             `[corpus gate] ${corpus.length} files: ${graphFiles.length} graph-shaped ` +
-                `(${withSession} with a session block), ${projectFiles.length} project-shaped; ` +
-                `${unplayable} unplayable from the editor (SKB-019, owner B6); ` +
-                `${EDITOR_UNPLAYABLE.length} editor-path quarantines, ${CLI_CODEGEN_FAILS.length} CLI-path quarantines.`,
+                `(${withSession} with a session block, ${looseGraphs} with no Instrument node — ` +
+                `auto-wrapped as one "Asset" SFX instrument since packet B6-1), ` +
+                `${projectFiles.length} project-shaped; ${unplayable} unplayable from the editor ` +
+                `(SKB-019's remaining half: a project-shaped file is rejected at parse).`,
         );
     });
+});
+
+// ---------------------------------------------------------------------------
+// B6-1-x4 — cross-path emission equality. Not a golden (§4.2 forbids goldens
+// here): the assertion is that the editor path and the CLI path emit THE SAME
+// TEXT for the same file. It is the only check that would have caught
+// B6-1-x1 (instrument order) and B6-1-x2 (absent-value defaults) — both
+// invisible to a gate that only asserts each path compiles.
+//
+// Two documented exceptions are stripped before comparing:
+//   * the B12 provenance lines (`//   generator:` / `//   input:`): the two
+//     paths hand the generator different bytes for the same file by
+//     construction, so the input digest differs;
+//   * the master-volume literal in project_init (`p.master_volume = `): the
+//     editor exports its live fader, the CLI resolves an absent masterVolume
+//     to unity — the one decided editor/CLI difference (B6-1-x2 decision,
+//     documented at projectSerializer.ts's master_volume).
+// Nothing else is normalised. A new difference must be fixed or added HERE
+// with its reason, never worked around in the fixture.
+// ---------------------------------------------------------------------------
+const CROSS_PATH_STRIP: RegExp[] = [/^\/\/ {3}generator: /, /^\/\/ {3}input: /, /^\tp\.master_volume = /];
+const normaliseEmission = (text: string): string[] =>
+    text.split(/\r?\n/).filter((line) => !CROSS_PATH_STRIP.some((re) => re.test(line)));
+
+describe('examples corpus — cross-path equality (editor emission == CLI emission)', () => {
+    it.each(graphFiles.map((f) => [f.rel] as const))(
+        '%s',
+        async (rel) => {
+            const file = byRel.get(rel)!;
+            const outcome = await loadThroughEditor(fs.readFileSync(file.abs, 'utf8'));
+            expect(outcome.error, `${rel}: the editor refused to load it`).toBeNull();
+
+            const session = { ...EDITOR_SESSION_DEFAULTS, ...outcome.appliedSession };
+            const projectData = buildProjectData(
+                outcome.nodes, outcome.edges, outcome.tracks,
+                session.bpm, session.masterVolume, session.patternSteps, undefined,
+            );
+
+            const editorOut = path.join(nextPkgDir(), 'generated_audio.odin');
+            const cliOut = path.join(nextPkgDir(), 'generated_audio.odin');
+            const editor = runCodegenStdin(codegenExe, JSON.stringify(projectData, null, 2), editorOut);
+            const cli = runCodegenFile(codegenExe, file.abs, cliOut);
+            expect(editor.status, `${rel}: editor path failed.\n${editor.stderr}`).toBe(0);
+            expect(cli.status, `${rel}: CLI path failed.\n${cli.stderr}`).toBe(0);
+
+            const a = normaliseEmission(fs.readFileSync(editorOut, 'utf8'));
+            const b = normaliseEmission(fs.readFileSync(cliOut, 'utf8'));
+            const n = Math.max(a.length, b.length);
+            let firstDiff = -1;
+            for (let i = 0; i < n; i++) {
+                if (a[i] !== b[i]) { firstDiff = i; break; }
+            }
+            expect(
+                firstDiff,
+                `${rel}: editor and CLI emissions differ at line ${firstDiff + 1}\n` +
+                `  editor: ${a[firstDiff]}\n  cli:    ${b[firstDiff]}`,
+            ).toBe(-1);
+        },
+        PER_FILE_TIMEOUT,
+    );
 });
