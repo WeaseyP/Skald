@@ -15,6 +15,7 @@
 > **Wave D:** ✅ **4 of 4 closed** (2026-09-06, five commits on `web-app`: D4 `1811f07`, D3 tooling `82b0267`, D2 `ddcda7b`, D1 `765f2a7`, D3 `3f92958`). The manual has 27 chapters, `KNOWN-ISSUES.md` holds 56 open defects with IDs, and the citation gate (`npm run check` in `scripts/manual`, run by CI) is green: 1,838 `path::identifier` citations, 0 mismatches. Exit criteria 4, 6 and 7 are met; see the Wave D section.
 > **Wave E:** ✅ **13 of 13 closed** (2026-09-06, `b34283a`..`c4fd822`). KI-055 (feedback loop generated around) fixed `4c8b5f8`. **Baseline at the close, pristine `git archive` of HEAD:** acceptance 50/50 · goldens 69 match / 69 deterministic (after pinning `*.golden` to LF — an `fc` line-wrap quirk had one golden red only in exports) · backend unit 158/158 · UI 1174 tests / 95 files · tsc 0 / lint 0 · corpus 98/98 · regen check 3/3 · manual citations 1886 / 0 mismatches.
 > **Wave F:** ✅ **5 of 5 closed** (2026-09-06, `93d6ae1`..`caee711`); Wave G in progress.
+> **Wave G:** ✅ **5 of 5 closed** (2026-09-06, `dae6dc5`..`a18569c`). **All waves A–G are closed.** F4 regression (Piano Roll flipped to Drum Roll on the first note) fixed `777c791`; verify-baseline.ps1 now runs seven gates `b384c26`.
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -847,12 +848,49 @@ A conservative static warning cannot see a defect that another defect is hiding.
 ## Wave G — Export & Integration
 
 > Let Skald's output reach the real world beyond Odin.
+> **Wave G:** ✅ **5 of 5 closed** (2026-09-06, `dae6dc5` `6aedf1a` `0b6e3b0` `46d0d7e` `a18569c` on `web-app`). Every
+> generator change kept every pre-existing golden byte-identical (emission gated on non-default), each shipped with a
+> fixture or test that failed first, and the three checked-in generated copies were regenerated in the same commits.
+> **With this, every wave of the plan (A–G) is closed.**
 
-- [ ] **G1** (M) — **Offline WAV bouncing.** Faster-than-realtime offline synthesis rendering from the WASM DSP loop. *(§9.12 item 1)*
-- [ ] **G2** (M) — **Stem export.** Per-instrument 24-bit PCM `.wav` stem tracks + master bounce. Drag-and-drop into Unity, Unreal, Godot, or any DAW. *(§9.12 item 2)*
-- [ ] **G3** (S–M) — **Runtime scale quantization.** Emit scale definitions and quantize helpers into generated Odin. Games can transpose keys at runtime for adaptive audio. *(§9.5)*
-- [ ] **G4** (M) — **Wavetable import.** Import single-cycle `.wav` files (from Serum, Vital, etc.) compiled into static Odin float arrays. Zero external dependencies. *(§9.20)*
-- [ ] **G5** (S) — **Voice concurrency limits.** Max simultaneous voices, oldest-vs-quietest stealing rules, and auto pitch/velocity randomization per trigger in generated Odin. *(§9.18)*
+- [x] **G1** (M) — ✅ `dae6dc5`. `audio/offlineRender.ts::renderOffline` instantiates the same wasm module the preview plays
+  (the libm import table is now one authored copy, `audioWorklets/skaldWasmImports.ts`, interpolated into the worklet
+  string) and pumps `skald_process(128)` faster than real time; master volume, DC blocker and limiter come with it because
+  nothing is re-mixed outside `skald_process`. Proven equal to the worklet: the same bytes driven through the real worklet
+  source and through the offline loop produce identical buffers. `audio/wavEncoder.ts::encodeWav24` (dependency-free RIFF,
+  24-bit PCM); bars + tail options in the Sidebar; `save-wav` IPC through `atomicSave.ts`; web build downloads. Runs on the
+  main thread yielding every ~1 s of audio (progress + Cancel) rather than in a Worker — the core is worker-ready. 35 tests.
+  *(§9.12 item 1)*
+- [x] **G2** (M) — ✅ `6aedf1a`. One module built with mute/solo cleared (a serializer option, not a document mutation),
+  then N+1 passes: each stem sets `skald_set_volume(other, 0)` and keeps its own authored level, the master pass sets none.
+  Stems pass through the master DC block/limiter on purpose ("how it sounds in the mix", documented). Isolation test gives
+  each instrument a distinguishable DC level so a leak reads at the wrong value, not "roughly right". Directory dialog on
+  desktop; sequential downloads on the web. 11 tests. *(§9.12 item 2)*
+- [x] **G3** (S–M) — ✅ `46d0d7e`. Key and scale now live in the session block (Save/Load, undo-tracked; absent ⇒ C
+  Chromatic, no version bump). `skald-backend/core/scale.odin` mirrors `ScaleContext.tsx::nearestInScale` case by case —
+  23 unit cases pinned against the TS function's actual output — and, only for a non-Chromatic project, both shapes emit
+  `skald_nearest_in_scale` plus per-asset `_set_scale(root, scale)` / `_set_key_transpose(semitones)` that quantise
+  incoming `note_on`; the authored pattern stays baked as before. Acceptance `runtime_scale` (C major, +2 → 261.63 →
+  293.66 Hz). No shim dispatchers for the setters yet (no preview control drives them). *(§9.5)*
+- [x] **G4** (M) — ✅ `a18569c`. `audio/wavReader.ts` decodes RIFF PCM 8/16/24/32 and float32 host-side, takes the `smpl`
+  loop or the whole file as one cycle, resamples to 2048, removes DC, normalises; stored as base64 float32 on the
+  Wavetable node (`customTable`, `customTableName`, `useCustomTable`; ~11 KB per table in the save file). One codegen path
+  serves both shapes: `skald_wavetable_sample_custom` and one `[2048]f32` per distinct table (FNV-deduped), gated on a
+  node selecting a decodable table; `position`/`pulseWidth` go dead under a custom table via `param_is_reachable`, mirrored
+  in `plockTargets.ts`. Acceptance `wavetable_custom` (two-harmonic table shows 880 Hz an analytic sine cannot). Import /
+  Clear in the sidebar, one history entry. No multi-frame stacks, no drawer (§9.20 item 1). 31 tests. *(§9.20)*
+- [x] **G5** (S) — ✅ `0b6e3b0`. Per-Instrument only (§9.18's cross-asset Event layer is not this). The dead
+  `voiceStealing` field (KI-018) became `stealMode` (`release-first` default = C6-1 unchanged | `oldest` | `quietest`, the
+  last with a per-voice level follower emitted only when chosen); `pitchJitter` (cents) and `velocityJitter` use the
+  project's existing FNV-seeded xorshift so an export is reproducible and goldens stay deterministic. Acceptance
+  `steal_quietest` and `jitter_pitch` (the latter needed a zero-crossing estimator: the deterministic draw is below FFT bin
+  resolution). *(§9.18)*
+
+**Regression fixed during the wave:** `777c791` — F4 re-resolved a track's editor on every render and its one-pitch rule
+fired on the first painted note, so an open Piano Roll turned into the one-row Drum Roll ("the piano roll doesn't work at
+all"). The editor is now resolved once when opened, the percussive fallback needs ≥ 4 same-pitch notes, and both editors
+carry a Piano Roll / Drum Roll toggle; pinned by a dock-level open → paint → select → drag test. Lesson recorded: a
+heuristic that reads the document must not be re-evaluated live over the thing the user is editing.
 
 ---
 
@@ -943,6 +981,12 @@ Work the agent left deliberately undone. Each is small and self-contained; none 
   golden header, so do it with a golden update the commit message explains.
 - [ ] **Web build has no Start Here** (S) — `skald-ui/web-server/server.mjs` serves `/api/examples` without the curated
   `main/startHere.ts` list the desktop build prepends; parity gap found by F5.
+- [ ] **Packaged-build smoke for the offline bounce** (S, needs `npm run make`) — G1 interpolates
+  `skaldWasmImports.toString()` into the worklet source string; tests cover it under vitest/esbuild, but no gate exercises
+  the `electron-forge make` bundle. Run the A13 smoke job on the next packaged build and bounce one example.
+- [ ] **Runtime scale setters in the preview** (S) — G3's `_set_scale`/`_set_key_transpose` exist in the game API but the
+  wasm shim has no dispatcher and the editor no control to drive them live; add both when a live transpose control is
+  wanted, keeping preview and export on the one code path.
 - [ ] **ESLint caveat lost with BUGS.md** — the old `BUG-LINT-WARNINGS` note ("the fix was a suppression;
   four rule families are still `off`") did not carry into this file. Re-verify `skald-ui`'s ESLint config
   and either turn the rules on or record the decision here.
