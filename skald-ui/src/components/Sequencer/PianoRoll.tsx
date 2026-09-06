@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
 import { useScale } from '../../contexts/ScaleContext';
 import {
@@ -18,6 +18,7 @@ import { useViewport } from '../../hooks/useViewport';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
 import { useElementWidth } from './useElementWidth';
 import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
+import { useStepPaintInteraction } from '../../hooks/sequencer/useStepPaintInteraction';
 
 interface PianoRollProps {
     track: SequencerTrack;
@@ -40,6 +41,15 @@ interface PianoRollProps {
 
 const KEY_WIDTH = 50;
 const HEADER_HEIGHT = 30;
+
+// useStepPaintInteraction's cell key for this grid: (step, pitch) rather
+// than StepGrid's (trackId, step), since one PianoRoll instance only ever
+// edits one track.
+const cellKey = (step: number, note: number): string => `${step}:${note}`;
+const parseCellKey = (key: string): { step: number; note: number } => {
+    const sep = key.indexOf(':');
+    return { step: Number(key.slice(0, sep)), note: Number(key.slice(sep + 1)) };
+};
 
 // SKB-026: the range used to be local constants pinned to an 88-key piano
 // (21..84), which is not a chromatic editor's remit — a note the sequencer
@@ -146,9 +156,23 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         return `${note}${octave}`;
     };
 
-    const [isPainting, setIsPainting] = useState(false);
-    const [paintMode, setPaintMode] = useState<'add' | 'remove' | null>(null); // Whether we are adding or removing
-    const lastPaintedStep = useRef<{ step: number, note: number } | null>(null);
+    // hooks/sequencer/useStepPaintInteraction.ts: the same paint/erase
+    // gesture StepGrid uses. Unlike StepGrid's two gestures (left always
+    // paints, right always erases), the roll's single left-drag picks its
+    // mode from whatever the FIRST cell it touched implied — add if empty,
+    // remove if occupied — and then keeps doing that one thing; onToggleStep
+    // really is a toggle here, so `onPaint` and `onErase` are the same call,
+    // and the hook's hasEventAt-gated apply is what stops a continuing drag
+    // from toggling an already-handled note back off.
+    const paintHasNote = useCallback((key: string) => {
+        const { step, note } = parseCellKey(key);
+        return track.notes.some(n => n.step === step && n.note === note);
+    }, [track.notes]);
+    const paintApply = useCallback((key: string) => {
+        const { step, note } = parseCellKey(key);
+        onToggleStep(track.id, step, note);
+    }, [onToggleStep, track.id]);
+    const paint = useStepPaintInteraction({ hasEventAt: paintHasNote, onPaint: paintApply, onErase: paintApply });
 
     // E3: which chord member a right-click last named. Local rather than
     // lifted to the document (unlike selectedStep in app.tsx) — the roll
@@ -179,34 +203,28 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const clickedStep = Math.floor(relativeX / stepWidth);
 
         if (clickedStep >= 0 && clickedStep < playableSteps) {
-            setIsPainting(true);
-
-            // Determine mode based on initial click
-            const existingNote = track.notes.find(n => n.step === clickedStep && n.note === midiNote);
-            const mode = existingNote ? 'remove' : 'add';
-            setPaintMode(mode);
-
-            // Perform action immediately
-            onToggleStep(track.id, clickedStep, midiNote);
-            lastPaintedStep.current = { step: clickedStep, note: midiNote };
+            const key = cellKey(clickedStep, midiNote);
+            // Mode is decided by the initial click: add where empty, remove
+            // where occupied. `start` applies it immediately (this is the
+            // "perform action immediately" step) and keeps the gesture open.
+            const mode = track.notes.some(n => n.step === clickedStep && n.note === midiNote) ? 'erase' : 'paint';
+            paint.start(mode, key);
         } else if (clickedStep >= playableSteps) {
             // B5-x2: past the playable range nothing can be ADDED (it could
             // never sound), but a note already stranded there can be removed
             // with a click — it used to be visible and untouchable, its only
-            // remedy raise-delete-lower. No paint mode: a single click, a
-            // single note.
-            const stranded = track.notes.find(n => n.step === clickedStep && n.note === midiNote);
-            if (stranded) onToggleStep(track.id, clickedStep, midiNote);
+            // remedy raise-delete-lower. `applyOnce` (not `start`): a single
+            // click, a single note, no continuing drag.
+            paint.applyOnce('erase', cellKey(clickedStep, midiNote));
         }
     };
 
     const handleGridMouseEnter = (e: React.MouseEvent, midiNote: number) => {
-        if (!isPainting || !paintMode || !scrollContainerRef.current) return;
+        if (!paint.isActive() || !scrollContainerRef.current) return;
 
         // If buttons not pressed (drag released outside), stop
         if (e.buttons !== 1) {
-            setIsPainting(false);
-            setPaintMode(null);
+            paint.cancel();
             return;
         }
 
@@ -216,28 +234,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const hoveredStep = Math.floor(relativeX / stepWidth);
 
         if (hoveredStep >= 0 && hoveredStep < playableSteps) {
-            // Avoid double-toggling same step if we just processed it
-            if (lastPaintedStep.current && lastPaintedStep.current.step === hoveredStep && lastPaintedStep.current.note === midiNote) {
-                return;
-            }
-
-            const existingNote = track.notes.find(n => n.step === hoveredStep && n.note === midiNote);
-
-            // Apply based on mode
-            if (paintMode === 'add' && !existingNote) {
-                onToggleStep(track.id, hoveredStep, midiNote);
-            } else if (paintMode === 'remove' && existingNote) {
-                onToggleStep(track.id, hoveredStep, midiNote);
-            }
-
-            lastPaintedStep.current = { step: hoveredStep, note: midiNote };
+            paint.continueAt(cellKey(hoveredStep, midiNote));
         }
-    };
-
-    const handleGridMouseUp = () => {
-        setIsPainting(false);
-        setPaintMode(null);
-        lastPaintedStep.current = null;
     };
 
     // E3: a chord's members occupy different pitch ROWS in the roll (unlike
@@ -338,17 +336,6 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // this adds a horizontal follow on the same element without a second
     // effect duplicating StepGrid's arithmetic.
     usePlayheadScroll(isNarrow, scrollContainerRef, currentStep, stepWidth);
-
-    // Global MouseUp to catch drags ending outside
-    useEffect(() => {
-        const handleGlobalMouseUp = () => {
-            setIsPainting(false);
-            setPaintMode(null);
-            lastPaintedStep.current = null;
-        };
-        window.addEventListener('mouseup', handleGlobalMouseUp);
-        return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-    }, []);
 
     const handleSnapToScale = () => {
         // Iterate all notes and snap them. The original pitch is passed as
