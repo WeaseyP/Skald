@@ -273,3 +273,25 @@ export const clampPatternSteps = (steps: number): number => {
     if (!Number.isFinite(steps)) return 1;
     return Math.max(1, Math.min(MAX_PATTERN_STEPS, Math.round(steps)));
 };
+
+/*
+--------------------------------------------------------------------------------
+Beat boundaries.
+
+Roadmap F1 item 6: StepGrid marked the LAST cell of a beat group
+((step + 1) % 4 === 0, for its border-right divider) and PianoRoll marked the
+FIRST cell (i % 4 === 0, for a persistent vertical line) — two private
+moduli that only agreed with each other because one caller offset its own
+index by one first. One function names where a beat starts; each renderer
+still draws its own divider however its own DOM shape wants to (a row-per-
+track grid and a row-per-pitch matrix stay two renderers on purpose - see
+CLAUDE.md's "do NOT unify the cell renderers").
+--------------------------------------------------------------------------------
+*/
+
+/** Steps per beat in the editors' 16th-note grid: one quarter-note beat. */
+export const STEPS_PER_BEAT = 4;
+
+/** Whether `step` starts a new beat group of `stepsPerBeat` steps. */
+export const isBeatStart = (step: number, stepsPerBeat: number = STEPS_PER_BEAT): boolean =>
+    step % stepsPerBeat === 0;

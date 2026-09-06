@@ -6,6 +6,7 @@ import {
     MIDI_NOTE_MIN,
     PIANO_STEP_WIDTH_DEFAULT,
     effectiveTrackSteps,
+    isBeatStart,
     noteExtent,
     noteRowHeightFor,
     outOfRangeNoteCount,
@@ -429,7 +430,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                                             top: 0,
                                             bottom: 0,
                                             width: 1,
-                                            backgroundColor: i % 4 === 0 ? '#444' : '#333'
+                                            backgroundColor: isBeatStart(i) ? '#444' : '#333'
                                         }}
                                     />
                                 ))}

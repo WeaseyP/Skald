@@ -1,6 +1,6 @@
 import React from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
-import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, stepWidthFor, stepWidthMinFor } from './stepMetrics';
+import { effectiveTrackSteps, isBeatStart, noteExtent, outOfRangeNoteCount, stepWidthFor, stepWidthMinFor } from './stepMetrics';
 import { useViewport } from '../../hooks/useViewport';
 import { useElementWidth } from './useElementWidth';
 import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
@@ -136,7 +136,10 @@ export const StepGrid: React.FC<StepGridProps & {
     // regression, not a feature.
     usePlayheadScroll(isNarrow, gridRef, currentStep, stepWidth);
 
-    const isBeat = (step: number) => (step + 1) % 4 === 0;
+    // stepMetrics.ts::isBeatStart — the LAST cell of a beat group is the one
+    // whose border-right divides it from the NEXT beat's first cell, i.e.
+    // step+1 starts that next beat.
+    const isBeat = (step: number) => isBeatStart(step + 1);
 
     // hooks/sequencer/useNoteDrag.ts: the modifier-drag (Shift=duration,
     // Ctrl=velocity, Alt=probability). `dragState` keeps the render body's

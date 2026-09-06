@@ -12,6 +12,7 @@ import {
     NOTE_ROW_HEIGHT,
     pitchRowsDescending,
     scrollTopForPitch,
+    isBeatStart,
 } from '../../components/Sequencer/stepMetrics';
 
 // The pattern length cap used to be 64 in the UI while the serializer already
@@ -120,5 +121,39 @@ describe('pitch axis', () => {
 
     it('returns 0 for a pitch outside the rendered window rather than NaN', () => {
         expect(scrollTopForPitch(200, 400)).toBe(0);
+    });
+});
+
+// Roadmap F1 item 6 — StepGrid computed `(step + 1) % 4 === 0` (marking the
+// LAST cell of a beat group, for its border-right divider) and PianoRoll
+// computed `i % 4 === 0` (marking the FIRST cell, for a persistent vertical
+// line) as two private moduli that happen to agree on where a beat falls
+// only because one caller offsets its own index by one before asking. One
+// function names the boundary; each caller still draws its own divider
+// however its own DOM shape wants to (this does not unify the renderers).
+describe('isBeatStart', () => {
+    it('is true at every multiple of the beat size, starting at 0', () => {
+        expect(isBeatStart(0)).toBe(true);
+        expect(isBeatStart(4)).toBe(true);
+        expect(isBeatStart(8)).toBe(true);
+        expect(isBeatStart(12)).toBe(true);
+    });
+
+    it('is false everywhere else', () => {
+        expect(isBeatStart(1)).toBe(false);
+        expect(isBeatStart(2)).toBe(false);
+        expect(isBeatStart(3)).toBe(false);
+        expect(isBeatStart(5)).toBe(false);
+    });
+
+    it('matches StepGrid\'s old (step + 1) % 4 === 0 when asked about step + 1', () => {
+        // step 3 was StepGrid's old beat-marker cell (the last of steps 0..3).
+        expect(isBeatStart(3 + 1)).toBe(true);
+        expect(isBeatStart(2 + 1)).toBe(false);
+    });
+
+    it('honours a custom beat size', () => {
+        expect(isBeatStart(3, 3)).toBe(true);
+        expect(isBeatStart(2, 3)).toBe(false);
     });
 });
