@@ -21,6 +21,10 @@ interface SequencerToolbarProps {
     onLoopToggle: () => void;
     isCollapsed: boolean;
     onToggleCollapse: () => void;
+    // F3: opens the kit workspace. Absent (or undefined) hides the button —
+    // the dock only supplies it once two or more tracks resolve percussive,
+    // because a "kit" of one row is a worse Drum Roll, not a feature.
+    onOpenKit?: () => void;
 }
 
 const toolbarStyles: React.CSSProperties = {
@@ -77,7 +81,8 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
     onPatternStepsChange,
     onLoopToggle,
     isCollapsed,
-    onToggleCollapse
+    onToggleCollapse,
+    onOpenKit
 }) => {
     const { rootNote, setRootNote, scaleName, setScaleName } = useScale();
     const { isNarrow } = useViewport();
@@ -208,6 +213,17 @@ export const SequencerToolbar: React.FC<SequencerToolbarProps> = ({
             >
                 Loop
             </button>
+
+            {onOpenKit && (
+                <button
+                    data-testid="open-drum-kit"
+                    style={buttonStyles}
+                    onClick={onOpenKit}
+                    title="Edit every percussive track as one grid — each row stays its own Instrument and its own exported asset"
+                >
+                    Kit
+                </button>
+            )}
 
             <div style={{ flexGrow: 1 }} />
 

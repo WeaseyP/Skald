@@ -119,3 +119,20 @@ export const resolveTrackViewMode = (
     if (stored !== 'auto') return stored;
     return detectTrackViewMode(track, instrumentNode);
 };
+
+/**
+ * F3: the tracks the kit workspace shows, in track order — every one that
+ * resolves percussive against its own Instrument node.
+ *
+ * Here rather than in the kit view so the dock's "is the Kit button worth
+ * showing?" test and the workspace's "which rows do I draw?" answer are the
+ * same list. Two lists would let the button appear over a workspace with
+ * nothing in it, or hide over one with rows to edit.
+ */
+export const percussiveTracks = (
+    tracks: SequencerTrack[],
+    nodes: Node<NodeParams>[],
+): SequencerTrack[] => {
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    return tracks.filter(t => resolveTrackViewMode(t, byId.get(t.targetNodeId) ?? null) === 'percussive');
+};

@@ -4,7 +4,7 @@ import { TrackList } from './TrackList';
 import { StepGrid } from './StepGrid';
 import { Node } from '@xyflow/react';
 import { NodeParams, SequencerTrack, SequencerState , NoteEvent } from '../../definitions/types';
-import { TrackViewMode, resolveTrackViewMode } from './trackViewMode';
+import { TrackViewMode, percussiveTracks, resolveTrackViewMode } from './trackViewMode';
 
 interface SequencerDockProps {
     state: SequencerState;
@@ -79,6 +79,7 @@ import { useVisualizerModePreference } from '../../hooks/nodeEditor/useVisualize
 import { StereoAnalysers } from '../../utils/meter';
 import { PianoRoll } from './PianoRoll';
 import { DrumRoll } from './DrumRoll';
+import { DrumKitView } from './DrumKitView';
 import { NumberInput } from '../common/NumberInput';
 
 
@@ -113,6 +114,9 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+    // F3: the kit workspace, open over the dock the way an editor is. Separate
+    // from `editingTrackId` because it is not about one track.
+    const [isKitOpen, setIsKitOpen] = useState(false);
     // E9 (roadmap 0.2 §9.4 item 3): same persisted mode preference the
     // per-Output-node visualizer uses — one app-wide setting, not a second
     // one that could disagree about which mode "the visualizer" means.
@@ -146,6 +150,18 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
         ? nodes.find(n => n.id === editingTrack.targetNodeId) ?? null
         : null;
     const editingViewMode = editingTrack ? resolveTrackViewMode(editingTrack, editingInstrument) : null;
+
+    // F3: the kit's rows AND the answer to "is the Kit button worth showing?"
+    // come from the same list, so the button can never appear over an empty
+    // workspace or hide over one with rows in it. Below two, the single-track
+    // Drum Roll already does the job better.
+    const kitTracks = React.useMemo(
+        () => percussiveTracks(state.tracks, nodes),
+        [state.tracks, nodes],
+    );
+    // An Instrument deleted while the kit was open must not leave it hanging
+    // over the dock with nothing to edit.
+    const showKit = isKitOpen && kitTracks.length >= 2;
 
     // Resize Handlers
     const startResizing = React.useCallback(() => setIsResizing(true), []);
@@ -214,6 +230,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                 onLoopToggle={onToggleLoop}
                 isCollapsed={isCollapsed}
                 onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+                onOpenKit={kitTracks.length >= 2 ? () => setIsKitOpen(true) : undefined}
             />
 
             {!isCollapsed && (
@@ -270,6 +287,23 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                             bpm={bpm}
                             onStepContext={(trackId, step, notePitch) => onStepSelect(trackId, step, notePitch)}
                         />
+
+                        {showKit && (
+                            <DrumKitView
+                                tracks={kitTracks}
+                                currentStep={state.currentStep}
+                                patternSteps={patternSteps}
+                                bpm={bpm}
+                                onToggleStep={onToggleStep}
+                                onClearStep={onClearStep}
+                                onUpdateNote={onUpdateNote}
+                                onSelectNote={onStepSelect}
+                                onSetDefaultNote={onSetTrackDefaultNote}
+                                onMuteToggle={onMuteToggle}
+                                onSoloToggle={onSoloToggle}
+                                onClose={() => setIsKitOpen(false)}
+                            />
+                        )}
 
                         {editingTrack && editingViewMode === 'percussive' && (
                             <DrumRoll

@@ -62,7 +62,7 @@ Everything you do lives on one of five surfaces:
 - **The sidebar** down the left edge — tempo, code generation, Play/Stop/Save/Load, the Instrument-grouping actions, and the node palette you drag from.
 - **The canvas** in the centre — the node graph itself.
 - **The parameter panel** on the right — appears when you select a node, and carries the full-fidelity controls for it.
-- **The sequencer dock** along the bottom — one track per Instrument, a step grid, and the master volume slider.
+- **The sequencer dock** along the bottom — one track per Instrument, a step grid, and the master volume slider. Its transport row also carries a **Kit** button, which appears once two or more tracks are percussive and opens every one of them as rows of a single drum grid (`skald-ui/src/components/Sequencer/SequencerToolbar.tsx::SequencerToolbar`).
 - **The code preview panel** — replaces the parameter panel when you open it, and shows the actual Odin the generator produced for your patch.
 
 (`skald-ui/src/components/Sidebar.tsx::Sidebar`, `skald-ui/src/components/NodeParameterControls.tsx`, `skald-ui/src/components/Sequencer/SequencerDock.tsx`, `skald-ui/src/components/CodePreviewPanel.tsx`.)

@@ -205,6 +205,16 @@ The Step Grid still paints at a flat middle C for every track. If you have paint
 
 The playhead, the beat columns and the follow-the-playhead scrolling on a narrow window are the same shared pieces the Step Grid uses (`skald-ui/src/components/Sequencer/Playhead.tsx::Playhead`, `skald-ui/src/components/Sequencer/stepMetrics.ts::isBeatStart`, `skald-ui/src/hooks/sequencer/usePlayheadScroll.ts::usePlayheadScroll`), not a second copy of them.
 
+### The kit view
+
+Once **two or more** tracks are percussive, the transport row grows a **Kit** button (`skald-ui/src/components/Sequencer/SequencerToolbar.tsx::SequencerToolbar`). It opens every percussive track as a row of one grid, under a single step header and a single playhead, with each row's name, **M**, **S** and hit note beside it (`skald-ui/src/components/Sequencer/DrumKitView.tsx::DrumKitView`). A kit is one Instrument per piece, so a groove used to live across four separate viewports; this is where you author the whole thing at once. Below two percussive tracks the button is absent, because a kit of one row is a worse Drum Roll.
+
+The same list decides which rows are drawn and whether the button appears at all (`skald-ui/src/components/Sequencer/trackViewMode.ts::percussiveTracks`), so the button can never open an empty workspace. Melodic tracks are not shown here; use their own Piano Roll.
+
+**The rows are not lanes of one track, and nothing merges them.** Each row is its own `SequencerTrack`, keyed 1:1 to an Instrument in the backend model (`skald-backend/core/codegen_analysis.odin::active_sequencer_tracks` filters on `target_node_id`), and each is a separate exported asset. Every gesture here names the row's own track, each row owns its own paint gesture so a drag cannot leak sideways into a neighbour, and the row's **M** and **S** are the same structural mute and solo the track list's are — they change what is emitted, and they push the same undo entry.
+
+Rows share one column count, taken from the widest track and widened further by any note stranded past every length there is, but each row greys its own unplayable columns: two pieces may legitimately loop at different lengths, and greying every row at the shortest of them would lie about the longer. Every gesture inside a row is the Drum Roll's, unchanged — one component draws both (`skald-ui/src/components/Sequencer/DrumRollRow.tsx::DrumRollRow`), so the two surfaces cannot drift apart on what a click means.
+
 ## Step Properties
 
 Click a step and the right-hand parameter panel becomes **Edit Step N (note P)**, with an **Export Step to Instrument** button and the step's properties (`skald-ui/src/components/Sequencer/StepPropertiesEditor.tsx::StepPropertiesEditor`). Selecting a node on the canvas returns the panel to normal.
