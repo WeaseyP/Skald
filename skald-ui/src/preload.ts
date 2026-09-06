@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('electron', {
     saveWav: (fileName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string; error?: string }> =>
         ipcRenderer.invoke('save-wav', fileName, bytes),
 
+    // Roadmap G2: per-instrument stems plus the master, into one chosen folder.
+    saveWavStems: (files: { name: string; bytes: Uint8Array }[]): Promise<{ saved: boolean; path?: string; error?: string }> =>
+        ipcRenderer.invoke('save-wav-stems', files),
+
     // Import Patch: opens in the patch kit and accepts a multi-selection.
     importPatches: (): Promise<{
         files: { name: string; content: string }[];

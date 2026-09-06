@@ -633,6 +633,7 @@ const EditorLayout = () => {
                             outputPath={outputPath}
                             onSelectOutputPath={handleSelectOutputPath}
                             onBounce={bounce.bounceToWav}
+                            onExportStems={bounce.exportStems}
                             onCancelBounce={bounce.cancelBounce}
                             isBouncing={bounce.isBouncing}
                             bounceProgress={bounce.progress}

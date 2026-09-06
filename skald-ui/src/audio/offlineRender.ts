@@ -22,11 +22,11 @@
 | flat out renders an hour of audio in whatever the CPU takes, with the exact  |
 | sample values realtime playback would have produced.                         |
 |                                                                              |
-| This module must stay free of DOM, Electron and React: it is driven from a   |
-| Web Worker where one is available and called directly from tests, and both   |
-| must get the same numbers. It never runs on the AudioWorklet thread — a      |
-| bounce that blocked the audio callback would glitch the very preview it is   |
-| supposed to reproduce.                                                       |
+| This module stays free of DOM, Electron and React: the editor pumps it in    |
+| chunks (renderOfflineChunked) and tests call it outright, and both must get  |
+| the same numbers. It never runs on the AudioWorklet thread — a bounce that   |
+| blocked the audio callback would glitch the very preview it is supposed to   |
+| reproduce.                                                                   |
 ================================================================================
 */
 import { skaldWasmImports } from '../hooks/nodeEditor/audioWorklets/skaldWasmImports';
@@ -76,9 +76,16 @@ export interface OfflineRenderOptions {
      * Per-asset volume, indexed the way the shim indexes assets: position in
      * `project.instruments`, which the editor produces via
      * projectSerializer.ts::orderedInstrumentNodes. Used by stem export (G2)
-     * to mute every instrument but one.
+     * to silence every instrument but one.
+     *
+     * `undefined` at an index means "leave this asset exactly as the build
+     * baked it" — which is how a stem keeps the instrument's own authored
+     * volume without the host having to re-derive it. The backend is the one
+     * reader of an absent volume (`volume <= 0 -> 1.0` in
+     * build_project_from_raw); a host-side mirror of that rule would be a
+     * second reader, and the stem would drift from the mix the day it changed.
      */
-    assetVolumes?: readonly number[];
+    assetVolumes?: readonly (number | undefined)[];
     /** Render the release/reverb tail after the sequenced bars. */
     includeTail?: boolean;
     /**
@@ -151,7 +158,7 @@ const instantiateForRender = (
     sampleRate: number,
     masterVolume: number,
     loop: boolean,
-    assetVolumes?: readonly number[],
+    assetVolumes?: readonly (number | undefined)[],
 ): SkaldExports => {
     const module = new WebAssembly.Module(bytes as BufferSource);
     const ex = new WebAssembly.Instance(module, skaldWasmImports()).exports as unknown as SkaldExports;
@@ -164,7 +171,8 @@ const instantiateForRender = (
         // Applied before the first block, never per block: a stem whose
         // silencing landed one block late would carry 2.7 ms of the rest of
         // the mix at its head.
-        if (assetVolumes && a < assetVolumes.length) ex.skald_set_volume(a, assetVolumes[a]);
+        const v = assetVolumes?.[a];
+        if (v !== undefined) ex.skald_set_volume(a, v);
     }
     return ex;
 };

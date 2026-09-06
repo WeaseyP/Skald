@@ -9,7 +9,7 @@
 |   invokeCodegen / buildWasmPreview  -> HTTP to the local server, which runs |
 |                                        the same skald_codegen.exe + odin    |
 |                                        build the Electron main process does |
-|   saveGraph / saveWav               -> browser download                     |
+|   saveGraph / saveWav / saveWavStems -> browser download                    |
 |   loadGraph / importPatches         -> browser file picker                  |
 |   selectOutputPath                  -> filename prompt (downloads have no   |
 |                                        real destination dialog)             |
@@ -104,6 +104,23 @@ export const installElectronShim = (): void => {
                 // can rewrite between here and the browser's download.
                 download(fileName, new Uint8Array(bytes).slice().buffer, 'audio/wav');
                 return { saved: true, path: `${fileName} (in your Downloads)` };
+            } catch (e) {
+                return { saved: false, error: e instanceof Error ? e.message : String(e) };
+            }
+        },
+
+        // Roadmap G2 — stems in the browser. There is no folder picker and
+        // no zip: the files download one after another, which is what a
+        // browser can actually do, and the reported "path" says so rather than
+        // implying a directory the page never chose.
+        saveWavStems: async (
+            files: { name: string; bytes: Uint8Array }[]
+        ): Promise<{ saved: boolean; path?: string; error?: string }> => {
+            try {
+                for (const file of files) {
+                    download(file.name, new Uint8Array(file.bytes).slice().buffer, 'audio/wav');
+                }
+                return { saved: true, path: `${files.length} files (in your Downloads)` };
             } catch (e) {
                 return { saved: false, error: e instanceof Error ? e.message : String(e) };
             }

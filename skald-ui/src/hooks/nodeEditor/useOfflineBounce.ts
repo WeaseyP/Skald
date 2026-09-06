@@ -68,6 +68,36 @@ export const bounceFileName = (packageName: string, suffix = ''): string => {
     return `${base || 'skald'}${suffix}.wav`;
 };
 
+/** What the master pass is called in a stem folder. */
+export const MASTER_STEM_NAME = 'master.wav';
+
+/**
+ * One `.wav` name per asset, in asset-index order, all distinct.
+ *
+ * Two Instruments may legitimately carry the same name — the generator gives
+ * them distinct symbol prefixes and the editor never forced uniqueness — and
+ * two stems written to the same path would leave the user a folder in which
+ * one instrument had silently overwritten the other. The disambiguation is a
+ * numeric suffix rather than a rename, so the file still reads as the part it
+ * is; `master.wav` is reserved, so an Instrument called "master" does not
+ * clobber the mix.
+ */
+export const stemFileNames = (instrumentNames: readonly string[]): string[] => {
+    const used = new Set<string>([MASTER_STEM_NAME.toLowerCase()]);
+    return instrumentNames.map((name, i) => {
+        const base = (name || `Asset${i + 1}`).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '')
+            || `Asset${i + 1}`;
+        let candidate = `${base}.wav`;
+        let n = 2;
+        while (used.has(candidate.toLowerCase())) {
+            candidate = `${base}_${n}.wav`;
+            n++;
+        }
+        used.add(candidate.toLowerCase());
+        return candidate;
+    });
+};
+
 export const useOfflineBounce = ({
     nodes,
     edges,
@@ -91,10 +121,19 @@ export const useOfflineBounce = ({
         canceled.current = true;
     }, []);
 
-    /** Build the wasm module a bounce renders from — the preview's own build request. */
-    const buildBounceModule = useCallback(async (): Promise<{ bytes: ArrayBuffer; instrumentNames: string[] }> => {
+    /**
+     * Build the wasm module a bounce renders from.
+     *
+     * With no options this is the preview's own build request, byte for byte.
+     * Stem export passes `clearMuteSolo` — mute and solo are baked at codegen
+     * time, so a stem set built from the working mute state would come back
+     * with silent holes where the user had muted something while working.
+     */
+    const buildBounceModule = useCallback(async (
+        options?: { clearMuteSolo?: boolean },
+    ): Promise<{ bytes: ArrayBuffer; instrumentNames: string[] }> => {
         const projectData = buildProjectData(
-            nodes, edges, tracks, bpm, 1.0, patternSteps, nearestInScale);
+            nodes, edges, tracks, bpm, 1.0, patternSteps, nearestInScale, options);
         if (projectData.project.instruments.length === 0) {
             throw new Error('No instruments on the canvas. Wrap nodes in an Instrument before bouncing.');
         }
@@ -115,7 +154,7 @@ export const useOfflineBounce = ({
     const renderToWav = useCallback(async (
         bytes: ArrayBuffer,
         request: BounceRequest,
-        assetVolumes?: readonly number[],
+        assetVolumes?: readonly (number | undefined)[],
     ): Promise<Uint8Array | null> => {
         const frames = framesForBars(request.bars, bpm, BOUNCE_SAMPLE_RATE);
         const rendered = await renderOfflineChunked({
@@ -180,5 +219,66 @@ export const useOfflineBounce = ({
         }
     }, [buildBounceModule, renderToWav, notify, packageName, reportSave]);
 
-    return { isBouncing, progress, bounceToWav, cancelBounce };
+    /**
+     * Roadmap G2 — one 24-bit stem per instrument, plus the master bounce.
+     *
+     * ONE module build, N+1 render passes. The passes differ only in the
+     * runtime volumes they set (`skald_set_volume`), so rebuilding per stem
+     * would be N extra Odin compiles that emit identical code. Each stem sets
+     * every OTHER asset to 0 and leaves its own alone, which is what keeps the
+     * instrument at its authored level rather than at an invented unity.
+     *
+     * Every stem goes through the master DC blocker and limiter, because they
+     * are inside skald_process and there is no way to reach a per-asset output
+     * without leaving skald_process behind — and that is the right answer
+     * anyway: a stem is "how this instrument sounds in the mix", the thing you
+     * can lay back alongside the others and get the master bounce. It is
+     * documented as such in the manual's "Bouncing and stems".
+     */
+    const exportStems = useCallback(async (request: BounceRequest): Promise<void> => {
+        if (busy.current) return;
+        busy.current = true;
+        canceled.current = false;
+        setIsBouncing(true);
+        setProgress(0);
+        try {
+            const { bytes, instrumentNames } = await buildBounceModule({ clearMuteSolo: true });
+            const names = stemFileNames(instrumentNames);
+            const files: { name: string; bytes: Uint8Array }[] = [];
+
+            for (let asset = 0; asset < instrumentNames.length; asset++) {
+                // undefined for the target asset: "leave it as the build baked
+                // it". Every other asset is silenced outright.
+                const volumes = instrumentNames.map((_, i) => (i === asset ? undefined : 0));
+                const wav = await renderToWav(bytes, request, volumes);
+                if (!wav) break;
+                files.push({ name: names[asset], bytes: wav });
+            }
+            // The master pass sets no volumes at all, so skald_init's baked
+            // per-instrument levels stand and this is the same render
+            // Bounce to WAV produces.
+            const master = canceled.current ? null : await renderToWav(bytes, request);
+            if (!master) {
+                notify({ kind: 'success', message: 'Stem export canceled' });
+                return;
+            }
+            files.push({ name: MASTER_STEM_NAME, bytes: master });
+
+            const saveWavStems = window.electron.saveWavStems;
+            if (!saveWavStems) {
+                throw new Error('This build cannot write WAV files (the app needs restarting after an update).');
+            }
+            reportSave(await saveWavStems(files), `${files.length} stems`);
+        } catch (err) {
+            const message = cleanIpcError(err);
+            logger.error('OfflineBounce', `Stem export failed: ${message}`);
+            notify({ kind: 'error', message: `Stem export failed: ${message}` });
+        } finally {
+            setIsBouncing(false);
+            setProgress(0);
+            busy.current = false;
+        }
+    }, [buildBounceModule, renderToWav, notify, reportSave]);
+
+    return { isBouncing, progress, bounceToWav, exportStems, cancelBounce };
 };

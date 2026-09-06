@@ -16,6 +16,8 @@ export interface IElectronAPI {
     // therefore has to check before reaching for it, which is what stops a
     // stale preload from throwing "not a function" mid-bounce.
     saveWav?: (fileName: string, bytes: Uint8Array) => Promise<{ saved: boolean; path?: string; error?: string }>,
+    // Roadmap G2 — stem export. Optional for the same reason saveWav is.
+    saveWavStems?: (files: { name: string; bytes: Uint8Array }[]) => Promise<{ saved: boolean; path?: string; error?: string }>,
     // Import Patch: multi-selection, opened in the patch kit. Unreadable files
     // come back in `skipped` rather than failing the whole batch.
     importPatches: () => Promise<{

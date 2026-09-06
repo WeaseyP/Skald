@@ -450,6 +450,53 @@ ipcMain.handle('save-wav', async (_, fileName: string, bytes: Uint8Array): Promi
   }
 });
 
+// Roadmap G2 (§9.12 item 2) — stem export. One directory dialog, N+1 files,
+// so the user is not asked where to put each of eight stems in turn.
+//
+// `path.basename` on every incoming name is a boundary check, not tidiness:
+// the names are built in the renderer from Instrument names the user typed,
+// and a name containing "..\" or an absolute path would otherwise let a
+// project file decide where on the disk this handler writes. Only the leaf
+// name is honoured, so every byte written lands inside the chosen folder.
+//
+// A failure partway through reports which files did land rather than pretending
+// the whole export succeeded — the user needs to know their folder is half a
+// set, because a missing stem in a DAW session is silence, not an error.
+ipcMain.handle('save-wav-stems', async (_, files: { name: string; bytes: Uint8Array }[]): Promise<{ saved: boolean; path?: string; error?: string }> => {
+  const { filePaths } = await dialog.showOpenDialog({
+    title: 'Choose a folder for the stems',
+    buttonLabel: 'Export Stems',
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: openDialogDefaultPath(dialogPathEnv()),
+  });
+
+  const dir = filePaths?.[0];
+  if (!dir) {
+    return { saved: false }; // user canceled — not an error
+  }
+  const written: string[] = [];
+  try {
+    for (const file of files) {
+      const leaf = path.basename(file.name);
+      if (!leaf || leaf === '.' || leaf === '..') {
+        throw new Error(`refusing to write a stem named "${file.name}"`);
+      }
+      atomicWriteFileSync(path.join(dir, leaf), file.bytes);
+      written.push(leaf);
+    }
+    return { saved: true, path: dir };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[Skald] Stem export failed after ${written.length} file(s) in ${dir}:`, err);
+    return {
+      saved: false,
+      error: written.length > 0
+        ? `${detail} (${written.length} of ${files.length} stems were written: ${written.join(', ')})`
+        : detail,
+    };
+  }
+});
+
 // Handler for loading the graph. content: null with no error = canceled.
 ipcMain.handle('load-graph', async (): Promise<{ content: string | null; error?: string }> => {
   const { filePaths } = await dialog.showOpenDialog({

@@ -203,7 +203,16 @@ export const buildProjectData = (
     patternSteps = 16,
     // Scale quantizer from ScaleContext: notes must be quantized at export
     // exactly as they are at preview-schedule time.
-    nearestInScale?: (note: number) => number
+    nearestInScale?: (note: number) => number,
+    // Roadmap G2: stem export builds the project ONCE with every instrument
+    // audible, then isolates each one at runtime with skald_set_volume. Mute
+    // and solo are baked at codegen time — a muted asset's `_process` is not
+    // even called from skald_process — so a stem build that honoured them
+    // would hand the user a folder with silent holes in it wherever they had
+    // muted something while working. This is a serialisation option and
+    // nothing else: the user's tracks are not touched, so no document mutation
+    // and no pushHistory are involved.
+    options?: { clearMuteSolo?: boolean }
 ): ProjectStructure => {
     const projectData: ProjectStructure = {
         project: {
@@ -309,8 +318,8 @@ export const buildProjectData = (
             // Instrument-level mute silences the whole asset — only when
             // EVERY track is muted (per-track mute lives on the track).
             // Solo bubbles up if any track solos.
-            mute: tracks.length > 0 && tracks.every(t => t.isMuted),
-            solo: tracks.some(t => t.isSolo),
+            mute: options?.clearMuteSolo ? false : (tracks.length > 0 && tracks.every(t => t.isMuted)),
+            solo: options?.clearMuteSolo ? false : tracks.some(t => t.isSolo),
             // Floor at 0.001, never 0: the backend reads an exact 0 as
             // "field absent" (older saves) and substitutes unity.
             volume: Math.max(data.volume ?? 1.0, 0.001),

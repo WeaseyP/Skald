@@ -78,7 +78,7 @@ Skald emits **two** files from one analysis. The game-facing package is one. The
 
 ## Bouncing and stems
 
-Not every game wants generated source. A jam build, a trailer, a mobile title with no room for a synthesis runtime, or a composer who wants the loop in their DAW — all of them want audio, not Odin. Skald renders it from the same place the preview plays from.
+Not every game wants generated source. A jam build, a trailer, a mobile title with no room for a synthesis runtime, or a composer who wants the loop in their DAW — all of them want audio, not Odin. Skald renders it from the same place the preview plays from: a full mix, or one file per instrument.
 
 **Bounce to WAV…** sits under **Download Code** in the sidebar's Generation section, with a **Bars** field and an **Include tail** tick (`skald-ui/src/components/Sidebar.tsx::Sidebar`). Press it and you get a 24-bit stereo `.wav` at 48 kHz (`skald-ui/src/hooks/nodeEditor/useOfflineBounce.ts::BOUNCE_SAMPLE_RATE`) — on the desktop app through a save dialog, in the browser as a download.
 
@@ -99,6 +99,16 @@ It is also faster than realtime, and that is not a trick either. The generated m
 A canonical 44-byte RIFF/WAVE header, PCM format tag, two channels, 24 bits per sample, little-endian (`skald-ui/src/audio/wavEncoder.ts::encodeWav24`) — the same chunk layout the acceptance harness's own writer uses (`skald-backend/acceptance/wav.odin::write_wav16`), widened from 16 bits. Nothing is added on the way out: no dither, no normalisation, no extra gain. A sample outside ±1 is clamped rather than allowed to wrap into a full-scale click, and a NaN or infinity becomes silence — the same thing the DC blocker and limiter already do with one on the live bus.
 
 The bounce writes atomically, for the reason Save does: the new file lands beside the target and is renamed over it, so a failed write cannot destroy the bounce you made yesterday (`skald-ui/src/main/atomicSave.ts::atomicWriteFileSync`).
+
+### Stems
+
+**Export Stems…** sits beside it and writes one `.wav` per Instrument plus `master.wav` into a folder you choose (`skald-ui/src/hooks/nodeEditor/useOfflineBounce.ts::exportStems`). Same bar count, same tail setting, same 24-bit format. Two Instruments that share a name get distinct file names rather than one silently overwriting the other, and an Instrument called "master" does not collide with the mix (`skald-ui/src/hooks/nodeEditor/useOfflineBounce.ts::stemFileNames`).
+
+**Mute and solo do not apply to a stem export, deliberately.** They are baked at generation time — a muted asset's `_process` is not even called from the mix (`skald-backend/core/codegen_project.odin::generate_wasm_shim_code`) — so honouring them would hand you a folder with silent holes in it wherever you had muted something while working. The stem build clears them, as a serialiser option and nothing more: your tracks are not modified, the mute buttons do not move, and nothing lands in the undo history (`skald-ui/src/utils/projectSerializer.ts::buildProjectData`).
+
+**A stem is the instrument as it sounds in the mix, not as it sounds alone.** One module is built and rendered N+1 times; each stem silences every *other* instrument at runtime with `skald_set_volume` and leaves its own alone, so it keeps the level you set on that Instrument. It also passes through the master DC blocker and soft limiter, because those live inside `skald_process` and there is no way to reach a per-asset output without leaving `skald_process` — and that is the answer you want anyway: lay the stems back together in a DAW at unity and you get the master bounce, near enough that the difference is the limiter responding to a different sum. If you need an instrument at its raw pre-master level, solo it and use **Bounce to WAV…** instead.
+
+In the browser build there is no folder picker and no zip: the stems download one after another.
 
 ### If a bounce fails
 

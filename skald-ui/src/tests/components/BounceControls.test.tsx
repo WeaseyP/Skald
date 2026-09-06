@@ -118,3 +118,33 @@ describe('Bounce to WAV', () => {
         void rerender;
     });
 });
+
+describe('Export Stems', () => {
+    it('is absent until the host wires stem export', () => {
+        renderSidebar({ onBounce: noop });
+        expect(screen.queryByRole('button', { name: /export stems/i })).toBeNull();
+    });
+
+    it('exports the same bars and tail setting the bounce would use', () => {
+        const onExportStems = vi.fn();
+        renderSidebar({ onBounce: noop, onExportStems, defaultBounceBars: 8 });
+
+        fireEvent.click(screen.getByLabelText(/include tail/i));
+        fireEvent.click(screen.getByRole('button', { name: /export stems/i }));
+
+        expect(onExportStems).toHaveBeenCalledWith({ bars: 8, includeTail: false });
+    });
+
+    it('says in its tooltip that mute and solo do not apply, because they do not', () => {
+        renderSidebar({ onBounce: noop, onExportStems: noop });
+        const button = screen.getByRole('button', { name: /export stems/i });
+        expect(button.title).toMatch(/mute and solo are ignored/i);
+    });
+
+    it('refuses a click while a bounce is already running', () => {
+        const onExportStems = vi.fn();
+        renderSidebar({ onBounce: noop, onExportStems, isBouncing: true });
+        fireEvent.click(screen.getByRole('button', { name: /export stems/i }));
+        expect(onExportStems).not.toHaveBeenCalled();
+    });
+});
