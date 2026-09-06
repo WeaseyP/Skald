@@ -109,7 +109,7 @@ function Invoke-Bat($dir, $bat) {
     try { return @((& cmd /c ".\$bat 2>&1") | ForEach-Object { [string]$_ }) } finally { Pop-Location }
 }
 
-Write-Host '[1/5] acceptance (FFT behaviour)...' -NoNewline
+Write-Host '[1/7] acceptance (FFT behaviour)...' -NoNewline
 $o = Invoke-Bat $be 'run_acceptance.bat'
 $m = $o | Select-String -Pattern 'All (\d+) fixtures passed' | Select-Object -First 1
 if ($m) { $r = "$($m.Matches[0].Groups[1].Value)/$($m.Matches[0].Groups[1].Value) passed"; $ok = $true }
@@ -117,7 +117,7 @@ else { $r = (($o | Select-String -Pattern 'FAIL|failed' | Select-Object -First 1
 Add-Result 'acceptance' '' $r $ok
 Write-Host " $r"
 
-Write-Host '[2/5] goldens + determinism double-run...' -NoNewline
+Write-Host '[2/7] goldens + determinism double-run...' -NoNewline
 $o = Invoke-Bat $be 'run_golden.bat'
 $m = $o | Select-String -Pattern 'All (\d+) goldens match, and all (\d+) emit identically' | Select-Object -First 1
 if ($m) { $r = "$($m.Matches[0].Groups[1].Value) match, $($m.Matches[0].Groups[2].Value) deterministic"; $ok = $true }
@@ -125,7 +125,28 @@ else { $r = (($o | Select-String -Pattern 'differ|MISSING' | Select-Object -Firs
 Add-Result 'goldens' '' $r $ok
 Write-Host " $r"
 
-Write-Host '[3/5] backend unit (odin test)...' -NoNewline
+# Two gates CI runs that this script did not, until 2026-09-06: the 98-example
+# corpus goldens and the checked-in generated_audio.odin copies (SKB-020). Both
+# went red between wave closes without anyone noticing, because every generator
+# change stales the checked-in copies by design (their header carries the
+# generator digest) and only CI was looking.
+Write-Host '[3/7] examples corpus goldens...' -NoNewline
+$o = Invoke-Bat $be 'run_corpus_golden.bat'
+$m = $o | Select-String -Pattern 'All (\d+) goldens match' | Select-Object -First 1
+if ($m) { $r = "$($m.Matches[0].Groups[1].Value) match"; $ok = $true }
+else { $r = (($o | Select-String -Pattern 'differ|MISSING|FAILED|NON-DETERMINISTIC' | Select-Object -First 1) -replace '\s+', ' '); if (-not $r) { $r = 'no summary line' }; $ok = $false }
+Add-Result 'corpus goldens' '' $r $ok
+Write-Host " $r"
+
+Write-Host '[4/7] checked-in generated copies (regen check)...' -NoNewline
+$o = Invoke-Bat $be 'regen_generated.bat check'
+$m = $o | Select-String -Pattern 'All (\d+) checked-in generated files match' | Select-Object -First 1
+if ($m) { $r = "$($m.Matches[0].Groups[1].Value)/$($m.Matches[0].Groups[1].Value) match"; $ok = $true }
+else { $r = (($o | Select-String -Pattern 'STALE|MISSING|FAILED' | Select-Object -First 1) -replace '\s+', ' '); if (-not $r) { $r = 'no summary line' }; $ok = $false }
+Add-Result 'regen check' '' $r $ok
+Write-Host " $r"
+
+Write-Host '[5/7] backend unit (odin test)...' -NoNewline
 Push-Location $be
 try {
     # Exit code, not text matching. `odin test` draws a live progress bar with
@@ -148,7 +169,7 @@ Write-Host " $r"
 
 # --- UI ------------------------------------------------------------------
 if ($SkipUi) {
-    Write-Host '[4/5] UI gates... skipped (-SkipUi)'
+    Write-Host '[6/7] UI gates... skipped (-SkipUi)'
 }
 else {
     $ui = Join-Path $work 'skald-ui'
@@ -159,7 +180,7 @@ else {
     # has none, and copying it would take minutes.
     & cmd /c "mklink /J `"$nm`" `"$srcNm`"" | Out-Null
 
-    Write-Host '[4/5] UI tests (vitest)...' -NoNewline
+    Write-Host '[6/7] UI tests (vitest)...' -NoNewline
     Push-Location $ui
     try { $o = & cmd /c 'npx vitest run --reporter=dot 2>&1' } finally { Pop-Location }
     $tf = $o | Select-String -Pattern 'Test Files\s+(\d+) passed \((\d+)\)' | Select-Object -First 1
@@ -172,7 +193,7 @@ else {
     Add-Result 'UI tests' '' $r $ok
     Write-Host " $r"
 
-    Write-Host '[5/5] typecheck + lint...' -NoNewline
+    Write-Host '[7/7] typecheck + lint...' -NoNewline
     Push-Location $ui
     try {
         $ts = & cmd /c 'npx tsc --noEmit 2>&1'
