@@ -26,6 +26,7 @@ import {
     STAMP_FORMAT,
     checkCodegenProvenance,
     combinedDigest,
+    contentDigest,
     createCodegenGuard,
     digestString,
     fnv1a64,
@@ -94,6 +95,25 @@ describe('fnv1a64 — the same number on both sides of the handshake', () => {
                 { path: 'core/b.odin', bytes: bytes('yz\n') },
             ]),
         ).toBe('fnv1a64:ccb2dce879d42263');
+    });
+
+    it('contentDigest ignores CR bytes, mirroring core.content_digest in provenance.odin', () => {
+        // combinedDigest hashes CODEGEN_SOURCES content through contentDigest,
+        // not plain fnv1a64: #load embeds whatever is on disk, so a CRLF
+        // Windows working tree and an LF `git archive` export or CI runner
+        // produced two different `generator:` stamps for byte-identical
+        // source, and every checked-in generated_audio.odin copy read STALE
+        // under regen_generated.bat check in any LF checkout for that reason
+        // alone. Pinned against the Odin side (core.content_digest), run by
+        // provenance_test.odin's mirroring test.
+        const lf = bytes('package core\nfoo :: 1\n');
+        const crlf = bytes('package core\r\nfoo :: 1\r\n');
+        expect(contentDigest(crlf)).toBe(contentDigest(lf));
+        expect(contentDigest(lf)).toBe(fnv1a64(lf));
+
+        // Seeded (chained) form, as combinedDigest uses it across sources.
+        const seed = fnv1a64(bytes('core/scale.odin'));
+        expect(contentDigest(crlf, seed)).toBe(contentDigest(lf, seed));
     });
 
     it('is order- and path-sensitive, so a rename or a moved proc changes it', () => {

@@ -50,21 +50,37 @@ jitter_seed_from_name :: proc(name: string) -> u32 {
 	return u32(h) ~ u32(h >> 32)
 }
 
-/// Digest of an input file with every CR byte skipped. Deliberately
-/// line-ending-insensitive: with core.autocrlf the same committed .skald.json
-/// is CRLF in a Windows working tree and LF in a `git archive` export or a
-/// Linux runner, and a digest that saw the difference would make every golden
-/// red in scripts/verify-baseline.ps1 while green in the tree — the exact
-/// "whose fault is it" confusion TESTING.md exists to prevent. Identity of the
-/// authored content is what the header promises, and CRs are not content.
-input_digest :: proc(data: []byte) -> u64 {
-	h := u64(FNV1A64_OFFSET)
+/// FNV-1a over CONTENT bytes with every CR (0x0D) skipped, streamable via
+/// `seed` like fnv1a64. Deliberately line-ending-insensitive: with
+/// core.autocrlf the same committed file is CRLF in a Windows working tree
+/// and LF in a `git archive` export or a Linux runner, and a digest that saw
+/// the difference would make every golden red in scripts/verify-baseline.ps1
+/// while green in the tree — the exact "whose fault is it" confusion
+/// TESTING.md exists to prevent. Identity of the authored content is what
+/// the header promises, and CRs are not content.
+///
+/// This is the one reader for that rule: `input_digest` below (the .skald.json
+/// digest B12 prints into every generated header) is content_digest at the
+/// default seed, and main.odin's source_digest/print_version reuse it for the
+/// CODEGEN_SOURCES bytes (paths and NUL separators still go through plain
+/// fnv1a64 — a rename or a moved byte must still change the digest). Before
+/// this existed, source_digest hashed source bytes with plain fnv1a64, so the
+/// same checkout produced a different `generator:` stamp on a CRLF Windows
+/// checkout than on an LF `git archive` export or CI runner, with nothing else
+/// different — see regen_generated.bat's STALE reports on a pristine export.
+content_digest :: proc(data: []byte, seed: u64 = FNV1A64_OFFSET) -> u64 {
+	h := seed
 	for b in data {
 		if b == '\r' do continue
 		h ~= u64(b)
 		h *= FNV1A64_PRIME
 	}
 	return h
+}
+
+/// Digest of an input file, line-ending-insensitive. See content_digest.
+input_digest :: proc(data: []byte) -> u64 {
+	return content_digest(data)
 }
 
 /// What the header prints. Both strings are opaque to core: main.odin decides

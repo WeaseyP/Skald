@@ -71,6 +71,7 @@ CODEGEN_SOURCES := [?]Source_File {
 	{"core/param_ranges.generated.odin", #load("core/param_ranges.generated.odin")},
 	{"core/param_utils.odin", #load("core/param_utils.odin")},
 	{"core/provenance.odin", #load("core/provenance.odin")},
+	{"core/scale.odin", #load("core/scale.odin")},
 	{"core/target_guard.odin", #load("core/target_guard.odin")},
 	{"core/types.odin", #load("core/types.odin")},
 }
@@ -81,14 +82,22 @@ CODEGEN_SOURCES := [?]Source_File {
 
 /// Digest over every source, in list order: path, NUL, contents, NUL. The
 /// paths and the separators are part of the stream so that renaming a file, or
-/// moving bytes between two files, changes the answer.
+/// moving bytes between two files, changes the answer. Contents are hashed
+/// with core.content_digest, not plain fnv1a64: the digest must be
+/// checkout-independent — a CRLF Windows working tree and an LF `git archive`
+/// export or CI runner embed the identical *content* through #load, and a
+/// digest that saw the line-ending difference made every checked-in
+/// generated_audio.odin copy read STALE under `regen_generated.bat check` in
+/// any LF checkout even though nothing but this header line differed. Paths
+/// and the NUL separators go through plain fnv1a64 unchanged — CRs are not
+/// content, but they are not part of a path or a separator either.
 source_digest :: proc() -> u64 {
 	nul := [1]byte{0}
 	h := u64(core.FNV1A64_OFFSET)
 	for src in CODEGEN_SOURCES {
 		h = core.fnv1a64(transmute([]byte)src.path, h)
 		h = core.fnv1a64(nul[:], h)
-		h = core.fnv1a64(src.bytes, h)
+		h = core.content_digest(src.bytes, h)
 		h = core.fnv1a64(nul[:], h)
 	}
 	return h
@@ -102,7 +111,13 @@ print_version :: proc() {
 	fmt.printf("odin-version: %s\n", ODIN_VERSION)
 	fmt.printf("source-digest: fnv1a64:%016x\n", source_digest())
 	for src in CODEGEN_SOURCES {
-		fmt.printf("source-file: fnv1a64:%016x %s\n", core.fnv1a64(src.bytes), src.path)
+		// Per-file digest, same CR-insensitivity as the combined one above —
+		// codegenStamp.ts compares each of these against the file it reads
+		// from disk, so if this were plain fnv1a64 while the combined digest
+		// used content_digest, a checkout-only difference would make the
+		// combined digest match (both sides skip CR) while every per-file
+		// line still reported drifted.
+		fmt.printf("source-file: fnv1a64:%016x %s\n", core.content_digest(src.bytes), src.path)
 	}
 }
 

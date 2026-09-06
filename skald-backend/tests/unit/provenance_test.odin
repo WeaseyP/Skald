@@ -60,6 +60,30 @@ test_input_digest_sees_content_changes :: proc(t: ^testing.T) {
 	testing.expect(t, core.input_digest(a) != core.input_digest(b), "a one-character content change must change the digest")
 }
 
+@(test)
+test_content_digest_ignores_carriage_returns :: proc(t: ^testing.T) {
+	// main.odin's source_digest (the `-version` stamp's combined digest) and
+	// print_version's per-file digests both hash CODEGEN_SOURCES content
+	// through core.content_digest, not plain fnv1a64 — same bug as
+	// input_digest above, on the OTHER file family: #load embeds whatever is
+	// on disk, so a CRLF Windows working tree and an LF `git archive` export
+	// or CI runner produced two different `generator:` stamps for the exact
+	// same source, and every checked-in generated_audio.odin copy read STALE
+	// under regen_generated.bat check in any LF checkout for that reason
+	// alone. input_digest IS content_digest at the default seed (see
+	// provenance.odin) so this pins the general, seeded form main.odin needs
+	// to chain the digest across multiple files.
+	lf := transmute([]byte)string("package core\nfoo :: 1\n")
+	crlf := transmute([]byte)string("package core\r\nfoo :: 1\r\n")
+	testing.expect_value(t, core.content_digest(crlf), core.content_digest(lf))
+	testing.expect_value(t, core.content_digest(lf), core.fnv1a64(lf))
+
+	// Seeded (chained) form, as source_digest uses it across CODEGEN_SOURCES:
+	// a CR difference partway through a running hash must still wash out.
+	seed := core.fnv1a64(transmute([]byte)string("core/scale.odin"))
+	testing.expect_value(t, core.content_digest(crlf, seed), core.content_digest(lf, seed))
+}
+
 // --- the header --------------------------------------------------------
 
 // A project-shaped input with one exposed parameter and one asset with none,

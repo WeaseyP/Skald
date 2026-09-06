@@ -85,6 +85,28 @@ export const fnv1a64 = (data: Uint8Array, seed: bigint = FNV1A64_OFFSET): bigint
 export const digestString = (value: bigint): string =>
     `${DIGEST_LABEL}:${value.toString(16).padStart(16, '0')}`;
 
+/**
+ * FNV-1a over CONTENT bytes with every CR (0x0D) skipped, mirroring
+ * `core.content_digest` in skald-backend/core/provenance.odin. The digest
+ * must be checkout-independent: the same backend source is CRLF on a Windows
+ * working tree and LF in a `git archive` export or on CI, and #load embeds
+ * whichever bytes are on disk, so a digest that saw the difference made the
+ * `generator:` stamp line — and therefore every checked-in generated file —
+ * read stale in any LF checkout even though nothing else had changed. Used
+ * for source CONTENTS only; paths and the NUL separators in combinedDigest
+ * still go through plain fnv1a64, since a rename must still change the
+ * answer and CRs are not part of a path or a separator.
+ */
+export const contentDigest = (data: Uint8Array, seed: bigint = FNV1A64_OFFSET): bigint => {
+    let h = seed;
+    for (const b of data) {
+        if (b === 0x0d) continue;
+        h = (h ^ BigInt(b)) & U64_MASK;
+        h = (h * FNV1A64_PRIME) & U64_MASK;
+    }
+    return h;
+};
+
 /** One backend source file, as the digest sees it. */
 export interface SourceBytes {
     /** Path relative to skald-backend/, forward slashes (as the stamp prints it). */
@@ -103,7 +125,7 @@ export const combinedDigest = (sources: SourceBytes[]): string => {
     for (const src of sources) {
         h = fnv1a64(new TextEncoder().encode(src.path), h);
         h = fnv1a64(nul, h);
-        h = fnv1a64(src.bytes, h);
+        h = contentDigest(src.bytes, h);
         h = fnv1a64(nul, h);
     }
     return digestString(h);
@@ -350,7 +372,11 @@ export const checkCodegenProvenance = async (
             continue;
         }
         sources.push({ path: file.path, bytes });
-        if (digestString(fnv1a64(bytes)) !== file.digest) drifted.push(file.path);
+        // Same CR-insensitivity as combinedDigest above: the per-file digest
+        // the backend prints (core.content_digest) skips CR, so comparing
+        // against plain fnv1a64 here would make a CRLF/LF checkout of the
+        // SAME content report every file drifted while combinedDigest agreed.
+        if (digestString(contentDigest(bytes)) !== file.digest) drifted.push(file.path);
     }
 
     if (missing.length > 0) {
