@@ -19,6 +19,7 @@ import { OutOfRangeNotice } from './OutOfRangeNotice';
 import { useElementWidth } from './useElementWidth';
 import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
 import { useStepPaintInteraction } from '../../hooks/sequencer/useStepPaintInteraction';
+import { useNoteDrag } from '../../hooks/sequencer/useNoteDrag';
 
 interface PianoRollProps {
     track: SequencerTrack;
@@ -181,19 +182,6 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // StepGrid's onStepContext feeds.
     const [selectedNote, setSelectedNote] = useState<{ step: number; note: number } | null>(null);
 
-    // E2: an in-progress duration drag. Only ever one note at a time, so a
-    // single slot (not a per-note map) is enough; identified by (step, pitch)
-    // rather than array index because a chord's other members must not move
-    // when one is dragged.
-    const [resizeDrag, setResizeDrag] = useState<{
-        trackId: string;
-        step: number;
-        notePitch: number;
-        startX: number;
-        initialDuration: number;
-        currentDuration: number;
-    } | null>(null);
-
     const handleGridMouseDown = (e: React.MouseEvent, midiNote: number) => {
         if (!scrollContainerRef.current) return;
 
@@ -261,6 +249,18 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         if (onSelectNote) onSelectNote(track.id, clickedStep, midiNote);
     };
 
+    // hooks/sequencer/useNoteDrag.ts: the resize handle's duration-only drag.
+    // `cancelOnEscape` is set (E2) — dropping the state without ever calling
+    // onCommit is exactly the "restore" a cancelled drag promises, since the
+    // next render reads the note's real duration back off the track.
+    const resizeValueFor = useCallback((_field: 'duration', initialValue: number, deltaX: number): number =>
+        Math.max(1, initialValue + Math.round(deltaX / stepWidth)),
+    [stepWidth]);
+    const resizeOnCommit = useCallback((trackId: string, step: number, _field: 'duration', value: number, notePitch: number) =>
+        onUpdateNote(trackId, step, { duration: value }, notePitch),
+    [onUpdateNote]);
+    const noteDrag = useNoteDrag<'duration'>({ valueFor: resizeValueFor, onCommit: resizeOnCommit, cancelOnEscape: true });
+
     // E2: grab the right-edge handle to start a duration drag. Stops the
     // event reaching the row underneath — otherwise the row's own
     // onMouseDown would ALSO fire and paint/remove a note out from under the
@@ -269,55 +269,16 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     const handleResizeMouseDown = (e: React.MouseEvent, n: NoteEvent) => {
         e.stopPropagation();
         e.preventDefault();
-        setResizeDrag({
+        noteDrag.start({
             trackId: track.id,
             step: n.step,
             notePitch: n.note,
+            field: 'duration',
+            initialValue: n.duration || 1,
             startX: e.clientX,
-            initialDuration: n.duration || 1,
-            currentDuration: n.duration || 1,
+            startY: e.clientY,
         });
     };
-
-    // E2: local drag state carries the pointer; onUpdateNote (which already
-    // pushes history) is called exactly once, on release, so a drag of any
-    // length is one undo entry — the same "commit on mouseup, not on every
-    // mousemove" shape as StepGrid's own duration/velocity/probability drag.
-    // Escape drops the local state without ever calling onUpdateNote, so
-    // there is nothing to undo: the next render reads the note's real
-    // duration back off the track, which is the "restore" the cancelled drag
-    // promised.
-    useEffect(() => {
-        if (!resizeDrag) return;
-
-        const handleMove = (e: MouseEvent) => {
-            setResizeDrag(prev => {
-                if (!prev) return prev;
-                const deltaSteps = Math.round((e.clientX - prev.startX) / stepWidth);
-                return { ...prev, currentDuration: Math.max(1, prev.initialDuration + deltaSteps) };
-            });
-        };
-
-        const handleUp = () => {
-            setResizeDrag(prev => {
-                if (prev) onUpdateNote(prev.trackId, prev.step, { duration: prev.currentDuration }, prev.notePitch);
-                return null;
-            });
-        };
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setResizeDrag(null);
-        };
-
-        window.addEventListener('mousemove', handleMove);
-        window.addEventListener('mouseup', handleUp);
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('mousemove', handleMove);
-            window.removeEventListener('mouseup', handleUp);
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [resizeDrag !== null, onUpdateNote, stepWidth]);
 
     // Open on middle C. With the full MIDI range the default scroll position is
     // no longer incidental: row 0 is now G9, five octaves above anything most
@@ -475,11 +436,11 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
                                 {/* Placed Notes */}
                                 {track.notes.filter(n => n.note === note).map((n, idx) => {
-                                    const isResizingThis = resizeDrag !== null
-                                        && resizeDrag.trackId === track.id
-                                        && resizeDrag.step === n.step
-                                        && resizeDrag.notePitch === n.note;
-                                    const duration = isResizingThis ? resizeDrag!.currentDuration : (n.duration || 1);
+                                    const isResizingThis = noteDrag.state !== null
+                                        && noteDrag.state.trackId === track.id
+                                        && noteDrag.state.step === n.step
+                                        && noteDrag.state.notePitch === n.note;
+                                    const duration = isResizingThis ? noteDrag.state!.currentValue : (n.duration || 1);
                                     const isSelected = selectedNote !== null
                                         && selectedNote.step === n.step
                                         && selectedNote.note === n.note;
