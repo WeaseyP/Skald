@@ -99,7 +99,19 @@ export const detectTrackViewMode = (
     // exactly 45 and 52, and a one-row grid would draw its two pitches on top
     // of each other. Widening this test is how that guitar loses half its
     // notes to a drum grid.
-    if (track.notes.length > 0 && distinctPitchCount(track) === 1) return 'percussive';
+    //
+    // A PATTERN, not a click: this used to fire at notes.length > 0, so the
+    // instant a user painted the FIRST note into a fresh melodic track it had
+    // exactly one distinct pitch and read as percussive. Combined with
+    // SequencerDock re-resolving the open editor on every render (F4, fixed
+    // separately by resolving once when the editor opens), that silently
+    // swapped the just-opened Piano Roll for the one-row Drum Roll under the
+    // very first note a user ever placed — the reported "piano roll doesn't
+    // work at all" regression. Four is the floor calibrated against a real
+    // pitch-tracking source (SNES Slap Bass, TrackViewMode.test.tsx): one or
+    // three same-pitch notes is still just a click or a triplet, not yet a
+    // groove that never changes pitch.
+    if (track.notes.length >= 4 && distinctPitchCount(track) === 1) return 'percussive';
 
     // Includes the no-instrument case: a chromatic roll can show every note a
     // track holds and a one-row grid cannot, so when there is nothing to read,

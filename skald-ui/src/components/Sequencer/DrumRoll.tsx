@@ -46,6 +46,8 @@ import {
 import { useElementWidth } from './useElementWidth';
 import { useViewport } from '../../hooks/useViewport';
 import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
+import { ResolvedTrackViewMode } from './trackViewMode';
+import { ViewModeToggle } from './ViewModeToggle';
 
 export interface DrumRollProps {
     track: SequencerTrack;
@@ -68,6 +70,10 @@ export interface DrumRollProps {
     /** The row's canonical-pitch field. Absent hides the field (read-only host). */
     onSetDefaultNote?: (trackId: string, note: number) => void;
     onClose: () => void;
+    // F4 regression fix, item 3: see PianoRoll.tsx's identical pair — the
+    // explicit switch now that SequencerDock resolves the editor once.
+    viewMode?: ResolvedTrackViewMode;
+    onSetViewMode?: (mode: ResolvedTrackViewMode) => void;
 }
 
 const ROW_HEIGHT = 44;
@@ -117,6 +123,8 @@ export const DrumRoll: React.FC<DrumRollProps> = ({
     onSelectNote,
     onSetDefaultNote,
     onClose,
+    viewMode,
+    onSetViewMode,
 }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -166,7 +174,10 @@ export const DrumRoll: React.FC<DrumRollProps> = ({
                         />
                     </label>
                 )}
-                <span style={{ marginLeft: 'auto' }}>
+                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {viewMode && onSetViewMode && (
+                        <ViewModeToggle mode={viewMode} onChange={onSetViewMode} />
+                    )}
                     <button onClick={onClose} style={{ cursor: 'pointer', padding: '5px 10px' }}>Close</button>
                 </span>
             </div>

@@ -4,7 +4,7 @@ import { TrackList } from './TrackList';
 import { StepGrid } from './StepGrid';
 import { Node } from '@xyflow/react';
 import { NodeParams, SequencerTrack, SequencerState , NoteEvent } from '../../definitions/types';
-import { TrackViewMode, percussiveTracks, resolveTrackViewMode } from './trackViewMode';
+import { ResolvedTrackViewMode, TrackViewMode, percussiveTracks, resolveTrackViewMode } from './trackViewMode';
 
 interface SequencerDockProps {
     state: SequencerState;
@@ -113,9 +113,22 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     meterAnalysers
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
-    const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+    // F4 regression fix: which editor is open, and WHICH MODE it opened in —
+    // resolved exactly once, at the moment "Edit" is clicked, and never
+    // again for as long as that editor stays open. The old code called
+    // `resolveTrackViewMode` fresh on every render, reading `state.tracks`
+    // straight off the current prop, so painting a note into a fresh
+    // Piano Roll (one distinct pitch the instant the first note lands)
+    // re-resolved the SAME open track to 'percussive' mid-session and swapped
+    // the mounted editor out from under the user — the reported "piano roll
+    // doesn't work at all" bug. Only two things may now change `editingView`:
+    // opening a (possibly different) track (`openEditor` below), and the
+    // explicit toggle in the open editor's own header
+    // (`switchEditingViewMode`), which also writes the track's stored
+    // preference so the choice survives the editor closing.
+    const [editingView, setEditingView] = useState<{ trackId: string; mode: ResolvedTrackViewMode } | null>(null);
     // F3: the kit workspace, open over the dock the way an editor is. Separate
-    // from `editingTrackId` because it is not about one track.
+    // from `editingView` because it is not about one track.
     const [isKitOpen, setIsKitOpen] = useState(false);
     // E9 (roadmap 0.2 §9.4 item 3): same persisted mode preference the
     // per-Output-node visualizer uses — one app-wide setting, not a second
@@ -140,16 +153,30 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
         setMasterVolume(parseFloat(e.target.value));
     };
 
-    const editingTrack = state.tracks.find(t => t.id === editingTrackId);
+    const editingTrack = state.tracks.find(t => t.id === editingView?.trackId);
+    const editingViewMode = editingView?.mode ?? null;
 
-    // F4: which editor "Edit" opens. The decision is trackViewMode.ts's alone —
-    // the dock resolves, it does not detect, so the row's selector and this
-    // dispatch can never disagree about whether a track is percussive and
-    // leave it editable in neither view.
-    const editingInstrument = editingTrack
-        ? nodes.find(n => n.id === editingTrack.targetNodeId) ?? null
-        : null;
-    const editingViewMode = editingTrack ? resolveTrackViewMode(editingTrack, editingInstrument) : null;
+    // F4: which editor "Edit" opens, resolved ONCE against whatever the track
+    // and its Instrument look like at the moment of the click — never again
+    // while the editor stays open (see `editingView`'s comment above).
+    const openEditor = React.useCallback((trackId: string) => {
+        const track = state.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const instrument = nodes.find(n => n.id === track.targetNodeId) ?? null;
+        setEditingView({ trackId, mode: resolveTrackViewMode(track, instrument) });
+    }, [state.tracks, nodes]);
+
+    // F4 item 3: the open editor's own explicit override. Writes the SAME
+    // `viewMode` field the TrackList row's Auto/Melodic/Percussive selector
+    // does (through `onSetTrackViewMode`, so it is pushed onto the undo
+    // stack once like any other track edit — B3), AND switches the mounted
+    // editor immediately rather than waiting for the next "Edit" click, so a
+    // user who overrides a wrong guess sees it take effect at once.
+    const switchEditingViewMode = React.useCallback((mode: ResolvedTrackViewMode) => {
+        if (!editingView) return;
+        onSetTrackViewMode(editingView.trackId, mode);
+        setEditingView({ trackId: editingView.trackId, mode });
+    }, [editingView, onSetTrackViewMode]);
 
     // F3: the kit's rows AND the answer to "is the Kit button worth showing?"
     // come from the same list, so the button can never appear over an empty
@@ -272,7 +299,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                         onSoloToggle={onSoloToggle}
                         onFocusTrack={onFocusTrack}
                         onUpdateSteps={onUpdateSteps}
-                        onOpenPianoRoll={setEditingTrackId}
+                        onOpenPianoRoll={openEditor}
                         onSetViewMode={onSetTrackViewMode}
                     />
 
@@ -317,7 +344,9 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                                 onUpdateNote={onUpdateNote}
                                 onSelectNote={onStepSelect}
                                 onSetDefaultNote={onSetTrackDefaultNote}
-                                onClose={() => setEditingTrackId(null)}
+                                onClose={() => setEditingView(null)}
+                                viewMode={editingViewMode}
+                                onSetViewMode={switchEditingViewMode}
                             />
                         )}
 
@@ -329,11 +358,13 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                                 currentStep={state.currentStep}
                                 steps={editingTrack.steps || 16}
                                 patternSteps={patternSteps}
-                                onClose={() => setEditingTrackId(null)}
+                                onClose={() => setEditingView(null)}
                                 // E3: the same selection callback StepGrid feeds through
                                 // onStepContext, so a note picked in the roll opens the
                                 // same Step Properties panel a grid click would.
                                 onSelectNote={onStepSelect}
+                                viewMode={editingViewMode}
+                                onSetViewMode={switchEditingViewMode}
                             />
                         )}
                     </div>

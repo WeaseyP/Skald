@@ -93,6 +93,54 @@ describe('resolveTrackViewMode — calibrated against the shipped examples', () 
         expect(modeOf('snes-kit/instruments/crunch-guitar.skald.json', 'SNES Crunch Guitar')).toBe('melodic');
     });
 
+    // F4 regression (the reported "piano roll doesn't work at all"): a fresh
+    // melodic track has exactly one distinct pitch the instant its first note
+    // is painted, and the old one-pitch rule fired on ANY notes.length > 0.
+    // Combined with SequencerDock re-resolving on every render (see
+    // SequencerDockViewModeRegression.test.tsx), painting the very first note
+    // into an empty Piano Roll silently swapped it for the Drum Roll. The
+    // fallback now needs a PATTERN, not a click: at least 4 notes on the one
+    // pitch, calibrated against a real pitch-tracking source (SNES Slap Bass)
+    // so a click, a triplet and a bar-long groove are told apart.
+    it('a single same-pitch note on a pitch-tracking source is not evidence — stays melodic', () => {
+        const { node } = pairFor('snes-kit/songs/groove-bed.skald.json', 'SNES Slap Bass');
+        const track: SequencerTrack = {
+            id: 't', targetNodeId: node.id, name: 'Bass', color: '#fff', steps: 16,
+            notes: [{ step: 0, note: 40, velocity: 1, duration: 1 }],
+            isMuted: false, isSolo: false,
+        };
+        expect(resolveTrackViewMode(track, node)).toBe('melodic');
+    });
+
+    it('three same-pitch notes are still not a pattern — stays melodic', () => {
+        const { node } = pairFor('snes-kit/songs/groove-bed.skald.json', 'SNES Slap Bass');
+        const track: SequencerTrack = {
+            id: 't', targetNodeId: node.id, name: 'Bass', color: '#fff', steps: 16,
+            notes: [
+                { step: 0, note: 40, velocity: 1, duration: 1 },
+                { step: 4, note: 40, velocity: 1, duration: 1 },
+                { step: 8, note: 40, velocity: 1, duration: 1 },
+            ],
+            isMuted: false, isSolo: false,
+        };
+        expect(resolveTrackViewMode(track, node)).toBe('melodic');
+    });
+
+    it('four same-pitch notes are a pattern — resolves percussive', () => {
+        const { node } = pairFor('snes-kit/songs/groove-bed.skald.json', 'SNES Slap Bass');
+        const track: SequencerTrack = {
+            id: 't', targetNodeId: node.id, name: 'Bass', color: '#fff', steps: 16,
+            notes: [
+                { step: 0, note: 40, velocity: 1, duration: 1 },
+                { step: 4, note: 40, velocity: 1, duration: 1 },
+                { step: 8, note: 40, velocity: 1, duration: 1 },
+                { step: 12, note: 40, velocity: 1, duration: 1 },
+            ],
+            isMuted: false, isSolo: false,
+        };
+        expect(resolveTrackViewMode(track, node)).toBe('percussive');
+    });
+
     it('an explicit hint always wins over detection, in both directions', () => {
         const kick = pairFor('snes-kit/songs/groove-bed.skald.json', 'SNES Kick');
         const bass = pairFor('snes-kit/songs/groove-bed.skald.json', 'SNES Slap Bass');

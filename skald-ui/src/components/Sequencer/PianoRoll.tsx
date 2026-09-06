@@ -21,6 +21,8 @@ import { useElementWidth } from './useElementWidth';
 import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
 import { useStepPaintInteraction } from '../../hooks/sequencer/useStepPaintInteraction';
 import { useNoteDrag } from '../../hooks/sequencer/useNoteDrag';
+import { ResolvedTrackViewMode } from './trackViewMode';
+import { ViewModeToggle } from './ViewModeToggle';
 
 interface PianoRollProps {
     track: SequencerTrack;
@@ -39,6 +41,12 @@ interface PianoRollProps {
     // Mirrors StepGrid's onStepContext -> onStepSelect wiring in
     // SequencerDock.tsx.
     onSelectNote?: (trackId: string, step: number, notePitch: number) => void;
+    // F4 regression fix, item 3: the explicit escape hatch now that
+    // SequencerDock resolves which editor to open only once. Both optional
+    // and both present together, or neither — a read-only host (were one to
+    // exist) gets no toggle rather than a half-wired one.
+    viewMode?: ResolvedTrackViewMode;
+    onSetViewMode?: (mode: ResolvedTrackViewMode) => void;
 }
 
 const KEY_WIDTH = 50;
@@ -120,7 +128,9 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     steps = 16,
     patternSteps,
     onClose,
-    onSelectNote
+    onSelectNote,
+    viewMode,
+    onSetViewMode,
 }) => {
     const { isInScale, rootNote, scaleName, nearestInScale } = useScale();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -317,8 +327,11 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
             <div style={toolbarStyles}>
                 <span style={{ fontWeight: 'bold' }}>Piano Roll - {track.name}</span>
                 <span style={{ fontSize: '0.8em', color: '#888' }}>{rootNote} {scaleName}</span>
-                <div>
-                    <button onClick={handleSnapToScale} style={{ cursor: 'pointer', padding: '5px 10px', marginRight: '10px', backgroundColor: '#444', color: '#fff', border: 'none', borderRadius: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {viewMode && onSetViewMode && (
+                        <ViewModeToggle mode={viewMode} onChange={onSetViewMode} />
+                    )}
+                    <button onClick={handleSnapToScale} style={{ cursor: 'pointer', padding: '5px 10px', backgroundColor: '#444', color: '#fff', border: 'none', borderRadius: '4px' }}>
                         Snap to Scale
                     </button>
                     <button onClick={onClose} style={{ cursor: 'pointer', padding: '5px 10px' }}>Close</button>
