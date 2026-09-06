@@ -8,6 +8,7 @@ import { useModifierKeys } from '../../hooks/sequencer/useModifierKeys';
 import { useStepPaintInteraction } from '../../hooks/sequencer/useStepPaintInteraction';
 import { useNoteDrag } from '../../hooks/sequencer/useNoteDrag';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
+import { Playhead } from './Playhead';
 
 interface StepGridProps {
     tracks: SequencerTrack[];
@@ -98,27 +99,6 @@ const noteStyle: React.CSSProperties = {
     zIndex: 5,
     cursor: 'ew-resize', // Default cursor for note is resize/move logic
     // Actually, if we want to click the "note" to delete it, we click the cell.
-};
-
-// Playhead overlay
-const Playhead: React.FC<{ step: number; bpm: number; stepWidth: number }> = ({ step, bpm, stepWidth }) => {
-    // 16th note duration in seconds = 60 / bpm / 4
-    const duration = 60 / bpm / 4;
-
-    return (
-        <div style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: `${step * stepWidth}px`,
-            width: `${stepWidth}px`,
-            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-            borderLeft: '1px solid rgba(255, 255, 255, 0.3)',
-            pointerEvents: 'none',
-            zIndex: 10,
-            transition: `left ${duration}s linear` // Smooth animation
-        }} />
-    );
 };
 
 export const StepGrid: React.FC<StepGridProps & {
