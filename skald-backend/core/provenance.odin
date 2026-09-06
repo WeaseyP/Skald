@@ -37,6 +37,19 @@ fnv1a64 :: proc(data: []byte, seed: u64 = FNV1A64_OFFSET) -> u64 {
 	return h
 }
 
+/// G5 (roadmap 9.18): the seed for an Instrument's pitch/velocity jitter RNG,
+/// derived from its resolved export prefix rather than a literal baked at
+/// generation time by hand. Reuses fnv1a64 rather than a second hash — "one
+/// implementation, not two that can drift" is why FNV-1a lives here at all —
+/// and folds the 64-bit digest into 32 bits with xor rather than a truncating
+/// cast, so both halves of the digest affect the seed. Deterministic in the
+/// input (same export prefix -> same seed -> same jitter sequence on every
+/// generation), which is what makes a jittered golden reproducible at all.
+jitter_seed_from_name :: proc(name: string) -> u32 {
+	h := fnv1a64(transmute([]byte)name)
+	return u32(h) ~ u32(h >> 32)
+}
+
 /// Digest of an input file with every CR byte skipped. Deliberately
 /// line-ending-insensitive: with core.autocrlf the same committed .skald.json
 /// is CRLF in a Windows working tree and LF in a `git archive` export or a

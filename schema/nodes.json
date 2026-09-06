@@ -121,6 +121,10 @@
     { "name": "voiceCount", "min": 1, "max": 32, "default": 8, "unit": "" },
     { "name": "unison", "min": 1, "max": 16, "default": 1, "unit": "" },
     { "name": "detune", "min": 0, "max": 100, "default": 5, "unit": "cents" },
-    { "name": "glide", "min": 0, "max": 5, "default": 0.05, "unit": "s" }
+    { "name": "glide", "min": 0, "max": 5, "default": 0.05, "unit": "s" },
+    { "name": "pitchJitter", "min": 0, "max": 100, "default": 0, "unit": "cents",
+      "why": "G5 (roadmap 9.18): per-trigger random pitch spread, uniform in ±pitchJitter cents. Default 0 emits no jitter code at all, so an untouched Instrument's output stays byte-identical (KI-018's stealMode sibling — a value read at codegen time, not a runtime-exposed field)." },
+    { "name": "velocityJitter", "min": 0, "max": 1, "default": 0, "unit": "",
+      "why": "G5: per-trigger random velocity spread, uniform in ±velocityJitter, clamped back into [0,1] same as note_on's own velocity clamp. Default 0 emits no jitter code." }
   ]
 }

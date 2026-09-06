@@ -301,4 +301,4 @@ The reverb itself is a real pre-delay stage — the dry signal read back out of 
 
 ## Known issues
 
-Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-018, KI-025, KI-045. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-025, KI-045. KI-018 (`voiceStealing`, stored and read by nothing) closed with roadmap packet G5 — see "Resolved before 0.2". Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.

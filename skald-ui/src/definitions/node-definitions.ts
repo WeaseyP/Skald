@@ -195,7 +195,11 @@ const defaultInstrumentParams: InstrumentParams = {
     name: 'New Instrument',
     volume: 1.0,
     voiceCount: 8,
-    voiceStealing: 'oldest',
+    // stealMode left unset — like exportId/assetType above, its absence is
+    // meaningful ('release-first', the byte-identical pre-G5 default), not
+    // merely omitted (KI-018; see types.ts::InstrumentParams).
+    pitchJitter: 0,
+    velocityJitter: 0,
     glide: 0.05,
     unison: 1,
     detune: 5,

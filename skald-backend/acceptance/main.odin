@@ -1034,6 +1034,108 @@ main :: proc() {
 			}
 		}
 
+	case "steal_quietest":
+		// G5 (roadmap 9.18, KI-018): stealMode "quietest". Three voices
+		// (voice_count 3) fill up — A (261.63Hz) and B (392.00Hz) held loud,
+		// C (311.13Hz) held QUIET (velocity 0.15, and the fixture's ADSR has
+		// velocitySensitivity 1.0 so velocity really does set the voice's
+		// level) — then a fourth note D must steal a voice. The default
+		// release-first-then-oldest policy has nothing releasing here (no
+		// note_off is ever called) and no free voice, so it falls to plain
+		// oldest-by-age and would steal A, the very first note. Quietest
+		// must steal C instead, regardless of it being the youngest.
+		//
+		// Note choice is deliberately inharmonic (not small-integer ratios
+		// of each other): an earlier draft used 110/220/330/659Hz and the
+		// per-asset soft limiter's tanh — a real nonlinearity, not a test
+		// bug — put a measurable 3rd-harmonic-of-220 artifact at 660Hz,
+		// almost exactly on top of C's own bin, so "C is gone" could not be
+		// told apart from "C is still there but small". 146.83/261.63/
+		// 311.13/392.00Hz keeps every low harmonic of A, B and D more than
+		// 15Hz from C's bin.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			t_b := int(0.05 * sample_rate)
+			t_c := int(0.10 * sample_rate)
+			t_d := int(0.35 * sample_rate)
+			ga.Asset_note_on(p, 60, 1.0, 0.0)  // A: C4 (261.63 Hz), loud, held
+			for i in 0 ..< len(buf) {
+				if i == t_b do ga.Asset_note_on(p, 67, 1.0, 0.0)   // B: G4 (392.00 Hz), loud, held
+				if i == t_c do ga.Asset_note_on(p, 63, 0.15, 0.0)  // C: Eb4 (311.13 Hz), QUIET, held
+				if i == t_d do ga.Asset_note_on(p, 50, 1.0, 0.0)   // D: D3 (146.83 Hz) — forces the steal
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				spec := fft_channel(buf[int(0.6 * sample_rate):int(1.0 * sample_rate)], .Left)
+				defer delete(spec)
+				mag_a := magnitude_at_freq(spec, sample_rate, 261.63)
+				mag_b := magnitude_at_freq(spec, sample_rate, 392.00)
+				mag_c := magnitude_at_freq(spec, sample_rate, 311.13)
+				// ~1500-1600 when a voice is genuinely sounding at full/near-
+				// full level (A, B); low single digits is soft-limiter
+				// harmonic leakage from the OTHER three tones landing near
+				// this bin, not C itself. 20 sits two orders of magnitude
+				// below "present" and well above the observed leakage floor.
+				floor: f32 = 20.0
+				if mag_a < floor {
+					fmt.eprintfln("FAIL steal_quietest: A (261.63Hz, loud, held) not audible after the steal: mag %.4f", mag_a)
+					all_pass = false
+				}
+				if mag_b < floor {
+					fmt.eprintfln("FAIL steal_quietest: B (392.00Hz, loud, held) not audible after the steal: mag %.4f", mag_b)
+					all_pass = false
+				}
+				if mag_c > floor {
+					fmt.eprintfln("FAIL steal_quietest: C (311.13Hz, quiet) should have been stolen but is still audible: mag %.4f (A=%.4f, B=%.4f)", mag_c, mag_a, mag_b)
+					all_pass = false
+				}
+			}
+		}
+
+	case "jitter_pitch":
+		// G5: pitchJitter 50 cents on a fixed A4 (440Hz) trigger. The
+		// deterministic per-asset draw must move the pitch off 440Hz
+		// (proving the jitter fired at all) but never past the authored
+		// ±50 cent window. Measured by zero-crossing timing, not an FFT
+		// bin: 50 cents at 440Hz is under 13Hz, and this asset's
+		// jitter_rng draw happens to land only ~3 cents off center — well
+		// inside a single peak_freq_from_fft bin at any window length this
+		// harness can afford (see estimate_freq_zero_crossing's doc comment).
+		{
+			render_sfx_one_shot(buf, sample_rate, 69, 1.0, 1.0)
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				all_pass &= assert_audible(buf, .Left)
+				got, ok := estimate_freq_zero_crossing(buf, sample_rate, 0.1, 0.9, .Left)
+				if !ok {
+					fmt.eprintfln("FAIL jitter_pitch: zero-crossing estimate found too few crossings")
+					all_pass = false
+				} else {
+					lo := f32(440.0) * math.pow(f32(2.0), f32(-50.0 / 1200.0))
+					hi := f32(440.0) * math.pow(f32(2.0), f32(50.0 / 1200.0))
+					if got < lo || got > hi {
+						fmt.eprintfln("FAIL jitter_pitch: peak %.4fHz outside the authored +/-50 cent window [%.4f,%.4f]Hz", got, lo, hi)
+						all_pass = false
+					}
+					// A clean unjittered trigger measures within a few
+					// millihertz of 440.0 by this method; 0.1Hz is a
+					// generous margin above that noise floor while still
+					// well inside the smallest jitter this fixture's draw
+					// could plausibly produce.
+					if math.abs(got - 440.0) < 0.1 {
+						fmt.eprintfln("FAIL jitter_pitch: peak %.4fHz indistinguishable from the unjittered 440Hz — jitter did not fire", got)
+						all_pass = false
+					}
+				}
+			}
+		}
+
 	case "noadsr_fade":
 		// C6-3 (F-B03-5): a voice with no ADSR used to be switched off at the
 		// exact sample its duration expired — the default _trigger walks into

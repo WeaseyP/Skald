@@ -340,6 +340,14 @@ export const buildProjectData = (
             glide: data.glide,
             unison: toInt(data.unison, 1, 1, 16),
             detune: data.detune,
+            // G5: same "absent stays absent" rule as glide/detune above —
+            // the backend's parse_steal_mode/pitch_jitter/velocity_jitter
+            // defaults ("", 0, 0) are the byte-identical pre-G5 behaviour,
+            // so an Instrument that never touched these must not have this
+            // serializer invent them.
+            steal_mode: data.stealMode,
+            pitch_jitter: data.pitchJitter,
+            velocity_jitter: data.velocityJitter,
             midi_config: midiConfig,
             audio_graph: subgraph
         };

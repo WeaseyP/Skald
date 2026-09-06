@@ -1001,6 +1001,24 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 {renderControlWrapper('glide', 'Glide (s)', slider('glide', 0, 5, 0.05))}
                 {renderControlWrapper('unison', 'Unison Voices', slider('unison', 1, 16, 1, undefined, 1, true))}
                 {renderControlWrapper('detune', 'Detune (cents)', slider('detune', 0, 100, 5))}
+                {/* G5 (roadmap 9.18, KI-018): stealMode/pitchJitter/velocityJitter
+                    are read at generation time only (like Voice Count/Glide/
+                    Unison above), not runtime-exposed — see KI-019 on why an
+                    Instrument's own numeric fields don't runtime-expose — so
+                    `false` here for the same reason those three pass it. */}
+                {renderControlWrapper('stealMode', 'Voice Stealing', (
+                    <select
+                        value={data.stealMode ?? 'release-first'}
+                        onChange={e => onChange('stealMode', e.target.value)}
+                        style={inputStyles}
+                    >
+                        <option value="release-first">Release-first, then oldest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="quietest">Quietest</option>
+                    </select>
+                ), false)}
+                {renderControlWrapper('pitchJitter', 'Pitch Jitter (cents)', slider('pitchJitter', 0, 100, 0), false)}
+                {renderControlWrapper('velocityJitter', 'Velocity Jitter', slider('velocityJitter', 0, 1, 0), false)}
             </>);
         default:
             return <div><small style={{ color: '#666' }}>No standard controls for {type}</small></div>;

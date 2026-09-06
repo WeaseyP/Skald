@@ -299,6 +299,46 @@ assert_envelope_shape :: proc(
 	return true
 }
 
+// G5: sub-Hz frequency estimate for a single-tone window, by timing rising
+// zero crossings rather than reading an FFT bin. peak_freq_from_fft's
+// resolution is sample_rate/N (over a thousand times coarser than a cent of
+// jitter at audio frequencies for any window this harness can afford), which
+// is fine for "which of several tones is loudest" but too coarse to tell a
+// pitch-jittered note apart from an unjittered one when the deterministic
+// draw happens to land close to center. Linearly interpolating the crossing
+// time between the two straddling samples, then dividing the crossing COUNT
+// by the time between the FIRST and LAST crossing (not by the window length),
+// cancels out where in its cycle the tone happened to start.
+estimate_freq_zero_crossing :: proc(buf: []Stereo_Sample, sample_rate: f32, start_s: f32, end_s: f32, ch: Channel) -> (freq: f32, ok: bool) {
+	s := int(start_s * sample_rate)
+	e := int(end_s * sample_rate)
+	if s < 0 do s = 0
+	if e > len(buf) do e = len(buf)
+	if e - s < 2 do return 0, false
+
+	first_t: f32 = -1
+	last_t: f32 = -1
+	count := 0
+	prev := channel_value(buf[s], ch)
+	for i := s + 1; i < e; i += 1 {
+		cur := channel_value(buf[i], ch)
+		if prev <= 0.0 && cur > 0.0 {
+			// Fraction of the way from i-1 to i that the signal crosses 0.
+			frac := -prev / (cur - prev)
+			t := f32(i - 1) + frac
+			if first_t < 0.0 do first_t = t
+			last_t = t
+			count += 1
+		}
+		prev = cur
+	}
+	if count < 2 do return 0, false
+	periods := f32(count - 1)
+	samples_between := last_t - first_t
+	if samples_between <= 0.0 do return 0, false
+	return periods * sample_rate / samples_between, true
+}
+
 // SFX one-shot must return to silence after its envelope finishes.
 assert_silence_after :: proc(
 	buf: []Stereo_Sample,

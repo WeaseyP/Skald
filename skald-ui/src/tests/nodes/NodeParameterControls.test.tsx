@@ -309,3 +309,56 @@ describe('B11 midiInput controls are reachable through NodeParameterControls', (
         expect(onChange).toHaveBeenCalledWith('useMpe', true);
     });
 });
+
+describe('NodeParameterControls Instrument voice-steal and jitter (G5, KI-018)', () => {
+    const instrumentData = {
+        name: 'Pad', volume: 1, voiceCount: 8, glide: 0.05, unison: 1, detune: 5,
+        pitchJitter: 0, velocityJitter: 0,
+    };
+
+    it('renders a Voice Stealing select defaulting to release-first, not runtime-exposable', () => {
+        const { container, onChange, exposability } = renderControls('instrument', instrumentData);
+
+        const select = container.querySelector('[data-param="stealMode"] select');
+        if (!(select instanceof HTMLSelectElement)) throw new Error('Missing Voice Stealing select');
+        expect(select.value).toBe('release-first');
+        expect(exposability.stealMode).toBe(false);
+
+        fireEvent.change(select, { target: { value: 'quietest' } });
+        expect(onChange).toHaveBeenCalledWith('stealMode', 'quietest');
+    });
+
+    it('honours an authored stealMode instead of defaulting', () => {
+        const { container } = renderControls('instrument', { ...instrumentData, stealMode: 'oldest' });
+        const select = container.querySelector('[data-param="stealMode"] select');
+        if (!(select instanceof HTMLSelectElement)) throw new Error('Missing Voice Stealing select');
+        expect(select.value).toBe('oldest');
+    });
+
+    it('clamps committed Pitch Jitter to the schema-authored 0-100 cent range, not runtime-exposable', () => {
+        const { container, onChange, exposability } = renderControls('instrument', instrumentData);
+        expect(exposability.pitchJitter).toBe(false);
+        const input = textInputFor(container, 'pitchJitter');
+
+        fireEvent.focus(input);
+        fireEvent.change(input, { target: { value: '150' } });
+        fireEvent.blur(input);
+        expect(onChange).toHaveBeenLastCalledWith('pitchJitter', 100);
+
+        fireEvent.focus(input);
+        fireEvent.change(input, { target: { value: '-5' } });
+        fireEvent.blur(input);
+        expect(onChange).toHaveBeenLastCalledWith('pitchJitter', 0);
+    });
+
+    it('clamps committed Velocity Jitter to 0-1, not runtime-exposable', () => {
+        const { container, onChange, exposability } = renderControls('instrument', instrumentData);
+        expect(exposability.velocityJitter).toBe(false);
+        const input = textInputFor(container, 'velocityJitter');
+
+        fireEvent.focus(input);
+        fireEvent.change(input, { target: { value: '3' } });
+        fireEvent.blur(input);
+        expect(onChange).toHaveBeenLastCalledWith('velocityJitter', 1);
+    });
+});

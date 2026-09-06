@@ -149,6 +149,15 @@ PARAM_RANGE_GENERIC := [?]Param_Range_Entry{
 	{"", "unison", {1.0, 16.0, 1.0, ""}},
 	{"", "detune", {0.0, 100.0, 5.0, "cents"}},
 	{"", "glide", {0.0, 5.0, 0.05, "s"}},
+	// G5 (roadmap 9.18): per-trigger random pitch spread, uniform in
+	// ±pitchJitter cents. Default 0 emits no jitter code at all, so an
+	// untouched Instrument's output stays byte-identical (KI-018's stealMode
+	// sibling — a value read at codegen time, not a runtime-exposed field).
+	{"", "pitchJitter", {0.0, 100.0, 0.0, "cents"}},
+	// G5: per-trigger random velocity spread, uniform in ±velocityJitter,
+	// clamped back into [0,1] same as note_on's own velocity clamp. Default 0
+	// emits no jitter code.
+	{"", "velocityJitter", {0.0, 1.0, 0.0, ""}},
 }
 
 // Unknown parameter: wide-open range, neutral default. Caller can still expose

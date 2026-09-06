@@ -325,6 +325,15 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 		// writes a true 0 (it floors at 0.001); mute is the mute flag's job.
 		volume := raw_inst.volume
 		if volume <= 0 do volume = 1.0
+		// G5: jitter amounts are spreads, never negative; velocity_jitter is
+		// additionally capped at 1 (note_on's own clamp already floors/ceils
+		// the jittered velocity, but a saved 5.0 here would still bias the
+		// RNG draw's magnitude for no audible reason above 1).
+		pitch_jitter := raw_inst.pitch_jitter
+		if pitch_jitter < 0 do pitch_jitter = 0
+		velocity_jitter := raw_inst.velocity_jitter
+		if velocity_jitter < 0 do velocity_jitter = 0
+		if velocity_jitter > 1 do velocity_jitter = 1
 
 		project.instruments[i] = Project_Instrument {
 			id = sanitize_identifier(raw_inst.id, true),
@@ -341,6 +350,9 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 			limit = raw_inst.limit.? or_else true,
 			export_id = raw_inst.export_id,
 			asset_type = parse_asset_type_setting(raw_inst.asset_type),
+			steal_mode = parse_steal_mode(raw_inst.steal_mode),
+			pitch_jitter = pitch_jitter,
+			velocity_jitter = velocity_jitter,
 			midi_config = raw_inst.midi_config,
 			graph = build_graph_from_raw(&raw_graph_copy, fmt.tprintf("instrument %q", raw_inst.name)),
 		}
@@ -490,6 +502,9 @@ build_project_from_graph_raw :: proc(graph_raw: ^Graph_Raw) -> Project {
 			limit       = limit,
 			export_id   = get_string_param(meta, "exportId", ""),
 			asset_type  = get_string_param(meta, "assetType", ""),
+			steal_mode      = get_string_param(meta, "stealMode", ""),
+			pitch_jitter    = get_f32_param_val(meta, "pitchJitter", 0.0),
+			velocity_jitter = get_f32_param_val(meta, "velocityJitter", 0.0),
 			audio_graph = subgraph_raw,
 		})
 	}

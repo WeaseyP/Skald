@@ -1,0 +1,29 @@
+{
+  "project": {
+    "bpm": 120,
+    "master_volume": 0.8,
+    "instruments": [
+      {
+        "id": "stealquietest",
+        "name": "Asset",
+        "voice_count": 3,
+        "glide": 0,
+        "unison": 1,
+        "detune": 0,
+        "steal_mode": "quietest",
+        "audio_graph": {
+          "nodes": [
+            { "id": "osc", "type": "Oscillator", "parameters": { "frequency": 440, "waveform": "Sine", "amplitude": 0.5 } },
+            { "id": "env", "type": "ADSR", "parameters": { "attack": 0.005, "decay": 0.01, "sustain": 1.0, "release": 1.5, "depth": 1, "velocitySensitivity": 1.0 } },
+            { "id": "out", "type": "GraphOutput", "parameters": {} }
+          ],
+          "connections": [
+            { "from_node": "osc", "from_port": "output", "to_node": "env", "to_port": "input" },
+            { "from_node": "env", "from_port": "output", "to_node": "out", "to_port": "input" }
+          ],
+          "sequencer_tracks": []
+        }
+      }
+    ]
+  }
+}

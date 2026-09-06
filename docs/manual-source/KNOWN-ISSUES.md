@@ -156,14 +156,6 @@ Room size in Skald's reverb is a consequence of Decay, not a separate control. I
 
 ### Instrument
 
-#### KI-018 · `voiceStealing` is stored, typed, and read by nothing
-- **Status:** open · **Severity:** cosmetic · **Since:** 0.1
-- **Chapters:** 60-complexity-ladder.md (The controls) · nodes/instrument.md (The controls)
-
-Every Instrument carries a `voiceStealing: 'oldest' | 'newest'` field (`skald-ui/src/definitions/types.ts::InstrumentParams`, written by `skald-ui/src/hooks/nodeEditor/useNodeComposition.ts`) and every shipped example serialises `"oldest"`. No control renders it — `skald-ui/src/components/NodeParameterControls.tsx`'s instrument case offers only name, volume, voiceCount, glide, unison and detune — and the string does not appear anywhere under `skald-backend/core/`. Steal order is fixed logic in `skald-backend/core/codegen_processor.odin::generate_processor_code`: oldest releasing voice first, oldest voice otherwise.
-
-Because the fixed rule matches the field's own default, no patch's behaviour is affected by the value being ignored.
-
 #### KI-019 · The Instrument's own parameters offer an expose button that does nothing
 - **Status:** open · **Severity:** confusing · **Since:** 0.1
 - **Chapters:** nodes/instrument.md (The controls; What "expose" does)
@@ -544,6 +536,7 @@ The example locks the hat's ADSR `decay` to 0.12 on steps 2, 6, 10 and 14 over a
 | The Sample & Hold node had no test coverage asserting any of its ranges. | C2 (schema, range-parity and plock-target suites) | nodes/sampleHold.md |
 | The pan law put centre at −3 dB with bare `cos`/`sin`. | B7-1 (SKB-013) | nodes/panner.md (What it is; What you hear as you sweep Pan; Try it steps 4 and 6; Under the hood; Terms introduced) |
 | A Panner feeding a mono consumer handed it an attenuated `(L+R) × 0.7071` downmix. | B7-1 | nodes/panner.md (Under the hood; Try it step 7) |
+| Every Instrument carried a `voiceStealing: 'oldest' \| 'newest'` field, stored, typed, and read by nothing — the generator's steal order was fixed logic no field could steer. | G5 | nodes/instrument.md (The controls; Under the hood) |
 
 ## Not issues
 

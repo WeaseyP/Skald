@@ -218,7 +218,9 @@ export const useNodeComposition = ({
                 name: instrumentName,
                 label: instrumentName,
                 voiceCount: 8,
-                voiceStealing: 'oldest',
+                // G5/KI-018: stealMode left unset (byte-identical
+                // 'release-first' default) rather than carrying forward the
+                // old dead `voiceStealing: 'oldest'` — see node-definitions.ts.
                 glide: 0.05,
                 unison: 1,
                 detune: 5,

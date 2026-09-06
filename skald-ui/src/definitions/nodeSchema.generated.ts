@@ -95,6 +95,8 @@ export const RANGE_GENERIC: Record<string, SchemaRange> = {
     "unison": { min: 1, max: 16, default: 1, unit: "" },
     "detune": { min: 0, max: 100, default: 5, unit: "cents" },
     "glide": { min: 0, max: 5, default: 0.05, unit: "s" },
+    "pitchJitter": { min: 0, max: 100, default: 0, unit: "cents" },
+    "velocityJitter": { min: 0, max: 1, default: 0, unit: "" },
 };
 
 export const RANGE_FALLBACK: SchemaRange = { min: -1000000, max: 1000000, default: 0, unit: "" };

@@ -38,7 +38,7 @@ Select some nodes on the canvas, then use the sidebar's **Grouping** section (`s
 
 The selected nodes are **moved**, not copied, into the Instrument's `subgraph`, and renumbered `1, 2, 3…` (`skald-ui/src/hooks/nodeEditor/useNodeComposition.ts::useNodeComposition`). Wires that were entirely inside the selection become subgraph connections. Wires that *crossed* the selection boundary get an automatic port: an `InstrumentInput` node for each incoming wire and an `InstrumentOutput` for each outgoing one, and the main-canvas wire is re-pointed at a matching handle on the new Instrument node. Those ports are keyed by *(internal node, handle)* rather than by handle name, because keying by name alone used to merge two unrelated wires that both happened to be called `input` into one port and silently cross-wire the patch.
 
-The new node is created with these values regardless of what you had selected (`skald-ui/src/hooks/nodeEditor/useNodeComposition.ts::useNodeComposition`): `voiceCount: 8`, `glide: 0.05`, `unison: 1`, `detune: 5`, `voiceStealing: 'oldest'`.
+The new node is created with these values regardless of what you had selected (`skald-ui/src/hooks/nodeEditor/useNodeComposition.ts::useNodeComposition`): `voiceCount: 8`, `glide: 0.05`, `unison: 1`, `detune: 5`. Voice Stealing, Pitch Jitter and Velocity Jitter are left unset, which resolves to release-first stealing and no jitter — see "The controls" below.
 
 ### Handles
 
@@ -67,7 +67,7 @@ The Instrument is not a signal processor and has no rate of its own. It is a *co
 
 ## The controls
 
-Select the Instrument node and the right-hand parameter panel shows five instrument-level controls, then an **Internal Nodes** heading followed by the full parameter set of every node inside the subgraph (`skald-ui/src/components/ParameterPanel.tsx::ParameterPanel`). The Volume box is also duplicated on the node body itself (`skald-ui/src/components/InstrumentNode.tsx::InstrumentNode`).
+Select the Instrument node and the right-hand parameter panel shows eight instrument-level controls, then an **Internal Nodes** heading followed by the full parameter set of every node inside the subgraph (`skald-ui/src/components/ParameterPanel.tsx::ParameterPanel`). The Volume box is also duplicated on the node body itself (`skald-ui/src/components/InstrumentNode.tsx::InstrumentNode`).
 
 | Parameter | Range | Default | Unit | What it does to the sound |
 |---|---|---|---|---|
@@ -77,10 +77,11 @@ Select the Instrument node and the right-hand parameter panel shows five instrum
 | `glide` | 0 – 5 | 0.05 | s | How long a reused voice takes to slide from its old pitch to the new one. |
 | `unison` | 1 – 16 | 1 | copies | How many detuned copies of **each Oscillator or Wavetable node** run inside every voice (`skald-backend/core/codegen_nodes.odin::generate_oscillator_code`, `skald-backend/core/codegen_nodes.odin::generate_wavetable_code`; FM Operators and Noise are not stacked). |
 | `detune` | 0 – 100 | 5 | cents | Total spread of the unison stack: ±this many cents around the true pitch. |
+| `stealMode` | release-first / oldest / quietest | release-first | — | Which voice `_note_on` cuts when every voice is busy — see "Voice stealing, made configurable" below. Renders as a select, not a slider, and never shows the expose (link) icon. |
+| `pitchJitter` | 0 – 100 | 0 | cents | Random pitch spread applied fresh to every `_note_on`/`_trigger`, uniform in ±this many cents. 0 emits no jitter code at all. |
+| `velocityJitter` | 0 – 1 | 0 | — | Random velocity spread applied the same way, uniform in ±this amount and re-clamped into 0..1. 0 emits no jitter code at all. |
 
-A sixth field, `voiceStealing: 'oldest' | 'newest'`, is carried in every Instrument's data and written whenever `useNodeComposition` creates one, but no control in the parameter panel renders it, and the generator's steal order is fixed logic rather than something this field can steer — see KI-018.
-
-Sources: the defaults are `skald-ui/src/definitions/node-definitions.ts::defaultInstrumentParams`; the types are `skald-ui/src/definitions/types.ts::InstrumentParams`; the slider ranges are `skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`; the export clamps are `skald-ui/src/utils/projectSerializer.ts::buildProjectData`; and — since packet C2 — all four numeric ranges are authored exactly once, in the schema's fallback rows for parameters the editor treats as instrument-level (`schema/nodes.json::generic`), and rendered into both the editor's TypeScript and the generator's Odin from that single source. The old framing of two independently maintained tables that could quietly disagree no longer applies to these four; where a genuine editor/generator gap remains for an *Instrument*-level control, it is `voiceStealing` (KI-018) and the expose mechanism (KI-019) below, not the ranges.
+Sources: the defaults are `skald-ui/src/definitions/node-definitions.ts::defaultInstrumentParams`; the types are `skald-ui/src/definitions/types.ts::InstrumentParams`; the slider ranges are `skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`; the export clamps are `skald-ui/src/utils/projectSerializer.ts::buildProjectData`; and — since packet C2 — all numeric ranges here are authored exactly once, in the schema's fallback rows for parameters the editor treats as instrument-level (`schema/nodes.json::generic`), and rendered into both the editor's TypeScript and the generator's Odin from that single source. `stealMode`, `pitchJitter` and `velocityJitter` are generation-time-only fields, the same way `voiceCount`/`glide`/`unison` are (KI-019): the link icon they'd otherwise show is suppressed (`skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`), not merely inert.
 
 ### Voice Count — what you hear as you change it
 
@@ -91,7 +92,21 @@ Sources: the defaults are `skald-ui/src/definitions/node-definitions.ts::default
 
 The musical zone is "one more than the largest chord you play, plus room for the tail". Do not just set 32: an idle voice is skipped, so unused voices are nearly free at runtime, but every voice permanently occupies its own copy of the state struct and the *active* ones all sum into the output with **no division by the voice count** (`skald-backend/core/codegen_nodes.odin::generate_graph_output_adds`). Eight loud voices really are eight times as loud as one, and the per-asset soft limiter catches that with a `tanh` rather than a divide (`skald-backend/core/codegen_project.odin::emit_soft_limit_proc`). Note that Max/MSP's teaching patch explicitly scales by 1/8 at this point [Source: https://music.arts.uci.edu/dobrian/maxcookbook/polyphony-multiple-copies-msp-subpatch]; Skald does not, deliberately, so that one note played on a 16-voice instrument is not 16 times quieter than it should be. The price is that you must manage headroom yourself with **Volume**.
 
-### Glide — what you hear as you sweep it
+### Voice stealing, made configurable
+
+Every voice count eventually runs out if you play enough notes fast enough, and roadmap packet G5 turns "which voice gets cut" from fixed logic into a control:
+
+- **Release-first (the default).** Exactly the C6-1 behaviour this chapter already described: a voice already fading toward silence goes first; only when nothing is releasing (or the graph has no ADSR at all) does the plain oldest-by-age rule apply. Leaving `stealMode` unset — every patch saved before this packet, and every fresh Instrument — generates this, byte for byte.
+- **Oldest.** Always the longest-held voice, even if another voice is already releasing. Useful when you specifically want the newest notes to win no matter what — a strummed-chord instrument where the player expects the earliest notes of a chord to give way first.
+- **Quietest.** The voice with the lowest recent output level, tracked by a one-pole-decayed running abs of each voice's own contribution to the mix (`skald-backend/core/codegen_processor.odin::generate_processor_code`; the `level` field is only ever declared on an Instrument set to Quietest). A quiet, half-released pad voice loses out to a full-velocity lead before an equally-old but louder voice does — the closest of the three to "steal whichever note the listener will miss least" when velocity varies a lot across your patch.
+
+Pick the mode from the **Voice Stealing** select in the parameter panel (`skald-ui/src/components/NodeParameterControls.tsx::NodeParameterControls`); there is no card control and no expose (link) icon, because this changes which branch of the generated `_note_on` exists at all, not a value read at runtime.
+
+### Pitch and velocity jitter
+
+Two more G5 fields add organic per-trigger variance without you hand-automating it: **Pitch Jitter** (cents, 0–100) offsets each note's resolved frequency by a uniform random amount in ±that many cents, and **Velocity Jitter** (0–1) does the same to velocity, re-clamped into 0..1 exactly like `_note_on`'s own velocity clamp. Both default to 0, which emits no jitter code whatsoever — an Instrument that has never touched these two sliders generates identically to one from before this packet existed.
+
+The randomness is deterministic, not merely "random": each Instrument seeds one dedicated RNG stream, once, in `_init`, from a digest of its own resolved export prefix (`skald-backend/core/provenance.odin::jitter_seed_from_name`) — the same FNV-1a already used to stamp every generated file's provenance header, reused rather than a second hash algorithm. Two exports of the same patch draw the identical jitter sequence, note for note, which is what keeps a jittered instrument's golden fixture reproducible; two *differently named* Instruments draw different sequences even with the same jitter amount. Velocity jitter draws before pitch jitter on every `_note_on` call, both from the same stream, so renaming an Instrument (which changes its export prefix, and so its seed) is the only thing that reshuffles either sequence.
 
 - **0.** Off. Pitch snaps. The glide code is not even emitted — the whole block is conditional on `instrument.glide > 0.0` (`skald-backend/core/codegen_processor.odin::generate_processor_code`).
 - **0.01 – 0.05 s.** Not heard as a slide. Heard as a *softened attack* — the pitch arrives so fast it just removes the click of the jump. Useful on leads.
@@ -236,7 +251,7 @@ The Instrument node is not a DSP block. It is the thing that decides the *shape*
 
 **The voice struct.** Every node in the subgraph contributes its private state fields to one `<Foo>_Voice_State` struct: oscillator phases, envelope stages, filter memory (`skald-backend/core/codegen_processor.odin::generate_processor_code`). The oscillator's phase is not a single float but an array sized by unison, `osc_<id>_phase: [unison]f32`. The processor then holds `voices: [voiceCount]<Foo>_Voice_State`. Bus-domain nodes are excluded and keep their state on the processor instead — that is the one-shared-reverb rule made concrete in the type system.
 
-**Note on and voice allocation.** `<Foo>_note_on` scans for the first inactive voice. If there is none, packet C6-1 (SKB-030) applies a two-tier steal: it first looks for a voice whose every voice-domain ADSR has already left Attack/Decay/Sustain — one already fading toward silence — and, among those, takes the one that has been releasing longest; only when *nothing* is releasing (or the graph has no ADSR at all) does it fall back to the plain oldest-by-age rule the whole instrument used before C6-1 (`skald-backend/core/codegen_processor.odin::generate_processor_code`). Release-first beats plain oldest-note stealing because a note the player is still actively holding should not lose to one that was already on its way out; oldest-by-age beats round-robin because round-robin could steal the note that started one sample ago while a ten-second pad kept ringing. Pitch comes straight from the equal-temperament formula:
+**Note on and voice allocation.** `<Foo>_note_on` scans for the first inactive voice. If there is none, the Instrument's `stealMode` picks the branch that gets emitted (`skald-backend/core/codegen_processor.odin::generate_processor_code`; roadmap packet G5). At the default, `release-first` (unchanged since C6-1/SKB-030 and byte-identical to it): a two-tier steal first looks for a voice whose every voice-domain ADSR has already left Attack/Decay/Sustain — one already fading toward silence — and, among those, takes the one that has been releasing longest; only when *nothing* is releasing (or the graph has no ADSR at all) does it fall back to the plain oldest-by-age rule. `oldest` skips the release tier outright and always takes the plain oldest-by-age voice. `quietest` instead takes the voice with the lowest one-pole-decayed running level (see "Voice stealing, made configurable" above) — the only mode whose Voice_State carries a `level` field at all. Release-first beats plain oldest-note stealing because a note the player is still actively holding should not lose to one that was already on its way out; oldest-by-age beats round-robin because round-robin could steal the note that started one sample ago while a ten-second pad kept ringing. Pitch comes straight from the equal-temperament formula, then pitch jitter (if any) multiplies it by a cents-to-ratio factor drawn from the Instrument's own `jitter_rng`:
 
 ```odin
 freq := 440.0 * math.pow(2.0, (f32(note) - 69.0) / 12.0)
@@ -285,8 +300,9 @@ Above that, `project_process` sums every unmuted, already-limited instrument and
 - **Polyphony** — how many voices an instrument has, i.e. how many notes it can sound simultaneously. Skald's `voiceCount`.
 - **Monophonic** — polyphony of one. Each new note takes over the single voice.
 - **Voice allocation** — the logic that decides which voice plays an incoming note.
-- **Voice stealing** — cutting off a currently sounding voice so a new note can use it, because all voices are busy. Skald steals the oldest *releasing* voice first, falling back to the oldest voice overall.
+- **Voice stealing** — cutting off a currently sounding voice so a new note can use it, because all voices are busy. Skald's `stealMode` picks the rule: release-first (the default — oldest *releasing* voice first, oldest overall as a fallback), oldest (always oldest overall), or quietest.
 - **Note priority** — the rule for choosing the victim: oldest, newest, lowest, highest, or "release-phase first".
+- **Pitch / velocity jitter** — a small, deterministic per-trigger random offset applied to a note's resolved frequency or velocity, for organic variation without hand-automating it. Skald's amounts are authored in cents (pitch) and 0..1 (velocity); both default to 0 (off).
 - **Unison** — running several slightly detuned copies of the same oscillator inside one voice, to thicken the tone.
 - **Detune** — how far apart, in cents, those unison copies are pushed.
 - **Cent** — one hundredth of a semitone; 1200 cents to an octave. A *ratio*, not a fixed number of Hz.
@@ -301,4 +317,4 @@ Above that, `project_process` sums every unmuted, already-limited instrument and
 
 ## Known issues
 
-Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-009, KI-010, KI-018, KI-019. Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.
+Defects that touch this chapter are tracked centrally in the **Known issues** chapter (`KNOWN-ISSUES.md`): KI-009, KI-010, KI-019. KI-018 (`voiceStealing`, stored and read by nothing) closed with roadmap packet G5 — see "Resolved before 0.2". Deliberate design limits — things Skald does not do on purpose — are collected in **What Skald deliberately does not do**.

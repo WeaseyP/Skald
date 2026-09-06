@@ -203,6 +203,12 @@ Project_Instrument_Raw :: struct {
 	// C3 (F-A09-8): "sfx" | "music". Empty = infer from the tracks, the
 	// pre-C3 rule. See parse_asset_type_setting.
 	asset_type:  string,
+	// G5 (roadmap 9.18, KI-018): the editor's spelling — "oldest" |
+	// "quietest" | anything else (including absent, the pre-G5 default).
+	// See parse_steal_mode.
+	steal_mode:      string,
+	pitch_jitter:    f32,
+	velocity_jitter: f32,
 	midi_config: Midi_Config,
 	audio_graph: Graph_Raw,
 }
@@ -258,6 +264,14 @@ Project_Instrument :: struct {
 	// See Project_Instrument_Raw.export_id / asset_type.
 	export_id:   string,
 	asset_type:  Asset_Type_Setting,
+	// G5: how _note_on picks a victim when every voice is busy. Release_First
+	// is the pre-G5 behaviour (C6-1) and stays byte-identical to it — see
+	// generate_processor_code. pitch_jitter/velocity_jitter are cents / 0..1
+	// spreads applied per note_on; 0 (the default) emits no jitter code at
+	// all, so an untouched Instrument's output is unaffected.
+	steal_mode:      Steal_Mode,
+	pitch_jitter:    f32,
+	velocity_jitter: f32,
 	midi_config: Midi_Config,
 	graph:       Graph,
 }
@@ -299,4 +313,29 @@ parse_asset_type_setting :: proc(s: string) -> Asset_Type_Setting {
 	case "music": return .Music_Layer
 	}
 	return .Auto
+}
+
+// G5 (roadmap 9.18, KI-018): `voiceStealing` sat on InstrumentParams, typed,
+// serialized into every saved Instrument, and read by nothing — the
+// generator's steal order was fixed logic (C6-1) no field could steer. This
+// is that field made real, renamed `stealMode` to match its now-real values
+// (the old "oldest" | "newest" never matched what C6-1 actually did).
+// Release_First is the default AND the C6-1 behaviour, so every file that
+// predates this packet — which is every file, since nothing ever wrote the
+// new key — parses to the exact code path it already generated.
+Steal_Mode :: enum {
+	Release_First,
+	Oldest,
+	Quietest,
+}
+
+// Anything unrecognised (absent key, a stale "oldest"/"newest" from before
+// this packet, a future editor's typo) is Release_First: the one value
+// guaranteed not to move an existing patch's emitted text.
+parse_steal_mode :: proc(s: string) -> Steal_Mode {
+	switch s {
+	case "oldest":   return .Oldest
+	case "quietest": return .Quietest
+	}
+	return .Release_First
 }

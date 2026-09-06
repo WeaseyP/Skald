@@ -232,7 +232,21 @@ export interface InstrumentParams extends BaseNodeParams {
   // the backend treats an exact 0 as "absent, default to unity".
   volume?: number;
   voiceCount: number;
-  voiceStealing: 'oldest' | 'newest';
+  // G5 (roadmap 9.18, KI-018): replaces `voiceStealing`, which was typed,
+  // serialized into every saved Instrument, and read by nothing (the
+  // generator's steal order was fixed logic no field could steer). Renamed
+  // rather than kept alongside it because its old values ("oldest" |
+  // "newest") never matched what the generator actually did (release-first,
+  // then oldest) — a second, wrong-shaped copy of the same idea is worse
+  // than one correct one. A pre-G5 save's `voiceStealing` key is simply an
+  // inert leftover under the old name; the backend never reads it and this
+  // field's absence resolves to 'release-first', the byte-identical default.
+  stealMode?: 'release-first' | 'oldest' | 'quietest';
+  // Cents / 0..1 spread applied per note_on when non-zero; generation-time
+  // only (like voiceCount/glide/unison below), not runtime-exposed — see
+  // KI-019 on why the Instrument's own numeric fields don't runtime-expose.
+  pitchJitter?: number;
+  velocityJitter?: number;
   glide: number;
   unison: number;
   detune: number;

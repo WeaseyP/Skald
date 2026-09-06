@@ -102,6 +102,12 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\ttarget_freq: f32,\n")
 	fmt.sbprint(&sb, "\tglide_time: f32,\n")
     fmt.sbprint(&sb, "\tduration: f32,\n")
+	// G5: only the quietest-stealing policy ever reads this, so it is only
+	// ever declared for an Instrument that asked for it — every other patch's
+	// Voice_State is unchanged.
+	if instrument.steal_mode == .Quietest {
+		fmt.sbprint(&sb, "\tlevel: f32,\n")
+	}
 
 	for node in all_nodes {
 		if bus_nodes[node.id] do continue
@@ -142,6 +148,15 @@ generate_processor_code :: proc(
 	fmt.sbprintf(&sb, "\tbpm: f32,\n")
 	fmt.sbprintf(&sb, "\tvoices: [%d]%s_Voice_State,\n", polyphony, namespace_prefix)
 	fmt.sbprint(&sb, "\tprng: PRNG_State,\n")
+	// G5: a dedicated stream, seeded once in _init from a digest of this
+	// asset's own export prefix (see jitter_seed_from_name). Separate from
+	// `prng` (bus-domain probability gates) and the per-voice noise/S&H
+	// streams so drawing jitter can never perturb either of those — same
+	// reasoning as Noise/SampleHold each getting their own PRNG_State.
+	needs_jitter := instrument.pitch_jitter > 0.0 || instrument.velocity_jitter > 0.0
+	if needs_jitter {
+		fmt.sbprint(&sb, "\tjitter_rng: PRNG_State,\n")
+	}
     fmt.sbprint(&sb, "\ttotal_samples: u64,\n")
     fmt.sbprint(&sb, "\tplaying: bool,\n")
     fmt.sbprint(&sb, "\tloop: bool,\n")
@@ -279,6 +294,13 @@ generate_processor_code :: proc(
     fmt.sbprintf(&sb, "\tp.bpm = %.9f\n", bpm)
     fmt.sbprintf(&sb, "\tp.volume = %.9f\n", instrument.volume)
     fmt.sbprintf(&sb, "\tp.prng.state = 12345\n")
+	// G5: baked at generation time (not derived at runtime) so the seed is a
+	// pure function of the input JSON — the same requirement `generator:`/
+	// `input:` provenance stamping already relies on for a deterministic
+	// golden. See jitter_seed_from_name.
+	if needs_jitter {
+		fmt.sbprintf(&sb, "\tp.jitter_rng.state = u32(0x%08X)\n", jitter_seed_from_name(namespace_prefix))
+	}
     fmt.sbprint(&sb, "\tp.loop = true\n")
 
     // SKB-018: _init assigned the scalar settings and the Delay/Reverb ring
@@ -418,6 +440,20 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\tnote := note\n")
 	fmt.sbprint(&sb, "\tif note > 127 do note = 127\n")
 	fmt.sbprint(&sb, "\tvelocity := math.clamp(velocity, 0.0, 1.0)\n")
+	// G5: velocity jitter draws BEFORE the steal search below and pitch
+	// jitter draws after (near `freq`'s own computation) — both from the one
+	// jitter_rng stream, in that fixed order, so a jittered instrument's
+	// golden is a pure function of how many times _note_on has fired, not of
+	// anything about voice allocation. Re-clamped exactly like the raw
+	// argument above: a jittered velocity must obey the same [0,1] contract
+	// note_off/the ADSR reader assume.
+	if instrument.velocity_jitter > 0.0 {
+		fmt.sbprintf(
+			&sb,
+			"\tvelocity = math.clamp(velocity + (next_float32(&p.jitter_rng) * 2.0 - 1.0) * %.9f, 0.0, 1.0)\n",
+			instrument.velocity_jitter,
+		)
+	}
 	fmt.sbprint(&sb, "\tvoice_idx := -1\n")
 	fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
 	fmt.sbprint(&sb, "\t\tif !p.voices[i].active {\n")
@@ -440,28 +476,16 @@ generate_processor_code :: proc(
 	for node in all_nodes {
 		if node.type == "ADSR" && !bus_nodes[node.id] do append(&steal_adsr_ids, node.id)
 	}
-	if len(steal_adsr_ids) > 0 {
-		fmt.sbprint(&sb, "\t\toldest_releasing_age: f32 = -1.0\n")
-		fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
-		fmt.sbprint(&sb, "\t\t\treleasing := true\n")
-		for id in steal_adsr_ids {
-			fmt.sbprintf(&sb, "\t\t\tif p.voices[i].adsr_%s_stage != .Release && p.voices[i].adsr_%s_stage != .Idle do releasing = false\n", id, id)
-		}
-		fmt.sbprint(&sb, "\t\t\tif releasing && p.voices[i].age > oldest_releasing_age {\n")
-		fmt.sbprint(&sb, "\t\t\t\toldest_releasing_age = p.voices[i].age\n")
-		fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
-		fmt.sbprint(&sb, "\t\t\t}\n")
-		fmt.sbprint(&sb, "\t\t}\n")
-		fmt.sbprint(&sb, "\t\tif voice_idx == -1 {\n")
-		fmt.sbprint(&sb, "\t\t\toldest_age: f32 = -1.0\n")
-		fmt.sbprintf(&sb, "\t\t\tfor i in 0..<%d {{\n", polyphony)
-		fmt.sbprint(&sb, "\t\t\t\tif p.voices[i].age > oldest_age {\n")
-		fmt.sbprint(&sb, "\t\t\t\t\toldest_age = p.voices[i].age\n")
-		fmt.sbprint(&sb, "\t\t\t\t\tvoice_idx = i\n")
-		fmt.sbprint(&sb, "\t\t\t\t}\n")
-		fmt.sbprint(&sb, "\t\t\t}\n")
-		fmt.sbprint(&sb, "\t\t}\n")
-	} else {
+	// G5 (roadmap 9.18, KI-018): stealMode picks WHICH of the three tiers
+	// below runs. Release_First (the field's default, and every file that
+	// predates this packet) is exactly the C6-1 branch this replaced —
+	// unchanged byte for byte — so only an Instrument that explicitly opted
+	// into Oldest or Quietest emits anything different here.
+	switch instrument.steal_mode {
+	case .Oldest:
+		// The plain oldest-by-age rule, unconditionally — the release tier
+		// above is skipped even when the graph has an ADSR, because the
+		// author asked for oldest specifically, not "oldest as a fallback".
 		fmt.sbprint(&sb, "\t\toldest_age: f32 = -1.0\n")
 		fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
 		fmt.sbprint(&sb, "\t\t\tif p.voices[i].age > oldest_age {\n")
@@ -469,6 +493,51 @@ generate_processor_code :: proc(
 		fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
 		fmt.sbprint(&sb, "\t\t\t}\n")
 		fmt.sbprint(&sb, "\t\t}\n")
+	case .Quietest:
+		// `level` (Voice_State, updated once per sample in _process — see
+		// generate_processor_code's per-voice loop) is a one-pole-decayed
+		// abs of the voice's own last output: the cheapest available proxy
+		// for "which currently-sounding note would be missed least".
+		// Strict `<` keeps the lowest index on a tie, same rule the other
+		// two tiers use for age.
+		fmt.sbprint(&sb, "\t\tquietest_level: f32 = math.F32_MAX\n")
+		fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
+		fmt.sbprint(&sb, "\t\t\tif p.voices[i].level < quietest_level {\n")
+		fmt.sbprint(&sb, "\t\t\t\tquietest_level = p.voices[i].level\n")
+		fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
+		fmt.sbprint(&sb, "\t\t\t}\n")
+		fmt.sbprint(&sb, "\t\t}\n")
+	case .Release_First:
+		if len(steal_adsr_ids) > 0 {
+			fmt.sbprint(&sb, "\t\toldest_releasing_age: f32 = -1.0\n")
+			fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
+			fmt.sbprint(&sb, "\t\t\treleasing := true\n")
+			for id in steal_adsr_ids {
+				fmt.sbprintf(&sb, "\t\t\tif p.voices[i].adsr_%s_stage != .Release && p.voices[i].adsr_%s_stage != .Idle do releasing = false\n", id, id)
+			}
+			fmt.sbprint(&sb, "\t\t\tif releasing && p.voices[i].age > oldest_releasing_age {\n")
+			fmt.sbprint(&sb, "\t\t\t\toldest_releasing_age = p.voices[i].age\n")
+			fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
+			fmt.sbprint(&sb, "\t\t\t}\n")
+			fmt.sbprint(&sb, "\t\t}\n")
+			fmt.sbprint(&sb, "\t\tif voice_idx == -1 {\n")
+			fmt.sbprint(&sb, "\t\t\toldest_age: f32 = -1.0\n")
+			fmt.sbprintf(&sb, "\t\t\tfor i in 0..<%d {{\n", polyphony)
+			fmt.sbprint(&sb, "\t\t\t\tif p.voices[i].age > oldest_age {\n")
+			fmt.sbprint(&sb, "\t\t\t\t\toldest_age = p.voices[i].age\n")
+			fmt.sbprint(&sb, "\t\t\t\t\tvoice_idx = i\n")
+			fmt.sbprint(&sb, "\t\t\t\t}\n")
+			fmt.sbprint(&sb, "\t\t\t}\n")
+			fmt.sbprint(&sb, "\t\t}\n")
+		} else {
+			fmt.sbprint(&sb, "\t\toldest_age: f32 = -1.0\n")
+			fmt.sbprintf(&sb, "\t\tfor i in 0..<%d {{\n", polyphony)
+			fmt.sbprint(&sb, "\t\t\tif p.voices[i].age > oldest_age {\n")
+			fmt.sbprint(&sb, "\t\t\t\toldest_age = p.voices[i].age\n")
+			fmt.sbprint(&sb, "\t\t\t\tvoice_idx = i\n")
+			fmt.sbprint(&sb, "\t\t\t}\n")
+			fmt.sbprint(&sb, "\t\t}\n")
+		}
 	}
 	fmt.sbprint(&sb, "\t}\n\n")
 
@@ -498,6 +567,19 @@ generate_processor_code :: proc(
     fmt.sbprint(&sb, "\tv.age = 0.0\n")
     fmt.sbprint(&sb, "\tv.time_released = 0.0\n")
     fmt.sbprint(&sb, "\tfreq := 440.0 * math.pow(2.0, (f32(note) - 69.0) / 12.0)\n")
+	// G5: applied to the resolved frequency, not to `note` — note_off looks
+	// voices up BY `note` (v.note, set above from the unjittered value), so
+	// jittering the pitch must never change which voice a later note_off
+	// matches. Cents, not a direct Hz offset, so the same jitter amount
+	// reads the same width at every octave (the "cent" unit `detune` already
+	// established for unison spread — see instrument.md).
+	if instrument.pitch_jitter > 0.0 {
+		fmt.sbprintf(
+			&sb,
+			"\tfreq *= math.pow(2.0, ((next_float32(&p.jitter_rng) * 2.0 - 1.0) * %.9f) / 1200.0)\n",
+			instrument.pitch_jitter,
+		)
+	}
 	fmt.sbprint(&sb, "\tv.target_freq = freq\n")
     fmt.sbprintf(&sb, "\tv.glide_time = %.9f\n", instrument.glide)
 	fmt.sbprint(&sb, "\tif stolen && v.glide_time > 0.0 && prev_freq > 0.0 {\n")
@@ -860,6 +942,17 @@ generate_processor_code :: proc(
 	}
 	fmt.sbprint(&sb, "\n")
 
+	// G5: captured on the OUTSIDE of the node loop below, whose only writer
+	// of output_left/output_right is the GraphOutput case (bus-domain adds
+	// are gated off in the voice pass) — so the delta after that loop is
+	// exactly this one voice's contribution this sample, before any bus
+	// effect touches it. Only declared for Quietest; every other patch's
+	// _process is unchanged.
+	if instrument.steal_mode == .Quietest {
+		fmt.sbprint(&sb, "\t\tprev_out_left := output_left\n")
+		fmt.sbprint(&sb, "\t\tprev_out_right := output_right\n")
+	}
+
     for node in sorted_nodes {
         if bus_nodes[node.id] && node.type != "GraphOutput" do continue
         switch node.type {
@@ -904,6 +997,15 @@ generate_processor_code :: proc(
             os.exit(1)
         }
     }
+
+	if instrument.steal_mode == .Quietest {
+		// Cheap one-pole peak-ish follower: no attack/release distinction,
+		// just a fixed-rate decay toward the newest |sample|. Good enough
+		// for "which voice would be missed least" — it does not need to be
+		// a calibrated RMS meter, only a stable ordering between voices.
+		fmt.sbprint(&sb, "\t\tvoice_level_in := (abs(output_left - prev_out_left) + abs(output_right - prev_out_right)) * 0.5\n")
+		fmt.sbprint(&sb, "\t\tvoice.level += (voice_level_in - voice.level) * 0.01\n")
+	}
 
 	for var_name in cross_vars_ordered {
 		fmt.sbprintf(&sb, "\t\t%s_vsum += %s%s\n", var_name, var_name, voice_gain_suffix)
