@@ -2,6 +2,7 @@ import React from 'react';
 import { NumberInput } from '../common/NumberInput';
 import { SequencerTrack } from '../../definitions/types';
 import { MAX_PATTERN_STEPS, clampPatternSteps } from './stepMetrics';
+import { TrackViewMode, storedViewMode } from './trackViewMode';
 
 interface TrackListProps {
     tracks: SequencerTrack[];
@@ -10,6 +11,11 @@ interface TrackListProps {
     onFocusTrack: (trackId: string) => void;
     onUpdateSteps?: (trackId: string, steps: number) => void;
     onOpenPianoRoll?: (trackId: string) => void;
+    // F4: the per-track override of the Piano Roll / Drum Roll choice. The
+    // row shows the STORED value, never the detected one — a select that
+    // silently reads "Percussive" when the user picked Auto gives them no way
+    // to tell a guess from a decision, and no way to get back to the guess.
+    onSetViewMode?: (trackId: string, viewMode: TrackViewMode) => void;
 }
 
 const listContainerStyles: React.CSSProperties = {
@@ -50,7 +56,7 @@ const iconBtnStyles: React.CSSProperties = {
 const activeMuteStyle: React.CSSProperties = { ...iconBtnStyles, backgroundColor: '#d9534f', color: 'white', borderColor: '#d9534f' };
 const activeSoloStyle: React.CSSProperties = { ...iconBtnStyles, backgroundColor: '#f0ad4e', color: 'black', borderColor: '#f0ad4e' };
 
-export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSoloToggle, onFocusTrack, onUpdateSteps, onOpenPianoRoll }) => {
+export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSoloToggle, onFocusTrack, onUpdateSteps, onOpenPianoRoll, onSetViewMode }) => {
     return (
         <div style={listContainerStyles}>
             {tracks.map(track => (
@@ -66,6 +72,21 @@ export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSo
                     >
                         {track.name}
                     </span>
+
+                    {/* F4: Auto / Melodic / Percussive */}
+                    {onSetViewMode && (
+                        <select
+                            data-testid={`track-view-mode-${track.id}`}
+                            value={storedViewMode(track)}
+                            onChange={(e) => onSetViewMode(track.id, e.target.value as TrackViewMode)}
+                            style={{ backgroundColor: '#333', color: '#ccc', border: '1px solid #444', fontSize: '9px', height: '24px', marginLeft: '3px' }}
+                            title="Which editor this track opens in. Auto reads the instrument's patch: a source that ignores the played note, or a track written on a single pitch, is percussive."
+                        >
+                            <option value="auto">Auto</option>
+                            <option value="melodic">Melodic</option>
+                            <option value="percussive">Percussive</option>
+                        </select>
+                    )}
 
                     {/* Piano Roll Button */}
                     <button

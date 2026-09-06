@@ -46,14 +46,14 @@ const session = { bpm: 140, patternSteps: 32, masterVolume: 0.3, packageName: 'm
 // real macrotask tick is enough for it to fire.
 const flushTimers = () => new Promise((r) => setTimeout(r, 10));
 
-const renderFileIO = () =>
+const renderFileIO = (sequencerTracks: SequencerTrack[] = []) =>
     renderHook(() =>
         useFileIO(
             rfInstance(),
             setNodes as unknown as React.Dispatch<React.SetStateAction<Node[]>>,
             setEdges as unknown as React.Dispatch<React.SetStateAction<Edge[]>>,
             fileHistory,
-            [],
+            sequencerTracks,
             loadTracks as unknown as (tracks: SequencerTrack[]) => void,
             session,
             applySession as unknown as (s: Partial<SessionSettings>) => void,
@@ -105,6 +105,30 @@ describe('useFileIO — save outcome surfacing', () => {
         // The payload carries the session block.
         const written = JSON.parse(saveGraph.mock.calls[0][0]);
         expect(written.session).toEqual(session);
+    });
+
+    // F4: `viewMode` is editor-only surface on SequencerTrack. `sequencerTracks`
+    // is written and read RAW (no per-field serializer on this path), which is
+    // what lets the field round-trip with no save-version bump and therefore no
+    // migration — but "raw" is a property of the current code, not a law, so it
+    // is pinned here rather than assumed.
+    it('round-trips a track view-mode preference through save and load untouched', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/kit.json' });
+        const drumTrack: SequencerTrack = {
+            id: 't-kick', targetNodeId: 'inst-kick', name: 'Kick', color: '#f00',
+            steps: 16, notes: [], isMuted: false, isSolo: false, viewMode: 'percussive',
+        };
+        const { result } = renderFileIO([drumTrack]);
+        await act(async () => { await result.current.handleSave(); });
+
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        expect(written.sequencerTracks).toEqual([drumTrack]);
+
+        // And back in again: the whole written file, through the real load path.
+        loadGraph.mockResolvedValue({ content: JSON.stringify({ ...written, nodes: [{ id: 'inst-kick', type: 'instrument' }] }) });
+        const reloaded = renderFileIO();
+        await act(async () => { await reloaded.result.current.handleLoad(); });
+        expect((loadTracks.mock.calls[0][0] as SequencerTrack[])[0].viewMode).toBe('percussive');
     });
 
     it('reports a disk-write failure loudly (the old path was fire-and-forget)', async () => {

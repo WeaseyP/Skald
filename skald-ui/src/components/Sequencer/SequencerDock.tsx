@@ -3,6 +3,7 @@ import { SequencerToolbar } from './SequencerToolbar';
 import { TrackList } from './TrackList';
 import { StepGrid } from './StepGrid';
 import { SequencerTrack, SequencerState , NoteEvent } from '../../definitions/types';
+import { TrackViewMode } from './trackViewMode';
 
 interface SequencerDockProps {
     state: SequencerState;
@@ -37,6 +38,9 @@ interface SequencerDockProps {
     onUpdateSteps: (trackId: string, steps: number) => void;
     // notePitch: which note of the step the selection refers to.
     onStepSelect: (trackId: string, step: number, notePitch: number) => void;
+    // F4: the per-track Auto/Melodic/Percussive override, stored on the track
+    // and therefore pushed onto the editor history like any other track edit.
+    onSetTrackViewMode: (trackId: string, viewMode: TrackViewMode) => void;
 }
 
 const dockContainerStyles: React.CSSProperties = {
@@ -94,6 +98,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     onUpdateNote,
     onUpdateSteps,
     onStepSelect,
+    onSetTrackViewMode,
     analyserNode,
     meterAnalysers
 }) => {
@@ -233,6 +238,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                         onFocusTrack={onFocusTrack}
                         onUpdateSteps={onUpdateSteps}
                         onOpenPianoRoll={setEditingTrackId}
+                        onSetViewMode={onSetTrackViewMode}
                     />
 
                     <div style={{ flexGrow: 1, position: 'relative' }}>

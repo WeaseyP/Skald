@@ -117,6 +117,22 @@ The registry never creates a second track for one Instrument, but it does not fo
 
 Clicking a track's **name** selects and centres its Instrument node on the canvas (`skald-ui/src/app.tsx::handleFocusNode`). **Edit** opens the piano roll for it.
 
+### Melodic or percussive
+
+Every track row carries an **Auto / Melodic / Percussive** selector. It decides which editor **Edit** opens — the chromatic Piano Roll, or the one-row Drum Roll. The choice is stored on the track (`viewMode` on `skald-ui/src/definitions/types.ts::SequencerTrack`), saved with the project, and pushed onto the undo stack like any other track edit (`skald-ui/src/hooks/sequencer/useSequencerState.ts::setTrackViewMode`). A track that has never been given one reads as **Auto**, so nothing about an older project changes when you open it.
+
+**Auto reads the patch, never the name.** A track called *Kick* gets no special treatment; what counts is what the Instrument's subgraph does with the note the sequencer plays (`skald-ui/src/components/Sequencer/trackViewMode.ts::detectTrackViewMode`). It calls a track percussive when either:
+
+- **No sound source in the subgraph can hear the note.** Every Oscillator and Wavetable has **Fixed Pitch** on, or the only sources are Noise. That is the whole SNES kick, snare and hat: a fixed-pitch oscillator ignores the played note and uses its own `frequency` instead (`skald-backend/core/codegen_nodes.odin::generate_oscillator_code`), so the MIDI number on each step is an inert label. An FM Operator always tracks the note and so always counts as melodic.
+- **Or the track is written on a single pitch.** `examples/songs/full/four-bar-song.skald.json`'s *Kick* left Fixed Pitch off but plays MIDI 24 on every step; 128 chromatic rows to edit one of them is not useful.
+
+Everything else is melodic. Two consequences worth knowing before you argue with it:
+
+- `examples/snes-kit/drums/tom.skald.json` resolves to **melodic**, because its oscillator does track the note and the groove writes four real pitches (43, 45, 48, 50). It is a pitched tom. If you would rather edit it as a kit piece, set **Percussive** on the row.
+- The single-pitch rule needs *one* pitch, not "one or two". `examples/snes-kit/instruments/crunch-guitar.skald.json` is a real riff written entirely on 45 and 52, and a one-row grid would draw both pitches on top of each other.
+
+An explicit **Melodic** or **Percussive** always wins over the detection (`skald-ui/src/components/Sequencer/trackViewMode.ts::resolveTrackViewMode`). Nothing here reaches the generated code: both editors write the same `NoteEvent`, and the emitted Odin is identical whichever one you used.
+
 ## The Step Grid versus the Piano Roll
 
 They edit the same notes. They differ in what axis they give you.

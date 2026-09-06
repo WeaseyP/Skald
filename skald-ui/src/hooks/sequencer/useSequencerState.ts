@@ -264,6 +264,26 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         mapTracks(t => (t.id === trackId ? { ...t, isSolo: !t.isSolo } : t));
     }, [mapTracks, pushHistory]);
 
+    /**
+     * F4: which editor this track opens in. A stored preference, not a
+     * derived fact — the detection in trackViewMode.ts reads the patch, and
+     * this is how a user overrules it.
+     *
+     * It goes through pushHistory like every other track mutation (the B3
+     * rule): the mode is part of the saved document, so a Ctrl+Z after
+     * choosing one has to put the old choice back rather than skipping over
+     * the gesture to whatever was edited before it.
+     */
+    const setTrackViewMode = useCallback((trackId: string, viewMode: SequencerTrack['viewMode']) => {
+        const track = tracksRef.current.find(t => t.id === trackId);
+        // Absent and 'auto' are the same state (trackViewMode.ts::storedViewMode),
+        // so re-picking Auto on a track that never stored one must not open an
+        // undo entry that restores nothing.
+        if (!track || (track.viewMode ?? 'auto') === (viewMode ?? 'auto')) return;
+        pushHistory('Change track view');
+        mapTracks(t => (t.id === trackId ? { ...t, viewMode } : t));
+    }, [mapTracks, pushHistory]);
+
     const updateTrackSteps = useCallback((trackId: string, steps: number) => {
         const track = tracksRef.current.find(t => t.id === trackId);
         if (!track || track.steps === steps) return;
@@ -278,6 +298,7 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         setCurrentStep,
         syncInstrumentTracks,
         updateTrackSteps,
+        setTrackViewMode,
         toggleStep,
         clearStep,
         toggleMute,
@@ -289,6 +310,7 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         currentStep,
         syncInstrumentTracks,
         updateTrackSteps,
+        setTrackViewMode,
         toggleStep,
         clearStep,
         toggleMute,

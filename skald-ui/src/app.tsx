@@ -239,6 +239,7 @@ const EditorLayout = () => {
         toggleSolo,
         updateNote,
         updateTrackSteps,
+        setTrackViewMode,
         session,
         setBpm,
         setPatternSteps,
@@ -976,6 +977,7 @@ const EditorLayout = () => {
                     analyserNode={analyserNode?.current || null}
                     meterAnalysers={meterAnalysers}
                     onStepSelect={onSelectStep}
+                    onSetTrackViewMode={setTrackViewMode}
                 />
             </div>
         </div>

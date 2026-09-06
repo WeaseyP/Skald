@@ -309,6 +309,17 @@ export interface SequencerTrack {
   notes: NoteEvent[];     // Array of active notes
   isMuted: boolean;
   isSolo: boolean;
+  /**
+   * F4: which editor "Edit" opens for this track — the chromatic Piano Roll
+   * or the one-row Drum Roll. Editor-only: `projectSerializer` never reads it
+   * and the generated code is byte-identical either way, because both editors
+   * write the same `NoteEvent` shape.
+   *
+   * Absent ⇒ 'auto' (components/Sequencer/trackViewMode.ts::storedViewMode),
+   * which is why adding this field owes no save migration: every track saved
+   * before F4 keeps behaving exactly as the detection says it should.
+   */
+  viewMode?: 'melodic' | 'percussive' | 'auto';
 }
 
 /**
