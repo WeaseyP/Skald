@@ -4,6 +4,7 @@ import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, stepWidthFor, ste
 import { useViewport } from '../../hooks/useViewport';
 import { useElementWidth } from './useElementWidth';
 import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
+import { useModifierKeys } from '../../hooks/sequencer/useModifierKeys';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
 
 interface StepGridProps {
@@ -211,27 +212,10 @@ export const StepGrid: React.FC<StepGridProps & {
         }
     };
 
-    const [modifiers, setModifiers] = React.useState({ ctrl: false, shift: false, alt: false });
-
-    React.useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Control' || e.key === 'Meta') setModifiers(prev => ({ ...prev, ctrl: true }));
-            if (e.key === 'Shift') setModifiers(prev => ({ ...prev, shift: true }));
-            if (e.key === 'Alt') setModifiers(prev => ({ ...prev, alt: true }));
-        };
-        const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === 'Control' || e.key === 'Meta') setModifiers(prev => ({ ...prev, ctrl: false }));
-            if (e.key === 'Shift') setModifiers(prev => ({ ...prev, shift: false }));
-            if (e.key === 'Alt') setModifiers(prev => ({ ...prev, alt: false }));
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
-        };
-    }, []);
+    // hooks/sequencer/useModifierKeys.ts: live Ctrl/Shift/Alt state, purely
+    // for the drag-axis cursor hint below (Shift=duration, Ctrl=velocity,
+    // Alt=probability).
+    const modifiers = useModifierKeys();
 
     const handleNoteMouseDown = (e: React.MouseEvent, trackId: string, step: number, note: NoteEvent) => {
         // Only start drag if Modifier is held
