@@ -178,6 +178,33 @@ The drag commits once, on release, as a single undo entry, however far the point
 
 A note's address is the pair **(step, pitch)**, everywhere: both editors, Step Properties, and Export Step. That pair is unique. Retune a chord member onto a sibling's pitch and the retuned note wins — the one it landed on is absorbed, the same way a long note absorbs the notes it ties over in its own pitch lane (`skald-ui/src/hooks/sequencer/useSequencerState.ts::updateNote`). A file that arrives with two notes at one (step, pitch) is de-duplicated on load, first one kept, and Load reports the count (`skald-ui/src/utils/trackNotes.ts::dedupeTrackNotes`).
 
+## The Drum Roll
+
+A percussive track opens here instead of the Piano Roll (`skald-ui/src/components/Sequencer/DrumRoll.tsx::DrumRoll`). It is one row, not 128: on a fixed-pitch drum patch the MIDI number on a step is an inert label, so a chromatic keyboard asks you to find one lane out of the whole MIDI space to click in and gives you nothing in return for the search.
+
+**Nothing about the generated code changes.** Both editors write the same `NoteEvent`, through the same mutations, and `skald-backend/core/codegen_project.odin::generate_sequencer_logic` emits `<Asset>_note_on(p, note, velocity, duration)` per event with no idea which editor authored it. A patch edited in the Drum Roll and the same patch edited in the roll produce identical Odin.
+
+### The hit note
+
+Every hit still needs a MIDI note number, because **(step, pitch)** is the address Step Properties, Export Step and the de-duplicator all use. The row's **Hit note** field is it, and it is resolved in one place (`skald-ui/src/components/Sequencer/drumKit.ts::canonicalDrumPitch`), in this order:
+
+1. What you typed in the field, stored on the track as `defaultNote`.
+2. **The pitch the track's notes already use most.** What is on the grid beats what the name suggests — a track called *Kick* written entirely on 38 gets new hits at 38, or the row would start drawing two lanes it cannot tell apart. Ties go to the lower pitch, so the answer does not depend on which cell you happened to click first.
+3. A General MIDI guess from the track's name, for a track with no notes yet: kick 36, snare 38, clap 39, hat 42, tom 45 (`skald-ui/src/components/Sequencer/drumKit.ts::GM_DRUM_PITCHES`). Deliberately five entries — it is a last-resort guess, one number away from correct in the field above it.
+4. Middle C.
+
+The Step Grid still paints at a flat middle C for every track. If you have painted a kick in the grid and then again in the Drum Roll, the track holds notes at 60 and at 36, and the Drum Roll says so in an amber line above the grid: notes off the hit note are **drawn with a dashed outline, never hidden**, because a note that is invisible in the editor and audible in the export is the oldest bug shape in this editor.
+
+### Gestures
+
+- **Click an empty cell** to add a hit at the hit note; **click a cell that has one** to clear the step. Drag to continue in whichever of the two the first cell chose — the Piano Roll's policy, not the Step Grid's two-button one. Clearing takes the whole step rather than one member, because a row with no pitch axis cannot say which member you meant (`skald-ui/src/hooks/sequencer/useSequencerState.ts::clearStep`).
+- **Drag the darker bar along the bottom of a hit** to change its **velocity**, up for louder. The same pointer movement means the same change here as a Ctrl-drag does in the Step Grid, and the drag commits once on release, as a single undo entry, however far the pointer travelled. The hit's body keeps passing clicks through to the cell underneath, so the click-to-clear gesture above still works on it — the same split the Piano Roll's duration handle uses.
+- **Velocity is the hit's brightness**, which on a row with no pitch axis is the only thing you can read off a hit without clicking it.
+- **Right-click a hit** to select that (step, pitch) for Step Properties, exactly as right-clicking a note in the roll does. Left-click is already the add/clear toggle here, so it cannot also mean selection.
+- Columns past `min(track length, pattern length)` are darkened and refuse new hits. A hit already stranded there can still be deleted with a single click.
+
+The playhead, the beat columns and the follow-the-playhead scrolling on a narrow window are the same shared pieces the Step Grid uses (`skald-ui/src/components/Sequencer/Playhead.tsx::Playhead`, `skald-ui/src/components/Sequencer/stepMetrics.ts::isBeatStart`, `skald-ui/src/hooks/sequencer/usePlayheadScroll.ts::usePlayheadScroll`), not a second copy of them.
+
 ## Step Properties
 
 Click a step and the right-hand parameter panel becomes **Edit Step N (note P)**, with an **Export Step to Instrument** button and the step's properties (`skald-ui/src/components/Sequencer/StepPropertiesEditor.tsx::StepPropertiesEditor`). Selecting a node on the canvas returns the panel to normal.

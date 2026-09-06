@@ -2,11 +2,15 @@ import React, { useState } from 'react';
 import { SequencerToolbar } from './SequencerToolbar';
 import { TrackList } from './TrackList';
 import { StepGrid } from './StepGrid';
-import { SequencerTrack, SequencerState , NoteEvent } from '../../definitions/types';
-import { TrackViewMode } from './trackViewMode';
+import { Node } from '@xyflow/react';
+import { NodeParams, SequencerTrack, SequencerState , NoteEvent } from '../../definitions/types';
+import { TrackViewMode, resolveTrackViewMode } from './trackViewMode';
 
 interface SequencerDockProps {
     state: SequencerState;
+    // F4: the canvas, only so a track can be matched to its Instrument node
+    // and the view mode resolved. The dock reads no other node data.
+    nodes: Node<NodeParams>[];
     // True while a preview build (Play or a hot-swap rebuild) is running —
     // drives the small status pip next to Play/Stop (roadmap A7 item 3).
     isBuilding: boolean;
@@ -41,6 +45,8 @@ interface SequencerDockProps {
     // F4: the per-track Auto/Melodic/Percussive override, stored on the track
     // and therefore pushed onto the editor history like any other track edit.
     onSetTrackViewMode: (trackId: string, viewMode: TrackViewMode) => void;
+    // F2: the canonical hit note the Drum Roll paints at.
+    onSetTrackDefaultNote: (trackId: string, note: number) => void;
 }
 
 const dockContainerStyles: React.CSSProperties = {
@@ -72,6 +78,7 @@ import { PeakMeter } from '../Visualization/PeakMeter';
 import { useVisualizerModePreference } from '../../hooks/nodeEditor/useVisualizerModePreference';
 import { StereoAnalysers } from '../../utils/meter';
 import { PianoRoll } from './PianoRoll';
+import { DrumRoll } from './DrumRoll';
 import { NumberInput } from '../common/NumberInput';
 
 
@@ -79,6 +86,7 @@ import { NumberInput } from '../common/NumberInput';
 
 export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: AnalyserNode | null; meterAnalysers: StereoAnalysers | null }> = ({
     state,
+    nodes,
     isBuilding,
     bpm,
     setBpm,
@@ -99,6 +107,7 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     onUpdateSteps,
     onStepSelect,
     onSetTrackViewMode,
+    onSetTrackDefaultNote,
     analyserNode,
     meterAnalysers
 }) => {
@@ -128,6 +137,15 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
     };
 
     const editingTrack = state.tracks.find(t => t.id === editingTrackId);
+
+    // F4: which editor "Edit" opens. The decision is trackViewMode.ts's alone —
+    // the dock resolves, it does not detect, so the row's selector and this
+    // dispatch can never disagree about whether a track is percussive and
+    // leave it editable in neither view.
+    const editingInstrument = editingTrack
+        ? nodes.find(n => n.id === editingTrack.targetNodeId) ?? null
+        : null;
+    const editingViewMode = editingTrack ? resolveTrackViewMode(editingTrack, editingInstrument) : null;
 
     // Resize Handlers
     const startResizing = React.useCallback(() => setIsResizing(true), []);
@@ -253,7 +271,23 @@ export const SequencerDock: React.FC<SequencerDockProps & { analyserNode: Analys
                             onStepContext={(trackId, step, notePitch) => onStepSelect(trackId, step, notePitch)}
                         />
 
-                        {editingTrack && (
+                        {editingTrack && editingViewMode === 'percussive' && (
+                            <DrumRoll
+                                track={editingTrack}
+                                currentStep={state.currentStep}
+                                steps={editingTrack.steps || 16}
+                                patternSteps={patternSteps}
+                                bpm={bpm}
+                                onToggleStep={onToggleStep}
+                                onClearStep={onClearStep}
+                                onUpdateNote={onUpdateNote}
+                                onSelectNote={onStepSelect}
+                                onSetDefaultNote={onSetTrackDefaultNote}
+                                onClose={() => setEditingTrackId(null)}
+                            />
+                        )}
+
+                        {editingTrack && editingViewMode === 'melodic' && (
                             <PianoRoll
                                 track={editingTrack}
                                 onUpdateNote={onUpdateNote}

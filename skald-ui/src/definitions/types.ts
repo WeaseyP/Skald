@@ -320,6 +320,17 @@ export interface SequencerTrack {
    * before F4 keeps behaving exactly as the detection says it should.
    */
   viewMode?: 'melodic' | 'percussive' | 'auto';
+  /**
+   * F2: the MIDI note a new hit painted in the Drum Roll is written at. A row
+   * with no pitch axis still has to name one, because (step, pitch) is the
+   * address Step Properties, Export Step and the de-duplicator all use.
+   *
+   * Editor-only and optional; absent is resolved from the track's own notes,
+   * then the GM drum map, then middle C
+   * (components/Sequencer/drumKit.ts::canonicalDrumPitch). Round-trips raw for
+   * the same reason `viewMode` does, and owes no migration for the same reason.
+   */
+  defaultNote?: number;
 }
 
 /**

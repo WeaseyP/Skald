@@ -284,6 +284,26 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         mapTracks(t => (t.id === trackId ? { ...t, viewMode } : t));
     }, [mapTracks, pushHistory]);
 
+    /**
+     * F2: the MIDI note new hits in the Drum Roll are written at. Stored, not
+     * derived — `canonicalDrumPitch` guesses one for a track that has never
+     * been told, and this is how the author fixes the guess.
+     *
+     * Pushed like every other track mutation (B3): the number is saved with
+     * the project and it changes what the next paint writes, so an undo has to
+     * put the old one back.
+     */
+    const setTrackDefaultNote = useCallback((trackId: string, note: number) => {
+        const track = tracksRef.current.find(t => t.id === trackId);
+        // Clamped here rather than in the row's input: every caller of this
+        // writes a MIDI note number, and a note outside 0..127 is one the
+        // generated `_note_on` could never sound.
+        const clamped = Math.max(0, Math.min(127, Math.round(note)));
+        if (!track || !Number.isFinite(note) || track.defaultNote === clamped) return;
+        pushHistory('Change hit note', { gesture: `defaultNote:${trackId}` });
+        mapTracks(t => (t.id === trackId ? { ...t, defaultNote: clamped } : t));
+    }, [mapTracks, pushHistory]);
+
     const updateTrackSteps = useCallback((trackId: string, steps: number) => {
         const track = tracksRef.current.find(t => t.id === trackId);
         if (!track || track.steps === steps) return;
@@ -299,6 +319,7 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         syncInstrumentTracks,
         updateTrackSteps,
         setTrackViewMode,
+        setTrackDefaultNote,
         toggleStep,
         clearStep,
         toggleMute,
@@ -311,6 +332,7 @@ export const useSequencerState = ({ pushHistory }: SequencerHistoryHooks) => {
         syncInstrumentTracks,
         updateTrackSteps,
         setTrackViewMode,
+        setTrackDefaultNote,
         toggleStep,
         clearStep,
         toggleMute,

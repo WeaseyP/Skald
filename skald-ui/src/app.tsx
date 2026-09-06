@@ -240,6 +240,7 @@ const EditorLayout = () => {
         updateNote,
         updateTrackSteps,
         setTrackViewMode,
+        setTrackDefaultNote,
         session,
         setBpm,
         setPatternSteps,
@@ -952,6 +953,7 @@ const EditorLayout = () => {
 
                 <SequencerDock
                     state={sequencerState}
+                    nodes={nodes}
                     isBuilding={isBuilding}
                     bpm={bpm}
                     setBpm={setBpm}
@@ -978,6 +980,7 @@ const EditorLayout = () => {
                     meterAnalysers={meterAnalysers}
                     onStepSelect={onSelectStep}
                     onSetTrackViewMode={setTrackViewMode}
+                    onSetTrackDefaultNote={setTrackDefaultNote}
                 />
             </div>
         </div>

@@ -88,11 +88,13 @@ export const TrackList: React.FC<TrackListProps> = ({ tracks, onMuteToggle, onSo
                         </select>
                     )}
 
-                    {/* Piano Roll Button */}
+                    {/* F4: which editor this opens is the resolved view mode's
+                        decision, made in SequencerDock — the row only asks. */}
                     <button
+                        data-testid={`track-edit-${track.id}`}
                         style={{ ...iconBtnStyles, width: 'auto', padding: '0 4px', fontSize: '9px' }}
                         onClick={() => onOpenPianoRoll && onOpenPianoRoll(track.id)}
-                        title="Open Piano Roll"
+                        title="Open this track's editor (Piano Roll or Drum Roll, per the view mode)"
                     >
                         Edit
                     </button>
