@@ -14,6 +14,7 @@
 > green at baseline.
 > **Wave D:** ✅ **4 of 4 closed** (2026-09-06, five commits on `web-app`: D4 `1811f07`, D3 tooling `82b0267`, D2 `ddcda7b`, D1 `765f2a7`, D3 `3f92958`). The manual has 27 chapters, `KNOWN-ISSUES.md` holds 56 open defects with IDs, and the citation gate (`npm run check` in `scripts/manual`, run by CI) is green: 1,838 `path::identifier` citations, 0 mismatches. Exit criteria 4, 6 and 7 are met; see the Wave D section.
 > **Wave E:** ✅ **13 of 13 closed** (2026-09-06, `b34283a`..`c4fd822`). KI-055 (feedback loop generated around) fixed `4c8b5f8`. **Baseline at the close, pristine `git archive` of HEAD:** acceptance 50/50 · goldens 69 match / 69 deterministic (after pinning `*.golden` to LF — an `fc` line-wrap quirk had one golden red only in exports) · backend unit 158/158 · UI 1174 tests / 95 files · tsc 0 / lint 0 · corpus 98/98 · regen check 3/3 · manual citations 1886 / 0 mismatches.
+> **Wave F:** ✅ **5 of 5 closed** (2026-09-06, `93d6ae1`..`caee711`); Wave G in progress.
 > **0.2 ships when:** all Wave B items closed + exit criteria met (see bottom)
 
 ---
@@ -805,12 +806,41 @@ A conservative static warning cannot see a defect that another defect is hiding.
 ## Wave F — Drum Roll & Sequencer
 
 > Percussion-native editing and unified sequencer architecture.
+> **Wave F:** ✅ **5 of 5 closed** (2026-09-06, twelve commits `93d6ae1`..`caee711` on `web-app`). No export contract
+> changed: a drum row is an existing `SequencerTrack` (one per Instrument) and `generate_sequencer_logic` still emits
+> `_note_on(note, velocity, duration)` per event; nothing new reaches the backend, and the two new optional track fields
+> round-trip raw through save/load (absent ⇒ defaults, no version bump). Suite at the close: 1317 tests / 108 files.
 
-- [ ] **F1** (M) — **Unified sequencer core.** Shared infrastructure for Piano Roll + Drum Roll: `useElementWidth`, `stepMetrics.ts`, playhead sync, grid rendering, viewport scrolling. *(§9.3)*
-- [ ] **F2** (M) — **Drum Roll: percussive grid.** Kit-piece rows (Kick, Snare, Hat, etc.) replacing chromatic keys for percussion instruments. *(§9.2 item 1)*
-- [ ] **F3** (M) — **Drum Roll: multi-instrument kit aggregation.** One editing workspace aggregates all percussion instruments into a consolidated matrix. *(§9.2 item 2)*
-- [ ] **F4** (S) — **Polymorphic track view dispatching.** `viewMode: 'melodic' | 'percussive' | 'auto'` on `SequencerTrack`; `SequencerDock` auto-detects or respects the hint. *(§9.3)*
-- [ ] **F5** (S) — **Examples Library: search + tags.** Metadata tagging (`[percussion]`, `[bass-synth]`, `[sfx]`, `[ambient]`) with search on the existing Examples modal. *(§9.13)*
+- [x] **F1** (M) — ✅ `ac78ddf` `1d7fa80` `2055b81` `0fa8c9a` `20a2d77` `93f19b7` `74415a6`. The duplicated
+  machinery in `StepGrid.tsx` and `PianoRoll.tsx` became shared hooks: `hooks/sequencer/usePlayheadScroll.ts` (the roll now
+  follows the playhead on narrow viewports — the one user-visible change), `useModifierKeys.ts`, `useStepPaintInteraction.ts`
+  (paint/erase state machine keyed by cell), `useNoteDrag.ts` (grab → preview → commit, one undo entry per drag, Escape opt-in),
+  `components/Sequencer/Playhead.tsx`, `stepMetrics.ts::isBeatStart`. StepGrid 474→415 lines, PianoRoll 570→528; 34 new hook
+  tests, every existing test green after each commit. `stepMetrics.ts`/`useElementWidth`/`useViewport`/`OutOfRangeNotice` were
+  already shared. Left per component on purpose: the cell renderers (different DOM shapes) and the maxSteps formulas; the
+  roll keeps its per-row playhead highlight (documented in the file). *(§9.3)*
+- [x] **F2** (M) — ✅ `7ddf21f`. `components/Sequencer/DrumRoll.tsx`: one row per percussive track, cells across steps, click
+  paints a hit at the track's canonical pitch, velocity as intensity and dragged via `useNoteDrag`, right-click selects the hit for
+  Step Properties. Canonical pitch: `SequencerTrack.defaultNote?` → `drumKit.ts::canonicalDrumPitch` (explicit → most frequent
+  existing pitch → a five-entry GM table by name → 60). Third reader of the F1 core. 19 tests. *(§9.2 item 1)*
+- [x] **F3** (M) — ✅ `caee711`. `DrumKitView.tsx` renders every percussive track as a row of one grid (`DrumRollRow.tsx` shared
+  with the single-track Drum Roll), shared step header and playhead, name and mute/solo per row (mute through
+  `useSequencerState.toggleMute`, which had no test before). Kit button in `SequencerToolbar.tsx` at ≥ 2 percussive tracks;
+  `trackViewMode.ts::percussiveTracks` answers both "which rows" and "show the button". Paint stays per row so a drag cannot
+  leak into a neighbouring Instrument's export; tracks are never merged on disk. 11 tests. *(§9.2 item 2)*
+- [x] **F4** (S) — ✅ `54f21c0`. `SequencerTrack.viewMode?: 'melodic' | 'percussive' | 'auto'` (absent ⇒ auto);
+  `trackViewMode.ts::resolveTrackViewMode` is the one resolver the dock and the track row read; Auto/Melodic/Percussive selector in
+  `TrackList.tsx` through history. Auto rule, calibrated against shipped files and pinned by name: percussive when no source hears
+  the note (every Oscillator/Wavetable `fixedPitch`, or Noise only) or when the track is written on **one** pitch — one, not §9.3's
+  "one or two": `snes-kit/instruments/crunch-guitar` is a riff on 45 and 52 that a one-row grid would collapse. groove-bed's
+  kick/snare/hat → percussive, its tom (four real pitches) and slap bass → melodic, four-bar-song's Kick (MIDI 24 throughout) →
+  percussive. 14 tests. *(§9.3)*
+- [x] **F5** (S) — ✅ `93d6ae1`. Tags are **derived at scan time**, not stored: `utils/exampleTags.mjs::deriveTags(path, json)` (plain
+  ESM so the Electron scanner in `main.ts` and `web-server/server.mjs` share one reader) — folder → category, node types → midi /
+  fm / wavetable / noise / percussion, tracks with notes → sequenced, no Instrument → patch; an optional in-file `meta.tags` is
+  unioned in if ever present (none shipped, so no example file or corpus golden changed). `ExamplesModal.tsx` gets tag chips
+  (AND-select) and tag/description-aware search; a loaded file's `meta` survives Save. 21 tests. Gap found: the web server has no
+  Start Here category (To-do). *(§9.13)*
 
 ---
 
@@ -911,6 +941,8 @@ Work the agent left deliberately undone. Each is small and self-contained; none 
 - [ ] **Fixture tidy** — `tests/fixtures/dc_offset_pulse.json` carries string `attackCurve`/`decayCurve`/`releaseCurve`
   values from before E8's numeric schema; inert (fall through to 0). Removing them changes the input digest in the
   golden header, so do it with a golden update the commit message explains.
+- [ ] **Web build has no Start Here** (S) — `skald-ui/web-server/server.mjs` serves `/api/examples` without the curated
+  `main/startHere.ts` list the desktop build prepends; parity gap found by F5.
 - [ ] **ESLint caveat lost with BUGS.md** — the old `BUG-LINT-WARNINGS` note ("the fix was a suppression;
   four rule families are still `off`") did not carry into this file. Re-verify `skald-ui`'s ESLint config
   and either turn the rules on or record the decision here.
