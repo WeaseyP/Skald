@@ -1,8 +1,9 @@
 import React from 'react';
 import { SequencerTrack, NoteEvent } from '../../definitions/types';
-import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, scrollLeftForStep, stepWidthFor, stepWidthMinFor } from './stepMetrics';
+import { effectiveTrackSteps, noteExtent, outOfRangeNoteCount, stepWidthFor, stepWidthMinFor } from './stepMetrics';
 import { useViewport } from '../../hooks/useViewport';
 import { useElementWidth } from './useElementWidth';
+import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
 
 interface StepGridProps {
@@ -126,18 +127,11 @@ export const StepGrid: React.FC<StepGridProps & {
     const beatMarkerStyle: React.CSSProperties = { ...cellStyles, borderRight: '1px solid #444' };
     const rowWidth = maxSteps * stepWidth;
 
-    // E13: on a phone the dock shows a few bars of a long pattern, and the
-    // playhead used to walk off the right edge and keep going — a blank grid
-    // for most of every loop. Only the narrow layout follows it: on the
-    // desktop the pattern usually fits, and moving a scroll position the user
-    // just set by hand would be a regression, not a feature.
-    React.useEffect(() => {
-        if (!isNarrow) return;
-        const el = gridRef.current;
-        if (!el) return;
-        const target = scrollLeftForStep(currentStep, stepWidth, el.scrollLeft, el.clientWidth);
-        if (target !== null) el.scrollLeft = target;
-    }, [isNarrow, currentStep, stepWidth, gridRef]);
+    // E13 (hooks/sequencer/usePlayheadScroll.ts): only the narrow layout
+    // follows the playhead — on the desktop the pattern usually fits, and
+    // moving a scroll position the user just set by hand would be a
+    // regression, not a feature.
+    usePlayheadScroll(isNarrow, gridRef, currentStep, stepWidth);
 
     const isBeat = (step: number) => (step + 1) % 4 === 0;
 

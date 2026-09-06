@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PianoRoll } from '../../components/Sequencer/PianoRoll';
 import { ScaleProvider } from '../../contexts/ScaleContext';
 import { SequencerTrack } from '../../definitions/types';
-import { scrollTopForPitch } from '../../components/Sequencer/stepMetrics';
+import { PIANO_STEP_WIDTH_DEFAULT, scrollTopForPitch } from '../../components/Sequencer/stepMetrics';
+import { NARROW_QUERY, __resetMediaQueryCache } from '../../hooks/useViewport';
 
 const track: SequencerTrack = {
     id: 'bass-track',
@@ -355,5 +356,80 @@ describe('PianoRoll — per-note selection for Step Properties (E3)', () => {
         const blockEAfter = rowE.querySelector('[data-testid="piano-roll-placed-note-4-64"]')!;
         expect(blockEAfter.getAttribute('style')).toContain('outline: 2px solid');
         expect(blockCAfter.getAttribute('style')).not.toContain('outline: 2px solid');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Roadmap F1 — the playhead scroll-follow was StepGrid-only (E13): on a
+// narrow viewport the roll's horizontal scroll never moved to keep the
+// playhead in view, unlike the step grid. usePlayheadScroll.ts is now the one
+// implementation both read; this proves the roll actually opted in, not just
+// that the hook exists in isolation.
+// ---------------------------------------------------------------------------
+describe('PianoRoll — playhead scroll-follow on narrow viewports (F1)', () => {
+    afterEach(() => {
+        cleanup();
+        __resetMediaQueryCache();
+        delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+    });
+
+    const installMatchMedia = (matching: Record<string, boolean>) => {
+        (window as unknown as { matchMedia: (q: string) => MediaQueryList }).matchMedia = (query: string) => ({
+            matches: matching[query] ?? false,
+            media: query,
+            onchange: null,
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
+            addListener: () => undefined,
+            removeListener: () => undefined,
+            dispatchEvent: () => true,
+        } as unknown as MediaQueryList);
+        __resetMediaQueryCache();
+    };
+
+    const wideTrack: SequencerTrack = { ...track, steps: 64, notes: [] };
+
+    it('scrolls to keep the playhead in view once the pattern overflows a narrow dock', () => {
+        installMatchMedia({ [NARROW_QUERY]: true });
+        const { rerender } = render(
+            <ScaleProvider>
+                <PianoRoll track={wideTrack} onUpdateNote={vi.fn()} onToggleStep={vi.fn()} currentStep={0} steps={64} onClose={vi.fn()} />
+            </ScaleProvider>
+        );
+        const scroller = screen.getByTestId('piano-roll-scroll-container');
+        // jsdom has no layout: give the scroller a viewport of its own, same
+        // as ResponsiveSequencer.test.tsx does for StepGrid.
+        Object.defineProperty(scroller, 'clientWidth', { value: 400, configurable: true });
+
+        rerender(
+            <ScaleProvider>
+                <PianoRoll track={wideTrack} onUpdateNote={vi.fn()} onToggleStep={vi.fn()} currentStep={32} steps={64} onClose={vi.fn()} />
+            </ScaleProvider>
+        );
+
+        // jsdom reports 0 container width pre-measurement, so stepWidth falls
+        // back to PIANO_STEP_WIDTH_DEFAULT (30), exactly as the other tests
+        // in this file already assume.
+        expect(scroller.scrollLeft).toBe(32 * PIANO_STEP_WIDTH_DEFAULT - 200);
+    });
+
+    it('never moves a scroll position the user set by hand on the desktop', () => {
+        installMatchMedia({ [NARROW_QUERY]: false });
+        const { rerender } = render(
+            <ScaleProvider>
+                <PianoRoll track={wideTrack} onUpdateNote={vi.fn()} onToggleStep={vi.fn()} currentStep={0} steps={64} onClose={vi.fn()} />
+            </ScaleProvider>
+        );
+        const scroller = screen.getByTestId('piano-roll-scroll-container');
+        Object.defineProperty(scroller, 'clientWidth', { value: 400, configurable: true });
+        scroller.scrollLeft = 120;
+
+        rerender(
+            <ScaleProvider>
+                <PianoRoll track={wideTrack} onUpdateNote={vi.fn()} onToggleStep={vi.fn()} currentStep={32} steps={64} onClose={vi.fn()} />
+            </ScaleProvider>
+        );
+
+        expect(scroller.scrollLeft).toBe(120);
     });
 });

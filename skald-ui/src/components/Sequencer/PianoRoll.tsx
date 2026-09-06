@@ -17,6 +17,7 @@ import {
 import { useViewport } from '../../hooks/useViewport';
 import { OutOfRangeNotice } from './OutOfRangeNotice';
 import { useElementWidth } from './useElementWidth';
+import { usePlayheadScroll } from '../../hooks/sequencer/usePlayheadScroll';
 
 interface PianoRollProps {
     track: SequencerTrack;
@@ -126,7 +127,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // E13: both axes of a note's hit area come from the pointer class. The
     // floors themselves live in stepMetrics with the mouse ones, so the roll
     // and the step grid still measure this axis exactly once.
-    const { isCoarsePointer } = useViewport();
+    const { isNarrow, isCoarsePointer } = useViewport();
     const NOTE_HEIGHT = noteRowHeightFor(isCoarsePointer);
 
     const [, containerWidth] = useElementWidth<HTMLDivElement>(scrollContainerRef);
@@ -329,6 +330,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         // taller lanes, so middle C is a different number of pixels down.
         if (el) el.scrollTop = scrollTopForPitch(60, el.clientHeight, MIDI_NOTE_MIN, MIDI_NOTE_MAX, NOTE_HEIGHT);
     }, [NOTE_HEIGHT]);
+
+    // Roadmap F1: StepGrid already followed the playhead on a narrow viewport
+    // (E13); the roll never did, which is the one gap the map calls out as an
+    // actual behaviour change, not just a shared implementation. The roll's
+    // own scrollContainerRef already carries the vertical scroll above, so
+    // this adds a horizontal follow on the same element without a second
+    // effect duplicating StepGrid's arithmetic.
+    usePlayheadScroll(isNarrow, scrollContainerRef, currentStep, stepWidth);
 
     // Global MouseUp to catch drags ending outside
     useEffect(() => {
