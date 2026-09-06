@@ -39,6 +39,8 @@ The pale vertical band sliding across the grid is the playhead. It is not animat
 
 It follows **one** asset: the first Instrument, in generated order, that has a track with at least one unmuted note (`skald-ui/src/hooks/nodeEditor/useWasmAudioEngine.ts::computeStepAsset`). In a song where tracks have different lengths, the playhead is telling you where *that* asset is.
 
+On a narrow screen, once the step grid scrolls, it scrolls itself to keep the playhead on screen rather than letting it walk off the right edge into a blank viewport — and the Piano Roll now does the same thing, sharing the exact scroll-follow logic the grid already used rather than a second copy of it (`skald-ui/src/hooks/sequencer/usePlayheadScroll.ts::usePlayheadScroll`, called from both `skald-ui/src/components/Sequencer/StepGrid.tsx::usePlayheadScroll` and `skald-ui/src/components/Sequencer/PianoRoll.tsx::usePlayheadScroll`). On the desktop neither grid ever does this: the pattern usually fits, and hijacking a scroll position you set by hand would be a regression, not a feature.
+
 ## BPM: one tempo, three consumers
 
 There is exactly one tempo in a Skald project. The **BPM** box in the sequencer toolbar and the **BPM** box in the sidebar are the same field; the toolbar's tooltip says so out loud. Range **20 to 999**, default **120** (`skald-ui/src/definitions/bpm.ts::BPM_MIN`, `::BPM_MAX`, `::BPM_DEFAULT`). Anything typed is clamped through `::clampBpm`, and a cleared field falls back to 120 rather than poisoning the timing with `NaN` — an empty box once serialised as JSON `null`, which the generator read as `bpm = 0`, a divide-by-zero time base.
