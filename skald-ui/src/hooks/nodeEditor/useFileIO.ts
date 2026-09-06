@@ -6,7 +6,7 @@
 | the graph to and from the filesystem via the Electron main process.          |
 ================================================================================
 */
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import { SequencerTrack } from '../../definitions/types';
 import { ImportedGraph, layOutImportBatch } from '../../utils/importLayout';
@@ -94,6 +94,17 @@ export const useFileIO = (
     // for why the default is `window.confirm` rather than an in-app dialog.
     confirmDiscardUnsaved: () => boolean | Promise<boolean> = defaultConfirmDiscard
 ) => {
+    // F5 — a loaded file's optional top-level `meta` (Examples Library tags/
+    // description, definitions/examples.ts's ExampleMeta) travels with the
+    // document the way `session` does, so tagging a hand-authored file is not
+    // undone by opening and re-saving it. Held in a ref rather than React
+    // state: nothing in the app edits `meta`, so it needs no re-render and no
+    // pushHistory entry — it is not a mutation of {nodes, edges, tracks,
+    // session}, just passthrough provenance of the file on disk. Reset on
+    // every applySaveData (a fresh Load), never merged, so a file with no
+    // `meta` correctly clears whatever the previously loaded file carried.
+    const documentMetaRef = useRef<Record<string, unknown> | undefined>(undefined);
+
     const handleSave = useCallback(async () => {
         if (!reactFlowInstance) return;
         const flow = reactFlowInstance.toObject();
@@ -110,7 +121,11 @@ export const useFileIO = (
             version: CURRENT_SAVE_VERSION,
             ...flow,
             sequencerTracks,
-            session: sessionSettings
+            session: sessionSettings,
+            // F5: only written when the loaded file (or a still-earlier one,
+            // absent an intervening Load) actually carried one — an
+            // untagged document must not sprout an empty `meta: {}`.
+            ...(documentMetaRef.current ? { meta: documentMetaRef.current } : {}),
         };
         const graphJson = JSON.stringify(saveData, null, 2);
         try {
@@ -136,6 +151,14 @@ export const useFileIO = (
             notifyFileStatus({ kind: 'error', message: `Load failed — ${error}. Your current graph is unchanged.` });
             return false;
         }
+
+        // F5: reset on every successful Load, never merged with whatever the
+        // previous document carried — a file with no `meta` block means this
+        // document has no tags, full stop, even if the last one loaded did.
+        documentMetaRef.current =
+            flow.meta && typeof flow.meta === 'object' && !Array.isArray(flow.meta)
+                ? (flow.meta as Record<string, unknown>)
+                : undefined;
 
         // C7: normalize on the way in as well, at the tempo the file was
         // authored at (its session bpm; the current tempo when it has none),

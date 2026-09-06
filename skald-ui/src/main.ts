@@ -25,6 +25,7 @@ import {
 } from './main/codegenStamp';
 import { atomicWriteFileSync } from './main/atomicSave';
 import { startHereExampleItems } from './main/startHere';
+import { deriveTags } from './utils/exampleTags.mjs';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -479,6 +480,22 @@ const formatExampleName = (filename: string): string => {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
+// F5 — tags are DERIVED from the file (path + parsed content) at scan time,
+// never authored into the example itself (see exampleTags.mjs's file header
+// for why: this keeps the ~100 shipped examples and every corpus golden's
+// input digest untouched). A file that fails to read or parse still lists —
+// same principle as SKB-019's "an example no reader can ingest must not sit
+// in examples/ unnoticed", but here the failure is ours (a bad read), not
+// the file's, so it degrades to untagged rather than being dropped.
+const tagsForExample = (examplesDir: string, relPath: string): string[] | undefined => {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(examplesDir, relPath), 'utf-8'));
+    return deriveTags(relPath, parsed);
+  } catch {
+    return undefined;
+  }
+};
+
 const scanExamplesSync = (dir: string, baseDir: string = dir): any[] => {
   const results: any[] = [];
   if (!fs.existsSync(dir)) return results;
@@ -512,6 +529,7 @@ const scanExamplesSync = (dir: string, baseDir: string = dir): any[] => {
         categoryKey: categoryRaw,
         subcategory,
         path: relPath,
+        tags: tagsForExample(baseDir, relPath),
       });
     }
   }
@@ -530,7 +548,10 @@ ipcMain.handle('list-examples', async () => {
   // startHere.ts for why not copies), so each also appears under its real
   // category further down.
   return [
-    ...startHereExampleItems((rel) => fs.existsSync(path.join(examplesDir, rel))),
+    ...startHereExampleItems(
+      (rel) => fs.existsSync(path.join(examplesDir, rel)),
+      (rel) => tagsForExample(examplesDir, rel),
+    ),
     ...scanExamplesSync(examplesDir),
   ];
 });

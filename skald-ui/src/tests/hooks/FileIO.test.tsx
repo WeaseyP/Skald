@@ -509,6 +509,56 @@ describe('useFileIO — save-file schema version (C1)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// F5 — the Examples Library's tag/description block (`meta`) is authored once
+// in the file and must travel with it like `session` does, or a tagged
+// example loaded, tweaked and re-saved would silently lose its tags. `meta`
+// is read-only passthrough (nothing in the app edits it), so it is held in a
+// ref rather than threaded through pushHistory/undo like {nodes, edges,
+// tracks, session} — there is no user-facing mutation of it to record.
+// ---------------------------------------------------------------------------
+describe('useFileIO — meta round-trip (F5)', () => {
+    it('carries a loaded file\'s meta block through the next Save unchanged', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                meta: { tags: ['bass-synth', 'sequenced'], description: 'A sequenced bass patch.' },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/track.json' });
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        expect(written.meta).toEqual({ tags: ['bass-synth', 'sequenced'], description: 'A sequenced bass patch.' });
+    });
+
+    it('omits meta from Save when nothing was ever loaded — no empty block is invented', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/track.json' });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        expect(written).not.toHaveProperty('meta');
+    });
+
+    it('a later Load of a file with no meta clears a previously loaded file\'s meta', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({ nodes: [{ id: 'a' }], edges: [], meta: { tags: ['pad'] } }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+
+        loadGraph.mockResolvedValue({ content: JSON.stringify({ nodes: [{ id: 'b' }], edges: [] }) });
+        await act(async () => { await result.current.handleLoad(); });
+
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/track2.json' });
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        expect(written).not.toHaveProperty('meta');
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Packet C7 — BPM-sync value hygiene through the real hook.
 // ---------------------------------------------------------------------------
 describe('useFileIO — synced free-run values are normalized (C7)', () => {

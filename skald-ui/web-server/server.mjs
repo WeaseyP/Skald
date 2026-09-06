@@ -29,6 +29,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { deriveTags } from '../src/utils/exampleTags.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.join(__dirname, '..');            // skald-ui/
@@ -47,6 +48,18 @@ const formatExampleName = (filename) => {
         .replace(/[-_]/g, ' ')
         .replace(/([a-z])([A-Z])/g, '$1 $2')
         .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+// F5 — same rule and same reader as the Electron scanner (main.ts's
+// tagsForExample): tags are derived from the file, not authored into it, and
+// a read/parse failure degrades to untagged rather than dropping the entry.
+const tagsForExample = async (baseDir, relPath) => {
+    try {
+        const parsed = JSON.parse(await fsp.readFile(path.join(baseDir, relPath), 'utf-8'));
+        return deriveTags(relPath, parsed);
+    } catch {
+        return undefined;
+    }
 };
 
 const scanExamples = async (dir, baseDir = dir) => {
@@ -85,6 +98,7 @@ const scanExamples = async (dir, baseDir = dir) => {
                 categoryKey: categoryRaw,
                 subcategory,
                 path: relPath,
+                tags: await tagsForExample(baseDir, relPath),
             });
         }
     }

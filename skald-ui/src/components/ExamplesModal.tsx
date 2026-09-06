@@ -30,6 +30,11 @@ export const ExamplesModal: React.FC<ExamplesModalProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState<string>('');
+    // F5: an item's own tags (utils/exampleTags.mjs), not the category tabs
+    // above — a second, independent, multi-select filter. AND semantics
+    // (every selected tag must be on the item): narrowing, not broadening,
+    // is the useful direction once more than one chip is active.
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
     useEffect(() => {
@@ -66,19 +71,42 @@ export const ExamplesModal: React.FC<ExamplesModalProps> = ({
         };
     }, [isOpen]);
 
+    // F5: the tag-chip row is the union of every loaded item's tags, not a
+    // fixed list — so a corpus that grows new tags (a new heuristic in
+    // exampleTags.mjs, or a hand-authored `meta.tags`) needs no matching edit
+    // here. Sorted for a stable, scannable order across renders.
+    const allTags = useMemo(() => {
+        const tags = new Set<string>();
+        for (const item of examples) {
+            for (const t of item.tags ?? []) tags.add(t);
+        }
+        return [...tags].sort();
+    }, [examples]);
+
+    const toggleTag = (tag: string): void => {
+        setSelectedTags((prev) =>
+            prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+        );
+    };
+
     const filteredExamples = useMemo(() => {
         return examples.filter((item) => {
             const matchesCategory =
                 selectedCategory === 'all' || item.categoryKey === selectedCategory;
+            const matchesTags =
+                selectedTags.length === 0 ||
+                selectedTags.every((t) => item.tags?.includes(t));
             const q = searchQuery.toLowerCase().trim();
             const matchesSearch =
                 !q ||
                 item.name.toLowerCase().includes(q) ||
                 (item.subcategory && item.subcategory.toLowerCase().includes(q)) ||
-                item.category.toLowerCase().includes(q);
-            return matchesCategory && matchesSearch;
+                item.category.toLowerCase().includes(q) ||
+                (item.description && item.description.toLowerCase().includes(q)) ||
+                (item.tags ?? []).some((t) => t.toLowerCase().includes(q));
+            return matchesCategory && matchesTags && matchesSearch;
         });
-    }, [examples, selectedCategory, searchQuery]);
+    }, [examples, selectedCategory, selectedTags, searchQuery]);
 
     const handleFetchAndAction = async (
         item: ExampleItem,
@@ -229,6 +257,46 @@ export const ExamplesModal: React.FC<ExamplesModalProps> = ({
                     />
                 </div>
 
+                {/* F5: tag chips — a second, multi-select filter row, hidden
+                    entirely when nothing loaded carries a tag (an older
+                    build's example corpus, or a scan that failed). */}
+                {allTags.length > 0 && (
+                    <div
+                        style={{
+                            padding: '8px 20px',
+                            borderBottom: '1px solid #2D2D2D',
+                            display: 'flex',
+                            gap: 6,
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            backgroundColor: '#1D1D1D',
+                        }}
+                    >
+                        {allTags.map((tag) => {
+                            const active = selectedTags.includes(tag);
+                            return (
+                                <button
+                                    key={tag}
+                                    data-testid={`tag-chip-${tag}`}
+                                    onClick={() => toggleTag(tag)}
+                                    title={active ? `Remove the "${tag}" filter` : `Show only "${tag}" examples`}
+                                    style={{
+                                        padding: '3px 10px',
+                                        borderRadius: 12,
+                                        fontSize: '0.75em',
+                                        backgroundColor: active ? '#2C5282' : 'transparent',
+                                        color: active ? '#FFF' : '#8FA5BC',
+                                        border: `1px solid ${active ? '#2C5282' : '#3A4656'}`,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {tag}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
                 {/* Content Area */}
                 <div
                     style={{
@@ -350,7 +418,44 @@ export const ExamplesModal: React.FC<ExamplesModalProps> = ({
                                                         {item.subcategory}
                                                     </span>
                                                 )}
+                                                {/* F5: this card's own tags, clickable — a shortcut for
+                                                    "show me more like this" that starts the same filter
+                                                    the chip row above drives. */}
+                                                {(item.tags ?? []).map((tag) => (
+                                                    <span
+                                                        key={tag}
+                                                        onClick={() => toggleTag(tag)}
+                                                        title={`Filter by "${tag}"`}
+                                                        style={{
+                                                            fontSize: '0.7em',
+                                                            color: '#8FA5BC',
+                                                            border: '1px solid #3A4656',
+                                                            padding: '1px 6px',
+                                                            borderRadius: 10,
+                                                            cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        {tag}
+                                                    </span>
+                                                ))}
                                             </div>
+                                            {item.description && (
+                                                <div
+                                                    style={{
+                                                        fontSize: '0.78em',
+                                                        color: '#999',
+                                                        marginTop: 6,
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        display: '-webkit-box',
+                                                        WebkitLineClamp: 2,
+                                                        WebkitBoxOrient: 'vertical',
+                                                    }}
+                                                    title={item.description}
+                                                >
+                                                    {item.description}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div

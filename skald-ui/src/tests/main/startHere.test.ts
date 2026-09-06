@@ -50,4 +50,12 @@ describe('START_HERE', () => {
         expect(missingFirst).toHaveLength(START_HERE.length - 1);
         expect(missingFirst[0].path).toBe(START_HERE[1].path);
     });
+
+    it('F5: is untagged by default, and carries whatever tagsOf returns when the caller supplies one', () => {
+        const untagged = startHereExampleItems(() => true);
+        expect(untagged.every((i) => i.tags === undefined)).toBe(true);
+
+        const tagged = startHereExampleItems(() => true, (rel) => [`tag-for:${rel}`]);
+        expect(tagged[0].tags).toEqual([`tag-for:${START_HERE[0].path}`]);
+    });
 });

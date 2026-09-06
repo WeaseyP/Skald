@@ -72,8 +72,17 @@ export const FIRST_RUN_EXAMPLE: StartHereEntry = START_HERE[0];
  * file is missing (a broken pointer must not be clickable). Ids are prefixed
  * so the same file can also appear under its real category without a
  * duplicate key.
+ *
+ * `tagsOf` (F5) is optional and defaults to untagged: this module is pure
+ * data plus a pure projection by design (file header), so reading a file's
+ * content to derive its tags is the caller's job (main.ts, which already
+ * resolves examplesDir) — the same reason `existsRel` is a callback rather
+ * than this module doing its own fs.existsSync.
  */
-export const startHereExampleItems = (existsRel: (rel: string) => boolean): ExampleItem[] =>
+export const startHereExampleItems = (
+    existsRel: (rel: string) => boolean,
+    tagsOf: (rel: string) => string[] | undefined = () => undefined,
+): ExampleItem[] =>
     START_HERE.filter((e) => existsRel(e.path)).map((e) => ({
         id: `${START_HERE_CATEGORY_KEY}/${e.path}`,
         name: e.name,
@@ -81,4 +90,5 @@ export const startHereExampleItems = (existsRel: (rel: string) => boolean): Exam
         categoryKey: START_HERE_CATEGORY_KEY,
         subcategory: e.why,
         path: e.path,
+        tags: tagsOf(e.path),
     }));

@@ -197,6 +197,8 @@ Sidebar → **📚 Examples Library** opens a browsable, searchable catalogue of
 
 **Start Here is the reading order.** It lists six examples, in the order they are meant to be opened, each teaching one new idea: a sequenced instrument, a playable graph with no sequencer, a percussion voice, a loose graph exporting as a one-shot SFX, a bus effect (Delay), and finally a full multi-instrument song (`examples/start-here/README.md`). The first of the six is what a brand-new install loads automatically (see "First launch"). Work through them before wandering the rest of the library.
 
+Below the category tabs, a row of **tag chips** (`percussion`, `bass-synth`, `sfx`, `lead`, `pad`, `midi`, `sequenced`, and more) narrows the library further; click one to show only examples carrying it, click a second to narrow further (an example must carry every selected tag), and click either again to clear it. Tags are derived automatically from each file — its folder, whether it carries a MIDI Input node, whether its sequencer tracks hold any notes, and so on (`skald-ui/src/utils/exampleTags.mjs::deriveTags`) — so nothing needs to be hand-labelled for a tag to appear, and an example predating this feature is simply untagged rather than missing. The search box also matches tags, so typing `sfx` finds the same examples as clicking the `sfx` chip (`skald-ui/src/components/ExamplesModal.tsx::filteredExamples`).
+
 ---
 
 ## Keyboard shortcuts and drag modifiers

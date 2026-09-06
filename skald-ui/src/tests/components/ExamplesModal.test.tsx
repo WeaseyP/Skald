@@ -23,6 +23,7 @@ const mockExamples: ExampleItem[] = [
         categoryKey: 'instruments',
         subcategory: 'Leads',
         path: 'instruments/leads/saw-lead.skald.json',
+        tags: ['lead', 'patch'],
     },
     {
         id: 'snes-kit/songs/space-funk.skald.json',
@@ -31,6 +32,7 @@ const mockExamples: ExampleItem[] = [
         categoryKey: 'snes-kit',
         subcategory: 'Songs',
         path: 'snes-kit/songs/space-funk.skald.json',
+        tags: ['snes-kit', 'song'],
     },
     {
         id: 'sound-effects/synth/LaserPew.json',
@@ -39,6 +41,8 @@ const mockExamples: ExampleItem[] = [
         categoryKey: 'sound-effects',
         subcategory: 'Synth',
         path: 'sound-effects/synth/LaserPew.json',
+        tags: ['sfx', 'patch'],
+        description: 'A short laser zap for game hits.',
     },
 ];
 
@@ -121,6 +125,90 @@ describe('ExamplesModal', () => {
         fireEvent.click(sfxTab);
 
         expect(screen.getByText('Laser Pew')).toBeTruthy();
+        expect(screen.queryByText('Four Bar Song')).toBeNull();
+        expect(screen.queryByText('Saw Lead')).toBeNull();
+    });
+
+    // -----------------------------------------------------------------------
+    // F5 — search + tags (ROADMAP.md Wave F / docs/0.2-ROADMAP.md §9.13).
+    // Tags are derived at scan time (utils/exampleTags.mjs) and simply arrive
+    // on ExampleItem.tags here; the modal only needs to render and filter by
+    // whatever it was handed, so these mocks stand in for a real scan.
+    // -----------------------------------------------------------------------
+    it('a file with no tags (an untagged example) still lists', async () => {
+        render(
+            <ExamplesModal isOpen={true} onClose={vi.fn()} onLoadExample={vi.fn()} onImportExample={vi.fn()} />
+        );
+        await waitFor(() => expect(screen.getByText('Four Bar Song')).toBeTruthy());
+        // mockExamples[0] ("Four Bar Song") carries no `tags` field at all.
+        expect(screen.getByText('Four Bar Song')).toBeTruthy();
+    });
+
+    it('renders a tag chip for the union of tags across every loaded example, once each', async () => {
+        render(
+            <ExamplesModal isOpen={true} onClose={vi.fn()} onLoadExample={vi.fn()} onImportExample={vi.fn()} />
+        );
+        await waitFor(() => expect(screen.getByText('Four Bar Song')).toBeTruthy());
+        for (const tag of ['lead', 'patch', 'snes-kit', 'song', 'sfx']) {
+            expect(screen.getByTestId(`tag-chip-${tag}`)).toBeTruthy();
+        }
+    });
+
+    it('filters by tag chip, and clicking it again clears the filter', async () => {
+        render(
+            <ExamplesModal isOpen={true} onClose={vi.fn()} onLoadExample={vi.fn()} onImportExample={vi.fn()} />
+        );
+        await waitFor(() => expect(screen.getByText('Four Bar Song')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('tag-chip-sfx'));
+        expect(screen.getByText('Laser Pew')).toBeTruthy();
+        expect(screen.queryByText('Saw Lead')).toBeNull();
+        expect(screen.queryByText('Four Bar Song')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('tag-chip-sfx'));
+        expect(screen.getByText('Four Bar Song')).toBeTruthy();
+        expect(screen.getByText('Saw Lead')).toBeTruthy();
+    });
+
+    it('narrows further when two tag chips are both selected (item must carry every selected tag)', async () => {
+        render(
+            <ExamplesModal isOpen={true} onClose={vi.fn()} onLoadExample={vi.fn()} onImportExample={vi.fn()} />
+        );
+        await waitFor(() => expect(screen.getByText('Four Bar Song')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('tag-chip-patch'));
+        expect(screen.getByText('Saw Lead')).toBeTruthy();
+        expect(screen.getByText('Laser Pew')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('tag-chip-sfx'));
+        expect(screen.getByText('Laser Pew')).toBeTruthy();
+        expect(screen.queryByText('Saw Lead')).toBeNull();
+    });
+
+    it('search matches a description as well as name/category/tags', async () => {
+        render(
+            <ExamplesModal isOpen={true} onClose={vi.fn()} onLoadExample={vi.fn()} onImportExample={vi.fn()} />
+        );
+        await waitFor(() => expect(screen.getByText('Four Bar Song')).toBeTruthy());
+
+        const searchInput = screen.getByPlaceholderText('Search presets...');
+        fireEvent.change(searchInput, { target: { value: 'laser zap' } });
+
+        expect(screen.getByText('Laser Pew')).toBeTruthy();
+        expect(screen.queryByText('Saw Lead')).toBeNull();
+        expect(screen.queryByText('Four Bar Song')).toBeNull();
+    });
+
+    it('search matches a tag even when the tag text appears nowhere else on the card', async () => {
+        render(
+            <ExamplesModal isOpen={true} onClose={vi.fn()} onLoadExample={vi.fn()} onImportExample={vi.fn()} />
+        );
+        await waitFor(() => expect(screen.getByText('Four Bar Song')).toBeTruthy());
+
+        const searchInput = screen.getByPlaceholderText('Search presets...');
+        fireEvent.change(searchInput, { target: { value: 'snes-kit' } });
+
+        expect(screen.getByText('Space Funk')).toBeTruthy();
         expect(screen.queryByText('Four Bar Song')).toBeNull();
         expect(screen.queryByText('Saw Lead')).toBeNull();
     });
