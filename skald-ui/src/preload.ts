@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld('electron', {
     loadGraph: (): Promise<{ content: string | null; error?: string }> =>
         ipcRenderer.invoke('load-graph'),
 
+    // Roadmap G1: the offline bounce. Bytes, not text — see the save-wav
+    // handler in main.ts for why this is its own channel.
+    saveWav: (fileName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string; error?: string }> =>
+        ipcRenderer.invoke('save-wav', fileName, bytes),
+
     // Import Patch: opens in the patch kit and accepts a multi-selection.
     importPatches: (): Promise<{
         files: { name: string; content: string }[];

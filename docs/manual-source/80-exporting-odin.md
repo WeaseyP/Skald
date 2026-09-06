@@ -76,6 +76,34 @@ Three things in there are load-bearing and are each pinned by a test, so you can
 
 Skald emits **two** files from one analysis. The game-facing package is one. The other is a `@(export) skald_*` WebAssembly shim used only by the editor's own preview — it holds each processor in a file-private global, renders in 128-sample blocks, and addresses assets by integer index (`skald-backend/core/codegen_project.odin::generate_wasm_shim_code`). Its own header says "Not part of the game-facing API; do not ship this file." If you have been handed a file whose procedures are called `skald_init` and `skald_trigger(asset: i32, …)`, you have the wrong file; ask for the one with `<Asset>_` prefixes.
 
+## Bouncing and stems
+
+Not every game wants generated source. A jam build, a trailer, a mobile title with no room for a synthesis runtime, or a composer who wants the loop in their DAW — all of them want audio, not Odin. Skald renders it from the same place the preview plays from.
+
+**Bounce to WAV…** sits under **Download Code** in the sidebar's Generation section, with a **Bars** field and an **Include tail** tick (`skald-ui/src/components/Sidebar.tsx::Sidebar`). Press it and you get a 24-bit stereo `.wav` at 48 kHz (`skald-ui/src/hooks/nodeEditor/useOfflineBounce.ts::BOUNCE_SAMPLE_RATE`) — on the desktop app through a save dialog, in the browser as a download.
+
+### It is the same audio, not a second opinion
+
+The bounce is not a re-implementation of the mix. It builds the WebAssembly module from the identical project description the preview builds from and then calls `skald_process` in a loop, reading the same two output buffers the AudioWorklet reads (`skald-ui/src/audio/offlineRender.ts::renderOffline`). Everything on the master bus — the sum of every asset, the master fader, the DC blocker, the soft limiter, in that order — happens *inside* `skald_process` (`skald-backend/core/codegen_project.odin::generate_wasm_shim_code`), so the bounce gets all of it by construction rather than by re-deriving it. A fixture drives one set of wasm exports through the real worklet source and through the bounce and requires the two buffers to be sample-for-sample equal (`skald-ui/src/tests/audio/OfflineRender.test.ts::renderOfflineChunked`).
+
+It is also faster than realtime, and that is not a trick either. The generated module has no wall clock: `skald_init(sample_rate)` seeds the float the step counter divides by, and time advances only by the frames you ask for. A sixteen-bar render costs whatever your CPU takes, and produces the sample values realtime playback would have produced.
+
+### Length, and the tail
+
+**Bars** is whole bars at the project tempo, sixteen sequencer steps to the bar, and it opens on however many whole bars your pattern occupies (`skald-ui/src/audio/offlineRender.ts::barsForPatternSteps`). The range is 1 to 64. Looping is forced on for the bar count regardless of the transport's Loop button — you asked for eight bars of a four-bar pattern, so you get the pattern twice, not four bars and four bars of silence.
+
+**Include tail** keeps rendering after the last bar. The sequencer is stopped, and the render continues while anything is still audible: voices in their release stage, a Delay still echoing, a Reverb still decaying — the same `_is_playing` that tells a game when it may free an asset (`skald-backend/core/codegen_processor.odin::generate_processor_code`). A patch that never goes quiet — a self-oscillating filter, a Reverb at full feedback — is cut off at thirty seconds of tail rather than rendering forever (`skald-ui/src/audio/offlineRender.ts::MAX_TAIL_SECONDS`).
+
+### What the file is
+
+A canonical 44-byte RIFF/WAVE header, PCM format tag, two channels, 24 bits per sample, little-endian (`skald-ui/src/audio/wavEncoder.ts::encodeWav24`) — the same chunk layout the acceptance harness's own writer uses (`skald-backend/acceptance/wav.odin::write_wav16`), widened from 16 bits. Nothing is added on the way out: no dither, no normalisation, no extra gain. A sample outside ±1 is clamped rather than allowed to wrap into a full-scale click, and a NaN or infinity becomes silence — the same thing the DC blocker and limiter already do with one on the live bus.
+
+The bounce writes atomically, for the reason Save does: the new file lands beside the target and is renamed over it, so a failed write cannot destroy the bounce you made yesterday (`skald-ui/src/main/atomicSave.ts::atomicWriteFileSync`).
+
+### If a bounce fails
+
+Every failure in the chain — no Instrument on the canvas, a generator or compiler error, a permission error on the write — is reported in the same banner Save and Download Code use (`skald-ui/src/hooks/nodeEditor/useOfflineBounce.ts::useOfflineBounce`). A bounce that fails silently behind a spinner would be worse here than anywhere else in the editor, because the user has already spent the wait.
+
 ## What an "asset" is
 
 **One Instrument node in the editor becomes one asset in the generated file.** Nothing outside an Instrument is exported at all — a loose chain of nodes on the canvas produces silence, and a project with no Instrument at all is a hard error rather than an empty file (`skald-backend/main.odin`). One asset per distinct sound your game triggers: a footstep, a laser, a bass layer, a pad layer are four assets, not one.
@@ -506,7 +534,7 @@ If you wire the generator into CI, `-check` is the cheap gate: it exercises ever
 
 ## Deliberate limits
 
-Some things the generated code does not do are not gaps — they are decisions, made once and written down. The audio is mono internally with a terminal Panner; there is no runtime tempo control, because the BPM is baked into the sequencer's step arithmetic at `_init` and no `set_bpm` exists; the voice count is an array size and therefore a build-time choice; and there is no offline render, no stem export and no scale quantisation in the generated package. Read "What Skald deliberately does not do" for the full list and the reasoning behind each; this chapter deliberately does not restate it.
+Some things the generated code does not do are not gaps — they are decisions, made once and written down. The audio is mono internally with a terminal Panner; there is no runtime tempo control, because the BPM is baked into the sequencer's step arithmetic at `_init` and no `set_bpm` exists; the voice count is an array size and therefore a build-time choice; and there is no offline render, no stem export and no scale quantisation *in the generated package* — the editor bounces and exports stems itself (see "Bouncing and stems" above), but nothing in the `.odin` you ship does. Read "What Skald deliberately does not do" for the full list and the reasoning behind each; this chapter deliberately does not restate it.
 
 ## Terms introduced
 

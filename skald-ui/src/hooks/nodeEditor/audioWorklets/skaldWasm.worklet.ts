@@ -48,7 +48,16 @@
 |                                     knob into an undetected no-op, SKB-001) |
 ================================================================================
 */
+import { skaldWasmImports } from './skaldWasmImports';
+
 export const skaldWasmProcessorString = `
+// G1: the libm import table, interpolated from its ONE authored copy
+// (skaldWasmImports.ts) rather than written out again here. A worklet module
+// cannot \`import\`, and the offline bounce instantiates the very same wasm
+// outside this file — two hand-kept copies of this table is how a bounce ends
+// up subtly detuned from the preview it is supposed to reproduce.
+const skaldWasmImports = ${skaldWasmImports.toString()};
+
 class SkaldWasmProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
@@ -90,17 +99,7 @@ class SkaldWasmProcessor extends AudioWorkletProcessor {
 
     // Odin's core:math on freestanding_wasm32 imports libm; supply it from JS.
     imports() {
-        return { env: {
-            sinf: Math.sin, cosf: Math.cos, tanf: Math.tan,
-            sin: Math.sin, cos: Math.cos, tan: Math.tan,
-            exp: Math.exp, expf: Math.exp,
-            exp2f: (x) => 2 ** x, exp2: (x) => 2 ** x,
-            log: Math.log, logf: Math.log, log2f: Math.log2, log10f: Math.log10,
-            pow: Math.pow, powf: Math.pow, sqrtf: Math.sqrt, cbrtf: Math.cbrt,
-            tanh: Math.tanh, tanhf: Math.tanh, coshf: Math.cosh, sinhf: Math.sinh,
-            atan2f: Math.atan2, acosf: Math.acos, asinf: Math.asin, atanf: Math.atan,
-            fmodf: (a, b) => a % b,
-        }};
+        return skaldWasmImports();
     }
 
     // bytes: raw wasm binary (ArrayBuffer). Compiled HERE, on the audio

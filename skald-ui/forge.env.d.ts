@@ -11,6 +11,11 @@ export interface IElectronAPI {
     // failures (fire-and-forget saves lied when the disk write failed).
     saveGraph: (graphJson: string) => Promise<{ saved: boolean; path?: string; error?: string }>,
     loadGraph: () => Promise<{ content: string | null; error?: string }>,
+    // Roadmap G1 — offline WAV bounce. Optional on the interface because the
+    // web shim and every test double must be free to omit it; every caller
+    // therefore has to check before reaching for it, which is what stops a
+    // stale preload from throwing "not a function" mid-bounce.
+    saveWav?: (fileName: string, bytes: Uint8Array) => Promise<{ saved: boolean; path?: string; error?: string }>,
     // Import Patch: multi-selection, opened in the patch kit. Unreadable files
     // come back in `skipped` rather than failing the whole batch.
     importPatches: () => Promise<{

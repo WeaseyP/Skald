@@ -23,6 +23,8 @@ import { nodeTypes } from './definitions/nodeTypes';
 // Import your new hooks
 import { useEditorState, suffixForStepExport } from './hooks/nodeEditor/useEditorState';
 import { useWasmAudioEngine } from './hooks/nodeEditor/useWasmAudioEngine';
+import { useOfflineBounce } from './hooks/nodeEditor/useOfflineBounce';
+import { barsForPatternSteps } from './audio/offlineRender';
 import { useFileIO, FileStatus } from './hooks/nodeEditor/useFileIO';
 import { useWindowTitle } from './hooks/nodeEditor/useWindowTitle';
 import { useAutosave, readAutosave, clearAutosave, AutosaveRecord } from './hooks/nodeEditor/useAutosave';
@@ -295,6 +297,21 @@ const EditorLayout = () => {
         // hook's masterVolume param comment for why the two never agreed.
         masterVolume
     );
+    // Roadmap G1/G2 (§9.12) — offline bounce and stem export. Deliberately a
+    // separate hook from the preview engine: a bounce builds and renders its
+    // own module and must never touch the worklet that is currently playing.
+    const bounce = useOfflineBounce({
+        nodes,
+        edges,
+        tracks,
+        bpm,
+        patternSteps,
+        masterVolume,
+        packageName,
+        nearestInScale,
+        notify: notifyFileStatus,
+    });
+
     const [isExamplesModalOpen, setIsExamplesModalOpen] = useState(false);
 
     const { handleSave, handleLoad, handleImportGraph, loadContent, importBatch } = useFileIO(
@@ -615,6 +632,11 @@ const EditorLayout = () => {
                             onPackageNameChange={setPackageName}
                             outputPath={outputPath}
                             onSelectOutputPath={handleSelectOutputPath}
+                            onBounce={bounce.bounceToWav}
+                            onCancelBounce={bounce.cancelBounce}
+                            isBouncing={bounce.isBouncing}
+                            bounceProgress={bounce.progress}
+                            defaultBounceBars={barsForPatternSteps(patternSteps)}
                             onUndo={handleUndo}
                             onRedo={handleRedo}
                             canUndo={history.canUndo}

@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NumberInput } from './common/NumberInput';
 import { BPM_MIN, BPM_MAX, clampBpm } from '../definitions/bpm';
+import { MIN_BOUNCE_BARS, MAX_BOUNCE_BARS } from '../audio/offlineRender';
+import { BounceRequest } from '../hooks/nodeEditor/useOfflineBounce';
 
 // --- STYLES ---
 
@@ -88,6 +90,15 @@ const bpmInputStyles: React.CSSProperties = {
     fontSize: '1.2em',
 };
 
+// Roadmap G1: the bar field is a plain UI control, so it does its own
+// clamping — the render core's 1..64 range is what MAX_BOUNCE_BARS states, and
+// a pasted "900" must become 64 rather than a two-hour render nobody asked
+// for. Same discipline as the BPM field's clampBpm.
+const clampBounceBars = (value: number): number => {
+    if (!Number.isFinite(value)) return MIN_BOUNCE_BARS;
+    return Math.min(MAX_BOUNCE_BARS, Math.max(MIN_BOUNCE_BARS, Math.round(value)));
+};
+
 // --- PROPS INTERFACE ---
 
 interface SidebarProps {
@@ -120,6 +131,18 @@ interface SidebarProps {
     // reach it and nothing in the UI said whether there was anything to undo
     // (F-B07-11). These carry the REAL depth of the one editor history, so the
     // buttons cannot claim a step that isn't there.
+    // Roadmap G1/G2 (§9.12) — offline bounce and stem export. All optional:
+    // a host that has not wired them (and every fixture that renders this
+    // component to assert something else) must not grow a button that does
+    // nothing when pressed.
+    onBounce?: (request: BounceRequest) => void;
+    onExportStems?: (request: BounceRequest) => void;
+    onCancelBounce?: () => void;
+    isBouncing?: boolean;
+    /** 0..1, only meaningful while isBouncing. */
+    bounceProgress?: number;
+    /** Whole bars the project's pattern occupies — the bar field's opening value. */
+    defaultBounceBars?: number;
     onUndo: () => void;
     onRedo: () => void;
     canUndo: boolean;
@@ -156,6 +179,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     onPackageNameChange,
     outputPath,
     onSelectOutputPath,
+    onBounce,
+    onExportStems,
+    onCancelBounce,
+    isBouncing = false,
+    bounceProgress = 0,
+    defaultBounceBars = 4,
     onUndo,
     onRedo,
     canUndo,
@@ -165,6 +194,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     undoLabel,
     redoLabel,
 }) => {
+
+    // Bounce settings are UI state, not document state: they are not saved,
+    // not undoable, and must never reach pushHistory — a bar count is a
+    // property of one export, not of the project.
+    const [bounceBars, setBounceBars] = useState(defaultBounceBars);
+    const [includeTail, setIncludeTail] = useState(true);
+    const bounceRequest = (): BounceRequest => ({ bars: bounceBars, includeTail });
 
     const onDragStart = (event: React.DragEvent, nodeType: string) => {
         event.dataTransfer.setData('application/reactflow', nodeType);
@@ -224,6 +260,64 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                     Download Code
                 </button>
+                {onBounce && (
+                    <div style={{ marginTop: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                            <label htmlFor="bounce-bars" style={{ fontSize: '0.8em', color: '#ccc', whiteSpace: 'nowrap' }}>Bars</label>
+                            <NumberInput
+                                id="bounce-bars"
+                                aria-label="Bars to bounce"
+                                value={bounceBars}
+                                onChange={(val) => setBounceBars(clampBounceBars(val))}
+                                style={{ ...bpmInputStyles, fontSize: '0.9em', padding: '4px', flex: 1 }}
+                                min={MIN_BOUNCE_BARS}
+                                max={MAX_BOUNCE_BARS}
+                                step={1}
+                                quantize
+                                disabled={isBouncing}
+                                title="How many bars of the pattern to render, at the project tempo"
+                            />
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8em', color: '#ccc', marginBottom: '6px' }}>
+                            <input
+                                type="checkbox"
+                                checked={includeTail}
+                                onChange={(e) => setIncludeTail(e.target.checked)}
+                                disabled={isBouncing}
+                            />
+                            Include tail
+                        </label>
+                        <button
+                            style={isBouncing ? disabledButtonStyles : secondaryButtonStyles}
+                            onClick={() => onBounce(bounceRequest())}
+                            disabled={isBouncing}
+                            title="Render the project faster than realtime to a 24-bit stereo WAV. This is the same DSP the preview plays, so the file is what you hear."
+                        >
+                            {isBouncing
+                                ? `Bouncing… ${Math.round(bounceProgress * 100)}%`
+                                : 'Bounce to WAV…'}
+                        </button>
+                        {onExportStems && (
+                            <button
+                                style={isBouncing ? disabledButtonStyles : secondaryButtonStyles}
+                                onClick={() => onExportStems(bounceRequest())}
+                                disabled={isBouncing}
+                                title="One 24-bit WAV per instrument plus the full mix, into a folder you choose. Mute and solo are ignored, so every instrument gets a stem."
+                            >
+                                Export Stems…
+                            </button>
+                        )}
+                        {isBouncing && onCancelBounce && (
+                            <button
+                                style={{ ...secondaryButtonStyles, background: '#C53030' }}
+                                onClick={onCancelBounce}
+                                aria-label="Cancel bounce"
+                            >
+                                Cancel
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div>

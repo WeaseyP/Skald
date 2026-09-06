@@ -29,16 +29,31 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+/**
+ * What a single atomic write may carry: project JSON as text, or a rendered
+ * bounce as raw bytes (roadmap G1). One writer for both — a second "but for
+ * binary" copy of this file would be a second chance to get SKB-034 wrong.
+ */
+export type AtomicWriteContents = string | Uint8Array;
+
 /** Injectable fs calls, so a write or rename failure can be simulated without lying to the OS. */
 export interface AtomicWriteProbes {
-    writeFileSync: (path: string, data: string) => void;
+    writeFileSync: (path: string, data: AtomicWriteContents) => void;
     renameSync: (oldPath: string, newPath: string) => void;
     /** Best-effort cleanup; must never throw (mirrors `{ force: true }`). */
     removeQuietly: (path: string) => void;
 }
 
 export const realAtomicWriteProbes: AtomicWriteProbes = {
-    writeFileSync: (p, data) => fs.writeFileSync(p, data, { encoding: 'utf8' }),
+    // The encoding argument applies to text only; Node documents it as
+    // ignored for a Uint8Array. The branch is written out anyway so nobody
+    // later "simplifies" the byte path into a String() conversion — that
+    // would replace every byte above 0x7F with U+FFFD and turn a 24-bit
+    // bounce into static while still reporting a successful save.
+    writeFileSync: (p, data) =>
+        typeof data === 'string'
+            ? fs.writeFileSync(p, data, { encoding: 'utf8' })
+            : fs.writeFileSync(p, data),
     renameSync: (oldPath, newPath) => fs.renameSync(oldPath, newPath),
     removeQuietly: (p) => {
         try {
@@ -69,7 +84,7 @@ export const tempPathFor = (targetPath: string): string =>
  */
 export const atomicWriteFileSync = (
     targetPath: string,
-    contents: string,
+    contents: AtomicWriteContents,
     probes: AtomicWriteProbes = realAtomicWriteProbes,
 ): void => {
     const tmpPath = tempPathFor(targetPath);

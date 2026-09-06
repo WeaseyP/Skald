@@ -18,6 +18,7 @@
 //      worklet must report the drop so the UI can surface it.
 import { describe, it, expect, vi } from 'vitest';
 import { skaldWasmProcessorString } from '../../hooks/nodeEditor/audioWorklets/skaldWasm.worklet';
+import { skaldWasmImports } from '../../hooks/nodeEditor/audioWorklets/skaldWasmImports';
 
 // Must match the generated shim's `skald_name_buf: [128]u8`.
 const NAME_BUF_BYTES = 128;
@@ -140,5 +141,39 @@ describe('skaldWasm worklet — skald_set_param return value', () => {
         proc.handleMessage({ type: 'set-param', asset: 0, key: 'flt::cutoff', nameBytes, value: 4000 });
 
         expect(proc.port.postMessage).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Roadmap G1 (§9.12) — the libm import table has exactly one author.
+//
+// The offline bounce (audio/offlineRender.ts) instantiates the SAME wasm the
+// worklet plays, and a module instantiated with a different import object is
+// a different DSP. A missing entry is a LinkError and therefore loud; a wrong
+// one — `exp2f` built from Math.exp rather than 2**x, say — is silent and
+// detunes everything downstream of it, so "the bounce sounds slightly unlike
+// the preview" would be the bug report. The worklet cannot `import` (it is a
+// source string evaluated in AudioWorkletGlobalScope), so it interpolates the
+// shared function's own source text; these tests are what stops that from
+// quietly reverting to a second hand-kept copy.
+describe('skaldWasm worklet — one authored libm import table', () => {
+    it("the worklet's imports() is the shared table, entry for entry", () => {
+        const { proc } = instantiateProcessor();
+        const workletEnv = proc.imports().env as Record<string, (...a: number[]) => number>;
+        const sharedEnv = skaldWasmImports().env;
+
+        expect(Object.keys(workletEnv).sort()).toEqual(Object.keys(sharedEnv).sort());
+        for (const name of Object.keys(sharedEnv)) {
+            expect(typeof workletEnv[name]).toBe('function');
+        }
+        // The two entries that are NOT a bare Math alias, and so are the two
+        // a re-typed copy would most plausibly get wrong.
+        expect(workletEnv.exp2f(3)).toBe(8);
+        expect(workletEnv.fmodf(7, 4)).toBe(3);
+    });
+
+    it("carries the shared function's own source text, so a new entry needs no worklet edit", () => {
+        expect(skaldWasmProcessorString).toContain(`const skaldWasmImports = ${skaldWasmImports.toString()}`);
+        expect(skaldWasmProcessorString).toContain('return skaldWasmImports();');
     });
 });

@@ -162,3 +162,41 @@ describe('atomicWriteFileSync — probe wiring', () => {
         expect(probes.removeQuietly).not.toHaveBeenCalled();
     });
 });
+
+// Roadmap G1 (§9.12) — the offline bounce writes a WAV, and a WAV is bytes.
+//
+// Save's atomic-write discipline (SKB-034) is not a JSON-only concern: a
+// half-written 24-bit stereo bounce over the top of yesterday's good one is
+// the same data loss with a different extension. What is new is the payload
+// type — `fs.writeFileSync(p, data, { encoding: 'utf8' })` on a STRING built
+// from binary would replace every byte outside the ASCII range with U+FFFD,
+// silently turning a bounce into static, so the bytes must travel as a
+// Uint8Array the whole way down.
+describe('atomicWriteFileSync — binary payloads (the WAV bounce)', () => {
+    it('round-trips every byte value 0..255, which a utf8 string round-trip would mangle', () => {
+        const bytes = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) bytes[i] = i;
+        const wavPath = path.join(dir, 'bounce.wav');
+
+        atomicWriteFileSync(wavPath, bytes);
+
+        const read = fs.readFileSync(wavPath);
+        expect(read.length).toBe(256);
+        expect(Array.from(read)).toEqual(Array.from(bytes));
+        expect(listDir()).toEqual(['bounce.wav']);
+    });
+
+    it('a failed binary write leaves the previous bounce intact and removes the temp file', () => {
+        const wavPath = path.join(dir, 'bounce.wav');
+        const previous = new Uint8Array([0xff, 0x00, 0x80, 0x7f]);
+        fs.writeFileSync(wavPath, previous);
+        const probes: AtomicWriteProbes = {
+            ...realAtomicWriteProbes,
+            renameSync: () => { throw new Error('EPERM: file is open in a DAW'); },
+        };
+
+        expect(() => atomicWriteFileSync(wavPath, new Uint8Array([1, 2, 3]), probes)).toThrow(/EPERM/);
+        expect(Array.from(fs.readFileSync(wavPath))).toEqual(Array.from(previous));
+        expect(listDir()).toEqual(['bounce.wav']);
+    });
+});

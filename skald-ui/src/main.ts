@@ -420,6 +420,36 @@ ipcMain.handle('save-graph', async (_, graphJson: string): Promise<{ saved: bool
   }
 });
 
+// Roadmap G1 (§9.12) — offline WAV bounce. Deliberately a SEPARATE channel
+// from save-graph rather than a widened one: the payload is bytes, and the
+// moment a binary payload can reach the JSON channel someone will hand it a
+// string built from those bytes, whose every code point above 0x7F becomes
+// U+FFFD. The atomic write is the same one Save uses for the same reason
+// (SKB-034): overwriting yesterday's good bounce with a half-written file is
+// the same data loss with a different extension.
+//
+// `bytes` crosses IPC as a Uint8Array (structured clone), and fs writes a
+// typed-array view verbatim — no encoding is involved on this path at all.
+ipcMain.handle('save-wav', async (_, fileName: string, bytes: Uint8Array): Promise<{ saved: boolean; path?: string; error?: string }> => {
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'Bounce to WAV',
+    buttonLabel: 'Save',
+    defaultPath: saveDialogDefaultPath(fileName, dialogPathEnv()),
+    filters: [{ name: 'WAV Audio', extensions: ['wav'] }],
+  });
+
+  if (!filePath) {
+    return { saved: false }; // user canceled — not an error
+  }
+  try {
+    atomicWriteFileSync(filePath, bytes);
+    return { saved: true, path: filePath };
+  } catch (err) {
+    console.error(`[Skald] Failed to write bounce to ${filePath}:`, err);
+    return { saved: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
 // Handler for loading the graph. content: null with no error = canceled.
 ipcMain.handle('load-graph', async (): Promise<{ content: string | null; error?: string }> => {
   const { filePaths } = await dialog.showOpenDialog({

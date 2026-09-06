@@ -9,7 +9,7 @@
 |   invokeCodegen / buildWasmPreview  -> HTTP to the local server, which runs |
 |                                        the same skald_codegen.exe + odin    |
 |                                        build the Electron main process does |
-|   saveGraph                         -> browser download                     |
+|   saveGraph / saveWav               -> browser download                     |
 |   loadGraph / importPatches         -> browser file picker                  |
 |   selectOutputPath                  -> filename prompt (downloads have no   |
 |                                        real destination dialog)             |
@@ -32,7 +32,10 @@ const post = async (url: string, body: string): Promise<Response> => {
     return res;
 };
 
-const download = (name: string, content: string, type: string): void => {
+// BlobPart, not string: the WAV bounce (roadmap G1) hands this raw bytes and
+// a Blob built from a string would utf8-encode them, corrupting every byte
+// above 0x7F — a downloaded file that is the right length and pure static.
+const download = (name: string, content: BlobPart, type: string): void => {
     const url = URL.createObjectURL(new Blob([content], { type }));
     const a = document.createElement('a');
     a.href = url;
@@ -85,6 +88,25 @@ export const installElectronShim = (): void => {
         buildWasmPreview: async (projectJson: string): Promise<ArrayBuffer> => {
             const res = await post('/api/build-wasm-preview', projectJson);
             return res.arrayBuffer();
+        },
+
+        // Roadmap G1 — offline bounce. A browser download has no destination
+        // dialog, so the file lands wherever the browser puts downloads and
+        // the reported "path" says so rather than inventing one.
+        saveWav: async (
+            fileName: string,
+            bytes: Uint8Array
+        ): Promise<{ saved: boolean; path?: string; error?: string }> => {
+            try {
+                // A fresh copy, not the incoming view: a Uint8Array that came
+                // over a possibly-shared buffer is not a BlobPart, and slicing
+                // it is also what guarantees the Blob owns bytes nothing else
+                // can rewrite between here and the browser's download.
+                download(fileName, new Uint8Array(bytes).slice().buffer, 'audio/wav');
+                return { saved: true, path: `${fileName} (in your Downloads)` };
+            } catch (e) {
+                return { saved: false, error: e instanceof Error ? e.message : String(e) };
+            }
         },
 
         saveGraph: async (

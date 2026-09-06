@@ -37,7 +37,10 @@ const REBUILD_DEBOUNCE_MS = 250;
 // Electron wraps errors thrown by ipcMain.handle in
 // "Error invoking remote method 'x': Error: <real message>" — strip that
 // envelope so logs and any UI surface show the actual compiler/codegen error.
-const cleanIpcError = (e: unknown): string => {
+// Exported because the offline bounce (G1) calls the same build IPC and must
+// report the same compiler error the same way; a second copy of this regex
+// would drift the moment Electron changed its wording.
+export const cleanIpcError = (e: unknown): string => {
     const msg = e instanceof Error ? e.message : String(e);
     return msg.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');
 };
