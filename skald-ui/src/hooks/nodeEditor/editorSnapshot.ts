@@ -19,6 +19,7 @@
 */
 import { Node, Edge } from '@xyflow/react';
 import { NodeParams, SequencerTrack } from '../../definitions/types';
+import { NoteName, ScaleName } from '../../contexts/ScaleContext';
 
 // Song-level settings that live outside the graph/tracks but shape how the
 // project sounds and exports. They are part of the undo document (F-B01-9:
@@ -29,11 +30,21 @@ import { NodeParams, SequencerTrack } from '../../definitions/types';
 // absence on read is treated as the current default, same as the other fields
 // here — this is a value carried through an existing free-form block, not a
 // schema change, so it needs no migration (roadmap §4 constraint 4).
+// G3 (roadmap 9.5): the key/scale ScaleContext has always quantized notes
+// with, now saved with the project instead of resetting to Chromatic/C on
+// every reload. Additive and backward-compatible exactly like packageName
+// above — an older save simply lacks the keys, and absence already means
+// the same defaults ScaleProvider used to hardcode, so no migration or
+// version bump is needed (see saveMigrations.ts's 3->4 pattern for what
+// WOULD require one: a default that changes what an existing file sounds
+// like, which this is not).
 export interface SessionSettings {
     bpm: number;
     patternSteps: number;
     masterVolume: number;
     packageName: string;
+    rootNote: NoteName;
+    scaleName: ScaleName;
 }
 
 /** The whole undoable document. One history entry holds exactly one of these. */

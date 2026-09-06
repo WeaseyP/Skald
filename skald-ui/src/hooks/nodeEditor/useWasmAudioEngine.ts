@@ -62,7 +62,13 @@ export const useWasmAudioEngine = (
     // computes tanh(vol·x). tanh is concave, so the two only ever agreed at
     // vol∈{0,1} — every other setting played a louder, less-saturated signal
     // than what was tuned by ear (BUGS.md SKB-011).
-    masterVolume: number
+    masterVolume: number,
+    // G3: optional (not threaded through every existing call site, test
+    // harnesses included) with the same defaults ScaleContext itself starts
+    // at — a caller that omits them gets exactly what it got before this
+    // packet: no root_note/scale_name key in the built project at all.
+    rootNote?: string,
+    scaleName?: string
 ) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
@@ -216,7 +222,7 @@ export const useWasmAudioEngine = (
         // param. The export path bakes the real authored value (SKB-011's
         // backend half); baking it here too would fold volume into
         // topologySignature and turn every drag into a full rebuild.
-        const projectData = buildProjectData(nodes, edges, sequencerTracks, bpm, 1.0, patternSteps, nearestInScale);
+        const projectData = buildProjectData(nodes, edges, sequencerTracks, bpm, 1.0, patternSteps, nearestInScale, undefined, rootNote, scaleName);
         if (projectData.project.instruments.length === 0) {
             throw new Error('No instruments on the canvas. Wrap nodes in an Instrument before playing.');
         }
@@ -226,7 +232,7 @@ export const useWasmAudioEngine = (
             signature: topologySignature(projectData),
             stepAsset: Math.max(computeStepAsset(nodes, sequencerTracks), 0),
         };
-    }, [nodes, edges, sequencerTracks, bpm, patternSteps, nearestInScale, computeStepAsset]);
+    }, [nodes, edges, sequencerTracks, bpm, patternSteps, nearestInScale, rootNote, scaleName, computeStepAsset]);
 
     const handleStop = useCallback(() => {
         logger.info('WasmAudioEngine', 'Stop requested');
@@ -548,7 +554,7 @@ export const useWasmAudioEngine = (
         const instrumentNodes = wrappedInstrumentNodes(nodes);
         sendChangedExposedParams(instrumentNodes);
 
-        const projectData = buildProjectData(nodes, edges, sequencerTracks, bpm, 1.0, patternSteps, nearestInScale);
+        const projectData = buildProjectData(nodes, edges, sequencerTracks, bpm, 1.0, patternSteps, nearestInScale, undefined, rootNote, scaleName);
         const signature = topologySignature(projectData);
         if (signature !== lastSignature.current) {
             scheduleRebuild();

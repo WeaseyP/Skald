@@ -248,9 +248,11 @@ const EditorLayout = () => {
         setPatternSteps,
         setMasterVolume,
         setPackageName,
+        setRootNote: setSessionRootNote,
+        setScaleName: setSessionScaleName,
         applySessionSettings,
     } = useEditorState();
-    const { bpm, patternSteps, masterVolume, packageName } = session;
+    const { bpm, patternSteps, masterVolume, packageName, rootNote: sessionRootNote, scaleName: sessionScaleName } = session;
 
     // Sync node selection to clear step selection
     React.useEffect(() => {
@@ -275,7 +277,32 @@ const EditorLayout = () => {
     // banner (SKB-009/045/010) — it used to drop it with no report at all.
     const { generatedCode, setGeneratedCode, handleGenerate } = useCodeGeneration(notifyFileStatus);
 
-    const { nearestInScale } = useScale();
+    const { rootNote, setRootNote, scaleName, setScaleName, nearestInScale } = useScale();
+
+    // G3 (roadmap 9.5): ScaleContext stays the live, immediately-reactive owner
+    // of rootNote/scaleName — SequencerToolbar's Key/Scale selects still write
+    // to it directly, unchanged. This is the bridge that makes a live scale
+    // change undoable and saved: it mirrors ScaleContext -> session so a real
+    // edit gets a history entry and lands in the save file, and mirrors
+    // session -> ScaleContext so a Load or an Undo that restores an older
+    // session actually re-quantizes what's on screen. Each direction is
+    // guarded by an inequality check, so once the two agree neither effect
+    // fires again — a Load's untracked applySessionSettings changes session
+    // only, which the second effect below copies into ScaleContext with a
+    // plain (non-history) setState, and that convergence does not bounce back
+    // into the first effect because by then rootNote === session.rootNote.
+    React.useEffect(() => {
+        if (rootNote !== sessionRootNote) setSessionRootNote(rootNote);
+    }, [rootNote, sessionRootNote, setSessionRootNote]);
+    React.useEffect(() => {
+        if (scaleName !== sessionScaleName) setSessionScaleName(scaleName);
+    }, [scaleName, sessionScaleName, setSessionScaleName]);
+    React.useEffect(() => {
+        if (sessionRootNote !== rootNote) setRootNote(sessionRootNote);
+    }, [sessionRootNote, rootNote, setRootNote]);
+    React.useEffect(() => {
+        if (sessionScaleName !== scaleName) setScaleName(sessionScaleName);
+    }, [sessionScaleName, scaleName, setScaleName]);
 
     // SKB-009 (b): the P-lock/step-range verdict, recomputed from the live
     // document. Renaming a node breaks every override that named it, and until
@@ -295,7 +322,9 @@ const EditorLayout = () => {
         // Live master fader (SKB-011): applied inside the DSP graph via
         // skald_set_master_volume, not a post-worklet JS GainNode. See the
         // hook's masterVolume param comment for why the two never agreed.
-        masterVolume
+        masterVolume,
+        rootNote,
+        scaleName
     );
     // Roadmap G1/G2 (§9.12) — offline bounce and stem export. Deliberately a
     // separate hook from the preview engine: a bounce builds and renders its
@@ -309,6 +338,8 @@ const EditorLayout = () => {
         masterVolume,
         packageName,
         nearestInScale,
+        rootNote,
+        scaleName,
         notify: notifyFileStatus,
     });
 
@@ -610,7 +641,7 @@ const EditorLayout = () => {
                         inert={isNarrow && !isDrawerOpen}
                     >
                         <Sidebar
-                            onGenerate={() => handleGenerate(nodes, edges, tracks, bpm, masterVolume, packageName, outputPath, patternSteps, nearestInScale)}
+                            onGenerate={() => handleGenerate(nodes, edges, tracks, bpm, masterVolume, packageName, outputPath, patternSteps, nearestInScale, rootNote, scaleName)}
                             onPlay={handlePlay}
                             onStop={handleStop}
                             isPlaying={isPlaying}

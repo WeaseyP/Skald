@@ -40,7 +40,7 @@ const rfInstance = () => ({
     fitView,
 } as unknown as ReactFlowInstance);
 
-const session = { bpm: 140, patternSteps: 32, masterVolume: 0.3, packageName: 'my_game_audio' };
+const session = { bpm: 140, patternSteps: 32, masterVolume: 0.3, packageName: 'my_game_audio', rootNote: 'C' as const, scaleName: 'Chromatic' as const };
 
 // The real setTimeout(0) the hook defers viewport restoration through — one
 // real macrotask tick is enough for it to fire.
@@ -291,6 +291,65 @@ describe('useFileIO — packageName round-trip (SKB-036)', () => {
         await act(async () => { await result.current.handleLoad(); });
         const restored = applySession.mock.calls[0][0];
         expect(restored).not.toHaveProperty('packageName');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// G3 (roadmap 9.5) — rootNote/scaleName round-trip. Before this, ScaleContext
+// held these two locally with no connection to save/load at all: every reload
+// reset the project back to C Chromatic regardless of what was authored,
+// exactly the SKB-036 packageName defect above but for key/scale.
+// ---------------------------------------------------------------------------
+describe('useFileIO — rootNote/scaleName round-trip (G3)', () => {
+    it('carries rootNote and scaleName in the save payload', async () => {
+        saveGraph.mockResolvedValue({ saved: true, path: 'C:/songs/track.json' });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleSave(); });
+        const written = JSON.parse(saveGraph.mock.calls[0][0]);
+        expect(written.session.rootNote).toBe('C');
+        expect(written.session.scaleName).toBe('Chromatic');
+    });
+
+    it('restores an authored non-default rootNote and scaleName from a save that has them', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                session: { bpm: 90, patternSteps: 64, masterVolume: 0.5, rootNote: 'F#', scaleName: 'Dorian' },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        expect(applySession).toHaveBeenCalledWith(
+            expect.objectContaining({ rootNote: 'F#', scaleName: 'Dorian' })
+        );
+    });
+
+    it('leaves the current key/scale alone for an older save with neither field — no default is invented', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                session: { bpm: 90, patternSteps: 64, masterVolume: 0.5 },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const restored = applySession.mock.calls[0][0];
+        expect(restored).not.toHaveProperty('rootNote');
+        expect(restored).not.toHaveProperty('scaleName');
+    });
+
+    it('rejects an unrecognised rootNote/scaleName instead of forwarding a value ScaleContext cannot handle', async () => {
+        loadGraph.mockResolvedValue({
+            content: JSON.stringify({
+                nodes: [{ id: 'a' }], edges: [],
+                session: { bpm: 90, patternSteps: 64, masterVolume: 0.5, rootNote: 'H', scaleName: 'Whole Tone' },
+            }),
+        });
+        const { result } = renderFileIO();
+        await act(async () => { await result.current.handleLoad(); });
+        const restored = applySession.mock.calls[0][0];
+        expect(restored).not.toHaveProperty('rootNote');
+        expect(restored).not.toHaveProperty('scaleName');
     });
 });
 

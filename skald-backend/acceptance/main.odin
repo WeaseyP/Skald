@@ -1136,6 +1136,48 @@ main :: proc() {
 			}
 		}
 
+	case "runtime_scale":
+		// G3 (roadmap 9.5): project authored in C Major. p.scale_root/
+		// scale_index are seeded from that at _init (0, 1) — note 60 (C4)
+		// is already in C Major, so it plays unchanged. Calling
+		// Asset_set_key_transpose(2) and retriggering the SAME raw note
+		// must move it up a whole tone: 60+2=62 (D), and 2 is itself in C
+		// Major, so it lands exactly on D4 rather than being re-quantized
+		// again.
+		{
+			p := new(ga.Asset_Processor)
+			defer free(p)
+			ga.Asset_init(p, sample_rate)
+			t_transpose := int(0.5 * sample_rate)
+			ga.Asset_note_on(p, 60, 1.0, 0.0) // C4 (261.63 Hz), unchanged by C Major
+			for i in 0 ..< len(buf) {
+				if i == t_transpose {
+					// Via the generic string dispatch, not the typed
+					// Asset_set_key_transpose: that setter (like
+					// Asset_set_scale) is emitted ONLY for a project whose
+					// scale is non-Chromatic, so a STATIC reference to it
+					// here would fail to link against every OTHER fixture's
+					// generated code sharing this one compiled harness.
+					// Asset_set_param always exists (it is part of every
+					// asset's universal surface — see the stub template).
+					ok := ga.Asset_set_param(p, "key_transpose", 2.0)
+					if !ok {
+						fmt.eprintfln("FAIL runtime_scale: Asset_set_param(\"key_transpose\", ...) returned false — the G3 scale gate did not fire for this fixture")
+						all_pass = false
+					}
+					ga.Asset_note_on(p, 60, 1.0, 0.0) // retrigger: 60+2=62 (D4, 293.66 Hz)
+				}
+				l, r := ga.Asset_process(p)
+				buf[i] = {l, r}
+			}
+			if smoke_mode {
+				all_pass &= run_smoke(buf, fixture)
+			} else {
+				all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.1, 0.45, 261.63, 5.0, .Left)
+				all_pass &= assert_peak_freq_in_window(buf, sample_rate, 0.6, 1.0, 293.66, 5.0, .Left)
+			}
+		}
+
 	case "noadsr_fade":
 		// C6-3 (F-B03-5): a voice with no ADSR used to be switched off at the
 		// exact sample its duration expired — the default _trigger walks into

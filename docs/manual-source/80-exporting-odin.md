@@ -389,6 +389,46 @@ The **DC blocker** roadmap 9.9 also asks for lives on the master bus (`project_p
 
 The project's **master volume** slider is a different thing again, and on the per-asset path it does not reach you: it is applied inside the `project_process` wrapper that game code is told not to use, and (as `skald_set_master_volume`) inside the preview shim. If the sound designer's master fader is part of the intended mix, ask them for the number and fold it into your own final gain — or, better, treat their per-asset Volume settings as the mix and your final gain as a master you control. One trap to know about: a project saved with `masterVolume` at exactly 0 exports **silent**, and the generator prints a loud warning saying so, because an authored 0 means the fader was pulled down; an *absent* key still means unity (`skald-backend/core/json.odin::resolved_master_volume`, `::warn_authored_master_silence`, pinned by `skald-backend/tests/unit/master_volume_test.odin::resolved_master_volume_authored_zero_is_silence`).
 
+## Runtime scale & key transpose
+
+Roadmap packet G3 (§9.5). `05-sequencer.md`'s Key and Scale section covers the AUTHORED side of this — the editor bakes your sequenced notes into the project's chosen scale at Save/Generate time, and that does not change. This section is the separate, opt-in runtime side: a shipped game re-quantizing or transposing notes it triggers itself, live, without regenerating anything.
+
+**Emitted only when the project's own scale is not Chromatic.** A project that has never touched the Key/Scale dropdowns emits none of this — no fields, no setters, no helper procs — so its output is byte-for-byte what it always was (`skald-backend/core/codegen_processor.odin::generate_processor_code`, gated the same way `skald_adsr_warp` is gated on a non-flat ADSR curve). Pick any non-Chromatic scale and every asset in the project gets:
+
+```odin
+skald_nearest_in_scale :: proc(note: int, root: int, scale: int) -> int
+```
+
+A free function in the generated package (`skald-backend/core/codegen_project.odin::emit_scale_proc`), taking a bare scale **index** rather than a name — 0 Chromatic, 1 Major, 2 Minor, 3 Pentatonic, 4 Dorian, 5 Phrygian, 6 Lydian, 7 Mixolydian, matching the interval tables in `skald-backend/core/scale.odin::SCALE_INTERVALS` and mirroring the editor's own `skald-ui/src/contexts/ScaleContext.tsx::nearestInScale` case by case, tie-break included (the interval listed first wins). An out-of-range index clamps to Chromatic rather than indexing off the end of the table.
+
+Each asset carries three fields seeded from the project's own authored key/scale — **not from Chromatic** — so an asset that has opted into a scale at all quantizes with it from the moment `_init` runs, same as the sequencer's own baked pattern already assumes:
+
+```odin
+p.scale_root:      int  // 0=C .. 11=B, from the project's Key
+p.scale_index:      int  // 0..7, from the project's Scale
+p.key_transpose: int  // starts at 0 — this one field IS the neutral value
+```
+
+`_note_on` and `_note_off` both run every incoming `note` through the same transform, right after the existing MIDI-range clamp — `_note_off` has to, or a game's own `note_off(60)` would stop matching what `note_on(60)` actually started once transposition or quantization moved it:
+
+```odin
+transformed := skald_nearest_in_scale(int(note) + p.key_transpose, p.scale_root, p.scale_index)
+if transformed < 0 do transformed = 0
+if transformed > 127 do transformed = 127
+note = u8(transformed)
+```
+
+Two setters change the live state, both plain field writes with no clamp of their own — cheap enough to call every frame if your adaptive-audio logic wants to:
+
+```odin
+<Asset>_set_scale(p, root: int, scale: int)         // e.g. Asset_set_scale(p, 0, 4)  -> C Dorian
+<Asset>_set_key_transpose(p, semitones: int)         // e.g. Asset_set_key_transpose(p, 2) -> up a whole tone
+```
+
+The same three fields are also reachable through the string-keyed pair above — `<Asset>_set_param(p, "key_transpose", 2.0)`, `"scale_root"`, `"scale_index"` — for tooling that already drives every asset through that one entry point rather than a per-asset-conditional symbol.
+
+**This is a different mechanism from the authored quantisation, deliberately.** Retriggering the same MIDI note after `_set_key_transpose(2)` moves its pitch by exactly that many semitones and then re-quantizes the result into the current scale — a whole-tone transpose in C Major lands cleanly on the next scale tone precisely because 2 is itself a Major interval. Nothing here touches the sequencer's own already-baked pattern; it only ever sees notes as they arrive through `_note_on`/`_trigger`, from wherever your game calls them.
+
 ## The threading contract
 
 This is the one section to read twice, because the generated code cannot enforce it.

@@ -15,11 +15,13 @@ import { EditorHistoryApi, SessionSettings } from './editorSnapshot';
 import { dedupeTrackNotes } from '../../utils/trackNotes';
 import { CURRENT_SAVE_VERSION, migrateSaveFile } from '../../utils/saveMigrations';
 import { normalizeSyncedFreeRun } from '../../utils/syncNormalize';
+import { NOTES, SCALES } from '../../contexts/ScaleContext';
 
-// SessionSettings (bpm / patternSteps / masterVolume / packageName) is defined
-// with the undo snapshot it belongs to, in editorSnapshot.ts — the session block
-// is part of the save file AND part of one undo step. Re-exported here because
-// this hook is where the save/load schema is read and written.
+// SessionSettings (bpm / patternSteps / masterVolume / packageName / rootNote /
+// scaleName) is defined with the undo snapshot it belongs to, in
+// editorSnapshot.ts — the session block is part of the save file AND part of
+// one undo step. Re-exported here because this hook is where the save/load
+// schema is read and written.
 export type { SessionSettings };
 
 /**
@@ -197,6 +199,16 @@ export const useFileIO = (
             }
             if (typeof flow.session.packageName === 'string' && flow.session.packageName.trim().length > 0) {
                 restored.packageName = flow.session.packageName;
+            }
+            // G3: validated against the real tables rather than accepted as
+            // any string — an unrecognised value (a hand-edited file, a
+            // future editor's spelling) must not silently pass through to
+            // ScaleContext.setRootNote/setScaleName, which trust their input.
+            if (typeof flow.session.rootNote === 'string' && (NOTES as readonly string[]).includes(flow.session.rootNote)) {
+                restored.rootNote = flow.session.rootNote as SessionSettings['rootNote'];
+            }
+            if (typeof flow.session.scaleName === 'string' && Object.prototype.hasOwnProperty.call(SCALES, flow.session.scaleName)) {
+                restored.scaleName = flow.session.scaleName as SessionSettings['scaleName'];
             }
             applySessionSettings(restored);
         }

@@ -18,6 +18,14 @@ export interface ProjectStructure {
         bpm: number;
         master_volume: number;
         pattern_steps: number;
+        // G3 (roadmap 9.5): the session's key/scale, carried onto the project
+        // shape the same way bpm/master_volume are. Absent (every project
+        // before this packet) resolves on the backend to root C / Chromatic —
+        // the identity scale, so an untouched project's runtime scale API
+        // (once emitted at all) quantizes nothing. See
+        // skald-backend/core/scale.odin::parse_root_note/parse_scale_name.
+        root_note?: string;
+        scale_name?: string;
         instruments: any[];
     }
 }
@@ -212,7 +220,18 @@ export const buildProjectData = (
     // muted something while working. This is a serialisation option and
     // nothing else: the user's tracks are not touched, so no document mutation
     // and no pushHistory are involved.
-    options?: { clearMuteSolo?: boolean }
+    options?: { clearMuteSolo?: boolean },
+    // G3: the session's own key/scale (ScaleContext.tsx's rootNote/scaleName),
+    // appended after the existing params rather than interleaved so every
+    // caller written before this packet keeps compiling unchanged. Carried
+    // through so the runtime scale API (skald_nearest_in_scale /
+    // <Foo>_set_scale) can be emitted at all — separate from nearestInScale
+    // above, which only bakes the AUTHORED pattern's notes. Absent (an older
+    // call site, or a bare unit test with no ScaleContext) omits both keys,
+    // and the backend's own absence-handling resolves that to root C /
+    // Chromatic — the identity scale, so nothing is emitted at all.
+    rootNote?: string,
+    scaleName?: string,
 ): ProjectStructure => {
     const projectData: ProjectStructure = {
         project: {
@@ -228,6 +247,12 @@ export const buildProjectData = (
             // reach the backend. Min 1 (0 = "fall back to track length" is a
             // backend concept the UI never emits explicitly here).
             pattern_steps: toInt(patternSteps, 16, 1, 1024),
+            // G3: absent stays absent (same rule as the instrument-level
+            // fields in the instruments.map below) — the backend's own
+            // default IS root C / Chromatic, so there is nothing this
+            // serializer needs to invent when the caller has no ScaleContext.
+            ...(rootNote !== undefined ? { root_note: rootNote } : {}),
+            ...(scaleName !== undefined ? { scale_name: scaleName } : {}),
             instruments: []
         }
     };

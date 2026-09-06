@@ -59,6 +59,11 @@ export interface OfflineBounceParams {
     masterVolume: number;
     packageName: string;
     nearestInScale: (note: number) => number;
+    // G3: optional — a bounce built without a ScaleContext in scope (none of
+    // today's callers omit it, but nothing here requires one) simply carries
+    // no root_note/scale_name, same as buildProjectData's own default.
+    rootNote?: string;
+    scaleName?: string;
     notify: (status: FileStatus) => void;
 }
 
@@ -107,6 +112,8 @@ export const useOfflineBounce = ({
     masterVolume,
     packageName,
     nearestInScale,
+    rootNote,
+    scaleName,
     notify,
 }: OfflineBounceParams) => {
     const [isBouncing, setIsBouncing] = useState(false);
@@ -133,7 +140,7 @@ export const useOfflineBounce = ({
         options?: { clearMuteSolo?: boolean },
     ): Promise<{ bytes: ArrayBuffer; instrumentNames: string[] }> => {
         const projectData = buildProjectData(
-            nodes, edges, tracks, bpm, 1.0, patternSteps, nearestInScale, options);
+            nodes, edges, tracks, bpm, 1.0, patternSteps, nearestInScale, options, rootNote, scaleName);
         if (projectData.project.instruments.length === 0) {
             throw new Error('No instruments on the canvas. Wrap nodes in an Instrument before bouncing.');
         }
@@ -148,7 +155,7 @@ export const useOfflineBounce = ({
         const instrumentNames = projectData.project.instruments.map(
             (inst: { name?: string }, i: number) => inst.name || `Asset${i + 1}`);
         return { bytes, instrumentNames };
-    }, [nodes, edges, tracks, bpm, patternSteps, nearestInScale]);
+    }, [nodes, edges, tracks, bpm, patternSteps, nearestInScale, rootNote, scaleName]);
 
     /** Render one pass and hand back an encoded WAV, or null if the user canceled. */
     const renderToWav = useCallback(async (

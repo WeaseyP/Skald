@@ -287,6 +287,56 @@ emit_feedback_tail_proc :: proc(sb: ^strings.Builder) {
 	fmt.sbprint(sb, "}\n\n")
 }
 
+// G3 (roadmap 9.5): the runtime scale-quantization helper, emitted only when
+// the project's own key/scale is non-Chromatic (see generate_project_code's
+// `any_scale` gate) — a project that never touches Key/Scale in the editor
+// gets none of this text, so its emitted output is unchanged by this packet.
+// The interval table is single-sourced from scale.odin's SCALE_INTERVALS
+// (walked here in Scale_Kind order, index 0..7); the search loop below
+// mirrors scale.odin::nearest_in_scale statement for statement, which itself
+// mirrors ScaleContext.tsx::nearestInScale — see that file's doc comment for
+// the tie-break rule. `scale` is a runtime int (not the Scale_Kind enum,
+// which does not cross the game/generated-code boundary) so
+// `<Foo>_set_scale` can hand it a bare index; an out-of-range one clamps to
+// Chromatic rather than indexing off the end of the table.
+emit_scale_proc :: proc(sb: ^strings.Builder) {
+	// A package-level global, not a per-call composite literal: Odin refuses
+	// to return a slice literal built on the CALLER's stack frame (a real
+	// compile error the first draft of this hit), and every scale's interval
+	// slice needs to outlive the call that reads it.
+	fmt.sbprint(sb, "// index: 0=Chromatic 1=Major 2=Minor 3=Pentatonic 4=Dorian 5=Phrygian 6=Lydian 7=Mixolydian\n")
+	fmt.sbprint(sb, "SKALD_SCALE_INTERVALS := [8][]int{\n")
+	for kind in Scale_Kind {
+		fmt.sbprint(sb, "\t{")
+		for interval, i in SCALE_INTERVALS[kind] {
+			if i > 0 do fmt.sbprint(sb, ", ")
+			fmt.sbprintf(sb, "%d", interval)
+		}
+		fmt.sbprintf(sb, "}, // %v\n", kind)
+	}
+	fmt.sbprint(sb, "}\n\n")
+
+	fmt.sbprint(sb, "skald_nearest_in_scale :: proc(note: int, root: int, scale: int) -> int {\n")
+	fmt.sbprint(sb, "\tidx := scale\n")
+	fmt.sbprint(sb, "\tif idx < 0 || idx >= len(SKALD_SCALE_INTERVALS) do idx = 0\n")
+	fmt.sbprint(sb, "\tintervals := SKALD_SCALE_INTERVALS[idx]\n")
+	fmt.sbprint(sb, "\tnote_index := ((note % 12) + 12) % 12\n")
+	fmt.sbprint(sb, "\trelative := ((note_index - root) % 12 + 12) % 12\n")
+	fmt.sbprint(sb, "\tfor interval in intervals {\n")
+	fmt.sbprint(sb, "\t\tif interval == relative do return note\n")
+	fmt.sbprint(sb, "\t}\n")
+	fmt.sbprint(sb, "\tbest_diff := 100\n")
+	fmt.sbprint(sb, "\tfor interval in intervals {\n")
+	fmt.sbprint(sb, "\t\tdiff := interval - relative\n")
+	fmt.sbprint(sb, "\t\tif diff > 6 {\n\t\t\tdiff -= 12\n\t\t} else if diff < -6 {\n\t\t\tdiff += 12\n\t\t}\n")
+	fmt.sbprint(sb, "\t\tabs_diff := diff < 0 ? -diff : diff\n")
+	fmt.sbprint(sb, "\t\tabs_best := best_diff < 0 ? -best_diff : best_diff\n")
+	fmt.sbprint(sb, "\t\tif abs_diff < abs_best do best_diff = diff\n")
+	fmt.sbprint(sb, "\t}\n")
+	fmt.sbprint(sb, "\treturn note + best_diff\n")
+	fmt.sbprint(sb, "}\n\n")
+}
+
 generate_project_code :: proc(project: ^Project, project_name: string, package_name: string, provenance := Provenance{}) -> string {
     sb := strings.builder_make()
 
@@ -323,6 +373,12 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     unique_names := resolve_unique_names(project)
     defer delete(unique_names)
 
+    // G3: computed once, up front — both the per-asset bodies below (which
+    // need it to decide whether to emit the scale fields/setters at all) and
+    // the shared header further down (which decides whether to emit
+    // skald_nearest_in_scale at all) read this same project-level fact.
+    any_scale := project.scale_kind != .Chromatic
+
     fmt.sbprintf(&sb, "package %s\n\n", package_name)
 
     // Processors are emitted before the header for the same reason the plans
@@ -334,13 +390,13 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     defer delete(codes)
     for i in 0 ..< len(project.instruments) {
         inst := &project.instruments[i]
-        codes[i] = generate_processor_code(&inst.graph, inst, unique_names[i], asset_types[i], project.bpm, &plans[i], false)
+        codes[i] = generate_processor_code(&inst.graph, inst, unique_names[i], asset_types[i], project.bpm, &plans[i], false, project.root_note_index, project.scale_kind)
         dead := unread_exposed_fields(codes[i], &plans[i])
         defer delete(dead)
         if len(dead) > 0 {
             warn_unread_exposed_fields(&inst.graph, inst.name, dead[:])
             omit_resolutions(&plans[i], dead[:])
-            codes[i] = generate_processor_code(&inst.graph, inst, unique_names[i], asset_types[i], project.bpm, &plans[i], false)
+            codes[i] = generate_processor_code(&inst.graph, inst, unique_names[i], asset_types[i], project.bpm, &plans[i], false, project.root_note_index, project.scale_kind)
         }
     }
 
@@ -493,6 +549,12 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
         }
         if any_curve do emit_adsr_warp_proc(&sb)
     }
+    // G3: same reasoning as any_curve/any_tail above — skald_nearest_in_scale
+    // is called only from an asset whose project sets a non-Chromatic
+    // key/scale. Emitting it unconditionally would add dead code (and a
+    // dead `[]int` table) to every project that has never touched Key/Scale,
+    // breaking byte-identity for every patch that predates this packet.
+    if any_scale do emit_scale_proc(&sb)
 
     fmt.sbprint(&sb, "Note_Event :: struct {\n")
     fmt.sbprint(&sb, "\tnote: u8,\n")

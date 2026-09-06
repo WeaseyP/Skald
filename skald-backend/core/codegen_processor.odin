@@ -20,6 +20,23 @@ emit_param_case :: proc(sb: ^strings.Builder, res: Exposed_Resolution, alias: st
 	}
 }
 
+// G3: identical block emitted into BOTH _note_on and _note_off, right after
+// each one's own `if note > 127 do note = 127` clamp — `note` is the voice
+// lookup key (see _note_off's own comment on why both procs must map it the
+// same way), so _note_off has to apply the SAME transpose/quantize as
+// _note_on did or a game's own note_off(60) stops matching what note_on(60)
+// actually started. key_transpose can push the clamped note back out of
+// 0..127 (a transpose near a range edge), so this re-clamps its own result
+// rather than trusting skald_nearest_in_scale's caller to have done it.
+emit_note_scale_transform :: proc(sb: ^strings.Builder) {
+	fmt.sbprint(sb, "\t{\n")
+	fmt.sbprint(sb, "\t\ttransformed := skald_nearest_in_scale(int(note) + p.key_transpose, p.scale_root, p.scale_index)\n")
+	fmt.sbprint(sb, "\t\tif transformed < 0 do transformed = 0\n")
+	fmt.sbprint(sb, "\t\tif transformed > 127 do transformed = 127\n")
+	fmt.sbprint(sb, "\t\tnote = u8(transformed)\n")
+	fmt.sbprint(sb, "\t}\n")
+}
+
 generate_processor_code :: proc(
 	graph: ^Graph,
 	instrument: ^Project_Instrument,
@@ -28,8 +45,20 @@ generate_processor_code :: proc(
 	bpm: f32,
 	plan: ^Instrument_Plan,
 	include_header := true,
+	// G3: the project's own key/scale — Chromatic (the default) gates OFF
+	// the per-asset scale_root/scale_index/key_transpose fields, the
+	// <Foo>_set_scale/<Foo>_set_key_transpose setters, and the quantize/
+	// transpose step in _note_on/_note_off, entirely. Defaulted so the two
+	// direct unit tests that call this proc without them (tests/unit/
+	// unison_wavetable_fm_test.odin) keep compiling against the
+	// byte-identical Chromatic path.
+	root_note_index := 0,
+	scale_kind := Scale_Kind.Chromatic,
 ) -> string {
-	
+	// G3: one project-level fact, read wherever this proc needs to know
+	// whether the scale feature is live for this asset at all.
+	any_scale := scale_kind != .Chromatic
+
 	polyphony := instrument.voice_count
 	if polyphony <= 0 do polyphony = 1
 
@@ -156,6 +185,15 @@ generate_processor_code :: proc(
 	needs_jitter := instrument.pitch_jitter > 0.0 || instrument.velocity_jitter > 0.0
 	if needs_jitter {
 		fmt.sbprint(&sb, "\tjitter_rng: PRNG_State,\n")
+	}
+	// G3: runtime-settable via <Foo>_set_scale/<Foo>_set_key_transpose,
+	// defaulting to 0/0/0 (Chromatic, root C, no transpose) in _init — the
+	// identity transform, so a game that never calls either setter gets the
+	// exact note it asked _note_on for, same as before this packet.
+	if any_scale {
+		fmt.sbprint(&sb, "\tscale_root: int,\n")
+		fmt.sbprint(&sb, "\tscale_index: int,\n")
+		fmt.sbprint(&sb, "\tkey_transpose: int,\n")
 	}
     fmt.sbprint(&sb, "\ttotal_samples: u64,\n")
     fmt.sbprint(&sb, "\tplaying: bool,\n")
@@ -301,6 +339,17 @@ generate_processor_code :: proc(
 	if needs_jitter {
 		fmt.sbprintf(&sb, "\tp.jitter_rng.state = u32(0x%08X)\n", jitter_seed_from_name(namespace_prefix))
 	}
+	if any_scale {
+		// Seeded from the AUTHORED project scale (not Chromatic/0): once a
+		// project opts into a key/scale at all, that is the quantization a
+		// note_on gets by default, same as the sequencer's own baked pattern
+		// already assumes. key_transpose is the one field that starts
+		// neutral — a game overriding the key (skald_set_key_transpose) is
+		// an explicit runtime decision, not something authoring implies.
+		fmt.sbprintf(&sb, "\tp.scale_root = %d\n", root_note_index)
+		fmt.sbprintf(&sb, "\tp.scale_index = %d\n", int(scale_kind))
+		fmt.sbprint(&sb, "\tp.key_transpose = 0\n")
+	}
     fmt.sbprint(&sb, "\tp.loop = true\n")
 
     // SKB-018: _init assigned the scalar settings and the Delay/Reverb ring
@@ -439,6 +488,10 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\t// note and velocity are clamped silently to their MIDI/normalized domains.\n")
 	fmt.sbprint(&sb, "\tnote := note\n")
 	fmt.sbprint(&sb, "\tif note > 127 do note = 127\n")
+	if any_scale {
+		fmt.sbprint(&sb, "\t// G3: runtime scale quantize + key transpose (skald_set_scale/_set_key_transpose).\n")
+		emit_note_scale_transform(&sb)
+	}
 	fmt.sbprint(&sb, "\tvelocity := math.clamp(velocity, 0.0, 1.0)\n")
 	// G5: velocity jitter draws BEFORE the steal search below and pitch
 	// jitter draws after (near `freq`'s own computation) — both from the one
@@ -656,6 +709,10 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\t// Clamped to match _note_on: `note` is the voice key, so both must map it.\n")
 	fmt.sbprint(&sb, "\tnote := note\n")
 	fmt.sbprint(&sb, "\tif note > 127 do note = 127\n")
+	if any_scale {
+		fmt.sbprint(&sb, "\t// G3: same transform _note_on applies — see its own comment.\n")
+		emit_note_scale_transform(&sb)
+	}
 	fmt.sbprint(&sb, "\tbest := -1\n")
 	fmt.sbprint(&sb, "\tbest_age: f32 = -1.0\n")
 	fmt.sbprintf(&sb, "\tfor i in 0..<%d {{\n", polyphony)
@@ -756,6 +813,34 @@ generate_processor_code :: proc(
 	fmt.sbprint(&sb, "\tp.loop = loop\n")
 	fmt.sbprint(&sb, "}\n\n")
 
+	if any_scale {
+		// G3: `scale` is a bare index (skald_scale_intervals' 0=Chromatic..
+		// 7=Mixolydian), not the Scale_Kind enum — this proc crosses into
+		// game code, which never sees Scale_Kind. Unrecognised indices are
+		// skald_nearest_in_scale's problem (it clamps to Chromatic), not
+		// this setter's — this is a plain field write, exactly like every
+		// other setter on this processor, so a game can call it every
+		// frame if it wants to.
+		fmt.sbprintf(
+			&sb,
+			"%s_set_scale :: proc(p: ^%s_Processor, root: int, scale: int) {{\n",
+			namespace_prefix,
+			namespace_prefix,
+		)
+		fmt.sbprint(&sb, "\tp.scale_root = root\n")
+		fmt.sbprint(&sb, "\tp.scale_index = scale\n")
+		fmt.sbprint(&sb, "}\n\n")
+
+		fmt.sbprintf(
+			&sb,
+			"%s_set_key_transpose :: proc(p: ^%s_Processor, semitones: int) {{\n",
+			namespace_prefix,
+			namespace_prefix,
+		)
+		fmt.sbprint(&sb, "\tp.key_transpose = semitones\n")
+		fmt.sbprint(&sb, "}\n\n")
+	}
+
 	fmt.sbprintf(
 		&sb,
 		"%s_set_volume :: proc(p: ^%s_Processor, value: f32) {{\n",
@@ -835,12 +920,23 @@ generate_processor_code :: proc(
 		namespace_prefix,
 		namespace_prefix,
 	)
-	if len(plan.stable_resolutions) > 0 {
+	if len(plan.stable_resolutions) > 0 || any_scale {
 		fmt.sbprint(&sb, "\tswitch name {\n")
 		for res, i in plan.stable_resolutions {
 			emit_param_case(&sb, res, param_aliases[i])
 			fmt.sbprintf(&sb, "\t\t%s_set_%s(p, value)\n", namespace_prefix, res.field_name)
 			fmt.sbprint(&sb, "\t\treturn true\n")
+		}
+		if any_scale {
+			// G3: the string-keyed path to the same three fields the typed
+			// <Foo>_set_scale/<Foo>_set_key_transpose setters write — not a
+			// second implementation, just another entry point onto them, so
+			// tooling that drives every asset through _set_param (this
+			// acceptance harness's own runtime_scale case included) reaches
+			// them without a per-asset-conditional symbol reference.
+			fmt.sbprint(&sb, "\tcase \"scale_root\":\n\t\tp.scale_root = int(value)\n\t\treturn true\n")
+			fmt.sbprint(&sb, "\tcase \"scale_index\":\n\t\tp.scale_index = int(value)\n\t\treturn true\n")
+			fmt.sbprint(&sb, "\tcase \"key_transpose\":\n\t\tp.key_transpose = int(value)\n\t\treturn true\n")
 		}
 		fmt.sbprint(&sb, "\t}\n")
 	}
@@ -853,11 +949,16 @@ generate_processor_code :: proc(
 		namespace_prefix,
 		namespace_prefix,
 	)
-	if len(plan.stable_resolutions) > 0 {
+	if len(plan.stable_resolutions) > 0 || any_scale {
 		fmt.sbprint(&sb, "\tswitch name {\n")
 		for res, i in plan.stable_resolutions {
 			emit_param_case(&sb, res, param_aliases[i])
 			fmt.sbprintf(&sb, "\t\treturn p.%s, true\n", res.field_name)
+		}
+		if any_scale {
+			fmt.sbprint(&sb, "\tcase \"scale_root\": return f32(p.scale_root), true\n")
+			fmt.sbprint(&sb, "\tcase \"scale_index\": return f32(p.scale_index), true\n")
+			fmt.sbprint(&sb, "\tcase \"key_transpose\": return f32(p.key_transpose), true\n")
 		}
 		fmt.sbprint(&sb, "\t}\n")
 	}

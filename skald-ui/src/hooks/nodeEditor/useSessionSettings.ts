@@ -23,6 +23,11 @@ export const DEFAULT_SESSION: SessionSettings = {
     // whenever playback was stopped (the node only exists while playing).
     masterVolume: 0.8,
     packageName: 'generated_audio',
+    // G3: matches ScaleProvider's own pre-existing defaults (ScaleContext.tsx)
+    // exactly, so a fresh document's session and a fresh ScaleProvider start
+    // in agreement with nothing to reconcile.
+    rootNote: 'C',
+    scaleName: 'Chromatic',
 };
 
 export const useSessionSettings = (pushHistory: PushHistory) => {
@@ -44,6 +49,8 @@ export const useSessionSettings = (pushHistory: PushHistory) => {
             patternSteps: patch.patternSteps !== undefined ? patch.patternSteps : current.patternSteps,
             masterVolume: patch.masterVolume !== undefined ? patch.masterVolume : current.masterVolume,
             packageName: patch.packageName !== undefined ? patch.packageName : current.packageName,
+            rootNote: patch.rootNote !== undefined ? patch.rootNote : current.rootNote,
+            scaleName: patch.scaleName !== undefined ? patch.scaleName : current.scaleName,
         };
         writeSession(next);
     }, [writeSession]);
@@ -64,6 +71,16 @@ export const useSessionSettings = (pushHistory: PushHistory) => {
     const setPatternSteps = useMemo(() => trackedSetter('patternSteps', 'Change pattern length'), [trackedSetter]);
     const setMasterVolume = useMemo(() => trackedSetter('masterVolume', 'Change master volume'), [trackedSetter]);
     const setPackageName = useMemo(() => trackedSetter('packageName', 'Change package name'), [trackedSetter]);
+    // G3: ScaleProvider (contexts/ScaleContext.tsx) stays the live, immediately
+    // -reactive owner of rootNote/scaleName — SequencerToolbar writes to it
+    // directly and nothing here changes that. These two exist so a live scale
+    // change is ALSO undoable and ALSO saved; app.tsx's EditorLayout is the
+    // bridge that calls them when ScaleContext changes, and the reverse (a
+    // Load or an Undo restoring an older session) writes back into
+    // ScaleContext through the same effect, keyed off simple inequality
+    // checks so the two directions cannot feed each other in a loop.
+    const setRootNote = useMemo(() => trackedSetter('rootNote', 'Change key'), [trackedSetter]);
+    const setScaleName = useMemo(() => trackedSetter('scaleName', 'Change scale'), [trackedSetter]);
 
     return {
         session,
@@ -72,6 +89,8 @@ export const useSessionSettings = (pushHistory: PushHistory) => {
         setPatternSteps,
         setMasterVolume,
         setPackageName,
+        setRootNote,
+        setScaleName,
         applySessionSettings,
     };
 };

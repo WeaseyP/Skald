@@ -20,7 +20,7 @@ const fakeSnapshot = (bpm: number): EditorSnapshot => ({
     nodes: [{ id: 'n1' }] as unknown as EditorSnapshot['nodes'],
     edges: [],
     tracks: [],
-    session: { bpm, patternSteps: 16, masterVolume: 0.8, packageName: 'generated_audio' },
+    session: { bpm, patternSteps: 16, masterVolume: 0.8, packageName: 'generated_audio', rootNote: 'C', scaleName: 'Chromatic' },
 });
 
 beforeEach(() => {

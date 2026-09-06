@@ -149,6 +149,14 @@ Session_Raw :: struct {
 	bpm:          Maybe(f32),
 	patternSteps: Maybe(int),
 	masterVolume: Maybe(f32),
+	// G3 (roadmap 9.5): the key/scale ScaleContext.tsx has always quantized
+	// the AUTHORED pattern with, now carried alongside the other session
+	// values instead of resetting on every reload. Maybe for the same reason
+	// as the three above: absence must mean "not authored" (root C /
+	// Chromatic, the identity scale) rather than an editor-invented default
+	// that happens to look the same — see parse_root_note/parse_scale_name.
+	rootNote:  Maybe(string),
+	scaleName: Maybe(string),
 }
 
 // The save-file schema version this reader understands (packet C1). Mirrors
@@ -225,6 +233,14 @@ Project_Data_Raw :: struct {
 	// Global loop length in steps (the UI's Pattern Steps control). Tracks
 	// shorter than this wrap polyrhythmically. 0 = fall back to track length.
 	pattern_steps: int,
+	// G3: plain strings, not Maybe — "" already means "not authored" for
+	// both (parse_root_note("") -> 0, parse_scale_name("") -> .Chromatic),
+	// the same shape asset_type/steal_mode already use on
+	// Project_Instrument_Raw above. build_project_from_graph_raw resolves
+	// Session_Raw's Maybe(string) pair down to these before either reaches
+	// build_project_from_raw, exactly as it does for bpm/master_volume.
+	root_note:  string,
+	scale_name: string,
 	instruments:   []Project_Instrument_Raw,
 	// Project-level sequencer tracks, referencing instruments by id. The
 	// editor's project export never writes these (its tracks travel inside
@@ -282,6 +298,13 @@ Project :: struct {
 	pattern_steps: int,
 	instruments:   []Project_Instrument,
 	sequencer_tracks: []Sequencer_Track,
+	// G3: resolved once here — root_note_index (0..11) and scale_kind — the
+	// same shape as every other project-level setting. Chromatic/0 (absent
+	// session) is the gate `codegen_project.odin::generate_project_code`
+	// checks to decide whether the runtime scale API is emitted AT ALL; see
+	// scale.odin.
+	root_note_index: int,
+	scale_kind:      Scale_Kind,
 }
 
 // SFX = one-shot, fired explicitly via <Foo>_trigger.

@@ -130,7 +130,7 @@ interface LoadOutcome {
 // applies a PARTIAL on top of whatever the app holds, so the gate must merge
 // the same way the app does. If these drift from app.tsx the session
 // assertions fail on every session-less file, which is the drift alarm.
-const EDITOR_SESSION_DEFAULTS = { bpm: 120, patternSteps: 16, masterVolume: 0.8 };
+const EDITOR_SESSION_DEFAULTS = { bpm: 120, patternSteps: 16, masterVolume: 0.8, rootNote: 'C' as const, scaleName: 'Chromatic' as const };
 
 const loadThroughEditor = async (content: string): Promise<LoadOutcome> => {
     let nodes: Node[] = [];

@@ -308,6 +308,10 @@ build_project_from_raw :: proc(project_raw: ^Project_Raw) -> Project {
 	if project.bpm <= 0 do project.bpm = 120.0
 	project.master_volume = resolved_master_volume(project_raw.project.master_volume)
 	project.pattern_steps = project_raw.project.pattern_steps
+	// G3: "" (absent from either JSON shape) resolves to root C / Chromatic —
+	// see scale.odin's parse_root_note/parse_scale_name.
+	project.root_note_index = parse_root_note(project_raw.project.root_note)
+	project.scale_kind = parse_scale_name(project_raw.project.scale_name)
 	project.instruments = make([]Project_Instrument, len(project_raw.project.instruments))
 
 	for raw_inst, i in project_raw.project.instruments {
@@ -441,6 +445,11 @@ build_project_from_graph_raw :: proc(graph_raw: ^Graph_Raw) -> Project {
 	project_raw.project.bpm = session.bpm.? or_else 0.0
 	project_raw.project.master_volume = session.masterVolume
 	project_raw.project.pattern_steps = session.patternSteps.? or_else 0
+	// G3: absent -> "" -> build_project_from_raw's parse_root_note/
+	// parse_scale_name both resolve "" to their identity value (root C /
+	// Chromatic), same "" contract Project_Data_Raw's fields document.
+	project_raw.project.root_note = session.rootNote.? or_else ""
+	project_raw.project.scale_name = session.scaleName.? or_else ""
 	// Both track spellings (React Flow's camelCase, project snake_case),
 	// normalized and target-sanitized; build_project_from_raw resolves the
 	// per-note patchOverrides alias and re-sanitizes (idempotently).

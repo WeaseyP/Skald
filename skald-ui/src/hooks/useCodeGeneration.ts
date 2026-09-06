@@ -44,7 +44,11 @@ export const useCodeGeneration = (notify?: (status: FileStatus) => void) => {
         // Scale quantizer from ScaleContext: the preview quantizes at
         // schedule time, so exported notes must be quantized too or the
         // generated code plays the raw (out-of-key) pitches.
-        nearestInScale?: (note: number) => number
+        nearestInScale?: (note: number) => number,
+        // G3: the session's key/scale, so the runtime scale API is emitted
+        // for an exported build the same way the live preview would need it.
+        rootNote?: string,
+        scaleName?: string
     ) => {
         if (nodes.length === 0) {
             console.warn("Graph is empty.");
@@ -63,7 +67,8 @@ export const useCodeGeneration = (notify?: (status: FileStatus) => void) => {
         }
 
         const projectData = buildProjectData(
-            nodes, edges, sequencerTracks, bpm, masterVolume, patternSteps, nearestInScale
+            nodes, edges, sequencerTracks, bpm, masterVolume, patternSteps, nearestInScale,
+            undefined, rootNote, scaleName
         );
 
         try {
