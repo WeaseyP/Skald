@@ -19,3 +19,6 @@
 # whose only long line was the E8 warp call read as a diff in a pristine tree while
 # 68 others passed. Pin them to LF so the checkout is the emission.
 *.golden text eol=lf
+# The checked-in generated_audio.odin copies are compared the same way (regen_generated.bat,
+# `fc` text mode) and hit the same wrap quirk on the integration demo's long lines.
+**/generated_audio/generated_audio.odin text eol=lf
