@@ -337,6 +337,24 @@ emit_scale_proc :: proc(sb: ^strings.Builder) {
 	fmt.sbprint(sb, "}\n\n")
 }
 
+// G4 (roadmap 9.20): linear-interpolated read of an imported single-cycle
+// table. Takes a slice, not the [2048]f32 array by value — Odin arrays are
+// value types, and this runs once per unison voice per sample, so passing
+// the 8KB array itself would copy it on every call where a slice (16 bytes:
+// pointer + length) does not. `ph` wraps the same way the analytic path's
+// phase accumulator does (0..1, any float folds back via math.floor), so the
+// caller can hand it the identical `sample_phase` expression unmodified.
+emit_custom_wavetable_sample_proc :: proc(sb: ^strings.Builder) {
+	fmt.sbprint(sb, "skald_wavetable_sample_custom :: proc(table: []f32, ph: f32) -> f32 {\n")
+	fmt.sbprint(sb, "\tp := ph - math.floor(ph)\n")
+	fmt.sbprint(sb, "\tpos := p * f32(len(table))\n")
+	fmt.sbprint(sb, "\ti1 := int(pos) % len(table)\n")
+	fmt.sbprint(sb, "\ti2 := (i1 + 1) % len(table)\n")
+	fmt.sbprint(sb, "\tfrac := pos - f32(i1)\n")
+	fmt.sbprint(sb, "\treturn table[i1] + (table[i2] - table[i1]) * frac\n")
+	fmt.sbprint(sb, "}\n\n")
+}
+
 generate_project_code :: proc(project: ^Project, project_name: string, package_name: string, provenance := Provenance{}) -> string {
     sb := strings.builder_make()
 
@@ -555,6 +573,52 @@ generate_project_code :: proc(project: ^Project, project_name: string, package_n
     // dead `[]int` table) to every project that has never touched Key/Scale,
     // breaking byte-identity for every patch that predates this packet.
     if any_scale do emit_scale_proc(&sb)
+
+    // G4 (roadmap 9.20): same reasoning as any_curve/any_scale above —
+    // skald_wavetable_sample_custom and its backing arrays are called only
+    // from a Wavetable node that actually selected an imported table.
+    // Emitting them unconditionally would put a dead helper proc and put NO
+    // arrays (there being none to enumerate) into every project that has
+    // never imported a .wav — the overwhelming majority — breaking byte
+    // identity for every patch that predates this packet. Collected in
+    // nodes_sorted_by_id / instrument order (both deterministic) and deduped
+    // by first occurrence, so the determinism double-run (run_golden.bat)
+    // never sees the array declarations reorder between two runs of the same
+    // input — an Odin map's iteration order is NOT that guarantee.
+    {
+        custom_tables: [dynamic]Custom_Wavetable_Entry
+        defer delete(custom_tables)
+        seen := make(map[u64]bool)
+        defer delete(seen)
+        for i in 0 ..< len(project.instruments) {
+            inst := &project.instruments[i]
+            nodes := nodes_sorted_by_id(&inst.graph)
+            for node in nodes {
+                if node.type != "Wavetable" do continue
+                if !get_bool_param(node, "useCustomTable", false) do continue
+                b64 := get_string_param(node, "customTable", "")
+                if b64 == "" do continue
+                table, ok := decode_custom_wavetable(b64)
+                if !ok do continue
+                digest := custom_wavetable_digest(b64)
+                if seen[digest] do continue
+                seen[digest] = true
+                append(&custom_tables, Custom_Wavetable_Entry{digest = digest, table = table})
+            }
+            delete(nodes)
+        }
+        if len(custom_tables) > 0 {
+            emit_custom_wavetable_sample_proc(&sb)
+            for entry in custom_tables {
+                fmt.sbprintf(&sb, "skald_wavetable_%016x : [%d]f32 = {{", entry.digest, CUSTOM_WAVETABLE_SAMPLES)
+                for v, idx in entry.table {
+                    if idx > 0 do fmt.sbprint(&sb, ", ")
+                    fmt.sbprint(&sb, f32_literal(f64(v)))
+                }
+                fmt.sbprint(&sb, "}\n\n")
+            }
+        }
+    }
 
     fmt.sbprint(&sb, "Note_Event :: struct {\n")
     fmt.sbprint(&sb, "\tnote: u8,\n")

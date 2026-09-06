@@ -378,6 +378,24 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph,
 	pw_str := get_f32_param(graph, plan, node, "pulseWidth", "input_pulseWidth", 0.5)
 	phase_str := get_f32_param(graph, plan, node, "phase", "", 0.0)
 
+	// G4 (roadmap 9.20): an imported single-cycle table replaces the four-shape
+	// morph entirely — it has no duty cycle and no crossfade position, only a
+	// phase to read it at. get_bool_param is compile-time-only (mirrors
+	// fixedPitch's own gate above), and decode_custom_wavetable fails closed:
+	// a corrupt or hand-edited customTable string falls back to the analytic
+	// path rather than emitting a call to an array that was never declared.
+	custom_table_b64 := ""
+	use_custom_table := false
+	if get_bool_param(node, "useCustomTable", false) {
+		b64 := get_string_param(node, "customTable", "")
+		if b64 != "" {
+			if _, ok := decode_custom_wavetable(b64); ok {
+				custom_table_b64 = b64
+				use_custom_table = true
+			}
+		}
+	}
+
 	unison_count := instrument.unison
 	if unison_count <= 0 do unison_count = 1
 	detune_amount := instrument.detune
@@ -398,7 +416,12 @@ generate_wavetable_code :: proc(sb: ^strings.Builder, node: Node, graph: ^Graph,
 		fmt.sbprint(sb, "\t\t\t\tif sample_phase < 0.0 do sample_phase += 1.0;\n")
 		sample_phase = "sample_phase"
 	}
-	fmt.sbprintf(sb, "\t\t\t\tunison_out += skald_wavetable_sample(%s, f32(%s), math.clamp(f32(%s), 0.01, 0.99));\n", sample_phase, pos_str, pw_str)
+	if use_custom_table {
+		table_ident := custom_wavetable_ident(custom_table_b64)
+		fmt.sbprintf(sb, "\t\t\t\tunison_out += skald_wavetable_sample_custom(%s[:], f32(%s));\n", table_ident, sample_phase)
+	} else {
+		fmt.sbprintf(sb, "\t\t\t\tunison_out += skald_wavetable_sample(%s, f32(%s), math.clamp(f32(%s), 0.01, 0.99));\n", sample_phase, pos_str, pw_str)
+	}
 	fmt.sbprint(sb, "\t\t\t}\n")
 	fmt.sbprintf(sb, "\t\t\tnode_%s_out = (unison_out / f32(unison_count)) * (%s);\n", node.id, amp_str)
 	fmt.sbprint(sb, "\t\t}\n\n")

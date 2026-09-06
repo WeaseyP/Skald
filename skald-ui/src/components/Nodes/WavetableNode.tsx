@@ -28,6 +28,10 @@ export const WavetableNode = makeParamNode({
         { key: 'phase', label: 'Phase', min: 0, max: 360, step: 1, default: 0 },
         { key: 'fixedPitch', label: 'Fixed Pitch', kind: 'toggle' },
         { key: 'frequency', label: 'Freq (Hz)', min: 20, max: 20000, step: 1, showIf: (d) => !!d.fixedPitch },
+        // G4 (roadmap 9.20): an imported table replaces the four-shape morph
+        // above — see param_is_reachable's Wavetable case for what stops
+        // reading `position`/`pulseWidth` once this is on.
+        { key: 'useCustomTable', label: 'Custom Table', kind: 'toggle' },
     ],
 });
 

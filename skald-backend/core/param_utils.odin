@@ -3,6 +3,7 @@ package skald_core
 import "core:fmt"
 import "core:strings"
 import json "core:encoding/json"
+import "core:encoding/base64"
 
 // =================================================================================
 // SECTION C: Type-Safe Parameter Fetching System
@@ -251,6 +252,62 @@ get_string_param :: proc(node: Node, param_name: string, default_val: string) ->
 	}
 	return default_val
 }
+// G4 (roadmap 9.20): an imported single-cycle wavetable travels the save
+// file as base64 of CUSTOM_WAVETABLE_SAMPLES little-endian float32 samples
+// (skald-ui/src/audio/wavReader.ts::tableToBase64, the encode side this
+// decodes). Zero external dependencies on either side: core:encoding/base64
+// ships with the Odin compiler, the same way core:math and core:strings do —
+// it is not a third-party package.
+CUSTOM_WAVETABLE_SAMPLES :: 2048
+
+// A distinct imported table, keyed by the digest of its base64 text so two
+// Wavetable nodes that imported the same .wav share one emitted array
+// instead of two byte-identical ones (custom_wavetable_ident below is what
+// the generator splices into the emitted identifier).
+Custom_Wavetable_Entry :: struct {
+	digest: u64,
+	table:  [CUSTOM_WAVETABLE_SAMPLES]f32,
+}
+
+// Decodes a base64 blob into CUSTOM_WAVETABLE_SAMPLES floats. Fails closed
+// (ok=false) on anything that is not EXACTLY the expected byte count — a
+// truncated or hand-edited save must fall back to the analytic shapes
+// (generate_wavetable_code's caller checks `ok`), never read past the end of
+// a short decode or silently zero-pad a corrupt one.
+decode_custom_wavetable :: proc(b64: string) -> (table: [CUSTOM_WAVETABLE_SAMPLES]f32, ok: bool) {
+	bytes, err := base64.decode(b64)
+	defer delete(bytes)
+	if err != nil do return {}, false
+	if len(bytes) != CUSTOM_WAVETABLE_SAMPLES * 4 do return {}, false
+	for i in 0 ..< CUSTOM_WAVETABLE_SAMPLES {
+		// Rebuilt byte-by-byte rather than a transmute of the []byte slice:
+		// transmute would read native-endian, which is correct on every host
+		// Skald ships from today but would silently flip on a big-endian one.
+		// Spelling out little-endian here means this proc's correctness does
+		// not quietly depend on that staying true.
+		o := i * 4
+		bits := u32(bytes[o]) | u32(bytes[o + 1]) << 8 | u32(bytes[o + 2]) << 16 | u32(bytes[o + 3]) << 24
+		table[i] = transmute(f32)bits
+	}
+	return table, true
+}
+
+// Identifies a distinct imported table. Hashes the base64 TEXT, not the
+// decoded floats — cheaper, and the base64 is the save file's actual stored
+// identity for the table; two different byte strings that happen to decode
+// to the same floats are not a case worth collapsing.
+custom_wavetable_digest :: proc(b64: string) -> u64 {
+	return fnv1a64(transmute([]byte)b64)
+}
+
+// The emitted array/identifier name for a table, e.g. "skald_wavetable_a1b2c3d4e5f60718".
+// Both call sites (generate_wavetable_code's per-node emission and
+// generate_project_code's project-wide array declarations) compute this the
+// same way, off the same digest, so a node's call always finds its array.
+custom_wavetable_ident :: proc(b64: string) -> string {
+	return fmt.tprintf("skald_wavetable_%016x", custom_wavetable_digest(b64))
+}
+
 get_int_param :: proc(graph: ^Graph, node: Node, param_name: string, input_port: string, default_val: int) -> string {
 	if graph != nil {
 		if id, port, ok := find_input_for_port(graph, node.id, input_port); ok {

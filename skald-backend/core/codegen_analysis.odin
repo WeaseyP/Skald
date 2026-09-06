@@ -845,6 +845,15 @@ param_is_reachable :: proc(node: Node, param: string) -> bool {
 		if node.type == "Oscillator" && param == "pulseWidth" {
 			return get_string_param(node, "waveform", "Sine") == "Square"
 		}
+		// G4: an imported single-cycle table bypasses the four-shape morph
+		// (generate_wavetable_code's use_custom_table branch calls
+		// skald_wavetable_sample_custom, which reads only phase) — position
+		// no longer selects anything, and there is no duty cycle to narrow.
+		if node.type == "Wavetable" && (param == "position" || param == "pulseWidth") {
+			if get_bool_param(node, "useCustomTable", false) && get_string_param(node, "customTable", "") != "" {
+				return false
+			}
+		}
 		if param != "frequency" do return true
 		return get_bool_param(node, "fixedPitch", false)
 	case "MidiInput":
@@ -867,6 +876,10 @@ param_dead_reason :: proc(node: Node, param: string) -> string {
 	case "LFO", "SampleHold", "Delay":
 		return "bpmSync is on, so its time base comes from syncRate instead"
 	case "Oscillator", "Wavetable":
+		if node.type == "Wavetable" && (param == "position" || param == "pulseWidth") &&
+			get_bool_param(node, "useCustomTable", false) && get_string_param(node, "customTable", "") != "" {
+			return "an imported table is selected, so the four-shape morph (and its duty cycle) is never read"
+		}
 		if param == "pulseWidth" {
 			return "waveform is not Square, so pulseWidth is never read — only a pulse wave has a width"
 		}

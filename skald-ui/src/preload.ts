@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('electron', {
     saveWavStems: (files: { name: string; bytes: Uint8Array }[]): Promise<{ saved: boolean; path?: string; error?: string }> =>
         ipcRenderer.invoke('save-wav-stems', files),
 
+    // Roadmap G4: a single .wav's raw bytes, for the Wavetable node's Import
+    // control — audio/wavReader.ts decodes them in the renderer.
+    importWav: (): Promise<{ name: string | null; bytes: Uint8Array | null; error?: string }> =>
+        ipcRenderer.invoke('import-wav'),
+
     // Import Patch: opens in the patch kit and accepts a multi-selection.
     importPatches: (): Promise<{
         files: { name: string; content: string }[];

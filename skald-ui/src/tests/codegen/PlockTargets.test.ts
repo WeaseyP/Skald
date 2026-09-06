@@ -214,6 +214,24 @@ describe('paramIsReachable mirrors param_is_reachable (B5-4-followup)', () => {
         expect(paramIsReachable(node('f', 'filter', {}), 'cutoff')).toBe(true);
         expect(paramIsReachable(node('o', 'oscillator', { fixedPitch: false }), 'amplitude')).toBe(true);
     });
+
+    // G4 (roadmap 9.20) — mirrors codegen_analysis.odin::param_is_reachable's
+    // Wavetable case, added alongside skald-backend/tests/unit/
+    // wavetable_custom_test.odin::test_param_is_reachable_position_and_pulsewidth_dead_under_custom_table.
+    it('says Wavetable position and pulseWidth are dead once a decodable custom table is selected', () => {
+        const withTable = { useCustomTable: true, customTable: 'AAAA' };
+        expect(paramIsReachable(node('w', 'wavetable', withTable), 'position')).toBe(false);
+        expect(paramIsReachable(node('w', 'wavetable', withTable), 'pulseWidth')).toBe(false);
+        expect(paramIsReachable(node('w', 'wavetable', withTable), 'amplitude')).toBe(true);
+    });
+
+    it('leaves Wavetable position/pulseWidth reachable when useCustomTable is off, or on with no table stored', () => {
+        expect(paramIsReachable(node('w', 'wavetable', {}), 'position')).toBe(true);
+        expect(paramIsReachable(node('w', 'wavetable', {}), 'pulseWidth')).toBe(true);
+        expect(paramIsReachable(node('w', 'wavetable', { useCustomTable: true }), 'position')).toBe(true);
+        expect(paramIsReachable(node('w', 'wavetable', { useCustomTable: true, customTable: '' }), 'pulseWidth')).toBe(true);
+        expect(paramIsReachable(node('w', 'wavetable', { customTable: 'AAAA' }), 'position')).toBe(true);
+    });
 });
 
 describe('paramDeadReason mirrors param_dead_reason, wording lifted verbatim', () => {
@@ -232,6 +250,12 @@ describe('paramDeadReason mirrors param_dead_reason, wording lifted verbatim', (
     it('names fixedPitch for Oscillator and Wavetable', () => {
         expect(paramDeadReason(node('o', 'oscillator', {}), 'frequency')).toContain('fixedPitch is off');
         expect(paramDeadReason(node('w', 'wavetable', {}), 'frequency')).toContain('fixedPitch is off');
+    });
+
+    it('names the imported table for Wavetable position/pulseWidth once useCustomTable selects one', () => {
+        const withTable = { useCustomTable: true, customTable: 'AAAA' };
+        expect(paramDeadReason(node('w', 'wavetable', withTable), 'position')).toContain('imported table is selected');
+        expect(paramDeadReason(node('w', 'wavetable', withTable), 'pulseWidth')).toContain('imported table is selected');
     });
 });
 

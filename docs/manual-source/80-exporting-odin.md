@@ -19,7 +19,7 @@ One file. One Odin package. No dependency on Skald, no runtime library, no data 
 The file has three parts, in this order:
 
 1. **The package line and the header comment.** The header is not decoration; it is the API reference, generated from the same analysis as the code below it, and it is the one artefact an integrator will actually read.
-2. **Shared helpers** — a small xorshift PRNG for Noise nodes, the `ADSR_Stage` enum, the wavetable shapers, `skald_soft_limit`, the `Note_Event` and `Skald_Param_Info` structs, and (only when some asset has a Delay or Reverb) `skald_feedback_tail_seconds`. These are emitted once for the whole file.
+2. **Shared helpers** — a small xorshift PRNG for Noise nodes, the `ADSR_Stage` enum, the wavetable shapers, `skald_soft_limit`, the `Note_Event` and `Skald_Param_Info` structs, and (only when some asset has a Delay or Reverb) `skald_feedback_tail_seconds`. When any Wavetable node imported a `.wav` (roadmap G4, see the Wavetable node's manual chapter), `skald_wavetable_sample_custom` and one `[2048]f32` array per distinct imported table also appear here — a project that never imports one gets none of this text. These are emitted once for the whole file.
 3. **One section per asset.** For an asset called `Sfx` you get `Sfx_Voice_State`, `Sfx_Processor`, and then every procedure whose name starts `Sfx_`. Assets do not share state and do not call into each other.
 
 At the very bottom there is a `project_init` / `project_process` / `project_destroy` wrapper. **Ignore it.** It exists for Skald's own test harness, it allocates with `new`, and the header says so in as many words. Game code drives the per-asset procedures directly.

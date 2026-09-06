@@ -11,6 +11,7 @@ import { NODE_DEFINITIONS } from '../definitions/node-definitions';
 import { RandomizeAmount, RANDOMIZE_AMOUNTS, randomizableParamNames, randomizeParams } from '../utils/randomize';
 import { lookupRange } from '../definitions/nodeSchema.generated';
 import { NodeParams, NoteEvent, SequencerTrack } from '../definitions/types';
+import { importWavAsTable, tableToBase64, base64ToTable } from '../audio/wavReader';
 
 interface NodeParameterControlsProps {
     node: Node;
@@ -205,6 +206,139 @@ const RandomizeSection: React.FC<{
             <button type="button" data-testid="randomize-apply" onClick={handleApply} style={applyButtonStyle}>
                 Randomize
             </button>
+        </div>
+    );
+};
+
+/**
+ * Roadmap G4 (§9.20) — draws a stored table (base64ToTable) as a small
+ * polyline. Read-only: this is a preview of what codegen will emit, not an
+ * editor (the interactive waveform drawer is §9.20 item 1, a separate,
+ * un-scheduled roadmap item). Decode failures (a corrupted or hand-edited
+ * customTable) render a blank canvas rather than throwing — the same
+ * fail-closed posture decode_custom_wavetable takes on the codegen side.
+ */
+const WavetablePreview: React.FC<{ base64: string }> = ({ base64 }) => {
+    const canvasRef = React.useRef<HTMLCanvasElement>(null);
+    React.useEffect(() => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (!canvas || !ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let table: Float32Array;
+        try {
+            table = base64ToTable(base64);
+        } catch {
+            return;
+        }
+        if (table.length === 0) return;
+        ctx.strokeStyle = '#63b3ed';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 0; x < canvas.width; x++) {
+            const v = table[Math.floor((x / canvas.width) * table.length)] ?? 0;
+            const y = canvas.height / 2 - (v * canvas.height) / 2;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }, [base64]);
+    return (
+        <canvas
+            ref={canvasRef}
+            width={200}
+            height={40}
+            data-testid="wavetable-preview"
+            style={{ background: '#1a202c', borderRadius: '4px', marginTop: '6px', display: 'block' }}
+        />
+    );
+};
+
+/**
+ * Roadmap G4 — the Wavetable node's Import/Clear controls. Import is ONE
+ * document mutation (`onChangeMany` with all three fields together — B3's
+ * pushHistory contract, one undo entry per click, not one per field), so
+ * this is gated on `onChangeMany` the same way RandomizeSection is: the
+ * per-step P-lock editor's wrapper has no multi-field write path, and a
+ * per-step imported table is not a case this roadmap item covers anyway.
+ *
+ * The file dialog itself (`window.electron.importWav`) is the same
+ * Electron-vs-web-shim indirection every other file operation in this app
+ * goes through (web/electronShim.ts installs the identical surface with a
+ * browser `<input type="file">`), so this component does not know or care
+ * which build it is running in.
+ */
+const WavetableImportSection: React.FC<{
+    data: Record<string, unknown>;
+    onChangeMany: (changes: Record<string, unknown>) => void;
+}> = ({ data, onChangeMany }) => {
+    const [error, setError] = React.useState<string | null>(null);
+    const [busy, setBusy] = React.useState(false);
+    const customTable = typeof data.customTable === 'string' ? data.customTable : '';
+    const hasTable = customTable !== '';
+    const tableName = typeof data.customTableName === 'string' && data.customTableName
+        ? data.customTableName
+        : (hasTable ? 'Imported table' : null);
+
+    const handleImport = async () => {
+        setError(null);
+        if (!window.electron?.importWav) {
+            setError('Import is not available in this build.');
+            return;
+        }
+        setBusy(true);
+        try {
+            const result = await window.electron.importWav();
+            if (!result.bytes || !result.name) {
+                if (result.error) setError(result.error);
+                return; // user canceled the dialog — not an error
+            }
+            const table = importWavAsTable(result.bytes);
+            onChangeMany({
+                useCustomTable: true,
+                customTable: tableToBase64(table),
+                customTableName: result.name.replace(/\.wav$/i, ''),
+            });
+        } catch (e) {
+            setError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handleClear = () => {
+        // Clearing returns to the analytic shapes (design decision, §9.20):
+        // useCustomTable off, and the blob dropped rather than left orphaned
+        // in the save file for a future useCustomTable:true to resurrect.
+        onChangeMany({ useCustomTable: false, customTable: undefined, customTableName: undefined });
+    };
+
+    return (
+        <div style={{ margin: '10px 0' }}>
+            <label style={labelStyles}>Imported Table</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                <button type="button" data-testid="wavetable-import" onClick={handleImport} disabled={busy} style={rerollButtonStyle}>
+                    {busy ? 'Importing…' : 'Import .wav…'}
+                </button>
+                {hasTable && (
+                    <button type="button" data-testid="wavetable-clear" onClick={handleClear} style={rerollButtonStyle}>
+                        Clear
+                    </button>
+                )}
+            </div>
+            {tableName && (
+                // ~11KB in the save file per table (SINGLE_CYCLE_LENGTH*4 bytes,
+                // base64-expanded ~4/3); see docs/manual-source/nodes/wavetable.md.
+                <div data-testid="wavetable-table-name" style={{ color: '#8a939f', fontSize: '0.8em', marginTop: '4px' }}>
+                    {tableName}
+                </div>
+            )}
+            {hasTable && <WavetablePreview base64={customTable} />}
+            {error && (
+                <div data-testid="wavetable-import-error" style={{ color: '#e05353', fontSize: '0.8em', marginTop: '4px' }}>
+                    {error}
+                </div>
+            )}
         </div>
     );
 };
@@ -837,7 +971,7 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                     <input type="checkbox" checked={data.fixedPitch || false} onChange={e => onChange('fixedPitch', e.target.checked)} />
                 </div>
                 {renderControlWrapper('frequency', 'Frequency (Hz)', slider('frequency', 20, 20000, 440, 'log'), true, inert('frequency'))}
-                {renderControlWrapper('position', 'Table Position', slider('position', 0, 3, 0, undefined, 0.01))}
+                {renderControlWrapper('position', 'Table Position', slider('position', 0, 3, 0, undefined, 0.01), undefined, inert('position'))}
                 {/* Default 1.0 — matches what the generated code plays for an
                     absent value (codegen.odin's Wavetable amplitude fallback).
                     The parameter existed in the engine and on the node card but
@@ -845,8 +979,17 @@ export const NodeParameterControls: React.FC<NodeParameterControlsProps> = ({ no
                 {renderControlWrapper('amplitude', 'Amplitude', slider('amplitude', 0, 1, 1))}
                 {/* C5 (F-A01-7/8): the square end's duty cycle and a start
                     offset — the Oscillator's two controls this node lacked. */}
-                {renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5))}
+                {renderControlWrapper('pulseWidth', 'Pulse Width', slider('pulseWidth', 0.01, 0.99, 0.5), undefined, inert('pulseWidth'))}
                 {renderControlWrapper('phase', 'Phase', slider('phase', 0, 360, 0))}
+                {/* G4: a raw checkbox, same as Fixed Pitch above — the card's
+                    matching `useCustomTable` field is likewise a plain toggle,
+                    not wrapped, so this is not a parameter the parity test's
+                    sidebarParamKeys() collector needs to find on the card. */}
+                <div style={{ margin: '10px 0' }}>
+                    <label htmlFor="wavetable-use-custom-table" style={{ ...labelStyles, display: 'inline', marginRight: 10 }}>Use Imported Table</label>
+                    <input id="wavetable-use-custom-table" type="checkbox" checked={data.useCustomTable || false} onChange={e => onChange('useCustomTable', e.target.checked)} />
+                </div>
+                {onChangeMany && <WavetableImportSection data={data} onChangeMany={onChangeMany} />}
             </>);
         case 'oscillator':
             return (<>

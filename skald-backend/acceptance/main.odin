@@ -1349,6 +1349,43 @@ main :: proc() {
 			}
 		}
 
+	case "wavetable_custom":
+		// G4 (roadmap 9.20): tests/fixtures/wavetable_custom.json's Wavetable
+		// selected an imported table — 2048 samples of sin(ph) + 0.5*sin(2*ph),
+		// peak-normalized — instead of position 0's pure analytic sine. A pure
+		// sine has (within FFT window leakage, checked elsewhere at <2%) no
+		// energy at its second harmonic; this table was BUILT to have real
+		// energy there at roughly half the fundamental's magnitude. If
+		// useCustomTable were silently ignored (falling back to the analytic
+		// sine skald_wavetable_sample would produce at position 0), the 880Hz
+		// bin would sit in the leakage floor instead.
+		render_sfx_one_shot(buf, sample_rate, 69, 1.0, 0.0)
+		if smoke_mode {
+			all_pass &= run_smoke(buf, fixture)
+		} else {
+			all_pass &= assert_audible(buf, .Left)
+			spec := fft_channel(buf, .Left)
+			defer delete(spec)
+			fundamental := magnitude_at_freq(spec, sample_rate, 440.0)
+			second_harmonic := magnitude_at_freq(spec, sample_rate, 880.0)
+			if second_harmonic < fundamental * 0.15 {
+				fmt.eprintfln(
+					"FAIL wavetable_custom: expected real energy at 880Hz (the imported table's authored 2nd harmonic) comparable to the 440Hz fundamental; got %.4f vs %.4f fundamental — useCustomTable is not selecting the imported table",
+					second_harmonic, fundamental,
+				)
+				all_pass = false
+			}
+			// The authored ratio is 0.5:1 (2nd harmonic : fundamental); allow a
+			// wide band either side rather than pin an exact FFT bin ratio.
+			if second_harmonic > fundamental * 0.9 {
+				fmt.eprintfln(
+					"FAIL wavetable_custom: 880Hz magnitude %.4f is implausibly close to the 440Hz fundamental %.4f for a table authored at half its amplitude",
+					second_harmonic, fundamental,
+				)
+				all_pass = false
+			}
+		}
+
 	case "fm_level":
 		// C5 (F-A02-7): the FM Operator was the only source with no output
 		// level — a bare sin() at full scale. `amplitude` 0.25 on an unmodulated

@@ -156,6 +156,20 @@ export const paramIsReachable = (node: Node<NodeParams>, param: string): boolean
                 const waveform = backendParameters(node)['waveform'];
                 return (typeof waveform === 'string' ? waveform : 'Sine') === 'Square';
             }
+            // G4: an imported single-cycle table bypasses the four-shape morph
+            // (generate_wavetable_code's use_custom_table branch calls
+            // skald_wavetable_sample_custom, which reads only phase) —
+            // position no longer selects anything, and there is no duty
+            // cycle to narrow. Mirrors codegen_analysis.odin::param_is_reachable
+            // case by case: useCustomTable on AND a customTable string present
+            // (not merely non-decodable — this mirror does not attempt to
+            // validate the blob, matching the Odin's own best-effort gate).
+            if (nodeCodegenType(node) === 'Wavetable' && (param === 'position' || param === 'pulseWidth')) {
+                const customTable = backendParameters(node)['customTable'];
+                if (boolParam(node, 'useCustomTable') && typeof customTable === 'string' && customTable !== '') {
+                    return false;
+                }
+            }
             if (param !== 'frequency') return true;
             return boolParam(node, 'fixedPitch');
         case 'MidiInput':
@@ -186,6 +200,12 @@ export const paramDeadReason = (node: Node<NodeParams>, param: string): string =
             return 'bpmSync is on, so its time base comes from syncRate instead';
         case 'Oscillator':
         case 'Wavetable':
+            if (nodeCodegenType(node) === 'Wavetable' && (param === 'position' || param === 'pulseWidth')) {
+                const customTable = backendParameters(node)['customTable'];
+                if (boolParam(node, 'useCustomTable') && typeof customTable === 'string' && customTable !== '') {
+                    return 'an imported table is selected, so the four-shape morph (and its duty cycle) is never read';
+                }
+            }
             if (param === 'pulseWidth') {
                 return 'waveform is not Square, so pulseWidth is never read — only a pulse wave has a width';
             }

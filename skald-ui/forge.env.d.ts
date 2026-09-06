@@ -18,6 +18,9 @@ export interface IElectronAPI {
     saveWav?: (fileName: string, bytes: Uint8Array) => Promise<{ saved: boolean; path?: string; error?: string }>,
     // Roadmap G2 — stem export. Optional for the same reason saveWav is.
     saveWavStems?: (files: { name: string; bytes: Uint8Array }[]) => Promise<{ saved: boolean; path?: string; error?: string }>,
+    // Roadmap G4 — wavetable import. Optional for the same reason saveWav is:
+    // the web shim and every test double must be free to omit it.
+    importWav?: () => Promise<{ name: string | null; bytes: Uint8Array | null; error?: string }>,
     // Import Patch: multi-selection, opened in the patch kit. Unreadable files
     // come back in `skipped` rather than failing the whole batch.
     importPatches: () => Promise<{

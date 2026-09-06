@@ -518,6 +518,31 @@ ipcMain.handle('load-graph', async (): Promise<{ content: string | null; error?:
   }
 });
 
+// Roadmap G4 (§9.20) — wavetable import. A single .wav, read as raw bytes
+// (not text: load-graph/import-patches read UTF-8 project JSON, but a WAV's
+// bytes are the whole point here — decoding them is audio/wavReader.ts's job,
+// in the renderer, so the same decode path runs identically in the Electron
+// build and the web build's fetch-based equivalent).
+ipcMain.handle('import-wav', async (): Promise<{ name: string | null; bytes: Uint8Array | null; error?: string }> => {
+  const { filePaths } = await dialog.showOpenDialog({
+    title: 'Import Single-Cycle Wavetable',
+    buttonLabel: 'Import',
+    properties: ['openFile'],
+    filters: [{ name: 'WAV Files', extensions: ['wav'] }],
+  });
+
+  if (!filePaths || filePaths.length === 0) {
+    return { name: null, bytes: null };
+  }
+  try {
+    const buf = fs.readFileSync(filePaths[0]);
+    return { name: path.basename(filePaths[0]), bytes: new Uint8Array(buf) };
+  } catch (err) {
+    console.error(`[Skald] Failed to read WAV from ${filePaths[0]}:`, err);
+    return { name: null, bytes: null, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
 // Import Patch. Separate from load-graph on two counts: it opens in the patch
 // kit rather than the top of examples/, and it takes a multi-selection, so a
 // whole drum kit lands on the canvas in one trip through the dialog.

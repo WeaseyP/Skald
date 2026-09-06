@@ -68,6 +68,26 @@ export interface WavetableParams extends BaseNodeParams {
   // the generated code played unity. Optional because patches saved before
   // this field existed legitimately have no value — read it as 1.0.
   amplitude?: number;
+  // G4 (roadmap 9.20): an imported single-cycle table replaces the four-shape
+  // morph (`position`) entirely — see codegen_analysis.odin::param_is_reachable's
+  // Wavetable case. A plain boolean, same shape as `fixedPitch` above, NOT a
+  // schema/nodes.json row: that file is a numeric-range contract (min/max/
+  // default/unit) and this is a compile-time-only discriminator with no range
+  // to author, exactly like fixedPitch's own absent row.
+  useCustomTable?: boolean;
+  // Base64 of SINGLE_CYCLE_LENGTH little-endian float32 samples
+  // (audio/wavReader.ts::tableToBase64) — an imported single-cycle .wav,
+  // ~11KB in the save file. Deliberately NOT a schema/nodes.json row either:
+  // it is a blob with no min/max/default/unit, and a range-table entry for it
+  // would be meaningless. Read-only passthrough through save/load (the
+  // serializer spreads unknown node data verbatim — projectSerializer.ts's
+  // `{ ...node.data }`); codegen decodes and embeds it only when
+  // useCustomTable is true (skald-backend/core/param_utils.odin::
+  // decode_custom_wavetable). Absent or cleared -> the analytic shapes.
+  customTable?: string;
+  // Display name for the imported table (the source .wav's filename, sans
+  // extension) — cosmetic only, never read by codegen.
+  customTableName?: string;
 }
 
 export interface SampleHoldParams extends BaseNodeParams, BpmSynchronizable {

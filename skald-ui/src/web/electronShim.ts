@@ -46,11 +46,11 @@ const download = (name: string, content: BlobPart, type: string): void => {
     URL.revokeObjectURL(url);
 };
 
-const pickFiles = (multiple: boolean): Promise<File[]> =>
+const pickFiles = (multiple: boolean, accept = '.json,application/json'): Promise<File[]> =>
     new Promise((resolve) => {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json,application/json';
+        input.accept = accept;
         input.multiple = multiple;
         input.style.display = 'none';
         document.body.appendChild(input);
@@ -145,6 +145,18 @@ export const installElectronShim = (): void => {
                 return { content: await file.text() };
             } catch (e) {
                 return { content: null, error: e instanceof Error ? e.message : String(e) };
+            }
+        },
+
+        // Roadmap G4 — wavetable import. A browser file picker restricted to
+        // .wav, read as raw bytes the same way saveWav writes them.
+        importWav: async (): Promise<{ name: string | null; bytes: Uint8Array | null; error?: string }> => {
+            const [file] = await pickFiles(false, '.wav,audio/wav,audio/x-wav');
+            if (!file) return { name: null, bytes: null };
+            try {
+                return { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) };
+            } catch (e) {
+                return { name: null, bytes: null, error: e instanceof Error ? e.message : String(e) };
             }
         },
 
